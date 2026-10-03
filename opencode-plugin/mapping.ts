@@ -1,4 +1,4 @@
-type AstroPayload = Record<string, unknown> & { eventName: string };
+export type AstroPayload = Record<string, unknown> & { eventName: string };
 
 type AnyEvent = {
   type?: string;
@@ -7,6 +7,18 @@ type AnyEvent = {
 
 const terminalFinish = new Set(["stop", "end_turn", "eog", "stop_sequence"]);
 const failedFinish = new Set(["error", "failed", "length", "content_filter"]);
+const abortedErrorTypes = new Set([
+  "aborted",
+  "abort",
+  "cancelled",
+  "canceled",
+  "interrupted",
+  "declined",
+]);
+
+// Verified against OpenCode 2.0.22 event streams and the shipped event names:
+// session.step.failed / session.tool.failed / permission.asked /
+// permission.replied / session.execution.interrupted.
 const interruptedTypes = new Set([
   "session.execution.interrupted",
   "session.execution.aborted",
@@ -14,12 +26,49 @@ const interruptedTypes = new Set([
   "session.interrupted",
 ]);
 
+const terminalEventNames = new Set(["Stop", "StopFailure", "Interrupt"]);
+
+/** Terminal events close an agent turn; duplicates of the same one are noise. */
+export function isTerminalEventName(eventName: string): boolean {
+  return terminalEventNames.has(eventName);
+}
+
+function isAborted(error: unknown): boolean {
+  const type = String(
+    (error as any)?.type || (error as any)?.name || "",
+  ).toLowerCase();
+  const message = String((error as any)?.message || "").toLowerCase();
+  return (
+    abortedErrorTypes.has(type) ||
+    type.includes("abort") ||
+    type.includes("cancel") ||
+    message.includes("declined") ||
+    message.includes("aborted") ||
+    message.includes("interrupted")
+  );
+}
+
+function describeError(error: unknown): Record<string, unknown> {
+  if (typeof error === "string") return { message: error };
+  if (error && typeof error === "object") return error as Record<string, unknown>;
+  return {};
+}
+
+export type MappingContext = {
+  /** Tool name learned from session.tool.input.started, which is the only
+   * OpenCode event that carries it; tool.called/success omit the name. */
+  toolName?: string;
+};
+
 /**
  * Maps one OpenCode server event to the ASTRO canonical event payloads it
  * produces. Returns an empty array for events that carry no traceable meaning
  * (deltas, progress, usage updates) so callers can drop them cheaply.
  */
-export function mapOpenCodeEvent(event: AnyEvent): AstroPayload[] {
+export function mapOpenCodeEvent(
+  event: AnyEvent,
+  context: MappingContext = {},
+): AstroPayload[] {
   const type = String(event?.type || "");
   const data = event?.data ?? {};
   const sessionId = data.sessionID;
@@ -57,7 +106,7 @@ export function mapOpenCodeEvent(event: AnyEvent): AstroPayload[] {
       {
         eventName: "PreToolUse",
         toolUseId: data?.id,
-        toolName: data?.name,
+        toolName: context.toolName ?? data?.name,
         tool_input: data?.input,
       },
     ];
@@ -68,9 +117,52 @@ export function mapOpenCodeEvent(event: AnyEvent): AstroPayload[] {
       {
         eventName: "PostToolUse",
         toolUseId: data?.id,
+        toolName: context.toolName ?? data?.name,
         tool_response: data?.content,
+        status: data?.metadata?.exit === 0 ? undefined : "failed",
       },
     ];
+  }
+
+  if (type === "session.tool.failed") {
+    return [
+      {
+        eventName: "PostToolUseFailure",
+        toolUseId: data?.id,
+        toolName: context.toolName ?? data?.name,
+        tool_response: describeError(data?.error),
+        status: "failed",
+      },
+    ];
+  }
+
+  if (type === "permission.asked") {
+    return [
+      {
+        eventName: "PermissionRequest",
+        toolUseId: data?.source?.id,
+        toolName: data?.action,
+        permission: {
+          action: data?.action,
+          resources: data?.resources,
+          message: data?.message,
+        },
+      },
+    ];
+  }
+
+  if (type === "permission.replied") {
+    return data?.reply === "reject"
+      ? [
+          {
+            eventName: "PermissionDenied",
+            permission: {
+              requestId: data?.requestID,
+              reply: data?.reply,
+            },
+          },
+        ]
+      : [];
   }
 
   if (type === "session.reasoning.ended") {
@@ -93,33 +185,38 @@ export function mapOpenCodeEvent(event: AnyEvent): AstroPayload[] {
     return [];
   }
 
-  if (interruptedTypes.has(type)) {
-    return [{ eventName: "Interrupt" }];
+  if (type === "session.step.failed") {
+    return isAborted(data?.error)
+      ? [{ eventName: "Interrupt", status: "failed" }]
+      : [
+          {
+            eventName: "StopFailure",
+            status: "failed",
+            error: describeError(data?.error),
+          },
+        ];
   }
 
-  if (type === "session.execution.failed") {
-    return [{ eventName: "StopFailure", status: "failed" }];
+  if (interruptedTypes.has(type)) {
+    return [{ eventName: "Interrupt", reason: data?.reason }];
+  }
+
+  if (type === "session.execution.failed" || type === "session.error") {
+    return [
+      {
+        eventName: "StopFailure",
+        status: "failed",
+        error: describeError(data?.error ?? data),
+      },
+    ];
   }
 
   if (type === "session.deleted") {
     return [{ eventName: "SessionEnd" }];
   }
 
-  if (type.startsWith("session.tool.")) {
-    // Unknown tool outcome events are recorded as failures rather than dropped,
-    // so a failed tool call never disappears from the trajectory.
-    if (data?.error || data?.status === "error" || data?.failed === true) {
-      return [
-        {
-          eventName: "PostToolUseFailure",
-          toolUseId: data?.id,
-          toolName: data?.name,
-          tool_response: data?.error ?? data?.content,
-          status: "failed",
-        },
-      ];
-    }
-  }
-
+  // session.idle and session.compaction.* exist but their payload shape is not
+  // verified yet; mapping them from guesswork would invent semantics, so they
+  // stay unmapped until observed on a real stream.
   return [];
 }

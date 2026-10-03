@@ -2,7 +2,11 @@ import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { mapOpenCodeEvent, type AstroPayload } from "./mapping";
+import {
+  isTerminalEventName,
+  mapOpenCodeEvent,
+  type AstroPayload,
+} from "./mapping";
 
 type AstroRecorder = {
   appendTraceEvents?: (
@@ -62,6 +66,11 @@ export default {
     const location = ctx?.location?.directory || process.cwd();
     const seenSessions = new Set<string>();
     const sessionDirs = new Map<string, string>();
+    // A declined tool reports both session.step.failed and
+    // session.execution.interrupted; only the first terminal event is kept.
+    const lastTerminal = new Map<string, string>();
+    // session.tool.input.started is the only event carrying the tool name.
+    const toolNames = new Map<string, string>();
     let queue: AstroPayload[] = [];
     let timer: ReturnType<typeof setTimeout> | undefined;
 
@@ -111,7 +120,14 @@ export default {
       if (!eventDirectory || eventDirectory !== location) {
         return;
       }
-      const payloads = mapOpenCodeEvent(event);
+      const callId = event?.data?.id;
+      const toolKey = callId ? `${sessionId}:${callId}` : "";
+      if (event?.type === "session.tool.input.started" && callId) {
+        toolNames.set(toolKey, String(event?.data?.name || ""));
+      }
+      const payloads = mapOpenCodeEvent(event, {
+        toolName: toolKey ? toolNames.get(toolKey) : undefined,
+      });
       if (!payloads.length) {
         return;
       }
@@ -127,7 +143,20 @@ export default {
         if (payload.eventName === "SessionStart") {
           continue;
         }
+        if (isTerminalEventName(payload.eventName)) {
+          if (lastTerminal.get(sessionId) === payload.eventName) {
+            continue;
+          }
+          lastTerminal.set(sessionId, payload.eventName);
+        } else if (payload.eventName === "Notification") {
+          // A new model step means the previous terminal no longer dedupes.
+          lastTerminal.delete(sessionId);
+        }
         enqueue({ sessionId, cwd: eventDirectory, ...payload });
+        if (toolKey && (payload.eventName === "PostToolUse" ||
+            payload.eventName === "PostToolUseFailure")) {
+          toolNames.delete(toolKey);
+        }
       }
     };
 
