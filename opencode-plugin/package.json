@@ -1,0 +1,10 @@
+{
+  "name": "astro-opencode-plugin",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "index.ts",
+  "dependencies": {
+    "@opencode/plugin": "^2.0.22"
+  }
+}
