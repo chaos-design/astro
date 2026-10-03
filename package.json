@@ -1,0 +1,54 @@
+{
+  "name": "astro",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.21.0",
+  "description": "Agent State Trace & Runtime Observations: local-first observability for coding agents.",
+  "bin": {
+    "astro-trace": "bin/astro.mjs"
+  },
+  "exports": {
+    "./browser": "./plugin/browser-client.js"
+  },
+  "scripts": {
+    "build": "vite build",
+    "build:native-plugins": "node scripts/build-native-plugins.mjs",
+    "build:plugin": "pnpm build && pnpm build:native-plugins && node scripts/build-plugin.mjs",
+    "dev": "vite",
+    "install-hooks": "node scripts/install-hooks.mjs",
+    "install-plugins": "node scripts/install-plugins.mjs",
+    "import-codex": "node bin/astro.mjs import-codex",
+    "start": "node server/server.mjs",
+    "test": "node --test tests/*.test.*",
+    "typecheck": "tsc --noEmit",
+    "validate:claude-hooks": "node scripts/validate-claude-hooks.mjs"
+  },
+  "dependencies": {
+    "@fontsource-variable/geist": "^5.3.0",
+    "@fontsource-variable/geist-mono": "^5.3.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "date-fns": "^4.4.0",
+    "dotenv": "^17.4.2",
+    "lucide-react": "^1.42.0",
+    "radix-ui": "^1.6.7",
+    "react": "^19.2.8",
+    "react-day-picker": "^10.0.1",
+    "react-dom": "^19.2.8",
+    "shadcn": "^4.21.0",
+    "tailwind-merge": "^3.6.0",
+    "tw-animate-css": "^1.4.0",
+    "yaml": "^2.9.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/node": "^26.5.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "@vitejs/plugin-react": "^6.1.1",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.2"
+  }
+}

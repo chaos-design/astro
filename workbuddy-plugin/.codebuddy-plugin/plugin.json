@@ -1,0 +1,19 @@
+{
+  "name": "astro",
+  "displayName": "ASTRO",
+  "version": "0.0.1",
+  "description": "ASTRO captures WorkBuddy and CodeBuddy Code lifecycle events locally for search, inspection, and replay.",
+  "author": {
+    "name": "ASTRO Contributors"
+  },
+  "keywords": [
+    "workbuddy",
+    "codebuddy",
+    "agent-state",
+    "observability",
+    "tracing",
+    "hooks",
+    "replay"
+  ],
+  "hooks": "./hooks/hooks.json"
+}

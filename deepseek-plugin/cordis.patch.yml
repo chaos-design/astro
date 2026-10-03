@@ -1,0 +1,3 @@
+- insert:
+    - id: astro-trace
+      name: dsh-astro-plugin

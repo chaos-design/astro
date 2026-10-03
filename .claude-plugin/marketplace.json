@@ -1,0 +1,14 @@
+{
+  "name": "astro-local",
+  "owner": {
+    "name": "ASTRO Contributors"
+  },
+  "plugins": [
+    {
+      "name": "astro",
+      "source": "./claude-plugin",
+      "description": "Capture Claude Code lifecycle events locally for ASTRO.",
+      "category": "Development Tools"
+    }
+  ]
+}

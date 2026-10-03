@@ -1,0 +1,17 @@
+{
+  "name": "astro",
+  "version": "0.0.1",
+  "description": "ASTRO captures Codex lifecycle events locally for search, inspection, and replay.",
+  "author": {
+    "name": "ASTRO Contributors"
+  },
+  "keywords": [
+    "codex",
+    "agent-state",
+    "observability",
+    "tracing",
+    "hooks",
+    "replay"
+  ],
+  "hooks": "./hooks/hooks.json"
+}

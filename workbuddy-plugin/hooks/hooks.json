@@ -1,0 +1,295 @@
+{
+  "description": "Capture WorkBuddy and CodeBuddy Code lifecycle events in the local ASTRO data store.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CODEBUDDY_PLUGIN_ROOT}/plugin/trace-recorder.cjs\" --source=workbuddy",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CODEBUDDY_PLUGIN_ROOT}/plugin/trace-recorder.cjs\" --source=workbuddy",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CODEBUDDY_PLUGIN_ROOT}/plugin/trace-recorder.cjs\" --source=workbuddy",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CODEBUDDY_PLUGIN_ROOT}/plugin/trace-recorder.cjs\" --source=workbuddy",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CODEBUDDY_PLUGIN_ROOT}/plugin/trace-recorder.cjs\" --source=workbuddy",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PermissionDenied": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CODEBUDDY_PLUGIN_ROOT}/plugin/trace-recorder.cjs\" --source=workbuddy",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CODEBUDDY_PLUGIN_ROOT}/plugin/trace-recorder.cjs\" --source=workbuddy",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CODEBUDDY_PLUGIN_ROOT}/plugin/trace-recorder.cjs\" --source=workbuddy",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CODEBUDDY_PLUGIN_ROOT}/plugin/trace-recorder.cjs\" --source=workbuddy",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CODEBUDDY_PLUGIN_ROOT}/plugin/trace-recorder.cjs\" --source=workbuddy",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CODEBUDDY_PLUGIN_ROOT}/plugin/trace-recorder.cjs\" --source=workbuddy",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "TaskCreated": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CODEBUDDY_PLUGIN_ROOT}/plugin/trace-recorder.cjs\" --source=workbuddy",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "TaskCompleted": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CODEBUDDY_PLUGIN_ROOT}/plugin/trace-recorder.cjs\" --source=workbuddy",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CODEBUDDY_PLUGIN_ROOT}/plugin/trace-recorder.cjs\" --source=workbuddy",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CODEBUDDY_PLUGIN_ROOT}/plugin/trace-recorder.cjs\" --source=workbuddy",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "TeammateIdle": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CODEBUDDY_PLUGIN_ROOT}/plugin/trace-recorder.cjs\" --source=workbuddy",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "InstructionsLoaded": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CODEBUDDY_PLUGIN_ROOT}/plugin/trace-recorder.cjs\" --source=workbuddy",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "ConfigChange": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CODEBUDDY_PLUGIN_ROOT}/plugin/trace-recorder.cjs\" --source=workbuddy",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "CwdChanged": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CODEBUDDY_PLUGIN_ROOT}/plugin/trace-recorder.cjs\" --source=workbuddy",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "WorktreeCreate": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CODEBUDDY_PLUGIN_ROOT}/plugin/trace-recorder.cjs\" --source=workbuddy",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "WorktreeRemove": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CODEBUDDY_PLUGIN_ROOT}/plugin/trace-recorder.cjs\" --source=workbuddy",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CODEBUDDY_PLUGIN_ROOT}/plugin/trace-recorder.cjs\" --source=workbuddy",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostCompact": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CODEBUDDY_PLUGIN_ROOT}/plugin/trace-recorder.cjs\" --source=workbuddy",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Elicitation": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CODEBUDDY_PLUGIN_ROOT}/plugin/trace-recorder.cjs\" --source=workbuddy",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "ElicitationResult": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CODEBUDDY_PLUGIN_ROOT}/plugin/trace-recorder.cjs\" --source=workbuddy",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

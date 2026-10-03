@@ -1,0 +1,21 @@
+{
+  "name": "dsh-astro-plugin",
+  "version": "0.0.1",
+  "description": "ASTRO local trace capture for DeepSeek Harness sessions.",
+  "type": "module",
+  "main": "index.js",
+  "files": [
+    "index.js",
+    "cordis.patch.yml",
+    "plugin",
+    "server",
+    "dist",
+    "README.md"
+  ],
+  "license": "UNLICENSED",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

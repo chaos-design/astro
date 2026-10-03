@@ -1,0 +1,14 @@
+{
+  "name": "astro-local",
+  "owner": {
+    "name": "ASTRO Contributors"
+  },
+  "plugins": [
+    {
+      "name": "astro",
+      "source": "./workbuddy-plugin",
+      "description": "Capture WorkBuddy and CodeBuddy Code lifecycle events locally for ASTRO.",
+      "category": "Development Tools"
+    }
+  ]
+}

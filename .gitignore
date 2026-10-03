@@ -1,0 +1,17 @@
+node_modules/
+dist/
+artifacts/
+claude-plugin/dist/
+claude-plugin/server/
+codex-plugin/dist/
+codex-plugin/server/
+.claude/settings.local.json
+
+docs/superpowers/
+
+.chrome-*/
+.dbg/
+.astrox/
+.env
+*.log
+.DS_Store
