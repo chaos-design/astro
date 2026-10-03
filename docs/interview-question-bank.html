@@ -1,0 +1,2225 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ASTRO 面试题库 · 本地优先的 Coding Agent 可观测性</title>
+    <meta
+      name="description"
+      content="基于 ASTRO 项目源码整理的面试题库：每题包含问题、考察点、解题思路与参考答案，覆盖事件采集、多端适配、存储布局、服务端、前端领域建模与工程质量。"
+    />
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0b0d12;
+        --bg-soft: #11141c;
+        --panel: #151924;
+        --panel-2: #1b2030;
+        --border: #262c3d;
+        --border-soft: #1f2432;
+        --text: #e7ebf5;
+        --text-dim: #9aa3b8;
+        --text-faint: #6b7488;
+        --brand: #7dd3fc;
+        --brand-2: #a78bfa;
+        --brand-3: #34d399;
+        --warn: #fbbf24;
+        --danger: #fb7185;
+        --code-bg: #0d1119;
+        --shadow: 0 18px 40px -24px rgba(0, 0, 0, 0.9);
+        --radius: 14px;
+        --radius-sm: 9px;
+        --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas,
+          "Liberation Mono", monospace;
+        --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+          "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+      }
+
+      html[data-theme="light"] {
+        color-scheme: light;
+        --bg: #f6f7fb;
+        --bg-soft: #eef1f7;
+        --panel: #ffffff;
+        --panel-2: #f2f5fb;
+        --border: #dde3ef;
+        --border-soft: #e8ecf5;
+        --text: #131722;
+        --text-dim: #5a6478;
+        --text-faint: #838da3;
+        --brand: #0284c7;
+        --brand-2: #7c3aed;
+        --brand-3: #059669;
+        --warn: #b45309;
+        --danger: #be123c;
+        --code-bg: #0f1420;
+        --shadow: 0 16px 34px -26px rgba(15, 23, 42, 0.5);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+        scroll-padding-top: 96px;
+      }
+
+      body {
+        margin: 0;
+        background:
+          radial-gradient(
+              1200px 620px at 12% -8%,
+            color-mix(in oklab, var(--brand) 16%, transparent),
+            transparent 60%
+          ),
+          radial-gradient(
+              900px 520px at 92% 0%,
+            color-mix(in oklab, var(--brand-2) 14%, transparent),
+            transparent 55%
+          ),
+          var(--bg);
+        color: var(--text);
+        font-family: var(--sans);
+        font-size: 15px;
+        line-height: 1.7;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      a {
+        color: var(--brand);
+        text-decoration: none;
+      }
+      a:hover {
+        text-decoration: underline;
+      }
+
+      /* ---------- 顶栏 ---------- */
+      .topbar {
+        position: sticky;
+        top: 0;
+        z-index: 40;
+        backdrop-filter: blur(14px);
+        background: color-mix(in oklab, var(--bg) 82%, transparent);
+        border-bottom: 1px solid var(--border-soft);
+      }
+
+      .topbar-inner {
+        max-width: 1320px;
+        margin: 0 auto;
+        padding: 14px 24px 12px;
+        display: grid;
+        gap: 12px;
+      }
+
+      .brand-row {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        flex-wrap: wrap;
+      }
+
+      .logo {
+        width: 34px;
+        height: 34px;
+        border-radius: 10px;
+        display: grid;
+        place-items: center;
+        background: linear-gradient(
+          140deg,
+          color-mix(in oklab, var(--brand) 70%, transparent),
+          color-mix(in oklab, var(--brand-2) 70%, transparent)
+        );
+        box-shadow: var(--shadow);
+        flex: none;
+      }
+      .logo svg {
+        width: 20px;
+        height: 20px;
+      }
+
+      .titles h1 {
+        margin: 0;
+        font-size: 17px;
+        letter-spacing: 0.2px;
+      }
+      .titles p {
+        margin: 2px 0 0;
+        font-size: 12.5px;
+        color: var(--text-dim);
+      }
+
+      .toolbar {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+        margin-left: auto;
+      }
+
+      .btn {
+        appearance: none;
+        border: 1px solid var(--border);
+        background: var(--panel);
+        color: var(--text-dim);
+        border-radius: 10px;
+        padding: 7px 12px;
+        font-size: 12.5px;
+        font-family: var(--sans);
+        cursor: pointer;
+        transition: 0.16s ease;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        white-space: nowrap;
+      }
+      .btn:hover {
+        color: var(--text);
+        border-color: color-mix(in oklab, var(--brand) 45%, var(--border));
+        transform: translateY(-1px);
+      }
+      .btn svg {
+        width: 14px;
+        height: 14px;
+      }
+      .btn.ghost {
+        background: transparent;
+      }
+      .btn[aria-pressed="true"] {
+        color: var(--text);
+        border-color: color-mix(in oklab, var(--brand) 60%, var(--border));
+        background: color-mix(in oklab, var(--brand) 12%, var(--panel));
+      }
+
+      .search {
+        position: relative;
+        flex: 1 1 320px;
+        min-width: 220px;
+      }
+      .search input {
+        width: 100%;
+        padding: 9px 34px 9px 34px;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+        background: var(--panel);
+        color: var(--text);
+        font-size: 13.5px;
+        font-family: var(--sans);
+        outline: none;
+        transition: 0.16s ease;
+      }
+      .search input:focus {
+        border-color: color-mix(in oklab, var(--brand) 60%, var(--border));
+        box-shadow: 0 0 0 3px color-mix(in oklab, var(--brand) 16%, transparent);
+      }
+      .search .icon {
+        position: absolute;
+        left: 11px;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 15px;
+        height: 15px;
+        color: var(--text-faint);
+        pointer-events: none;
+      }
+      .search .kbd {
+        position: absolute;
+        right: 9px;
+        top: 50%;
+        transform: translateY(-50%);
+        font-family: var(--mono);
+        font-size: 11px;
+        color: var(--text-faint);
+        border: 1px solid var(--border);
+        border-radius: 5px;
+        padding: 1px 5px;
+        pointer-events: none;
+      }
+
+      .progress {
+        height: 3px;
+        background: var(--border-soft);
+      }
+      .progress > i {
+        display: block;
+        height: 100%;
+        width: 0%;
+        background: linear-gradient(90deg, var(--brand), var(--brand-3));
+        transition: width 0.25s ease;
+      }
+
+      /* ---------- 布局 ---------- */
+      .layout {
+        max-width: 1320px;
+        margin: 0 auto;
+        padding: 26px 24px 96px;
+        display: grid;
+        grid-template-columns: 250px minmax(0, 1fr);
+        gap: 30px;
+        align-items: start;
+      }
+
+      .sidebar {
+        position: sticky;
+        top: 104px;
+        max-height: calc(100vh - 130px);
+        overflow: auto;
+        padding-right: 6px;
+      }
+
+      .side-card {
+        background: var(--panel);
+        border: 1px solid var(--border-soft);
+        border-radius: var(--radius);
+        padding: 14px;
+        margin-bottom: 14px;
+      }
+      .side-card h3 {
+        margin: 0 0 10px;
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.09em;
+        color: var(--text-faint);
+      }
+      .side-list {
+        display: grid;
+        gap: 2px;
+      }
+      .side-list button {
+        all: unset;
+        cursor: pointer;
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 6px 8px;
+        border-radius: 8px;
+        font-size: 13px;
+        color: var(--text-dim);
+      }
+      .side-list button:hover {
+        background: var(--panel-2);
+        color: var(--text);
+      }
+      .side-list button.active {
+        background: color-mix(in oklab, var(--brand) 14%, transparent);
+        color: var(--text);
+        box-shadow: inset 2px 0 0 var(--brand);
+      }
+      .side-list .count {
+        font-family: var(--mono);
+        font-size: 11.5px;
+        color: var(--text-faint);
+      }
+
+      .stat-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+      .stat {
+        background: var(--panel-2);
+        border-radius: 10px;
+        padding: 8px 10px;
+      }
+      .stat b {
+        display: block;
+        font-size: 16px;
+        font-family: var(--mono);
+      }
+      .stat span {
+        font-size: 11px;
+        color: var(--text-faint);
+      }
+
+      .filter-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+      .chip {
+        all: unset;
+        cursor: pointer;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        padding: 4px 10px;
+        font-size: 12px;
+        color: var(--text-dim);
+        transition: 0.15s ease;
+      }
+      .chip:hover {
+        color: var(--text);
+      }
+      .chip[aria-pressed="true"] {
+        border-color: color-mix(in oklab, var(--brand) 55%, var(--border));
+        background: color-mix(in oklab, var(--brand) 14%, transparent);
+        color: var(--text);
+      }
+
+      /* ---------- 题目卡片 ---------- */
+      .hero {
+        background: var(--panel);
+        border: 1px solid var(--border-soft);
+        border-radius: var(--radius);
+        padding: 22px 24px;
+        margin-bottom: 20px;
+        box-shadow: var(--shadow);
+      }
+      .hero h2 {
+        margin: 0 0 8px;
+        font-size: 20px;
+      }
+      .hero p {
+        margin: 0 0 12px;
+        color: var(--text-dim);
+        font-size: 13.5px;
+      }
+      .hero-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 10px;
+        margin-top: 14px;
+      }
+      .hero-item {
+        border: 1px solid var(--border-soft);
+        border-radius: 10px;
+        padding: 10px 12px;
+        background: var(--panel-2);
+      }
+      .hero-item b {
+        display: block;
+        font-size: 13px;
+        font-family: var(--mono);
+        color: var(--brand);
+      }
+      .hero-item span {
+        font-size: 11.5px;
+        color: var(--text-faint);
+      }
+
+      .q {
+        background: var(--panel);
+        border: 1px solid var(--border-soft);
+        border-radius: var(--radius);
+        margin-bottom: 14px;
+        overflow: hidden;
+        transition: border-color 0.18s ease, transform 0.18s ease;
+      }
+      .q:hover {
+        border-color: color-mix(in oklab, var(--brand) 32%, var(--border-soft));
+      }
+      .q.done {
+        border-color: color-mix(in oklab, var(--brand-3) 45%, var(--border-soft));
+      }
+      .q.open {
+        box-shadow: var(--shadow);
+      }
+
+      .q-head {
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        gap: 12px;
+        align-items: start;
+        padding: 15px 16px;
+        cursor: pointer;
+        user-select: none;
+      }
+      .q-no {
+        font-family: var(--mono);
+        font-size: 12px;
+        color: var(--brand);
+        background: color-mix(in oklab, var(--brand) 12%, transparent);
+        border: 1px solid color-mix(in oklab, var(--brand) 28%, transparent);
+        border-radius: 8px;
+        padding: 3px 7px;
+        margin-top: 2px;
+      }
+      .q-title {
+        font-size: 15px;
+        font-weight: 600;
+        line-height: 1.55;
+      }
+      .q-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 8px;
+      }
+      .badge {
+        font-size: 11px;
+        padding: 2px 8px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        color: var(--text-dim);
+        background: var(--panel-2);
+        white-space: nowrap;
+      }
+      .badge.d1 {
+        color: var(--brand-3);
+        border-color: color-mix(in oklab, var(--brand-3) 40%, transparent);
+      }
+      .badge.d2 {
+        color: var(--brand);
+        border-color: color-mix(in oklab, var(--brand) 40%, transparent);
+      }
+      .badge.d3 {
+        color: var(--warn);
+        border-color: color-mix(in oklab, var(--warn) 40%, transparent);
+      }
+      .badge.d4 {
+        color: var(--brand-2);
+        border-color: color-mix(in oklab, var(--brand-2) 40%, transparent);
+      }
+      .badge.d5 {
+        color: var(--danger);
+        border-color: color-mix(in oklab, var(--danger) 45%, transparent);
+      }
+      .diff-label {
+        color: var(--text-faint);
+        font-size: 11px;
+        margin-right: 2px;
+      }
+
+      .q-toggle {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding-top: 3px;
+      }
+      .caret {
+        width: 26px;
+        height: 26px;
+        border-radius: 8px;
+        border: 1px solid var(--border);
+        display: grid;
+        place-items: center;
+        color: var(--text-dim);
+        transition: 0.2s ease;
+      }
+      .caret svg {
+        width: 13px;
+        height: 13px;
+        transition: transform 0.2s ease;
+      }
+      .q.open .caret {
+        transform: rotate(180deg);
+        color: var(--brand);
+        border-color: color-mix(in oklab, var(--brand) 45%, var(--border));
+      }
+      .done-toggle {
+        appearance: none;
+        border: 1px solid var(--border);
+        background: transparent;
+        border-radius: 8px;
+        width: 26px;
+        height: 26px;
+        display: grid;
+        place-items: center;
+        cursor: pointer;
+        color: var(--text-faint);
+      }
+      .done-toggle svg {
+        width: 14px;
+        height: 14px;
+      }
+      .done-toggle[aria-pressed="true"] {
+        color: var(--brand-3);
+        border-color: color-mix(in oklab, var(--brand-3) 50%, transparent);
+        background: color-mix(in oklab, var(--brand-3) 12%, transparent);
+      }
+
+      .q-body {
+        display: none;
+        padding: 0 16px 16px 16px;
+        border-top: 1px dashed var(--border-soft);
+      }
+      .q.open .q-body {
+        display: block;
+        animation: fade 0.22s ease;
+      }
+      @keyframes fade {
+        from {
+          opacity: 0;
+          transform: translateY(-4px);
+        }
+        to {
+          opacity: 1;
+          transform: none;
+        }
+      }
+
+      .block {
+        margin-top: 14px;
+      }
+      .block > h4 {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 0 0 8px;
+        font-size: 12.5px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--text-faint);
+      }
+      .block > h4::before {
+        content: "";
+        width: 3px;
+        height: 13px;
+        border-radius: 2px;
+        background: var(--brand);
+      }
+      .block.answer > h4::before {
+        background: var(--brand-3);
+      }
+      .block.follow > h4::before {
+        background: var(--brand-2);
+      }
+
+      .block ul {
+        margin: 0;
+        padding-left: 18px;
+      }
+      .block li {
+        margin: 5px 0;
+        color: var(--text-dim);
+        font-size: 14px;
+      }
+      .block li strong {
+        color: var(--text);
+        font-weight: 600;
+      }
+      .block p {
+        margin: 0 0 8px;
+        font-size: 14px;
+        color: var(--text-dim);
+      }
+
+      code {
+        font-family: var(--mono);
+        font-size: 12.6px;
+        background: var(--code-bg);
+        border: 1px solid var(--border-soft);
+        border-radius: 6px;
+        padding: 1px 5px;
+        color: color-mix(in oklab, var(--brand) 78%, var(--text));
+      }
+      .block li code,
+      .block p code {
+        white-space: nowrap;
+      }
+
+      pre {
+        position: relative;
+        background: var(--code-bg);
+        border: 1px solid var(--border-soft);
+        border-radius: var(--radius-sm);
+        padding: 13px 14px;
+        overflow: auto;
+        margin: 8px 0 0;
+      }
+      pre code {
+        background: none;
+        border: none;
+        padding: 0;
+        color: #cfe3ff;
+        white-space: pre;
+        font-size: 12.3px;
+        line-height: 1.65;
+      }
+      .copy {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        appearance: none;
+        border: 1px solid var(--border);
+        background: color-mix(in oklab, var(--panel) 88%, transparent);
+        color: var(--text-dim);
+        border-radius: 7px;
+        font-size: 11px;
+        padding: 3px 8px;
+        cursor: pointer;
+      }
+      .copy:hover {
+        color: var(--text);
+      }
+
+      .kv {
+        display: grid;
+        grid-template-columns: max-content 1fr;
+        gap: 4px 12px;
+        font-size: 13.5px;
+        color: var(--text-dim);
+      }
+      .kv b {
+        color: var(--text);
+        font-weight: 600;
+      }
+
+      .followup {
+        border-left: 2px solid color-mix(in oklab, var(--brand-2) 55%, transparent);
+        padding: 2px 0 2px 12px;
+        margin: 10px 0;
+      }
+      .followup p {
+        margin: 0 0 4px;
+      }
+      .followup .fq {
+        color: var(--text);
+        font-weight: 600;
+        font-size: 13.5px;
+      }
+
+      .empty {
+        text-align: center;
+        color: var(--text-faint);
+        padding: 60px 20px;
+        border: 1px dashed var(--border);
+        border-radius: var(--radius);
+      }
+
+      footer {
+        max-width: 1320px;
+        margin: 0 auto;
+        padding: 26px 24px 60px;
+        color: var(--text-faint);
+        font-size: 12.5px;
+        border-top: 1px solid var(--border-soft);
+      }
+      footer code {
+        font-size: 12px;
+      }
+
+      @media (max-width: 980px) {
+        .layout {
+          grid-template-columns: 1fr;
+        }
+        .sidebar {
+          position: static;
+          max-height: none;
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+          gap: 12px;
+        }
+        .side-card {
+          margin-bottom: 0;
+        }
+      }
+
+      @media print {
+        .topbar,
+        .sidebar,
+        .done-toggle,
+        .copy {
+          display: none !important;
+        }
+        .layout {
+          display: block;
+          padding: 0;
+        }
+        .q {
+          break-inside: avoid;
+        }
+        .q-body {
+          display: block !important;
+        }
+        body {
+          background: #fff;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="topbar-inner">
+        <div class="brand-row">
+          <div class="logo" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="9" stroke="white" stroke-width="1.6" />
+              <circle cx="12" cy="12" r="2.6" fill="white" />
+              <path
+                d="M12 3v3M12 18v3M3 12h3M18 12h3"
+                stroke="white"
+                stroke-width="1.6"
+                stroke-linecap="round"
+              />
+            </svg>
+          </div>
+          <div class="titles">
+            <h1>ASTRO 面试题库</h1>
+            <p>
+              本地优先的 Coding Agent 可观测性 · 每题含问题 / 考察点 / 解题思路 / 参考答案
+            </p>
+          </div>
+          <div class="toolbar">
+            <button class="btn" id="expandAll" type="button">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M8 4h13M8 12h13M8 20h13M3 4l1.5 1.5L3 7M3 12l1.5 1.5L3 15M3 20l1.5 1.5L3 23" />
+              </svg>
+              展开全部
+            </button>
+            <button class="btn ghost" id="collapseAll" type="button">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M8 4h13M8 12h13M8 20h13M3 4l1.5 1.5L3 7M3 12l1.5 1.5L3 15M3 20l1.5 1.5L3 23" />
+              </svg>
+              收起全部
+            </button>
+            <button class="btn ghost" id="themeToggle" type="button" aria-label="切换主题">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" />
+              </svg>
+              主题
+            </button>
+            <button class="btn ghost" id="printBtn" type="button">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M6 9V3h12v6M6 18H4v-6h16v6h-2M8 14h8v7H8z" />
+              </svg>
+              打印
+            </button>
+          </div>
+        </div>
+
+        <div class="brand-row">
+          <label class="search">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="7" />
+              <path d="m20 20-3.5-3.5" />
+            </svg>
+            <input
+              id="search"
+              type="search"
+              placeholder="搜索题目、考察点、文件名，例如 trace-recorder / 脱敏 / JSONL"
+              autocomplete="off"
+            />
+            <span class="kbd">/</span>
+          </label>
+          <div class="filter-grid" id="difficultyFilter" role="group" aria-label="难度筛选">
+            <button class="chip" data-diff="1" type="button" aria-pressed="false">入门</button>
+            <button class="chip" data-diff="2" type="button" aria-pressed="false">初级</button>
+            <button class="chip" data-diff="3" type="button" aria-pressed="false">中级</button>
+            <button class="chip" data-diff="4" type="button" aria-pressed="false">高级</button>
+            <button class="chip" data-diff="5" type="button" aria-pressed="false">专家</button>
+          </div>
+        </div>
+      </div>
+      <div class="progress"><i id="progressBar"></i></div>
+    </header>
+
+    <div class="layout">
+      <aside class="sidebar">
+        <div class="side-card">
+          <h3>学习进度</h3>
+          <div class="stat-row">
+            <div class="stat"><b id="statDone">0</b><span>已掌握</span></div>
+            <div class="stat"><b id="statTotal">0</b><span>题目总数</span></div>
+          </div>
+          <div class="stat" style="margin-top: 8px">
+            <b id="statRate">0%</b><span id="statRateLabel">完成度</span>
+          </div>
+        </div>
+        <div class="side-card">
+          <h3>模块</h3>
+          <div class="side-list" id="moduleNav"></div>
+        </div>
+        <div class="side-card">
+          <h3>用法</h3>
+          <p style="margin: 0; font-size: 12.5px; color: var(--text-dim)">
+            点击卡片展开参考答案；右上角对勾标记「已掌握」，进度保存在本地浏览器。
+            快捷键：<code>/</code> 搜索、<code>e</code> 展开、<code>c</code> 收起、
+            <code>Esc</code> 清空筛选。
+          </p>
+        </div>
+      </aside>
+
+      <main>
+        <section class="hero">
+          <h2>关于本题库</h2>
+          <p>
+            所有题目都来自 ASTRO 仓库的真实代码与设计约束，答案包含文件路径、函数名与关键常量，可直接对照源码验证。
+            建议按模块顺序复习：采集管线 → 多端适配 → 存储与配置 → 服务端 → 前端领域建模 → 工程质量。
+          </p>
+          <div class="hero-grid" id="heroStats"></div>
+        </section>
+
+        <section id="list" aria-live="polite"></section>
+      </main>
+    </div>
+
+    <footer>
+      <p style="margin: 0 0 6px">
+        ASTRO · Agent State Trace &amp; Runtime Observations — 本地优先的编码智能体可观测性应用。
+        本文档为仓库内自包含静态页面，不依赖任何外部资源，可离线阅读与打印。
+      </p>
+      <p style="margin: 0">
+        相关源码：<code>plugin/trace-recorder.cjs</code>、<code>plugin/storage-paths.cjs</code>、
+        <code>plugin/runtime-config.cjs</code>、<code>server/server.mjs</code>、
+        <code>src/lib/trace-model.ts</code>、<code>src/lib/atomic-projection.ts</code>、
+        <code>src/config/app-config.ts</code>、<code>opencode-plugin/</code>。
+      </p>
+    </footer>
+
+    <script id="astro-questions" type="application/json">
+      [
+        {
+          "id": "01",
+          "module": "采集管线",
+          "difficulty": 3,
+          "tags": ["JSONL", "崩溃安全", "零依赖"],
+          "question": "ASTRO 把每个会话的 trace 落成 <code>~/.astrox/&lt;source&gt;/YYYY/MM-DD/HH_mm_ss-sessionId/events.jsonl</code>，为什么不用 SQLite 或 LMDB？把这个问题拆成「写入」「读取」「分发」三段回答。",
+          "focus": [
+            "存储选型与失败模式",
+            "进程模型与并发写",
+            "可运维性"
+          ],
+          "thinking": [
+            "先别急着选型，先列出采集端的硬约束：事件写入发生在被观测的 Agent 宿主进程里，任何异常都不能影响 Agent 本身（代码里对应 <code>run()</code> 的 try/catch 与注释「Observability must never interrupt the Agent execution path」）。",
+            "其次要问「谁在写」：可能同时有多个 Claude / Codex / OpenCode 会话并行写，也可能同一会话被多个进程写（hook 每次拉起一个新 node 进程）。",
+            "最后问「谁在读」：本地 dashboard 单进程扫描目录 + SSE 推送，且需要容忍「读到一半的会话」。"
+          ],
+          "answer": [
+            "<b>写入侧</b>：JSONL 是纯追加（<code>fs.appendFileSync(file, line, { flag: \"a\" })</code>），内核保证单次 write 的追加语义，且每次只写一行 JSON。进程被 kill 最多丢最后一行，不会出现「半个事务」。SQLite 需要在用户机器上引入引擎与 WAL 文件，hook 进程崩溃时还可能留下 -wal/-shm 垃圾，与「插件即拷贝即用」的交付形态冲突。",
+            "<b>读取侧</b>：<code>walkTraceFiles</code> + <code>parseTraceLine</code> 可以按行容错解析，跳过写坏的尾行；SQLite 则要用「读事务 + 崩溃恢复」来获得同等语义。目录布局 <code>YYYY/MM-DD/HH_mm_ss-sessionId</code> 天然提供时间范围裁剪与人类可读的归档路径，删除历史就是删目录。",
+            "<b>分发侧</b>：每个客户端的 hook 只要把 JSON 通过 stdin 交给 <code>node plugin/trace-recorder.cjs --source=&lt;client&gt;</code> 即可，录制器是纯 CJS 单文件，依赖可 vendor。换成数据库就必须在用户机器上做 schema 迁移，破坏「拷贝目录即可用」的部署模型。",
+            "<b>代价与补偿</b>：写放大与全表扫描是真实成本，所以服务端做了增量：按文件 mtime 缓存已读偏移/事件数，只读新增部分；搜索在服务端是线性过滤，前端另有 <code>history-search.ts</code> 建索引。这是「用读时优化换写入极简」的明确取舍。"
+          ],
+          "code": {
+            "lang": "js",
+            "text": "for (const [traceFile, fileEvents] of eventsByFile) {\n  fs.mkdirSync(path.dirname(traceFile), { recursive: true });\n  fs.appendFileSync(\n    traceFile,\n    `${fileEvents.map((event) => JSON.stringify(event)).join(\"\\n\")}\\n`,\n    { encoding: \"utf8\", flag: \"a\" },\n  );\n}"
+          },
+          "followups": [
+            {
+              "q": "多个 hook 进程同时写同一个 events.jsonl 会不会写坏？",
+              "a": "单次 <code>appendFileSync</code> 在 POSIX 上以 <code>O_APPEND</code> 打开，偏移量由内核在 write 时原子确定，多个 <code>&lt; PIPE_BUF</code> 的写入不会互相覆盖。事件行通常远小于 4KB，极端情况（大 payload）依赖「一行一次 write」仍然安全；这也是代码里先 <code>join(\"\\n\")</code> 再一次性 write 而不是循环 write 的原因。"
+            },
+            {
+              "q": "什么情况下你会换成 SQLite？",
+              "a": "当出现「单会话事件量超过百万级需要分页/索引查询」「需要跨会话聚合统计」「需要保留策略（TTL）由数据库执行」这三种诉求之一时。届时也应保持 trace 格式为 JSONL 导入导出，不破坏 <code>trace://&lt;source&gt;/&lt;session&gt;/&lt;id&gt;</code> locator 与 schemaVersion 语义。"
+            }
+          ]
+        },
+        {
+          "id": "02",
+          "module": "采集管线",
+          "difficulty": 3,
+          "tags": ["事件规范化", "schemaVersion", "locator"],
+          "question": "请解释 <code>createTraceEvent()</code> 做的归一化：一条来自任意客户端的原始 payload 进入存储前会被改写成什么样？为什么必须保留 <code>nativeEventName</code> 和 <code>locator</code>？",
+          "focus": ["数据契约设计", "可演进性", "溯源能力"],
+          "thinking": [
+            "先把函数拆成四层看：source 归一（<code>normalizeSource</code>）、事件名归一（<code>canonicalizeEventName</code>）、标识符补齐（sessionId / toolUseId / turnId / parentId）、字段裁剪与脱敏（<code>redactValue</code>）。",
+            "然后回答「为什么不是原样存」：不同客户端字段名不同（<code>session_id</code> / <code>threadId</code> / <code>thread_id</code>），事件名有 camel/snake 两种写法，前端只应依赖规范名。",
+            "最后回答「为什么还要保留原名」：一旦规范化丢失原始事件名，Claude 升级 hook schema 后新增事件时就无法回溯真实来源，这是可观测系统自身的可观测性。"
+          ],
+          "answer": [
+            "输出的规范事件包含：<code>schemaVersion: 2</code>、<code>id</code>、<code>capturedAt</code>、<code>source</code>、<code>sourceVersion</code>、<code>workspaceId</code>、<code>sessionId</code>、<code>turnId</code>、<code>parentId</code>、<code>eventName</code>、<code>nativeEventName</code>、<code>toolUseId</code>、<code>toolName</code>、<code>cwd</code>、<code>status</code>、<code>sequence</code>、<code>payload</code>、<code>locator</code>。",
+            "<code>source</code> 经过 <code>normalizeSource</code>：包含 <code>claude</code> → <code>claude</code>，包含 <code>codex</code>/<code>openai</code> → <code>codex</code>，<code>workbuddy</code>/<code>codebuddy</code> → <code>workbuddy</code>，<code>trae</code>、<code>browser/chrome/extension</code> 同理；未知值按 <code>[^a-z0-9._-]+</code> 替换为 <code>-</code>，同时 <code>storage-paths.normalizeAgentName</code> 拒绝 <code>. </code>、<code>..</code>、<code>plugins</code> 这类保留目录名，避免目录穿越与遮蔽 <code>plugins/</code> 目录。",
+            "<code>nativeEventName</code> 保留客户端原始事件名（<code>payload.type</code> / <code>hook_event_name</code> 等），用于「规范化没覆盖到的新事件」排查，也让 UI 能显示来源系统的原名。",
+            "<code>locator</code> = <code>trace://&lt;source&gt;/&lt;sessionId&gt;/&lt;eventId&gt;</code>，是一条稳定引用：UI、文档、外部工具可以互相引用同一事件而不依赖文件路径，文件被迁移也不影响引用有效性。",
+            "刻意<b>不</b>做的事：不追加合成的终止事件、不改写已落盘事件的状态。所有「当前状态」都在读取/渲染时派生，这是 AGENTS.md 里 Run Timeout 不变量的前提。"
+          ],
+          "followups": [
+            {
+              "q": "<code>isEventEnvelope</code> 这个判断解决什么问题？",
+              "a": "兼容「传输层信封」与「裸事件」两种调用方式：外部系统（浏览器端、适配器）常发 <code>{ schemaVersion, eventName, sessionId, payload: {...} }</code>，而 hook 直发裸 payload。判断条件是存在 <code>payload.payload</code> 且带 <code>schemaVersion</code>/<code>eventName</code>/<code>sessionId</code> 之一，满足时才把内层作为 <code>rawPayload</code>，否则整体视为裸事件，避免字段被吃掉一层。"
+            },
+            {
+              "q": "<code>workspaceId</code> 为什么是 cwd 的 sha256 前 12 位？",
+              "a": "用于把同一目录的多次会话归到同一「工作区」聚合视图，同时不泄漏用户目录明文（trace 可能被分享）。<code>createWorkspaceId</code> 使用 <code>path.resolve(cwd)</code> 后哈希，12 位十六进制在可接受的碰撞概率下足够。"
+            }
+          ]
+        },
+        {
+          "id": "03",
+          "module": "采集管线",
+          "difficulty": 4,
+          "tags": ["脱敏", "正则", "递归"],
+          "question": "ASTRO 的脱敏由 <code>sensitiveKeyPattern</code>（按 key）+ <code>inlineSecretPatterns</code>（按值）双层实现。为什么不能只用 key 匹配？为什么 <code>redactString</code> 遇到以 <code>{</code> 或 <code>[</code> 开头的内容要先尝试 JSON 解析？",
+          "focus": ["安全设计", "误伤与漏报平衡", "递归遍历"],
+          "thinking": [
+            "先列出两类泄漏路径：一是结构化字段本身叫 <code>api_key</code>，二是自由文本里嵌了 <code>Bearer sk-xxx</code>。只做 key 匹配会漏掉第二类。",
+            "再考虑 JSON 优先：如果一段 JSON 字符串里嵌套了敏感 key，逐值正则替换会把 JSON 结构改坏（引号被替换、长度校验失败），所以先结构化脱敏再序列化。",
+            "最后是误报成本：<code>redactValue</code> 对命中 key 的值直接整体替换为 <code>[redacted]</code>，宁可多脱一点，也不要因为「看起来像 base64」而保留。"
+          ],
+          "answer": [
+            "<b>只做 key 匹配的漏洞</b>：<code>payload.command</code>、<code>payload.message</code>、工具输出等自由文本里经常带凭据，例如 <code>curl -H 'Authorization: Bearer abc...'</code>。这类内容没有可匹配的 key，只能靠值模式。",
+            "<b>两层职责</b>：<code>sensitiveKeyPattern</code> 覆盖 <code>authorization|cookie|password|passwd|secret|api[_-]?key|access[_-]?token|refresh[_-]?token|credential|private[_-]?key</code>（注意大小写不敏感），命中即整值替换；<code>inlineSecretPatterns</code> 覆盖 <code>Bearer</code>、<code>sk-</code>、<code>key=value</code> 赋值形态与 JWT（<code>eyJ...</code> 三段式）。",
+            "<b>JSON 优先的原因</b>：<code>redactString</code> 先判断 <code>trim()</code> 后是否以 <code>{</code>/<code>[</code> 开头，是则 <code>JSON.parse</code> → <code>redactValue</code> 递归 → <code>JSON.stringify</code>。这样嵌套对象里的敏感 key 能被结构化规则命中，且保证输出仍是合法 JSON；若解析失败才退回正则路径（注释明确写了「Non-JSON prose still receives inline credential redaction」）。",
+            "<b>递归的两个细节</b>：数组元素调用 <code>redactValue(item)</code> 时不传 key（数组下标不是 key），因此数组内对象的敏感 key 仍会在下一层递归中被识别；对象分支用 <code>Object.fromEntries</code> 保留全部键，不丢字段。",
+            "<b>与 UI 的关系</b>：前端只从脱敏后的 payload 提取展示文本（<code>prompt-content.ts</code> 的 <code>parsePromptContent</code>、<code>safeImageSource</code>），保证「磁盘上的数据即安全的数据」，而不是靠渲染层过滤。"
+          ],
+          "code": {
+            "lang": "js",
+            "text": "function redactValue(value, key = \"\") {\n  if (sensitiveKeyPattern.test(key)) return \"[redacted]\";\n  if (typeof value === \"string\") return redactString(value);\n  if (Array.isArray(value)) return value.map((item) => redactValue(item));\n  if (value && typeof value === \"object\") {\n    return Object.fromEntries(\n      Object.entries(value).map(([k, v]) => [k, redactValue(v, k)]),\n    );\n  }\n  return value;\n}"
+          },
+          "followups": [
+            {
+              "q": "正则脱敏的性能影响如何？",
+              "a": "每个字符串最多跑 4 条正则，其中 3 条带 <code>g</code>。trace 写入是 IO 密集（毫秒级），相对 JSON 解析成本可忽略。真正的风险是正则回溯：<code>api[_-]?key\\s*[:=]\\s*[\"']?[^,\\s\"']{6,}</code> 用了无嵌套量词，不存在指数回溯。"
+            },
+            {
+              "q": "如何验证脱敏没有漏？",
+              "a": "在 <code>tests/</code> 里对 <code>redactValue</code> / <code>redactString</code> 做表驱动用例（Bearer、JWT、sk- 前缀、嵌套 key、数组内对象、非 JSON 文本），并在 CI 里禁止把真实密钥写进 fixture。ASTRO 的 <code>recorder-boundaries.test.cjs</code> 就承担这类边界断言。"
+            }
+          ]
+        },
+        {
+          "id": "04",
+          "module": "存储与布局",
+          "difficulty": 4,
+          "tags": ["路径布局", "兼容性", "ID 消毒"],
+          "question": "<code>resolveAgentTraceFile()</code> 会先调用 <code>findSessionTraceFile()</code> 遍历目录去找已有会话文件，找不到才按当前时间新建目录。为什么要「先找后建」？<code>findSessionTraceFile</code> 里的正则 <code>^\\d{2}(?::\\d{2}:\\d{2}|_\\d{2}_\\d{2})-</code> 说明了什么？",
+          "focus": ["幂等写入", "历史布局兼容", "路径遍历防护"],
+          "thinking": [
+            "关键在于「同一会话的多条事件必须落进同一个文件」。若每次都按当前时间新建目录，一个会话会被切成几百个目录。",
+            "所以每次写入都要先确定「这个 sessionId 对应的既有文件在哪」。而 hook 进程是无状态的，进程内缓存不可用，只能靠文件系统反查。",
+            "目录名里的时间戳来自 <code>resolveSessionTimestamp(payload)</code>，即事件自己的 <code>capturedAt</code>。这意味着「时间」和「事件顺序」都可能来自客户端时钟，存在漂移，因此布局必须容忍反查。"
+          ],
+          "answer": [
+            "<b>先找后建解决幂等</b>：<code>findSessionTraceFile(root, sessionId)</code> 从 <code>root</code> 开始做有界递归（跳过 <code>plugins</code> 目录），匹配 <code>目录名.slice(9) === sanitizeSessionId(sessionId)</code> 的目录，找到 <code>events.jsonl</code> 即返回；未找到才用 <code>formatSessionPath(new Date(), sessionId)</code> 生成新路径。因此「第一个事件决定会话目录，后续事件都追加进去」，与客户端时钟漂移无关。",
+            "<b>正则说明历史布局</b>：早期布局是 <code>HH:mm:ss-sessionId</code>，迁移后统一为 <code>HH_mm_ss-sessionId</code>（<code>migrateSessionPathLayout</code>）。<code>slice(9)</code> 之所以成立，是因为两种前缀长度恰好都是 9 个字符（2 位小时 + 1 位分隔 + 2 位 + 1 位 + 2 位）。排序时用「是否 canonical」的布尔值优先，其次字典序，取 <code>.at(-1)</code> 最新一个，让迁移后的目录天然胜出。",
+            "<b>路径消毒</b>：<code>sanitizeSessionId</code> 只允许 <code>[a-zA-Z0-9._-]</code>，长度 ≤ 96 且未改变时才原样使用；否则「安全前缀 + sha256 前 16 位」截断到 96 字符。这既防目录穿越，也防超长 ID 在不同文件系统上失败，同时保留可读性。",
+            "<b>目录名还带时间戳的收益</b>：同一 sessionId 在不同日期重开（例如被 <code>DELETE /api/events</code> 后重建）不会互相覆盖；前端按目录名排序即可得到「最近会话在前」。"
+          ],
+          "followups": [
+            {
+              "q": "全量遍历目录的性能问题怎么解决？",
+              "a": "这是明确的已知成本：每次 hook 写入都要 O(会话数) 的 readdir。缓解手段是会话目录名以日期分层，遍历天然剪枝；进一步可以在 <code>storage-paths</code> 增加「上次写入位置」的短期缓存文件（以 <code>sessionId</code> 为键、TTL 分钟级），用一点一致性风险换 IO。"
+            },
+            {
+              "q": "多个客户端共享同一个 sessionId 会怎样？",
+              "a": "<code>resolveTraceDirectory(source, ...)</code> 以 <code>source</code> 作为一级目录（<code>normalizeAgentName</code> 校验非保留名），所以 <code>opencode</code> 与 <code>claude</code> 的同名 session 不会互相污染。真正要求「唯一」的是同一 source 内的 sessionId，由客户端保证。"
+            }
+          ]
+        },
+        {
+          "id": "05",
+          "module": "存储与布局",
+          "difficulty": 3,
+          "tags": ["环境变量", "优先级", "可移植性"],
+          "question": "说明 <code>ASTRO_HOME</code>、<code>ASTRO_TRACE_DIR</code>、<code>ASTRO_PROJECT_DIR</code>、<code>ASTRO_PORT</code>、<code>ASTRO_AUTO_OPEN</code> 的语义与优先级。为什么 <code>ASTRO_TRACE_DIR</code> 支持相对路径而 <code>ASTRO_HOME</code> 不支持？",
+          "focus": ["配置优先级链", "多项目/多用户场景", "hook 环境传递"],
+          "thinking": [
+            "先分清两类：<b>数据根</b>（决定读哪里写哪里）与 <b>行为开关</b>（决定要不要开浏览器、监听哪个端口）。",
+            "再想「谁会设置它们」：hook 命令行显式注入（<code>install-plugins.mjs</code> 生成 <code>ASTRO_HOME=~/.astrox node ~/.astrox/plugins/astro/plugin/trace-recorder.cjs</code>）、用户 shell 环境、<code>config.yaml</code>、<code>.env</code>。",
+            "最后判断哪些需要「相对路径」：只有「项目内目录」才需要相对，否则 <code>~</code> 之外的相对路径在不同 cwd 下语义混乱。"
+          ],
+          "answer": [
+            "<b>ASTRO_HOME</b>（兼容别名 <code>AOT_HOME</code>）：数据根，<code>resolveAstroHome</code> 用 <code>path.resolve(expandHome(...))</code> 归一到绝对路径，默认 <code>~/.astrox</code>。它决定 trace 目录、<code>plugins/astro/config.yaml</code>、dashboard pid 文件位置。",
+            "<b>ASTRO_TRACE_DIR</b>（别名 <code>AGENT_TRACE_DIR</code> / <code>TRAE_TRACE_DIR</code>）：把某个客户端的 trace 重定向到项目内，例如 <code>.agent-trace</code>。若是绝对路径直接使用；相对路径按 <code>ASTRO_PROJECT_DIR → AGENT_TRACE_PROJECT_DIR → TRAE_PROJECT_DIR → CLAUDE_PROJECT_DIR → payload.cwd → process.cwd()</code> 解析为基准目录。",
+            "<b>ASTRO_PROJECT_DIR</b>：只作为上面相对路径的解析基准，本身不决定存储位置。存在的意义是「hook 进程 cwd 不一定是用户项目根」（例如全局 <code>settings.json</code> 的 hook 由别处触发）。",
+            "<b>ASTRO_PORT / ASTRO_HOST</b>：dashboard 监听端口与主机，pid 文件名带端口（<code>dashboard-4318.pid</code>），避免多实例互相覆盖。",
+            "<b>ASTRO_AUTO_OPEN</b>：由 <code>isEnabled</code> 解析，<code>0/false/no/off</code> 关闭。默认开启，仅对 <code>SessionStart</code> / <code>UserPromptSubmit</code> 触发（<code>launchDashboardForEvents</code> 里的 triggerEvent 判断），避免工具调用洪峰时反复开标签页。",
+            "<b>为什么 ASTRO_HOME 不支持相对路径</b>：它是全局数据根，相对路径会让「同一台机器上不同 cwd 的两个 hook 进程」写到不同位置，直接破坏「多端共享一份数据」的模型；而 <code>ASTRO_TRACE_DIR</code> 的语义就是「项目内目录」，相对路径天然以项目为基准。"
+          ],
+          "followups": [
+            {
+              "q": "<code>config.yaml</code> 与 <code>.env</code> 谁优先？",
+              "a": "见下一题（Q06）：进程环境变量优先于 <code>.env</code>，<code>config.yaml</code> 覆盖 <code>.env</code>，且 <code>ASTRO_HOME</code> 刻意不被 <code>.env</code> 支持——它决定去哪里读 <code>.env</code> 本身，允许自我指派会形成循环。"
+            },
+            {
+              "q": "如何为某个项目单独开一份数据？",
+              "a": "<code>ASTRO_HOME=/tmp/astro-dev</code> 覆盖数据根；或只覆盖 <code>ASTRO_TRACE_DIR=.agent-trace ASTRO_PROJECT_DIR=$PWD</code> 保留共享 dashboard 数据但把该客户端的 trace 放进仓库（<code>.gitignore</code> 已包含 <code>.astrox/</code>）。"
+            }
+          ]
+        },
+        {
+          "id": "06",
+          "module": "存储与布局",
+          "difficulty": 4,
+          "tags": ["配置加载", "诊断", "vendor 依赖"],
+          "question": "<code>runtime-config.cjs</code> 有 838 行，它承担了配置模板初始化、<code>.env</code> 解析、<code>${VAR:-default}</code> 插值、诊断信息生成。<code>loadDependency()</code> 为什么要「先找 <code>plugin/vendor/&lt;name&gt;</code>，失败再 <code>require(name)</code>」？<code>initializeRuntimeConfig</code> 为什么要写 <code>.env</code> 且设 0600？",
+          "focus": ["配置系统设计", "分发自包含", "权限安全"],
+          "thinking": [
+            "把 runtime-config 的使用场景列出来：①<code>install-plugins.mjs</code> 在开发机上运行（有 node_modules）；②用户机器上 hook 只拷贝了 <code>plugins/astro/plugin/*.cjs</code> + <code>dist</code> + <code>server</code>。同一份代码要在这两种环境工作。",
+            "因此依赖解析必须「自带优先、外部兜底」。<code>copyRuntimeDependencies</code> 只拷贝 <code>dotenv/lib/main.js</code> 与 <code>yaml/dist/*.js</code>，正是为了让 vendor 体积可控。",
+            "再看 <code>.env</code> 的用途：它是「用户可编辑、可能含本机路径/端口」的落地文件，用 0600 是因为它一旦被写入 <code>clients.&lt;client&gt;.home</code> 等本机路径就应该视为私密。"
+          ],
+          "answer": [
+            "<b>依赖解析</b>：<code>loadDependency(name)</code> 先 <code>require(path.join(__dirname, \"vendor\", name))</code>，仅当 <code>error.code === \"MODULE_NOT_FOUND\"</code> 时才回退到普通 <code>require(name)</code>；其他错误（如 vendor 里文件损坏）直接抛出，避免把真实故障吞成「模块不存在」后走错分支。",
+            "<b>为什么必须 vendor</b>：hook 的执行环境是用户的 <code>node</code>，与 ASTRO 仓库的 <code>node_modules</code> 无关。<code>installPluginRuntime</code> 把 recorder / runtime-config / storage-paths 与 dotenv、yaml 一起拷到 <code>&lt;ASTRO_HOME&gt;/plugins/astro/plugin/</code>，保证 <code>node ~/.astrox/plugins/astro/plugin/trace-recorder.cjs</code> 单文件可跑。",
+            "<b>拷贝裁剪</b>：<code>copyRuntimeDependencies</code> 的 filter 对 <code>dotenv</code> 只保留 <code>lib/</code>（实际只用 <code>lib/main.js</code>），对 <code>yaml</code> 只保留 <code>dist/**/*.js</code>，并总是带上 <code>package.json</code> 与 <code>LICENSE</code>（许可证随分发携带是合规要求）。",
+            "<b>初始化</b>：<code>initializeRuntimeConfig</code> 以 <code>config.example.yaml</code> / <code>.env.example</code> 为模板写入用户 home，不覆盖已有文件；<code>.env</code> 以 <code>0o600</code> 创建。",
+            "<b>诊断</b>：<code>loadRuntimeConfig</code> 返回 <code>{ environment, files, diagnostics }</code>，<code>formatRuntimeConfigDiagnostic</code> 把每条诊断写到 stderr；hook 用 <code>--quiet</code> 抑制 stdout 的 <code>{ continue: true }</code>（避免污染宿主 stdout），但诊断仍保留——「静默失败」是本地工具最坏的失败方式。"
+          ],
+          "followups": [
+            {
+              "q": "为什么 hook 要向 stdout 输出 <code>{ continue: true }</code>？",
+              "a": "Claude Code 之类宿主会读取 hook stdout 的 JSON 做决策。<code>run()</code> 在非 <code>--quiet</code> 时输出 <code>{ continue: true, systemMessage? }</code>：既保证宿主解析得到合法对象，又能在「dashboard 已在运行」时把提示放进 <code>systemMessage</code>，避免直接 <code>console.log</code> 污染界面。"
+            },
+            {
+              "q": "如何调试「配置没生效」？",
+              "a": "运行 <code>ASTRO_TRACE_DIR=/tmp/t node ~/.astrox/plugins/astro/plugin/trace-recorder.cjs --source=claude</code> 并把 JSON 打到 stdin，观察 <code>events.jsonl</code> 落点；诊断信息会打印实际使用的 config/env 路径。这正是 <code>runtime-config.test.cjs</code> 覆盖的行为。"
+            }
+          ]
+        },
+        {
+          "id": "07",
+          "module": "多端适配",
+          "difficulty": 4,
+          "tags": ["事件名映射", "协议差异", "向前兼容"],
+          "question": "<code>canonicalEventNames</code> 用一个 Map 同时登记 <code>lowercase</code> 与 <code>snake_case</code> 两种 key。<code>inferCodexEventName()</code> 又要处理 <code>session_meta</code> / <code>thread.started</code> / <code>turn.started</code> / <code>item.started</code> / <code>event_msg</code> / <code>response_item</code> 等多种形态。为什么不统一让客户端发规范名，而要在服务端做推断？",
+          "focus": ["适配层职责", "多协议共存", "推断的边界"],
+          "thinking": [
+            "先看约束：客户端是第三方程序（Codex CLI 的 <code>notify</code> 协议、Claude Code hooks、TRAE、CodeBuddy、DeepSeek Harness、浏览器扩展）。ASTRO 不能要求它们改造。",
+            "再看推断的代价：推断可能猜错（比如把 <code>turn.failed</code> 映射成 <code>Stop</code>）。所以推断只在 <b>source 为 codex</b> 时启用，且规范名优先（<code>payload.eventName</code> 存在时直接采信）。",
+            "关键设计：显式 &gt; 推断。规范名可用时绝不用推断结果，避免「错误的推断覆盖了正确的显式声明」。"
+          ],
+          "answer": [
+            "<b>职责划分</b>：录制器是唯一收口点。所有客户端把「自己那套事件」丢进来，录制器负责 ①规范名 ②source ③脱敏 ④定位 ⑤落盘。客户端只做最薄的转发（hook 里一行 <code>node trace-recorder.cjs --source=x</code>），因此新增客户端的成本接近于零。",
+            "<b>两种 key 的必要性</b>：Map 里对每个规范名同时插入 <code>name.toLowerCase()</code>（<code>pretooluse</code>）与 <code>name.replace(/([a-z])([A-Z])/g, \"$1_$2\").toLowerCase()</code>（<code>pre_tool_use</code>），覆盖 Codex 的 <code>pre_tool_use</code> 与其他客户端的 <code>PreToolUse</code>。这比维护一张手写别名表更不容易漏。",
+            "<b>Codex 推断的形态差异</b>：同一语义在不同协议版本里位置不同——<code>session_meta</code>/<code>thread.started</code> 是会话开始；<code>turn.started</code>/<code>event_msg.task_started</code> 是轮次开始；<code>item.started</code> 需再用 <code>codexToolTypes</code> 判定是工具（<code>PreToolUse</code>）还是消息（<code>Notification</code>）；<code>response_item</code> 则按内层 <code>payload.type</code> 与 <code>payload.role</code> 区分工具调用、工具输出、reasoning、user/assistant message。",
+            "<b>推断不到时的兜底</b>：返回 <code>Notification</code> 而不是丢弃事件——「未知但值得记录」优于「静默丢失」，UI 上 <code>Notification</code> 归入 <code>trace-append</code> 原子，不会破坏主链路语义。",
+            "<b>未覆盖事件名的处理</b>：<code>canonicalizeEventName</code> 找不到映射就原样保留（前端 <code>eventMeta</code> 提供 <code>Unknown</code> 兜底），这让新事件名天然可见，而不是被悄悄改写成错误类别。"
+          ],
+          "code": {
+            "lang": "js",
+            "text": "const canonicalEventNames = new Map(\n  [\"SessionStart\", \"SessionEnd\", \"UserPromptSubmit\", \"PreToolUse\", /* ... */]\n    .flatMap((name) => [\n      [name.toLowerCase(), name],\n      [name.replace(/([a-z])([A-Z])/g, \"$1_$2\").toLowerCase(), name],\n    ]),\n);"
+          },
+          "followups": [
+            {
+              "q": "什么时候应该在客户端适配，而不是在录制器推断？",
+              "a": "当客户端能提供稳定、明确的语义时。例如 OpenCode 的 <code>session.inbox.enqueued</code> 明确表示用户消息，就在 opencode 插件里直接映射成 <code>UserPromptSubmit</code>；录制器只保留 <code>inferCodexEventName</code> 这种「协议本身没给出明确名字」的历史兼容逻辑。"
+            },
+            {
+              "q": "规范名列表会无限增长吗？",
+              "a": "不会靠新增实现增长，而是靠平台差异化。<code>defaultEventAtomMap</code> 只有 17 个键（SessionStart/UserPromptSubmit/Reasoning/PreToolUse/PostToolUse/PostToolUseFailure/Permission*/Elicitation*/Notification/Subagent*/AgentMessage/Stop/StopFailure/SessionEnd），平台通过 <code>eventAtomMap</code> 覆盖差异；新增客户端通常只需映射到既有规范名。"
+            }
+          ]
+        },
+        {
+          "id": "08",
+          "module": "多端适配",
+          "difficulty": 5,
+          "tags": ["OpenCode", "去重", "生命周期"],
+          "question": "OpenCode 没有 hook 机制，只能用插件订阅 <code>ctx.event</code>。实现里有三个坑：(1) 事件流是全局的，每个 location 都会跑一个插件实例，如何避免重复记录？(2) <code>process.execPath</code> 在 OpenCode 服务进程里指向 opencode 二进制而不是 node，直接 spawn 会静默丢事件，如何规避？(3) 为什么 <code>Stop</code> 映射到 <code>session.step.ended(finish=\"stop\")</code> 而不是 <code>session.execution.succeeded</code>？",
+          "focus": ["插件运行时约束", "幂等与归属", "语义粒度对齐"],
+          "thinking": [
+            "先读文档再写代码：<code>ctx.event.subscribe({ signal })</code> 是服务端公开事件流，返回 <code>AsyncIterable</code>；<code>ctx.location.directory</code> 是「插件实例所在位置」，不等于「它能看到的所有会话位置」。",
+            "去重的本质是「每个 session 只允许一个实例写」。可用判据就是事件自带的 <code>location.directory</code>：session 属于哪个目录，就由那个目录的实例负责。",
+            "终止事件有两个候选来源，粒度不同，必须对照其它客户端的语义选。"
+          ],
+          "answer": [
+            "<b>(1) 归属判定</b>：<code>emit()</code> 先取 <code>event.location.directory</code>（或 <code>event.data.location.directory</code>），不等于 <code>ctx.location.directory</code> 就直接 return。问题是 <code>session.execution.failed</code>、<code>session.deleted</code> 这类事件<b>不带 location</b>，所以维护 <code>sessionDirs</code> 缓存：只要见过该 session 任一带 location 的事件就记录归属，之后无 location 的事件查缓存。归属未知的事件直接丢弃，宁可漏也不污染。",
+            "<b>(2) 运行时差异</b>：OpenCode 服务由 bun 打包，<code>process.execPath</code> 是 opencode 可执行文件；用它 spawn recorder 会把 <code>trace-recorder.cjs --source=opencode</code> 当成 CLI 参数，事件全丢且不报错。规避方式是 <b>双通道</b>：优先 <code>createRequire(import.meta.url)</code> 在进程内 <code>require</code> CJS 录制器并调用 <code>appendTraceEvents(batch, process.env, { source })</code>；require 失败或抛错时回退 <code>spawn(\"node\", [...])</code>（显式 <code>node</code>，不依赖 <code>process.execPath</code>）。",
+            "<b>(3) Stop 粒度</b>：Claude Code 在每次助手回复结束发 <code>Stop</code>，Codex 用 <code>turn.completed</code>。OpenCode 的一次「回复」对应一个 <code>session.step.ended</code>，其 <code>finish</code> 为 <code>stop</code> 表示模型自然收尾，而 <code>finish: \"tool-calls\"</code> 只表示「还要继续调工具」，此时若发 <code>Stop</code> 会把一次 run 切成多段，时长/状态统计全错。<code>session.execution.succeeded</code> 是「整个 prompt 执行完毕」，用它会让长循环只有一条 Stop，丢失中间的回复边界。因此映射规则是：<code>terminalFinish</code>（stop/end_turn/eog/stop_sequence）→ <code>Stop</code>；<code>failedFinish</code>（error/failed/length/content_filter）→ <code>StopFailure</code>；<code>tool-calls</code> → 不发事件。",
+            "<b>(4) 写入批量</b>：事件流是高频的（<code>text.delta</code>、<code>tool.progress</code>），虽然只订阅 <code>.ended</code> 级事件仍有突发。实现里用 150ms 微批 + <code>appendTraceEvents</code>，把 N 次 IO 压成 1 次文件追加，避免每个事件一次 <code>appendFileSync</code>。",
+            "<b>(5) 纯函数映射便于测试</b>：映射逻辑抽到 <code>opencode-plugin/mapping.ts</code> 的 <code>mapOpenCodeEvent(event)</code>，返回 <code>AstroPayload[]</code>（无 sessionId 的事件直接返回空数组），用 <code>tests/opencode-mapping.test.ts</code> 做表驱动断言，不依赖 OpenCode 运行时。"
+          ],
+          "code": {
+            "lang": "ts",
+            "text": "if (type === \"session.step.ended\") {\n  const finish = String(data?.finish || data?.rawFinish || \"\");\n  if (terminalFinish.has(finish)) return [{ eventName: \"Stop\" }];\n  if (failedFinish.has(finish))\n    return [{ eventName: \"StopFailure\", status: \"failed\" }];\n  return []; // \"tool-calls\": the agent loop continues.\n}"
+          },
+          "followups": [
+            {
+              "q": "为什么用 <code>session.inbox.enqueued</code> 而不是 <code>ctx.session.hook(\"prompt\")</code> 来取用户输入？",
+              "a": "hook 提供的是「可变的入参草稿」（<code>event.prompt.text</code>、<code>delivery</code>），语义上是干预点而不是观测点；而 <code>session.inbox.enqueued</code> 是不可变事实事件，带 <code>item.payload.text</code>，语义上更适合审计。观测优先用事件流，观测点不要放在可被用户插件改写的路径上。"
+            },
+            {
+              "q": "OpenCode 未来新增事件类型会怎样？",
+              "a": "<code>mapOpenCodeEvent</code> 对未知类型返回空数组（丢弃），但对 <code>session.tool.*</code> 且带 <code>error</code>/<code>status===\"error\"</code> 的事件兜底成 <code>PostToolUseFailure</code>——失败宁可显式也不丢。如果新事件是语义级未知（例如新的「等待用户确认」），应加入 <code>interruptedTypes</code> 这类显式集合，而不是塞进 <code>Notification</code>。"
+            }
+          ]
+        },
+        {
+          "id": "09",
+          "module": "多端适配",
+          "difficulty": 2,
+          "tags": ["语义映射", "产品决策"],
+          "question": "AGENTS.md 明确写着「<code>Notification</code> 在事件日志中显示为 <code>user.question</code>（AskUserQuestion）」。但 <code>Notification</code> 在 Codex 适配里也被用作「轮次开始」等纯技术事件。这会不会造成语义污染？应该如何理解这个约定？",
+          "focus": ["语义设计", "文档与实现一致性", "历史兼容"],
+          "thinking": [
+            "先分清「事件名」与「显示键」：规范事件名是稳定的跨端契约，显示键是 UI 层映射。",
+            "关键在于：<code>Notification</code> 语义是「非结构化通知」——它既可能是 <code>AskUserQuestion</code> 这类需要用户介入的通知，也可能是轮次开始这类状态播报。",
+            "所以正确问题不是「映射对不对」，而是「是否需要更细的规范名」。"
+          ],
+          "answer": [
+            "<b>显示映射是有意的</b>：<code>trace-status.ts</code> 的 <code>isWaitingTraceEvent()</code> 把 <code>Notification</code> 作为「等待信号」的候选之一，配合 <code>waitingSignalPattern</code>（waiting / rate_limit / retry_after / elicitation / overload…）判定会话是否处于「等用户/等配额」状态。这解释了为什么显示成 <code>user.question</code>：这类通知在轨迹里的语义就是「流程在此暂停，等待外部输入」。",
+            "<b>不构成污染，因为规范名是粗粒度容器</b>：规范事件名的设计目标是「足够让拓扑/轨迹可推导」，而不是覆盖每个客户端的全部语义。真正的信息量在 <code>nativeEventName</code> 与 <code>payload</code> 里。",
+            "<b>正确做法</b>：①不要为了「更精确」随意新增规范名——每新增一个都要在 <code>defaultEventAtomMap</code>、<code>eventMeta</code>、<code>trace-status</code>、<code>atomic-projection</code> 四处补齐，熵增很快；②当某类通知真的需要独立拓扑位置时（如「权限申请」），复用已有的 <code>PermissionRequest</code>/<code>Elicitation</code> 而不是新造；③把「等待」这类运行时判定放在 <code>trace-status.ts</code> 这一层派生，而不是写进事件名。",
+            "<b>面试可延伸</b>：这种「规范名粗、payload 细、判定派生」的组合是跨端系统的通用解法——规范名要稳定（跨版本可比），payload 要无损（可回溯），状态要派生（可重算）。"
+          ],
+          "followups": [
+            {
+              "q": "如何给 <code>Notification</code> 事件做更细的展示而不动事件名？",
+              "a": "在 <code>payload.notification_type</code> / <code>payload.reason</code> 上做派生分类，UI 侧按 payload 决定图标与文案。这也是 <code>isWaitingTraceEvent()</code> 已经采用的模式：事件名只表达粗粒度类别，细分靠 payload + 正则。"
+            },
+            {
+              "q": "<code>PermissionDenied</code> 带 <code>payload.retry === true</code> 为什么算「等待」？",
+              "a": "因为权限被拒但工具方请求重试，意味着流程会自我恢复或需要用户介入重放，两种都属于「非终态」。这类判断放在 <code>trace-status.ts</code> 而非事件名里，避免为一次性语义新增规范名。"
+            }
+          ]
+        }
+      ,
+        {
+          "id": "10",
+          "module": "前端领域建模",
+          "difficulty": 4,
+          "tags": ["不可变事件", "派生状态", "单一真相"],
+          "question": "AGENTS.md 要求「Keep raw TraceEvent data immutable，UI 状态、时长、拓扑与轨迹必须派生而不改写已持久化事件」。为什么这条约束如此重要？如果允许给事件补写 status 字段，会先坏在哪一层？",
+          "focus": ["架构约束", "可重算性", "多视图一致性"],
+          "thinking": [
+            "先想 ASTRO 的视图数量：事件日志、运行历史、原子拓扑、轨迹条、状态标签。它们共享同一份事件流。",
+            "如果状态可以写回事件，那么每个视图都要保证「只有自己有资格改状态」，否则两个视图互相覆盖。",
+            "再想持久化：事件是 JSONL 追加文件，「改写」意味着重写历史行，成本高且会破坏 locator 稳定性。"
+          ],
+          "answer": [
+            "<b>多视图一致性</b>：<code>getSessionDisplayState()</code>、<code>getSessionDuration()</code>（<code>trace-model.ts</code>）、<code>getAtomStatus()</code>（<code>execution-topology.ts</code>）、<code>isWaitingTraceEvent()</code>（<code>trace-status.ts</code>）都是从事件序列重新计算。改写事件等于把「计算结果」写回「事实源」，任何一处的策略变更都需要数据迁移。",
+            "<b>可重算</b>：状态是 <code>f(events, now, policy)</code> 的纯函数。换策略（例如把超时从 24h 调成 12h）后，只要重渲染即可，无需回放或修复历史数据；这也是 AGENTS.md 里 Run Timeout 不变量的直接推论。",
+            "<b>追加写模型的物理约束</b>：JSONL 只追加，就地改 status 需要重写整文件；且 <code>locator</code>（<code>trace://source/session/id</code>）承诺「同一事件永远指同一行」，改写会让外部引用失效。",
+            "<b>先坏在哪一层</b>：不是 UI，而是<b>时间线</b>。假设给 <code>UserPromptSubmit</code> 补写 <code>status: \"terminated\"</code>，那么 <code>capturedAt</code> 仍在增长，派生层就会认为「本次运行超过 24h 应终止」，而数据里已写着 terminated——两者在 <code>getSessionDisplayState</code> 内部形成分叉；更糟的是这次改写会同时污染历史搜索（索引到 <code>terminated</code> 关键词）与拓扑节点状态。",
+            "<b>结论</b>：事件是「发生了什么」，状态是「现在怎么看」。混在一起会让任何回放、审计、多端对齐都失去基准。"
+          ],
+          "followups": [
+            {
+              "q": "例外情况：数据源本身给了终态怎么办？",
+              "a": "照样不写回。<code>createTraceEvent()</code> 把客户端上报的 <code>status</code> 当作事件属性保存，但 UI 状态仍由派生层决定优先级（例如 <code>Stop</code>/<code>StopFailure</code> 事件存在时优先于派生）。这样「客户端说失败」与「本地判定失败」可以共存且可对比。"
+            },
+            {
+              "q": "派生会不会重复计算导致卡顿？",
+              "a": "用「按 session 分组 + memo」解决：<code>buildTraceTurnIndex</code>、<code>flow-layout-cache.ts</code> 就是把重计算缓存到稳定 key 上；布局更进一步放到 Web Worker（<code>flow-layout-worker.ts</code>）里做，主线程只收结果。"
+            }
+          ]
+        },
+        {
+          "id": "11",
+          "module": "前端领域建模",
+          "difficulty": 5,
+          "tags": ["超时策略", "不变量", "反模式"],
+          "question": "<code>appTimings.activeRunTimeoutMs = 24 * 60 * 60 * 1000</code> 被 AGENTS.md 定义为「唯一前端超时策略」，且要求「时长仍在推进时按超时封顶、UI 有效状态变为 terminated」「不得追加合成事件、不得覆盖已持久化状态」。请解释为什么超时要在读取时派生，而不是在写入时补一条 <code>Stop</code>。",
+          "focus": ["不变量设计", "时钟不可信", "副作用边界"],
+          "thinking": [
+            "先问：这个「24 小时」是谁决定的？是前端的产品策略，不是客户端事实。客户端可能没结束、可能只是没上报。",
+            "再问：为什么有些实现会补合成 <code>Stop</code>？因为这样「状态字段」看起来一致了。但这就制造了假事实。",
+            "关键洞察：超时本质是「观测视图的判定」，与「运行是否真的结束」是两个命题。"
+          ],
+          "answer": [
+            "<b>两个命题分离</b>：①会话是否真的结束 → 由 <code>Stop</code>/<code>StopFailure</code>/<code>Interrupt</code> 等事件回答；②观测上是否还应该显示「运行中」→ 由「已流逝时长 ≥ 策略上限」回答。补写 <code>Stop</code> 等于用②的结论污染①的事实，而事实上会话可能仍在跑（用户只是关了 TUI）。",
+            "<b>派生实现</b>：<code>getSessionDisplayState(session, now, activeRunTimeoutMs)</code> 只在 <code>status</code> 为 <code>active</code>/<code>waiting</code> 时计算 <code>liveDuration = max(session.duration, now - session.start)</code>；<code>timedOut = liveDuration >= durationLimit</code>；返回 <code>duration = min(liveDuration, durationLimit)</code> 与 <code>status = timedOut ? \"terminated\" : session.status</code>。非推进态直接原样返回，零副作用。",
+            "<b>为什么必须「不覆盖已持久化状态」</b>：事件文件是跨端共享的事实源。一旦把「超时」写成 <code>Stop</code>，Codex/Claude/OpenCode 三端与 dashboard 会得到互相矛盾的结论（客户端认为在跑，本地认为已结束），且无法自愈——除非引入迁移逻辑去区分「真实 Stop」与「合成 Stop」，那是典型的信息熵泄漏。",
+            "<b>连带约束</b>：AGENTS.md 同时要求「已超时的选中 run 不得继续保持拓扑动画与日志运行标记」。因为动画/运行标记也是派生状态（<code>flowActive</code>、<code>gateState</code> 等），一旦时长封顶，它们必须同步失效，否则出现「显示已终止但仍跳动」的自相矛盾。",
+            "<b>策略集中</b>：<code>app-config.ts</code> 的 <code>appTimings</code> 是唯一定义点，<code>app.tsx</code> 四处使用都从它读取，避免多处硬编码 24h 造成策略漂移。"
+          ],
+          "code": {
+            "lang": "ts",
+            "text": "const advancing = session.status === \"active\" || session.status === \"waiting\";\nif (!advancing) return { duration: session.duration, status: session.status };\n\nconst liveDuration = Math.max(session.duration, now - session.start);\nconst durationLimit = Number.isFinite(activeRunTimeoutMs)\n  ? Math.max(0, activeRunTimeoutMs)\n  : Number.POSITIVE_INFINITY;\nconst timedOut = liveDuration >= durationLimit;\n\nreturn {\n  duration: Math.min(liveDuration, durationLimit),\n  status: timedOut ? \"terminated\" : session.status,\n};"
+          },
+          "followups": [
+            {
+              "q": "客户端时钟不准会导致这个策略误判吗？",
+              "a": "会。策略只看「派生时长是否超限」，而派生时长来自 <code>capturedAt</code> 与 <code>now</code>。所以 <code>capturedAt</code> 必须来自客户端/录制器统一口径（<code>new Date().toISOString()</code>），并且 UI 里其它地方都消费同一个派生值，避免出现两套时长。若要更稳，可在派生层对 <code>now - start</code> 做单调化（不小于上一帧值）。"
+            },
+            {
+              "q": "为什么默认是 24 小时这么长？",
+              "a": "本地可观测工具的第一大误报是「长任务被误杀」：agent 跑长基准测试、大批量迁移时超过 30 分钟很常见。24h 的上限只用于兜住「客户端崩溃导致永远 active」的僵尸会话，它不是「超时提醒」，因此取值应远大于真实任务时长。"
+            }
+          ]
+        },
+        {
+          "id": "12",
+          "module": "前端领域建模",
+          "difficulty": 4,
+          "tags": ["原子投影", "状态判定", "映射表"],
+          "question": "<code>projectTraceEvents()</code> 把事件流投影成「原子步骤」，其中 <code>defaultEventAtomMap</code> 只有 17 条映射，而 <code>Notification</code> 映射到 <code>trace-append</code>、<code>PermissionRequest</code> 与 <code>Elicitation</code> 映射到 <code>user-question</code>。为什么要维护「事件名 → 原子」映射表，而不是直接在投影函数里写 if/else？",
+          "focus": ["配置与逻辑分离", "平台差异化", "测试友好性"],
+          "thinking": [
+            "先看数据结构：原子（atoms）定义在 <code>atom-platforms.ts</code> 的 <code>atoms</code>/<code>layers</code>/<code>edges</code>，事件到原子的映射是 <code>eventAtomMap</code>。投影函数 <code>atomic-projection.ts</code> 只消费这张表。",
+            "于是问题变成：这张表属于「数据」还是「逻辑」？它随客户端差异变化，属于数据；投影算法属于逻辑。",
+            "再看平台的介入方式：<code>PlatformDefinition</code> 允许每个平台覆盖 <code>eventAtomMap</code>，如果映射写死在函数里，平台差异就只能靠 if/else 扩散。"
+          ],
+          "answer": [
+            "<b>数据/逻辑分离</b>：映射表是数据（可枚举、可测试、可 diff），投影是算法（读表 + 处理上下文）。把数据写进 if/else 会让「有哪些原子、某事件该落哪」这个问题无法在不读代码的情况下回答，而这是领域建模最常被问到的东西。",
+            "<b>平台差异化</b>：<code>getAtomPlatformConfig(platformId)</code> 返回 <code>{ ...platform, layers, atoms, edges }</code>，其中 <code>atoms</code>/<code>edges</code>/<code>layers</code> 是共享的，<code>eventAtomMap</code> 默认相同（<code>defaultEventAtomMap</code>）但允许覆盖。新增客户端时通常<b>不需要新原子</b>，只需必要时覆盖映射。",
+            "<b>类型强制补齐</b>：<code>platformDefinitions: Record&lt;PlatformId, PlatformDefinition&gt;</code> 意味着新增一个 <code>PlatformId</code>（例如本项目新增 <code>opencode</code>）时，TypeScript 会强制你补上 label/source/runtime/eventAtomMap，漏了直接编译失败。",
+            "<b>测试友好</b>：<code>tests/atomic-topology.test.ts</code>、<code>atom-node-typography-contract.test.ts</code> 可以直接对表断言（事件名数量、是否存在未映射的规范事件、节点标签排版契约），不需要构造完整事件流。",
+            "<b>状态判定的三层结构</b>：①映射表回答「这类事件属于哪个原子」；②<code>getAtomStatus()</code> 回答「这个原子现在什么状态」（依据是否有 <code>PostToolUse</code>/失败事件、超时策略等）；③<code>atomic-projection.ts</code> 的 <code>waitingProjection</code>/<code>userQuestionProjection</code> 处理特殊事件（等待、用户提问生命周期）。三层分开后，改一个平台行为不需要动算法。"
+          ],
+          "followups": [
+            {
+              "q": "为什么 <code>SubagentStart</code>/<code>SubagentStop</code> 映射到 <code>handoff</code>/<code>agent-result</code> 而不是独立原子？",
+              "a": "子代理是「主 run 内部的一段委派」，不是并列的一级阶段。映射到 <code>handoff</code> 与 <code>agent-result</code> 让拓扑层用现有的交接边表达委派语义，节点层级由 <code>getSubagentId()</code>/<code>parentId</code> 表达，避免拓扑膨胀。"
+            },
+            {
+              "q": "如果某事件没在映射表里，前端会怎样？",
+              "a": "<code>getAtomIdForEvent()</code> 会取不到 id（返回空串），同时 <code>trace-model.ts</code> 的 <code>eventMeta</code> 对未知事件名有 <code>Unknown: { label: \"Event\", tone: \"unknown\" }</code> 兜底，日志仍可显示。缺映射表现为「拓扑里没这个原子」而非崩溃——这正是我们想要的降级方向。"
+            }
+          ]
+        },
+        {
+          "id": "13",
+          "module": "前端领域建模",
+          "difficulty": 4,
+          "tags": ["子代理", "拓扑", "ID 推断"],
+          "question": "Codex / OpenCode 的事件里不一定有显式 <code>parentId</code>，但拓扑需要还原「子代理」层级。<code>getSubagentId()</code> 与 <code>getSubagentRuns()</code> 分别做了什么？如果一条 <code>SubagentStop</code> 找不到对应 <code>SubagentStart</code>，你希望拓扑怎么处理？",
+          "focus": ["缺失数据下的结构推断", "拓扑健壮性", "降级策略"],
+          "thinking": [
+            "先看真实数据形态：Claude 有 <code>SubagentStart</code>/<code>SubagentStop</code>；Codex 的 <code>thread.started</code> 会被规范化为 SessionStart，多个 run 共享 session，靠 <code>turnId</code> 区分。",
+            "所以子代理层级要么来自显式字段（<code>parentId</code>/<code>agent_id</code>），要么从「同一 session 内的 run 分组」推断。",
+            "关键策略问题：推断失败时是丢弃、还是挂在主 run 上？我倾向挂主 run 并降级显示。"
+          ],
+          "answer": [
+            "<b>取值链</b>：<code>createTraceEvent()</code> 里 <code>parentId</code> 依次取 <code>payload.parentId</code> → <code>parent_id</code> → <code>agent_id</code> → <code>payload.payload.agent_id</code>，没有就是 <code>null</code>。前端 <code>getSubagentId(event, index)</code> 优先用显式 <code>parentId</code>，否则用 <code>turnId</code>，都没有时用「同 session 内第几条 <code>SubagentStart</code>」生成稳定实例 id，保证 React key 稳定。",
+            "<b>分组</b>：<code>buildSubagentRuns(events)</code> 把成对的 start/stop 组成 <code>SubagentRun</code>，<code>createSubagentNodes()</code> 为其生成节点，<code>makeEdge()</code> 把父子连边。这样「主 run → 子代理 → 子代理的结果」成为拓扑上可展开的分支。",
+            "<b>孤立 stop 的处理（我的选择）</b>：不丢。理由：轨迹的完整性优先于结构美感。做法是创建一个「无 start 的子代理节点」，状态取自 stop 事件（例如 <code>AgentMessage</code>），并在节点上标注「开始事件缺失」。丢弃会让用户以为「没有子代理发生过」，这是更危险的误读。",
+            "<b>为什么不反过来容忍孤立 start</b>：同样容忍，节点状态停留在「运行中」，最终由 <code>activeRunTimeoutMs</code> 派生为 <code>terminated</code>。两个方向都容忍，保证「有事件必有呈现」。",
+            "<b>测试抓手</b>：<code>tests/user-question-projection.test.ts</code>、<code>tests/atomic-topology.test.ts</code> 就是在构造「缺字段事件流」的前提下断言拓扑仍然成立，这是这类推断逻辑必须覆盖的路径。"
+          ],
+          "followups": [
+            {
+              "q": "为什么 <code>SubagentStart</code> 在 Codex 适配里可能根本不会出现？",
+              "a": "因为 Codex 的 <code>thread.started</code> 被规范化为 <code>SessionStart</code>，且 Code Mode 里的并发工具调用（如 Code Mode 命名空间执行）不产生独立生命周期事件。ASTRO 的策略是「不臆造事件」——拓扑里这些调用显示为主 run 内的并行工具分支，而不是虚假的子代理。"
+            },
+            {
+              "q": "如何避免节点 id 在重渲染时抖动？",
+              "a": "<code>instanceId()</code> 用「事件 id + 步骤内序号 + turnNumber」构造稳定键，而不是数组下标；因为下标会随过滤（如只看某类事件）而变化，导致选中态与动画丢失。"
+            }
+          ]
+        },
+        {
+          "id": "14",
+          "module": "前端领域建模",
+          "difficulty": 3,
+          "tags": ["布局", "Worker", "性能预算"],
+          "question": "<code>flow-layout.ts</code> 计算拓扑布局，<code>flow-layout-client.ts</code> + <code>flow-layout-worker.ts</code> 把它放进 Web Worker，<code>flow-layout-cache.ts</code> 做结果缓存。为什么一个本地单机应用也需要 Worker + 缓存？收益的量级是多少？",
+          "focus": ["性能预算", "主线程预算", "缓存键设计"],
+          "thinking": [
+            "先估算数据规模：一个重度使用的 agent 会话可能有数千条事件；原子节点数约为「每个 run 的阶段数 × run 数 + 工具调用节点」，量级常在几百到两千。",
+            "然后估算布局成本：这类布局通常是多轮迭代（节点避让、边路由、层内排序），单次 O(n²) 的邻居检查在 n=1000 时就是百万级比较，加上一轮 60fps 的重算就必然掉帧。",
+            "最后确认触发频率：不是只在打开页面时算一次——用户每选中一条事件、每新增一条 SSE 事件都要重算。"
+          ],
+          "answer": [
+            "<b>主线程预算</b>：交互（滚动、点选、键盘）要求每帧 ≤ 16ms。布局一旦占用 30~80ms，用户感知就是「点一下卡半秒」，且在 SSE 推送时反复触发（事件日志每秒可达数十条）。把布局搬到 Worker 后，主线程只剩「拿结果 diff 应用」。",
+            "<b>Worker 的第二个收益</b>：布局是纯计算，无 DOM 依赖，因此可以在 Worker 里复用同一份纯函数实现（<code>createFlowLayout(topology)</code>），主线程与测试环境都能直接调用，不需要为「浏览器/非浏览器」写两份。",
+            "<b>缓存键</b>：<code>flow-layout-cache.ts</code> 用「拓扑输入的稳定摘要」作 key（节点数 + 边的 source/target + 关键状态位），状态未变时直接命中。典型收益：切换选中的事件只改变高亮，不改变拓扑形状 → 100% 命中。",
+            "<b>量级判断</b>：一次冷启动布局在千级节点上是几十毫秒量级，命中缓存后是 0～1ms；SSE 追加事件时因为拓扑增量很小，缓存命中率通常 > 90%。这就是「值得引入 Worker」的判断线：如果冷启动 < 5ms，就不该上 Worker。",
+            "<b>兜底</b>：Worker 不可用时（老浏览器、测试环境）<code>flow-layout-client.ts</code> 应回退同步计算，保证功能可用而不是空白页面——性能优化永远不能成为功能前置条件。"
+          ],
+          "followups": [
+            {
+              "q": "缓存会不会占内存？",
+              "a": "缓存的是布局结果（节点坐标数组 + 边路由），与拓扑规模同阶，通常几十 KB；用「最近 N 条」或「按输入摘要 LRU 淘汰」即可。真正要避免的是把完整 TraceEvent 复制进缓存——那才是数量级上的浪费。"
+            },
+            {
+              "q": "如何验证这个优化真的有效？",
+              "a": "在 <code>tests/flow-layout-cache.test.ts</code> 断言「相同输入命中缓存、相同结果不重算」；性能本身用真实 trace 做基准脚本（<code>tests/</code> 中已有 <code>atomic-topology.test.ts</code> 这类结构断言），而不是在 CI 里断言具体毫秒数。"
+            }
+          ]
+        },
+        {
+          "id": "15",
+          "module": "服务端",
+          "difficulty": 3,
+          "tags": ["HTTP", "SSE", "增量读取"],
+          "question": "server 暴露 <code>GET /api/events</code>（全量 + 可按 session/source 过滤）、<code>GET /api/stream</code>（SSE）、<code>POST /api/events</code>（浏览器/扩展上报）、<code>DELETE /api/events</code>（清理）。为什么同时需要「全量拉取」与「SSE 增量」两个接口，而不是只用 SSE？",
+          "focus": ["接口语义划分", "首屏与增量", "状态自愈"],
+          "thinking": [
+            "先想前端加载过程：打开页面必须先看到历史轨迹（可能几百上千条），这一步不能用流式逐条渲染，否则页面在数据到达前是空的。",
+            "再想 SSE 的角色：它是「增量通道」，只推新事件与 reset 事件。",
+            "还要想一个容易被忽略的问题：SSE 断连后如何自愈？如果没有全量接口，客户端永远补不齐缺口。"
+          ],
+          "answer": [
+            "<b>职责分离</b>：<code>GET /api/events</code> 是「快照/查询」，返回当前全量（可过滤 <code>session</code>、<code>source</code>），用于首屏与重新对账；<code>GET /api/stream</code> 是「增量通道」，由 <code>store.on(\"event\")</code> 推 <code>trace</code> 帧、<code>store.on(\"reset\")</code> 推 <code>reset</code> 帧。",
+            "<b>为什么 SSE 而不是 WebSocket</b>：数据是单向的（服务端 → 浏览器），SSE 基于 HTTP/1.1 文本流，自带重连语义（<code>Last-Event-ID</code>）与更低的心智负担；ASTRO 已有 <code>plugin/browser-client.js</code> 用 POST 上报，方向相反但互不干扰。",
+            "<b>断线自愈</b>：客户端在重连时可以直接再拉一次 <code>GET /api/events</code> 完成对账；SSE 只用于「已经在看的时候别错过」。这也是为什么 <code>reset</code> 要作为独立帧：删除/清理后前端应整体重置而不是继续追加。",
+            "<b>健康检查</b>：<code>GET /api/health</code> 返回 <code>pid</code>、<code>url</code>、<code>clientCount</code>、<code>eventCount</code>、<code>dataRoot</code>、<code>traceFiles</code>。既用于前端探活，也用于「dashboard 到底在读哪个数据根」的排查——数据根错位是本地工具最常见的困惑来源。",
+            "<b>安全边界</b>：服务默认绑 <code>127.0.0.1</code>；<code>POST /api/events</code> 的 CORS 是 <code>*</code>（浏览器扩展可能来自任意源），因此写入必须走与 hook 相同的归一化与脱敏逻辑，且用 <code>maxBodyBytes</code>（默认 5MB）限制请求体大小；其它路由不带 CORS 头。"
+          ],
+          "followups": [
+            {
+              "q": "为什么 trace 存储是文件，但查询全在内存？",
+              "a": "写入端要极简与抗崩溃（文件追加），读取端是单用户交互（内存数组 + SSE 推送）。<code>trace-store.js</code> 在 <code>initialize()</code> 时把文件解析进内存，<code>start()</code> 后增量读；内存占用对单会话量级完全可接受。"
+            },
+            {
+              "q": "多标签页同时打开会重复消费吗？",
+              "a": "不会有问题：每个连接各自维护 <code>clients</code> 集合，广播是遍历发送；<code>clientCount</code> 会在 <code>/api/health</code> 里体现。真正的并发风险在写入侧，已由「一行一次 write + 单次 append」规避。"
+            }
+          ]
+        },
+        {
+          "id": "16",
+          "module": "服务端",
+          "difficulty": 3,
+          "tags": ["搜索", "索引", "分层"],
+          "question": "仓库里同时存在服务端 <code>GET /api/search</code>（<code>searchEvents(events, query)</code>）与前端 <code>history-search.ts</code>（<code>buildHistorySearchIndex</code> / <code>filterHistorySearchEntries</code> / <code>getHistoryDateBounds</code>）。这是重复劳动吗？职责应该怎么切？",
+          "focus": ["分层职责", "索引时机", "避免重复计算"],
+          "thinking": [
+            "先确认两者面对的问题不同：服务端搜的是「事件内容」，前端搜的是「运行历史条目」。",
+            "再看调用场景：服务端搜索主要用于「当前打开的会话内检索」；前端历史搜索要在所有会话/所有平台/日期区间里筛，而且要秒开（不能每键一次 HTTP）。",
+            "结论是分层而非重复：服务端是兜底能力，前端是交互优化。"
+          ],
+          "answer": [
+            "<b>服务端 <code>/api/search</code></b>：参数 <code>q</code>（查询）+ <code>session</code>/<code>source</code>（过滤），实现是 <code>searchEvents()</code> 对内存事件做匹配后返回 <code>matches</code>。定位是「精确检索/脚本化查询」，也是 <code>tests/server-boundaries.test.js</code> 的断言对象。",
+            "<b>前端 <code>history-search.ts</code></b>：<code>buildHistorySearchIndex()</code> 一次性把历史条目投影成可搜索结构（含平台、日期、标题、摘要），<code>filterHistorySearchEntries()</code> 做纯前端过滤，<code>getHistoryDateBounds()</code> 给日历/日期选择器提供边界。之所以必须在前端：输入即过滤，零网络往返，且支持组合条件（平台 + 日期 + 关键词）。",
+            "<b>判据</b>：需要「跨会话 + 即时反馈 + 组合条件」→ 前端索引；需要「精确定位事件 + 可分享的命令行查询」→ 服务端。二者都只读不改，互不依赖。",
+            "<b>一致性保障</b>：前端索引的字段必须来自同一套投影（<code>parsePromptContent</code> 等共享 helper），避免出现「服务端能搜到但前端搜不到」的分裂；这也是 AGENTS.md 要求「平台中立逻辑放共享 helper」的直接原因。",
+            "<b>可演进点</b>：事件量继续增长时，服务端可引入倒排索引；前端可把索引持久化到 <code>local-storage.ts</code>（已封装）或 Worker，避免每次打开重建。"
+          ],
+          "followups": [
+            {
+              "q": "为什么 <code>/api/search</code> 不用 LIKE？",
+              "a": "它是内存数组上的 <code>searchEvents()</code>（JS 层匹配 + 归一化），不是 SQL。JSONL 方案没有查询引擎，搜索能力来自「数据已在内存」这一事实，代价是每次请求线性扫描——对单用户量级（千级事件）远快于一次磁盘 I/O。"
+            },
+            {
+              "q": "搜索命中后如何跳转到轨迹位置？",
+              "a": "通过 <code>locator</code>（<code>trace://source/session/id</code>）与 <code>sessionId</code> + <code>event.id</code> 定位：前端用 <code>buildTraceTurnIndex()</code> 找到所属 turn，再滚动到对应原子节点。这就是为什么每条事件都要有稳定 <code>id</code> 与 <code>locator</code>。"
+            }
+          ]
+        },
+        {
+          "id": "17",
+          "module": "工程质量",
+          "difficulty": 3,
+          "tags": ["测试策略", "零依赖", "边界测试"],
+          "question": "测试用 <code>node --test tests/*.test.*</code>（Node 原生 test runner），而不是 Vitest/Jest；同时存在大量 <code>*-boundaries.test.ts</code>（<code>projection-boundaries</code>、<code>trace-model-boundaries</code>、<code>server-boundaries</code>…）。这个组合解决了什么问题？边界测试与功能测试的分工是什么？",
+          "focus": ["测试选型", "架构约束的测试化", "零依赖"],
+          "thinking": [
+            "先看仓库依赖：<code>devDependencies</code> 只有 typescript/vite/前端相关，没有测试框架。这是有意的。",
+            "原因：ASTRO 需要在用户机器上跑（hook、server），测试也要能被「拷贝即用」的环境执行；引入框架意味着所有消费者都要装框架。",
+            "再看 <code>*.test.ts</code> 与 <code>*.test.cjs</code>/<code>*.test.js</code> 并存：这对应仓库的 ESM/CJS 混合现实（<code>.cjs</code> 测录制器这类 CJS 模块）。"
+          ],
+          "answer": [
+            "<b>选型理由</b>：①Node 内置 <code>node:test</code> + <code>node:assert/strict</code>，零新增依赖，符合「插件即拷贝即用」的交付形态；②<code>node --test tests/*.test.*</code> 一个 glob 同时跑 <code>.js</code>/<code>.cjs</code>/<code>.ts</code>（Node 的类型剥离能力），无需为 TS 测试再引构建步骤；③测试同时充当「跨端契约文档」，跑通即证明 hook/recorder/server 可用。",
+            "<b>边界测试的分工</b>：功能测试回答「它对不对」，边界测试回答「它不许做什么」。后者把架构约束变成可执行断言：",
+            "<code>projection-boundaries.test.ts</code>：断言投影不修改输入事件数组/对象（事件不可变不变量）。",
+            "<code>trace-model-boundaries.test.ts</code>：断言状态派生是纯函数、同一输入同输出，且不写回事件。",
+            "<code>server-boundaries.test.ts</code>：断言路由只暴露允许的方法与路径、写接口有体积上限与 CORS 约束。",
+            "<code>recorder-boundaries.test.cjs</code> / <code>storage-paths.test.cjs</code>：断言路径不会逃出数据根（目录穿越）、保留名被拒、脱敏不漏。",
+            "<code>cli-boundaries.test.js</code> / <code>install-boundaries.test.js</code> / <code>repository-boundaries.test.js</code>：断言 CLI 与安装器不越权、不静默失败。",
+            "<b>为什么值得单独成文件</b>：边界是「重构时最先被破坏」的部分。功能测试跟着实现走，边界测试钉住的是意图；一旦有人为了方便在投影里 <code>push</code> 事件，CI 立刻红。"
+          ],
+          "code": {
+            "lang": "bash",
+            "text": "pnpm test          # node --test tests/*.test.*\npnpm typecheck     # tsc --noEmit\npnpm build         # vite build\npnpm build:native-plugins\npnpm validate:claude-hooks"
+          },
+          "followups": [
+            {
+              "q": "没有覆盖率工具怎么判断测试是否够？",
+              "a": "看「不变量的测试位置」而不是行覆盖率：每条架构约束都应有一个断言它的测试（AGENTS.md 里的四条不变量对应四个边界测试文件）。这是「约束覆盖率」，比行覆盖率更能预测回归。"
+            },
+            {
+              "q": "为什么不把 <code>.opencode</code>/<code>opencode-plugin</code> 的测试也放进 tsconfig？",
+              "a": "因为它不属于前端编译域（tsconfig <code>include</code> 只有 <code>src</code> 与 <code>vite.config.ts</code>）。纯映射逻辑用 <code>node --test</code> 直接跑 <code>.ts</code> 即可，类型检查由 <code>@opencode/plugin</code> 自身与编辑器的 tsserver 负责，避免把 Node 侧模块拉进前端构建的类型图。"
+            }
+          ]
+        },
+        {
+          "id": "18",
+          "module": "工程质量",
+          "difficulty": 3,
+          "tags": ["供应链", "pnpm", "可复现"],
+          "question": "把 <code>opencode-plugin</code> 加进 <code>pnpm-workspace.yaml</code> 后，<code>pnpm install</code> 立刻因为 <code>ERR_PNPM_IGNORED_BUILDS</code> 失败，导致 <code>pnpm test</code> 也被前置检查拦住。这个现象暴露了依赖治理的什么问题？你最终怎么处理的？",
+          "focus": ["供应链安全", "构建脚本审批", "工具链一致性"],
+          "thinking": [
+            "先定位现象：pnpm 11 默认不执行依赖的 install 脚本，必须显式允许；而 <code>runDepsStatusCheck</code> 会把这个「待审批」状态当作失败，于是所有 <code>pnpm run</code> 前置检查全部失败。",
+            "再判断这是否是 bug：不是。pnpm 的策略是「依赖的安装脚本默认不信任」，这是为了防供应链攻击（例如某个包 postinstall 写 SSH key）。",
+            "所以真正的错误在我的处理方式：我为了装一个插件依赖而扩大了工作区，无意中把一整条依赖树（含需要构建脚本的原生模块）纳入了仓库的依赖检查范围。"
+          ],
+          "answer": [
+            "<b>暴露的问题</b>：①「为了让插件可用」而引入 <code>@opencode/plugin</code>，把一个本应零依赖的运行时组件变成了带 20+ 传递依赖的包（含 <code>effect</code>、<code>zod</code>、原生 <code>msgpackr-extract</code>）；②仓库的工具链默认开启了 deps 状态前置检查，因此任何「未审批的 install 脚本」都会阻断全部 <code>pnpm run</code>。",
+            "<b>处理方式（我选的路径）</b>：<b>去掉依赖，而不是加白名单</b>。",
+            "发现 <code>@opencode/plugin</code> 的 <code>Plugin.define()</code> 实现就是 <code>export function define(plugin) { return plugin }</code>（恒等函数），因此插件改为 <code>export default { id, setup(ctx) {…} }</code>，彻底移除该依赖；<code>opencode-plugin/package.json</code> 只保留元信息，<code>pnpm-workspace.yaml</code> 恢复原状，<code>allowBuilds</code> 也随之撤销。",
+            "<b>为什么这更优</b>：零依赖让插件可以被直接复制到 <code>~/.config/opencode/plugins/</code>（OpenCode 的全局发现目录），不需要 <code>node_modules</code>，也避免了「运行时版本不匹配」与供应链攻击面。安装脚本 <code>install-opencode-plugin.mjs</code> 只需拷贝 3 个源文件 + 录制器 + vendor 依赖。",
+            "<b>如果确实需要某个包的构建脚本</b>：正确做法是显式 <code>pnpm approve-builds</code>（写入 <code>allowBuilds</code>）并在评审中说明理由，而不是关闭前置检查或加 <code>--ignore-scripts</code>。审批记录本身就是供应链审计线索。"
+          ],
+          "followups": [
+            {
+              "q": "为什么先要确认 <code>Plugin.define</code> 是恒等函数才敢去掉依赖？",
+              "a": "因为这属于「依赖运行时内部实现」的假设。若它承担了参数校验、依赖注入或版本兼容处理，去掉就会在某个 OpenCode 小版本上行为异常。更稳妥的做法是看类型定义 + 读实现 + 在真实运行时验证（本项目用 <code>/api/plugin</code> 返回 <code>active</code> 与真实事件落盘做了端到端验证）。"
+            },
+            {
+              "q": "零依赖插件如何做类型检查？",
+              "a": "插件运行在 OpenCode 的 bun 运行时里，它注入 <code>ctx</code>；把 <code>setup(ctx: any)</code> 显式标注为宽松类型换取不依赖包类型，同时把真正需要测试的逻辑（事件映射）放进无依赖的 <code>mapping.ts</code>，用 Node 原生 test 覆盖。类型安全由「纯函数 + 表格测试」而不是「导入 SDK 类型」来保证。"
+            }
+          ]
+        }
+      ,
+        {
+          "id": "19",
+          "module": "服务端",
+          "difficulty": 4,
+          "tags": ["增量读取", "排序", "缓存一致性"],
+          "question": "<code>walkTraceFiles()</code> 递归收集所有 <code>events.jsonl</code>，<code>compareEvents()</code> 决定合并顺序。同一会话的事件来自多个进程、可能乱序到达（并行 hook）。排序键应该选什么？为什么不能只用文件 mtime？",
+          "focus": ["多源写入合并", "排序稳定性", "幂等去重"],
+          "thinking": [
+            "先确认事件里有哪些可用时间：<code>capturedAt</code>（ISO 字符串，由录制器统一生成）、<code>event.id</code>（UUID，无序）、<code>workspaceId</code>、<code>sequence</code>（部分客户端会带）。",
+            "再想乱序来源：hook 是独立进程，PreToolUse 进程可能比 PostToolUse 进程先落盘（尤其其中一个被 kill）。所以「文件内顺序」不能代表时间顺序。",
+            "最后想重复来源：两个客户端可能写同一 session，或浏览器扩展事后补写事件。"
+          ],
+          "answer": [
+            "<b>主键是 <code>capturedAt</code></b>：它是唯一表达「事件何时发生」的字段，格式统一（<code>new Date(capturedAt).toISOString()</code>），可直接字符串比较。",
+            "<b>次键必须确定性</b>：<code>capturedAt</code> 相同（毫秒精度 + 并发写入）时用 <code>id</code> 兜底，保证排序是纯函数——否则每次重启服务事件顺序都可能变化，UI 轨迹会跳变。",
+            "<b>不能用 mtime 的原因</b>：①mtime 反映「最后一次写入」，append 会不断刷新它，长会话的 mtime 永远最新；②多个 hook 进程并发 append 时 mtime 顺序与事件顺序无关；③跨文件系统时精度不一致。mtime 只适合判断「哪些文件需要重读」。",
+            "<b>文件级优化</b>：先用 mtime + size 判断文件是否变化，未变化复用上次解析结果，变化时只读新增字节。这是「增量读」；<code>capturedAt</code> 是「合并排序」，两者不要混用。",
+            "<b>容错</b>：<code>parseTraceLine()</code> 对每行独立 try/catch，坏行跳过并计入诊断，不让一条脏数据阻断整个文件加载——这是「抗崩溃追加写」模型的必然要求。"
+          ],
+          "followups": [
+            {
+              "q": "客户端时钟漂移会让 <code>capturedAt</code> 乱序吗？",
+              "a": "会。缓解三层：①<code>resolveSessionTimestamp()</code> 用事件自身时间决定目录，但 <code>findSessionTraceFile()</code> 会把新事件拉回既有会话文件，避免「时间乱序变成目录分裂」；②合并排序后乱序只影响同一毫秒内的相对位置；③需要更严格因果顺序时，用 <code>toolUseId</code> 配对 Pre/Post，再按 <code>turnId</code> 分组（<code>buildTraceTurnIndex()</code>）。"
+            },
+            {
+              "q": "如何避免同一事件被记录两次？",
+              "a": "物理层靠「一行一次 write + append」保证不会写坏；语义层的重复（例如两客户端同时上报同一动作）不去重，因为那是两个不同事实。UI 侧可用 <code>source + sessionId + id</code> 做前端级去重。"
+            }
+          ]
+        },
+        {
+          "id": "20",
+          "module": "工程质量",
+          "difficulty": 4,
+          "tags": ["安装器", "幂等", "迁移链"],
+          "question": "<code>install-plugins.mjs</code> 同时承担「安装 hook 配置」「安装共享运行时」「迁移历史数据」三件事。它如何保证幂等？<code>isInstalled()</code> 这个判定的局限是什么？",
+          "focus": ["幂等设计", "迁移策略", "安装器边界"],
+          "thinking": [
+            "先分类「可重复执行的操作」：写配置文件、拷贝运行时、迁移数据。三者失败后果不同。",
+            "再看幂等需求：用户会反复执行 <code>pnpm install-plugins</code>，也会在升级后重跑。不能出现「hook 装两份」或「事件迁移两次」。",
+            "最后看角色：安装器同时是「发行工具」和「迁移工具」，因此必须有 <code>--no-migrate</code> 开关（代码里确实有）。"
+          ],
+          "answer": [
+            "<b>hook 配置幂等</b>：<code>installHookConfig()</code> 先读配置（不存在则 <code>{ hooks: {} }</code>），对每个事件名用 <code>isInstalled(group, source)</code> 判断：命令同时含 <code>trace-recorder.cjs</code>（或 <code>hook-recorder.cjs</code>）与 <code>--source=&lt;source&gt;</code> 即视为同一安装；已存在只更新命令与 timeout，不存在才追加分组。同时保留用户自己的其它 hook 分组，不整体覆盖文件。",
+            "<b>运行时幂等</b>：<code>installPluginRuntime()</code> 对 <code>dist</code>/<code>server</code>/<code>vendor</code> 先 <code>rmSync</code> 再 <code>cpSync</code>，<code>plugin.json</code> 按当前版本重写，避免升级后残留旧文件。",
+            "<b>迁移幂等</b>：<code>migrateLegacyAotHome()</code>、<code>migrateTraceData()</code>、<code>migrateSessionPathLayout()</code> 都是「移动 + 返回结果」，只有源存在且目标不存在才动手；<code>--no-migrate</code> 可跳过。",
+            "<b><code>isInstalled()</code> 的局限（面试要点）</b>：它靠<b>字符串匹配</b>识别安装，无法区分命令变体，也无法表达「安装元数据版本」。更好做法是把安装清单写成结构化 sidecar（<code>plugin.json</code> 里记录 <code>installedHooks</code> 与版本），按版本对比：缺失即补齐、版本落后即升级、配置被用户改过则提示冲突。",
+            "<b>路径可移植性</b>：<code>shellPath()</code> 把 home 下路径转写成 <code>~/...</code> 再写进配置，避免把 <code>/Users/xxx</code> 写死进 dotfiles（<code>tests/install-plugins.test.js</code> 有专门断言）。这是「配置要能进版本库」的现实约束。"
+          ],
+          "followups": [
+            {
+              "q": "为什么要区分 <code>--scope=project</code> 与 <code>--scope=user</code>？",
+              "a": "Claude 项目级配置是 <code>.claude/settings.local.json</code>（通常 gitignore，仅本仓库生效），用户级是 <code>~/.claude/settings.json</code>（可版本管理、跨项目生效）。同一份 hook 写到不同文件，用户意图完全不同，必须显式区分而不是猜测。"
+            },
+            {
+              "q": "安装器部分失败该怎么办？",
+              "a": "分层处理：文件级操作失败要抛出（拷贝/写文件）；外部命令缺失要给可执行建议（<code>Install @deepseek-ai/dsh or pass --deepseek-command</code>）。绝不允许「部分成功 + 静默跳过」——那会让用户几天后才发现没记录数据。"
+            }
+          ]
+        },
+        {
+          "id": "21",
+          "module": "存储与布局",
+          "difficulty": 3,
+          "tags": ["dashboard", "进程编排", "防重"],
+          "question": "<code>launchDashboardForEvents()</code> 只在 <code>SessionStart</code>/<code>UserPromptSubmit</code> 时尝试启动 dashboard，并用 <code>dashboard-&lt;port&gt;.pid</code> + <code>isCompatibleDashboard()</code> 防止重复启动。为什么不每次都开浏览器？为什么 pid 文件要带端口？",
+          "focus": ["触发时机", "幂等进程编排", "用户体验"],
+          "thinking": [
+            "先问「用户什么时候需要看到界面」：开始一轮工作的时候，而不是每次工具调用。",
+            "再问「重复启动会怎样」：标签页堆积 + 多 server 抢端口 + 内存暴涨。",
+            "最后问「pid 文件解决什么」：多个 hook 进程都可能尝试启动，需要一个跨进程共享的判定点。"
+          ],
+          "answer": [
+            "<b>触发时机</b>：<code>triggerEvent</code> 只在 <code>SessionStart</code> 或 <code>UserPromptSubmit</code> 命中。一次真实会话里工具调用上百次，但这两类事件每轮 prompt 各一次，因此效果是「每个会话自动打开一次，且只打开一次」。",
+            "<b>防重判据</b>：pid 文件存 <code>{ pid, server }</code>；先用 <code>process.kill(pid, 0)</code> 判断进程存活，再用 <code>isCompatibleDashboard()</code> 比对 server 路径——允许 realpath 不同，但都须通过 <code>isAstroDashboardFile()</code> 结构校验（basename 为 <code>server.mjs</code>，且同级存在 <code>dist/index.html</code> 与 <code>plugin/trace-recorder.cjs</code>）。已存在则只打印提示，不再开新标签。",
+            "<b>pid 文件带端口</b>：端口来自 <code>ASTRO_PORT</code>（默认 4318）。同一机器可能同时跑多个 ASTRO（不同 <code>ASTRO_HOME</code> 或不同端口用于多项目对比），带端口才能共存而不互相覆盖。",
+            "<b>env 透传</b>：启动时注入 <code>ASTRO_HOME</code>、<code>ASTRO_OPEN_BROWSER=1</code>、<code>ASTRO_PID_FILE</code>、<code>ASTRO_OPEN_SOURCE</code>、<code>ASTRO_OPEN_SESSION</code>，让界面直接落到对应来源与会话——可观测工具的入口应该指向问题现场。",
+            "<b>降级</b>：<code>ASTRO_AUTO_OPEN=0</code> 可关；<code>child.on(\"error\")</code> 清理 pid；启动失败只写 stderr（<code>ASTRO recorded the event, but the dashboard could not start (CODE)</code>），绝不影响事件记录。"
+          ],
+          "followups": [
+            {
+              "q": "为什么不用「尝试 listen 端口」判断服务在跑？",
+              "a": "端口可能被任意进程占用，探到端口不等于「是 ASTRO dashboard」。pid 文件记录 server 路径 + <code>isAstroDashboardFile()</code> 做结构验证，等价于给端口附加身份，这是可靠判据。"
+            },
+            {
+              "q": "自动开浏览器在 CI/SSH 里会不会很烦？",
+              "a": "会，所以有 <code>ASTRO_AUTO_OPEN</code> 与 config.yaml 的 <code>runtime.autoOpen</code> 两层开关，且 hook 全程 <code>--quiet</code>，只在真要开时才产生副作用。原则是「默认有用但可一键关掉」，而不是「默认安静需手动配置」。"
+            }
+          ]
+        },
+        {
+          "id": "22",
+          "module": "工程质量",
+          "difficulty": 2,
+          "tags": ["类型系统", "平台扩展", "扩展点清单"],
+          "question": "新增一个客户端平台（比如这次加 <code>opencode</code>）需要改哪些地方？为什么 TypeScript 会「逼你」把其中三处补齐？",
+          "focus": ["扩展点清单", "类型约束", "遗漏检测"],
+          "thinking": [
+            "先列数据流：客户端事件 → <code>source</code> 字符串 → <code>normalizeSource()</code> → <code>sourceMeta</code> → <code>PlatformId</code> → <code>platformDefinitions</code> → <code>PlatformIcon</code>。",
+            "标出「会被类型强制」的节点：<code>PlatformId</code> 联合类型；<code>platformDefinitions: Record&lt;PlatformId, …&gt;</code>；<code>paths: Record&lt;Exclude&lt;PlatformId,…&gt;, string&gt;</code>。",
+            "补上「类型管不到」的一处：运行时字符串归一化。"
+          ],
+          "answer": [
+            "<b>清单</b>：①<code>src/types/trace.ts</code> 的 <code>PlatformId</code>；②<code>src/config/atom-platforms.ts</code> 的 <code>platformDefinitions</code>（label/source/runtime/eventAtomMap）；③<code>src/components/platform-icon.tsx</code> 图标（路径图或内联 SVG，必要时加入 <code>Exclude</code>）；④<code>src/lib/trace-model.ts</code> 的 <code>normalizeSource()</code> 与 <code>sourceMeta</code>；⑤录制端映射（<code>canonicalEventNames</code> / 客户端适配器 / opencode 插件）；⑥语义差异大时再覆盖 <code>eventAtomMap</code>。",
+            "<b>类型强制</b>：加 <code>PlatformId</code> 成员后，<code>platformDefinitions</code> 立刻要求补 key，<code>paths</code> 立刻要求补图标（本次因 opencode 用内联 SVG 而必须加进 <code>Exclude</code>）。编译期失败，不会出现「UI 找不到图标」。",
+            "<b>类型管不到</b>：<code>normalizeSource()</code> 是运行时字符串匹配，新增 source 必须手工加分支，否则历史数据里的 <code>\"opencode\"</code> 会走 fallback 显示成原始小写。这类映射只能靠表驱动测试兜住。",
+            "<b>验证</b>：<code>pnpm test</code> + <code>pnpm typecheck</code> + <code>pnpm build</code>。另外 <code>resolvePlatform()</code> 对未知平台 fallback 到 codex 配置，保证漏改也不会白屏——这是有意的降级设计。"
+          ],
+          "followups": [
+            {
+              "q": "为什么 <code>sourceMeta</code> 不从 <code>platformDefinitions</code> 派生？",
+              "a": "两者服务不同 UI：<code>sourceMeta</code> 是事件日志里的全大写标签 + 色调（如 <code>OPENCODE / violet</code>），<code>platformDefinitions</code> 是拓扑选择器 + 标签（如 <code>OpenCode</code>）。前者还要覆盖 <code>browser</code>、<code>generic</code> 这些没有拓扑的平台，因此不能合并。"
+            },
+            {
+              "q": "未知平台 fallback 到 codex 拓扑合理吗？",
+              "a": "合理但要显式：拓扑只依赖 17 个规范事件名，与平台无关，用 codex 定义作为默认是最小惊讶；UI 仍显示该平台自己的 <code>sourceMeta</code> 标签。等该平台语义真正不同，再引入独立 <code>eventAtomMap</code>。"
+            }
+          ]
+        }
+      ,
+        {
+          "id": "23",
+          "module": "存储与布局",
+          "difficulty": 4,
+          "tags": ["数据迁移", "向前兼容", "双读"],
+          "question": "仓库里同时存在 <code>migrateLegacyAotHome()</code>、<code>migrateSessionPathLayout()</code>、<code>migrateTraceData()</code> 三种迁移，还存在 <code>findSessionTraceFile()</code> 对旧目录名（<code>HH:mm:ss-</code>）的读取期兼容。既有迁移又有兼容，不是重复劳动吗？",
+          "focus": ["迁移 vs 双读", "升级路径设计", "失败可恢复"],
+          "thinking": [
+            "先想用户场景：用户三个月没打开 ASTRO，中途目录格式变了；也可能 dashboard 正在运行而迁移刚执行完。",
+            "再想各自能覆盖什么：迁移能整理历史，但只覆盖「执行那一刻」之前的文件；读取期兼容能覆盖任何时刻的读取请求。",
+            "结论：迁移是一次性整理，兼容是永久兜底，目标不同。"
+          ],
+          "answer": [
+            "<b>三种迁移各解决什么</b>：<code>migrateLegacyAotHome(~/.aot)</code> 把更早的数据根合并到 <code>~/.astrox</code>；<code>migrateSessionPathLayout(root)</code> 把 <code>HH:mm:ss-</code> 目录改名为 <code>HH_mm_ss-</code>（冒号在 Windows 非法且排序不友好）；<code>migrateTraceData(path)</code> 把旧项目内 <code>.agent-trace</code> 迁到新布局。",
+            "<b>为什么读取期仍需兼容</b>：①迁移可被 <code>--no-migrate</code> 跳过；②迁移可能在 server 运行期间执行；③最关键：<code>resolveAgentTraceFile()</code> 必须在「目录未迁移」时把新事件写进<b>既有旧目录</b>，否则同一会话会被分裂成两个文件；④迁移中断（磁盘满、被 kill）后仍要能读写。",
+            "<b>不重复的判据</b>：<code>findSessionTraceFile()</code> 排序时「是否 canonical 目录」优先于字典序，取 <code>.at(-1)</code>，因此迁移后的目录自动成为写入目标，旧目录仅作兼容；迁移完成后兼容路径自然失效，无需删代码。",
+            "<b>收敛方向</b>：兼容分支应「只读不写且可观测」——命中旧布局时打一条诊断并提示可执行的迁移命令，让用户能收敛，而不是让兼容永久沉默。",
+            "<b>与 schemaVersion 的关系</b>：目录布局是物理兼容，<code>schemaVersion</code> 是逻辑兼容。两者独立演化：字段升级按 schemaVersion 在读取时做（缺失用默认值），目录靠双读兼容 + 迁移收敛。"
+          ],
+          "followups": [
+            {
+              "q": "迁移要不要支持回滚？",
+              "a": "不需要代码级回滚，因为迁移是「移动」而非「转换」，事件 JSON 内容不变。但要<b>可中断</b>（先写临时名再 rename）与<b>可报告</b>（返回 <code>{ migrated, outputs }</code>，安装器打印 <code>Migrated N events into …</code>）。"
+            },
+            {
+              "q": "多端并发写入时迁移安全吗？",
+              "a": "风险点是「正在被写入的目录被改名」。理想做法是迁移前提示关闭 dashboard，或只处理「mtime 早于 N 分钟」的目录。当前实现是「尽力而为 + 打印结果」，这是已知短板，也是面试里值得主动指出的诚实答案。"
+            }
+          ]
+        },
+        {
+          "id": "24",
+          "module": "多端适配",
+          "difficulty": 3,
+          "tags": ["hook 协议", "超时", "失败隔离"],
+          "question": "<code>claude-plugin/hooks/hooks.json</code> 里几乎每个事件都挂 <code>node trace-recorder.cjs</code> 且 <code>timeout: 5</code>；codex 版本额外加 <code>--quiet</code>，收尾事件 <code>timeout: 3</code>。为什么 hook 一律有超时？为什么 codex 必须 <code>--quiet</code>？",
+          "focus": ["宿主超时语义", "stdout 协议", "失败隔离"],
+          "thinking": [
+            "先确认 hook 是同步阻塞的：宿主执行命令并等待返回，超时则放弃。因此 recorder 耗时直接占用用户每次工具调用的延迟。",
+            "再确认 stdout 敏感性：Claude Code 会解析 hook stdout 的 JSON（<code>continue</code>、<code>systemMessage</code>）；Codex 的 notify 通道不消费该对象，多余输出会干扰宿主。",
+            "最后算成本：一次工具调用 = 一个 hook 子进程 = 一次 node 启动（约 30~60ms），必须严格控制。"
+          ],
+          "answer": [
+            "<b>超时保护的是用户</b>：宿主超时后放弃等待并继续主流程。没有 timeout，一个卡住的 recorder（例如网络盘导致 <code>appendFileSync</code> 阻塞）会让每次工具调用都卡住。5 秒足够容纳磁盘抖动，又短到用户可接受。",
+            "<b>每事件一个 hook 是协议决定的</b>：宿主只在事件发生时回调，没有批量接口，这不是设计偷懒。",
+            "<b><code>--quiet</code> 的原因</b>：非 quiet 时 <code>run()</code> 向 stdout 输出 <code>{ continue: true, systemMessage? }</code>（Claude Code 的 hook 协议）；Codex notify 通道不消费它，多余输出会污染解析。因此 codex 侧一律 <code>--quiet</code>，把提示改写到 stderr（<code>else if (dashboardMessage &amp;&amp; !failureReported)</code> 分支）。",
+            "<b>失败隔离</b>：<code>run()</code> 的 try/catch 覆盖读 stdin、JSON 解析、写入、启动 dashboard 全流程；失败时把错误码归一（<code>replace(/[^a-zA-Z0-9_-]/g, \"\")</code>）写 stderr，同时<b>仍然返回 <code>continue: true</code></b>，保证「ASTRO 坏了，Agent 照常工作」。",
+            "<b>超时分级</b>：<code>SessionEnd</code>/<code>Interrupt</code> 用 3 秒（用户已在等待），其余 5 秒——按「用户感知成本」而非「技术难度」分级。"
+          ],
+          "followups": [
+            {
+              "q": "能不能把多次事件合并上报以减少进程开销？",
+              "a": "hook 协议由宿主决定无法合并；可优化的是进程内部：<code>appendTraceEvents()</code> 支持批量（数组入参、按文件分组后一次 write），OpenCode 插件就用 150ms 微批把高频事件压成一次写入。Claude/Codex 侧除非改常驻进程 + IPC，否则无法优化，而常驻进程的复杂度远大于收益。"
+            },
+            {
+              "q": "codex 侧事件比 claude 少（例如没有 <code>PostToolUseFailure</code>）合理吗？",
+              "a": "合理。Codex 协议没有可判定的工具失败事件，<code>inferCodexEventName()</code> 只能把 <code>turn.failed</code> 映射为 <code>Stop</code>、<code>item.completed</code> 按工具类型分派。宁可少标一类，也不臆造语义不准的事件。"
+            }
+          ]
+        },
+        {
+          "id": "25",
+          "module": "工程质量",
+          "difficulty": 2,
+          "tags": ["文档即约束", "AGENTS.md", "一致性"],
+          "question": "AGENTS.md 写着「Notification 在事件日志中显示为 user.question（AskUserQuestion）」「user-question lifecycle 使用 user.question / user.answer 显示键」。把这类约定写进 AGENTS.md 而不是代码注释或 README，好在哪？有什么风险？",
+          "focus": ["知识载体选择", "约束可执行性", "文档腐化"],
+          "thinking": [
+            "先分清读者：README 面向使用者，AGENTS.md 面向「在这个仓库里改代码的人/Agent」。",
+            "再看约定性质：它们是<b>跨文件隐性契约</b>（<code>trace-status.ts</code>、<code>trace-model.ts</code>、UI 文案三处必须一致），只看代码容易漏。",
+            "最后考虑维护者：新同事与编码 Agent 的第一次修改最需要这份清单。"
+          ],
+          "answer": [
+            "<b>好在哪</b>：①<b>就近可发现</b>：根目录 AGENTS.md 进入项目即读到，不必先找 README；②<b>面向变更者</b>：写的是「改代码时不能破坏什么」，而非产品介绍；③<b>可被 Agent 消费</b>：编码 Agent 会先读它，规则直接进入决策上下文；④<b>形成检查表</b>：新增客户端/事件都要回来核对。",
+            "<b>风险一：文档腐化</b>。缓解：把强约束落到测试里（ASTRO 已有 <code>tests/atom-guide-copy.test.ts</code> 这类文案契约测试），文档与测试双写，测试失败即提醒。",
+            "<b>风险二：与代码重复</b>。若文档出现具体常量（如 <code>24 * 60 * 60 * 1000</code>）就会形成第二真相源。做法：文档只写「意图 + 唯一策略点在哪」，数值只在 <code>src/config/app-config.ts</code> 定义。",
+            "<b>风险三：过度约束</b>。把实现细节写进文档会在重构时制造阻力。只写不变量（事件不可变、平台中立逻辑放共享 helper），不写「必须用某函数」。",
+            "<b>建议</b>：AGENTS.md 每条不变量都应能对应一个测试文件；测试里断言的不变量也应出现在 AGENTS.md。两者互为索引，腐化立刻暴露。"
+          ],
+          "followups": [
+            {
+              "q": "为什么 AGENTS.md 写「用 git diff --check 做空白校验」这种替代方案？",
+              "a": "因为「没有 lint」本身是决策：不引入 ESLint/Prettier 意味着不与用户现有工具链冲突、不产生风格争论。ASTRO 用 <code>tsc --noEmit</code>（类型）+ <code>node --test</code>（行为）+ <code>git diff --check</code>（空白）三件套覆盖主要风险，代价是不做风格统一。"
+            },
+            {
+              "q": "什么时候该把约束升级成 lint 规则？",
+              "a": "当约束满足「可机器判定 + 高频违反 + 修复无歧义」三条时，例如禁止在 <code>src/</code> 里 <code>require()</code> CJS、禁止直接修改 <code>TraceEvent</code> 数组。而「脱敏要谨慎」这类需要判断的，留在文档与测试里。"
+            }
+          ]
+        },
+        {
+          "id": "26",
+          "module": "前端领域建模",
+          "difficulty": 4,
+          "tags": ["性能", "渲染", "增量"],
+          "question": "SSE 每秒可能推送数十条事件，前端要同时维护事件日志、运行历史、拓扑与轨迹，<code>src/app.tsx</code> 有 3000+ 行。请说明一条新事件从到达到各视图更新的最短路径，以及你会如何守住 60fps。",
+          "focus": ["渲染链路", "重算边界", "增量策略"],
+          "thinking": [
+            "先画链路：SSE frame → 追加事件 → <code>getSessionDisplayState</code> → 按 session/turn 过滤当前 run → <code>projectTraceEvents</code> → <code>buildExecutionTopology</code> → <code>createFlowLayout</code>（Worker）→ 渲染。",
+            "再找最贵环节：拓扑构建与布局是 O(n²) 级；投影与索引是 O(n)。",
+            "最后定优化杠杆：①只在结构变化时重建拓扑；②选中变化只重算高亮；③布局走 Worker + 缓存。"
+          ],
+          "answer": [
+            "<b>最短路径</b>：append → <code>getSessionDisplayState(session, now, appTimings.activeRunTimeoutMs)</code> → 定位 turn（<code>buildTraceTurnIndex</code>）→ 投影 → 拓扑 → 布局（Worker）→ setState。",
+            "<b>杠杆 1：结构与高亮分离</b>：工具开始/结束改变结构；选中事件只改高亮。后者必须命中缓存，否则每次点击都触发 O(n²) 重建。",
+            "<b>杠杆 2：缓存键要稳定</b>：<code>flow-layout-cache.ts</code> 用「拓扑稳定摘要」（节点集合 + 边集合 + 影响布局的状态位）作键，命中即 0 计算，未命中交 Worker，主线程只处理结果。",
+            "<b>杠杆 3：过滤早于投影</b>：重算函数都接收「当前 run 的事件」而非全量；server 侧已支持 <code>?session=&amp;source=</code> 过滤，前端保持同口径，避免为显示一条 run 而重算整个历史。",
+            "<b>杠杆 4：靠不可变性获得正确性</b>：事件只 append 新引用，React 的引用比较天然正确，不会出现「原地 push 导致 memo 判断失效」。",
+            "<b>兜底</b>：任何一步失败只降级表现（不显示拓扑/轨迹），不阻塞日志渲染——观测工具必须「慢而不崩」。"
+          ],
+          "followups": [
+            {
+              "q": "3000 行的 <code>app.tsx</code> 是问题吗？",
+              "a": "是信号不是结论。判据是内聚性：若混杂了数据获取、投影、交互、布局四种关注点就该拆；若只是「页面级编排 + 局部 UI」而重计算都在 <code>src/lib/*.ts</code> 纯函数里，拆分收益主要是可测试性。建议按视图拆容器（history/topology/trajectory/log），state 编排放容器，组件无状态。"
+            },
+            {
+              "q": "如何验证优化有效而不是自我感觉？",
+              "a": "两段式：①在 <code>tests/</code> 里用真实量级 trace（如 3000 事件）跑投影/拓扑，断言输出规模与宽松耗时上限，防止复杂度退化；②浏览器 Performance 面板观察真实会话 FPS。CI 不写死毫秒数，但可以写「比较次数」级别的复杂度断言。"
+            }
+          ]
+        }
+      ,
+        {
+          "id": "27",
+          "module": "架构取舍",
+          "difficulty": 5,
+          "tags": ["写入模型", "崩溃恢复", "端到端延迟"],
+          "question": "为什么 ASTRO 不让客户端「主动上报」到常驻服务，而是让 hook 直接写文件、由 dashboard 拉取？如果改成常驻 agent + IPC 或 gRPC 直连，会得到什么、失去什么？",
+          "focus": ["分布式权衡", "故障域", "可审计性"],
+          "thinking": [
+            "先把两条路的故障域列出来：文件方案的写入方是「用户正在用的 Agent 宿主进程」；服务方案的写入方是「我们自己的常驻进程」。",
+            "再看谁承担风险：文件方案的风险是 ASTRO 挂掉（但此时 Agent 正常）；服务方案的风险是网络/端口/鉴权把 Agent 卡住。",
+            "最后看可审计性：如果数据先经过服务，就存在「服务端被替换/篡改/丢弃」的信任问题；文件方案里磁盘上的 JSONL 就是最终事实。"
+          ],
+          "answer": [
+            "<b>文件方案得到什么</b>：①<b>零依赖接入</b>：hook 只需要 node + 一个 CJS 文件，不需要用户再装 daemon；②<b>故障隔离</b>：ASTRO 全挂时 Agent 完全不受影响（<code>run()</code> 的 try/catch 与「Observability must never interrupt」注释）；③<b>可审计</b>：磁盘上的 JSONL 是最终事实，可 diff、可备份、可上传排障；④<b>天然多端聚合</b>：所有客户端写同一数据根。",
+            "<b>文件方案失去什么</b>：实时性依赖 dashboard 的文件变更检测；写入放大（每次 hook 一个进程 + 一次 append）；缺少数据库级聚合查询。",
+            "<b>改成常驻服务会得到什么</b>：更低写入延迟、服务端聚合查询、更细的限流与采样。",
+            "<b>会失去什么</b>：①引入「ASTRO 服务未启动」这一高频故障态，每个客户端 hook 都要重试与降级；②鉴权与端口管理成本（本地工具默认无鉴权）；③调试链路变长（Agent、插件、服务三层）；④破坏「拷目录即用」的交付形态。",
+            "<b>结论</b>：观测工具的第一属性是<b>不能成为被观测对象的故障源</b>与<b>数据可信</b>，文件模型是正确取舍。实时性的缺口用 SSE + 变更检测补，而不是用架构风险换。真需要低延迟时（例如在线聚合），可加「本地 socket 旁路」，但文件模型必须仍是最终真相。"
+          ],
+          "followups": [
+            {
+              "q": "轮询/变更检测间隔怎么定？",
+              "a": "权衡是「变更检测频率」与「CPU 占用」：用 mtime + size 判断是否变化，间隔取 200~500ms，配合 SSE 推送，用户感知接近实时。这也是 dashboard 空转时几乎不耗 CPU 的原因——没变化就跳过解析。"
+            },
+            {
+              "q": "如果用户同时开多个 dashboard 会怎样？",
+              "a": "各自独立读文件（读取无副作用）互不影响，但会重复解析。可加「单实例 + 端口复用」策略，或用 pid 文件复用已有 dashboard（<code>openInstalledDashboard()</code> 已有 reopen 逻辑）。"
+            }
+          ]
+        },
+        {
+          "id": "28",
+          "module": "架构取舍",
+          "difficulty": 5,
+          "tags": ["最小公倍数", "规范事件", "抽象成本"],
+          "question": "规范事件名只有 17 个，却要覆盖 Claude Code、Codex、Trae、CodeBuddy、DeepSeek、OpenCode 六种完全不同的协议。「最小公倍数」应该定在哪一层？过度抽象的代价是什么？",
+          "focus": ["抽象层级", "语义损失", "演进路径"],
+          "thinking": [
+            "先看六个协议的表达差异：Claude 有完整生命周期（Start/Stop/Subagent/Compact/Permission）；Codex 是 item 流；OpenCode 是 step/inbox/tool 三套；Trae 有 Elicitation；DeepSeek 是自定义事件。",
+            "再看交集：都是「用户输入 → 模型推理 → 工具调用 → 工具结果 → 最终回复 → 结束/中断」，加少量控制面事件（权限、提问、子代理、压缩）。这就是 17 个名字的来源。",
+            "最后评估：抽象过窄无法表达差异，过宽则每加客户端就要改核心。"
+          ],
+          "answer": [
+            "<b>定在「轨迹阶段」层，而不是「客户端动作」层</b>：17 个规范名对应拓扑中的原子/阶段（session-resume、run、model-invoke、tool-call、tool-result、user-question、handoff、agent-result、final-reply、output-commit、stage-finish、trace-append）。客户端动作千变万化，轨迹阶段高度稳定。",
+            "<b>差异如何承载</b>：①表达不了的部分放进 <code>payload</code>（无损保留原字段）；②需要独立展示的差异用既有规范名表达（等待类一律用 <code>Notification</code>/<code>PermissionRequest</code>）；③平台级差异用 <code>PlatformDefinition.eventAtomMap</code> 覆盖，不动核心。",
+            "<b>过度抽象的代价</b>：①新增规范名成本是「四处补齐」（<code>defaultEventAtomMap</code>、<code>eventMeta</code>、<code>trace-status</code>、<code>atomic-projection</code>），不能为「精确」随手加；②规范名越多，跨端统计口径越碎；③抽象层越高，越难回答「这个客户端到底发生了什么」。",
+            "<b>判断准则</b>：只有当某类事件<b>在两个以上客户端中语义相同、且需要独立展示或统计</b>时才新增规范名。这把成本与收益绑定，避免抽象膨胀。",
+            "<b>Codex 适配是压力测试</b>：它没有失败事件也没有子代理事件，只能映射到最近似的规范名。结论是「映射到最接近的 + 在 payload 保留原名」，而不是新增 <code>TurnFailed</code> 这类平台专属名——后者会让规范名退化成各客户端事件名的并集。"
+          ],
+          "followups": [
+            {
+              "q": "如果 OpenCode 将来提供原生 hook，是否该换成 hook 方案？",
+              "a": "不该。事件流订阅提供的是「服务端事实事件」，比宿主回调更完整、受宿主版本影响更小，也不需要逐事件拉起进程。hook 可以作为可选补充（例如获取更早的 prompt 时间戳），而不是主路径。"
+            },
+            {
+              "q": "怎么衡量抽象是否合适？",
+              "a": "看两个指标：①新增一个客户端需要改动的核心文件数（理想 ≤ 1 个适配器 + 前端 4 处登记）；②规范事件名的增长曲线（应随客户端数量近似不变，只随轨迹阶段语义增加）。"
+            }
+          ]
+        },
+        {
+          "id": "29",
+          "module": "架构取舍",
+          "difficulty": 4,
+          "tags": ["本地优先", "隐私", "远程演进"],
+          "question": "ASTRO 是 local-first：数据只落在用户机器 <code>~/.astrox</code>。隐私优势背后是「团队协作/跨机分析」的能力缺失。如果要支持团队共享 trace，你会怎么演进而不破坏现有形态？",
+          "focus": ["演进路径", "隐私边界", "兼容性"],
+          "thinking": [
+            "先明确不可让步的部分：磁盘 JSONL 格式、<code>locator</code>、<code>schemaVersion</code>、<code>ASTRO_HOME</code> 语义。它们是用户资产，不能因为加同步而变成「服务端缓存的投影」。",
+            "再区分能力缺口：远程分析需要「集中查询 + 权限 + 保留策略」，而本地已具备「完整数据 + 可导出」。",
+            "于是演进方向是「导出 → 上传」，而不是「上报」，即保持 append 模型不变。"
+          ],
+          "answer": [
+            "<b>原则</b>：本地是<b>事实源</b>，远端是<b>可选派生视图</b>；同步只做「本地 → 远端」单向，用户可随时删除远端副本。",
+            "<b>阶段一：导出（收益最大、成本最低）</b>：CLI 增加 <code>astro export --session &lt;id&gt; --out trace.jsonl</code>，格式与磁盘一致；上传由用户用任意工具完成。这一步不需要任何服务端代码，就覆盖了大部分协作需求。",
+            "<b>阶段二：显式同步</b>：CLI 增加 <code>astro push</code>，使用用户自己的存储凭据（<code>ASTRO_SYNC_ENDPOINT</code> + <code>ASTRO_SYNC_TOKEN</code>）；远端只接收 append，不反向改写本地；保留策略在远端执行但可全量导出。",
+            "<b>阶段三：多端聚合（可选）</b>：同机多实例已由 <code>ASTRO_HOME</code> 隔离支持；跨机聚合由阶段二组合实现，不在 ASTRO 内做中心节点。",
+            "<b>隐私护栏</b>：trace 含 prompt 全文与工具输出，可能包含代码或内部信息。因此同步必须<b>显式命令 + 可预览清单</b>，默认不上传；<code>redactValue</code> 的脱敏是最后一道防线，不能假定远端会再脱敏。",
+            "<b>明确不做</b>：不做默认云同步、不做团队账号体系、不让服务端改写用户 trace。这些会把项目从本地工具变成 SaaS，并引入数据合规成本。"
+          ],
+          "followups": [
+            {
+              "q": "浏览器扩展上报的 <code>POST /api/events</code> CORS 是 <code>*</code>，安全吗？",
+              "a": "在 local-first 前提下可接受，前提是服务只绑 <code>127.0.0.1</code>（默认）、请求体有 <code>maxBodyBytes</code> 限制、写入走与 hook 相同的归一化与脱敏。若未来开放远程监听，必须立刻加鉴权并收紧 Origin 白名单。"
+            },
+            {
+              "q": "如何让用户知道 trace 里有什么？",
+              "a": "提供「会话数据清单」视图（哪些 session、多少事件、体积、包含哪些 source），并在导出/同步前给出预览。这是隐私设计里的可解释性要求：数据离开本机前，用户必须能看到将离开什么。"
+            }
+          ]
+        },
+        {
+          "id": "30",
+          "module": "工程质量",
+          "difficulty": 3,
+          "tags": ["插件形态", "决策记录", "可维护性"],
+          "question": "这次把 OpenCode 插件从「在 <code>opencode.json</code> 里写仓库绝对路径」改成「<code>pnpm install:opencode-plugin</code> 安装到 <code>~/.config/opencode/plugins/astro-capture</code>」。收益与代价分别是什么？为什么不直接发布成 npm 包？",
+          "focus": ["部署形态", "版本耦合", "分发成本"],
+          "thinking": [
+            "先看改动前的问题：配置写死仓库绝对路径——换机器、删仓库、CI 环境都会失效；且配置与仓库版本可能不一致。",
+            "再看 OpenCode 的发现机制：<code>~/.config/opencode/plugins/</code> 下的文件与包目录会被自动发现，不需要配置项。",
+            "最后评估发布 npm 包的成本：需要 <code>files</code>/<code>exports</code>/类型声明/publish 权限/版本同步，而插件只有两个源文件。"
+          ],
+          "answer": [
+            "<b>收益</b>：①<b>与仓库解耦</b>：仓库移动、删除或换机器都不影响已安装插件（安装目录内含录制器副本与 vendor 依赖）；②<b>零配置</b>：落在自动发现目录，<code>opencode.json</code> 不再需要 <code>plugins</code> 数组，安装脚本还会顺手清理历史遗留的绝对路径条目，避免同一插件被加载两次；③<b>可离线</b>：不依赖 registry，也不依赖 pnpm 安装状态。",
+            "<b>代价</b>：①多了一份副本，需要<b>同步机制</b>——改插件后重跑安装脚本（先 <code>rmSync</code> 再拷贝，保证无残留）；②仓库升级不会自动升级已安装插件；③排查时可能出现「两个版本」（仓库新、插件旧）。",
+            "<b>为什么不发 npm 包</b>：成本收益不划算。发布 npm 包要维护 <code>files</code>/<code>exports</code>、处理 CJS/ESM 与 <code>.ts</code> 加载差异、每次改动都要 version + publish、管理 registry 凭据。而插件本体只有 <code>index.ts</code> + <code>mapping.ts</code>，核心价值（录制器）本来就在本地仓库。npm 包只对「需要被第三方安装」的场景才有意义。",
+            "<b>关键前提：去掉运行时依赖</b>。原先 <code>index.ts</code> 依赖 <code>@opencode/plugin</code>，导致安装目录必须有 <code>node_modules</code>（还为此改了 <code>pnpm-workspace.yaml</code> 并触发 <code>ERR_PNPM_IGNORED_BUILDS</code>）。确认 <code>Plugin.define()</code> 是恒等函数后改为直接 export 对象，插件变成零依赖文件拷贝——这才是「安装脚本可用」的前提，而不是可选优化。",
+            "<b>可演进</b>：若将来需要发布，加 <code>prepare</code> 与 <code>files</code> 即可；<code>export default { id, setup }</code> 已是标准形态，迁移成本低。"
+          ],
+          "followups": [
+            {
+              "q": "安装脚本需要幂等与卸载吗？",
+              "a": "幂等已实现（先删目标目录再拷贝）。卸载可由「重装时整体替换」覆盖；若要显式卸载，加一个 <code>--uninstall</code> 删目录即可，不需要复杂依赖追踪。"
+            },
+            {
+              "q": "两个副本同时加载怎么办？",
+              "a": "靠「唯一安装路径 + 清理配置里的绝对路径条目」避免同源双载。若真的跨来源双载（自动发现 + 配置同时指向），OpenCode 的 <code>plugins</code> 数组支持用 <code>-id</code> 前缀禁用条目，可作为兜底。"
+            }
+          ]
+        },
+        {
+          "id": "31",
+          "module": "架构取舍",
+          "difficulty": 4,
+          "tags": ["一手资料", "静默失败", "验证顺序"],
+          "question": "这次接入 OpenCode 时，我没有猜「事件叫什么名字」，而是先连上正在运行的 service 抓真实事件流（<code>/api/event</code>）做实证。请评价这种工作方式，并说明它的价值与风险。",
+          "focus": ["一手资料", "假设成本", "验证顺序"],
+          "thinking": [
+            "先看文档性质：V2 文档描述了插件 API（<code>ctx.event.subscribe</code>），但没有列出全部事件名与 payload 结构（OpenAPI 里 <code>V2EventEncoded</code> 就是 <code>type: string</code>）。",
+            "再看猜错的代价：把 <code>session.tool.called</code> 猜成 <code>tool.execute.before</code> 会静默失效——没有报错、没有数据，排查成本极高。",
+            "因此结论是：结构未知的集成必须先观测再编码。"
+          ],
+          "answer": [
+            "<b>价值一：消除静默失败</b>。真实事件流给出确切事件名与字段结构（<code>sessionID</code>/<code>assistantMessageID</code>/<code>id</code>/<code>name</code>/<code>input</code>/<code>content</code>），以及哪些事件<b>不</b>带 <code>location</code>。这些无法从文档推断。",
+            "<b>价值二：暴露设计陷阱</b>。观测立刻发现三个文档看不出的问题：事件流是全局的（多 location 重复投递）、<code>session.execution.*</code> 不带 location、<code>process.execPath</code> 是 opencode 二进制。第三个尤其致命——第一次验证「完全没数据」才定位到它。",
+            "<b>价值三：三段式验证</b>。先看 <code>/api/plugin</code> 的 <code>state.status</code>（active/failed）确认加载，再用真实 prompt 产生 trace 文件，最后逐条核对事件序列。这比「代码看起来对」可靠得多。",
+            "<b>方法论</b>：①文档确定 API 形态；②未文档化的结构先用最小成本抓一手样本（本地 curl SSE、<code>opencode api</code>、日志）；③把猜测降级为兜底分支（例如 <code>session.tool.*</code> 且带 error → <code>PostToolUseFailure</code>）；④把结论固化成表驱动测试（<code>tests/opencode-mapping.test.ts</code>），让假设变成可回归的事实。",
+            "<b>风险与规避</b>：①样本可能遗漏低频路径（失败/中断）——因此这些写成多名字兜底而非删除；②上游可能改事件名——因此映射集中在 <code>mapping.ts</code>，变更成本是改一处；③抓取有副作用（创建会话、消耗 token）——用一次性 probe 会话并在验证后删除。"
+          ],
+          "followups": [
+            {
+              "q": "什么时候该停止观测、开始写代码？",
+              "a": "当「我要依赖的结构」已被样本覆盖时。本次覆盖了会话创建、用户输入入队、step 开始/结束、工具 called/success、文本与推理结束、执行成功；缺失的是失败与中断路径——这些写成显式集合加兜底分支，并标注「待真实场景验证」，而不是假装已确认。"
+            },
+            {
+              "q": "抓事件流时的安全注意事项？",
+              "a": "本机 service 需要认证（<code>service.json</code> 中的 password，basic auth）；样本可能包含用户 prompt 内容，应写临时文件、验证完删除、不提交仓库；对外分享前按与 <code>redactValue</code> 同等标准脱敏。"
+            }
+          ]
+        },
+        {
+          "id": "32",
+          "module": "架构取舍",
+          "difficulty": 5,
+          "tags": ["综合设计", "接入清单", "验收标准"],
+          "question": "设计题：接入一个全新客户端（例如 Cursor、Gemini CLI 或某个内部 Agent），请给出完整改动清单、风险点与验收标准。你如何验证「接入成功且没有引入回归」？",
+          "focus": ["端到端设计", "风险识别", "验收标准"],
+          "thinking": [
+            "先把接入拆成四个独立问题：①原生事件如何变成规范事件名；②如何接进写入管线（hook/插件/上报）；③如何在前端被识别（source → 平台 → 图标）；④如何证明没退化。",
+            "每一步都要能独立验证，否则会出现「数据写进去了但 UI 显示 generic」的半成品。",
+            "最后设计验收：不只看「有数据」，还要看「数据形状正确且不影响已有客户端」。"
+          ],
+          "answer": [
+            "<b>Step 1 语义映射</b>：把原生事件列成表，逐条映射到 17 个规范名；无法映射的放进 payload 并在文档说明取舍。产出物是映射表加客户端适配器。",
+            "<b>Step 2 接入写入</b>：薄转发——hook/插件只做协议转换与调用录制器。命令统一为 <code>ASTRO_HOME=… node …/trace-recorder.cjs --source=&lt;client&gt; [--quiet]</code>；必须带超时，失败绝不阻断宿主。产出物：客户端插件目录（hooks.json 或插件入口加 package.json）。",
+            "<b>Step 3 前端登记</b>：<code>PlatformId</code> → <code>platformDefinitions</code> → <code>normalizeSource()</code> 加 <code>sourceMeta</code> → <code>PlatformIcon</code>；若该客户端有特殊等待或子代理语义，再覆盖 <code>eventAtomMap</code>。",
+            "<b>Step 4 验证（无回归）</b>：①映射层表驱动测试覆盖「每个原生事件对应期望规范名」及未映射兜底；②安装/注册脚本测试（幂等、不污染已有配置）；③端到端跑真实会话，核对 trace 的<b>事件序列</b>（SessionStart → UserPromptSubmit → Reasoning → Pre/PostToolUse → AgentMessage → Stop）；④<code>pnpm test</code> 全绿；⑤<code>pnpm typecheck</code>、<code>pnpm build</code>、<code>pnpm build:native-plugins</code>、<code>pnpm validate:claude-hooks</code>。",
+            "<b>风险清单</b>：①事件名歧义；②stdout 协议（宿主是否解析 hook 输出，决定要不要 <code>--quiet</code>）；③时钟与顺序（靠 <code>findSessionTraceFile()</code> 归并）；④source 归一冲突（<code>normalizeSource()</code> 顺序敏感，新名可能误判）；⑤体积与成本（高频事件需聚合或过滤）；⑥合规（打包分发时 LICENSE 随包）。",
+            "<b>可度量验收</b>：一次真实会话产出 6 类以上规范名且顺序正确；连续运行不产生重复 SessionStart；<code>/api/health</code> 的 <code>traceFiles</code> 含新 source 目录；UI 按平台过滤正确；旧客户端展示无变化。",
+            "<b>容易漏的最后一步</b>：更新文档中的客户端清单与安装说明，并检查 <code>supportedClients</code>、安装器 <code>eventDefinitions</code>、<code>scripts/build-*-plugins.mjs</code> 是否需要登记——否则会出现「能跑但装不上」的半成品。"
+          ],
+          "followups": [
+            {
+              "q": "如果客户端提供的是长连接事件流（像 OpenCode）而不是 hook？",
+              "a": "写适配器订阅事件流，复用同一录制管线。三个必须处理的工程点：①归属去重（事件流通常全局，需按 location/session 判定）；②写入批量（高频事件要聚合，否则 IO 打满）；③生命周期（返回 cleanup，卸载时中止订阅并 flush 缓冲）。"
+            },
+            {
+              "q": "接入过程最容易返工的一步是哪个？",
+              "a": "Step 1 语义映射。它在最前面却依赖对协议的理解，一旦偏差后面全要改。降低返工的办法是把映射抽成纯函数加表驱动测试（如 <code>mapping.ts</code>），使修正只发生在一个文件里，并先用真实样本校准映射表。"
+            }
+          ]
+        }
+      ]
+    </script>
+
+    <script>
+      (function () {
+        const QUESTIONS = JSON.parse(
+          document.getElementById("astro-questions").textContent || "[]",
+        );
+        const DIFF_LABEL = { 1: "入门", 2: "初级", 3: "中级", 4: "高级", 5: "专家" };
+        const STORE_KEY = "astro-interview-progress-v1";
+        const state = {
+          query: "",
+          diffs: new Set(),
+          module: "all",
+          done: new Set(loadProgress()),
+        };
+
+        function loadProgress() {
+          try {
+            return JSON.parse(localStorage.getItem(STORE_KEY) || "[]");
+          } catch {
+            return [];
+          }
+        }
+        function saveProgress() {
+          try {
+            localStorage.setItem(STORE_KEY, JSON.stringify([...state.done]));
+          } catch {
+            /* ignore */
+          }
+        }
+
+        const list = document.getElementById("list");
+        const moduleNav = document.getElementById("moduleNav");
+        const searchInput = document.getElementById("search");
+        const progressBar = document.getElementById("progressBar");
+
+        const modules = [...new Set(QUESTIONS.map((q) => q.module))];
+
+        function escapeHtml(value) {
+          return String(value)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;");
+        }
+
+        function highlight(text, query) {
+          const safe = escapeHtml(text);
+          if (!query) return safe;
+          const needle = query.trim();
+          if (!needle) return safe;
+          const pattern = needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          return safe.replace(
+            new RegExp(pattern, "gi"),
+            (hit) => `<mark style="background:color-mix(in oklab, var(--brand) 26%, transparent);color:inherit;border-radius:4px">${hit}</mark>`,
+          );
+        }
+
+        const richTags = /^(<\/?(?:code|b)>)$/;
+
+        // Copy is authored in-repo and only allows inline <code>/<b>; every other
+        // character is escaped so a stray "<" can never break the page.
+        function renderRich(text, query) {
+          return String(text)
+            .split(/(<\/?(?:code|b)>)/g)
+            .map((part) => (richTags.test(part) ? part : highlight(part, query)))
+            .join("");
+        }
+
+        function matches(q) {
+          if (state.module !== "all" && q.module !== state.module) return false;
+          if (state.diffs.size && !state.diffs.has(q.difficulty)) return false;
+          const needle = state.query.trim().toLowerCase();
+          if (!needle) return true;
+          const haystack = [
+            q.question,
+            q.module,
+            (q.tags || []).join(" "),
+            q.thinking.join(" "),
+            q.answer.join(" "),
+            (q.focus || []).join(" "),
+            (q.followups || []).map((f) => f.q + " " + f.a).join(" "),
+          ]
+            .join(" ")
+            .toLowerCase();
+          return haystack.includes(needle);
+        }
+
+        function renderNav() {
+          const counts = {};
+          QUESTIONS.forEach((q) => {
+            counts[q.module] = (counts[q.module] || 0) + 1;
+          });
+          const items = [
+            `<button type="button" data-module="all" class="${
+              state.module === "all" ? "active" : ""
+            }">全部模块<span class="count">${QUESTIONS.length}</span></button>`,
+            ...modules.map(
+              (m) =>
+                `<button type="button" data-module="${escapeHtml(m)}" class="${
+                  state.module === m ? "active" : ""
+                }">${escapeHtml(m)}<span class="count">${counts[m] || 0}</span></button>`,
+            ),
+          ];
+          moduleNav.innerHTML = items.join("");
+          moduleNav.querySelectorAll("button").forEach((button) => {
+            button.addEventListener("click", () => {
+              state.module = button.dataset.module;
+              render();
+            });
+          });
+        }
+
+        function renderHero() {
+          const total = QUESTIONS.length;
+          const totalThinking = QUESTIONS.reduce(
+            (sum, q) => sum + q.thinking.length,
+            0,
+          );
+          const totalFollowups = QUESTIONS.reduce(
+            (sum, q) => sum + (q.followups || []).length,
+            0,
+          );
+          const experts = QUESTIONS.filter((q) => q.difficulty >= 4).length;
+          document.getElementById("heroStats").innerHTML = [
+            ["题目总数", total],
+            ["考察模块", modules.length],
+            ["专家/高级题", experts],
+            ["思路要点", totalThinking],
+            ["面试追问", totalFollowups],
+          ]
+            .map(
+              ([label, value]) =>
+                `<div class="hero-item"><b>${value}</b><span>${label}</span></div>`,
+            )
+            .join("");
+        }
+
+        function renderStats() {
+          const total = QUESTIONS.length;
+          const done = QUESTIONS.filter((q) => state.done.has(q.id)).length;
+          const rate = total ? Math.round((done / total) * 100) : 0;
+          document.getElementById("statDone").textContent = done;
+          document.getElementById("statTotal").textContent = total;
+          document.getElementById("statRate").textContent = rate + "%";
+          progressBar.style.width = rate + "%";
+        }
+
+        function renderCard(q) {
+          const open = state.done.has("open:" + q.id) ? true : false;
+          const done = state.done.has(q.id);
+          const badges = [
+            `<span class="badge">${escapeHtml(q.module)}</span>`,
+            `<span class="badge d${q.difficulty}"><span class="diff-label">难度</span>${DIFF_LABEL[q.difficulty]}</span>`,
+            ...(q.tags || []).map((t) => `<span class="badge">#${escapeHtml(t)}</span>`),
+          ].join("");
+          const codeBlock = q.code
+            ? `<div class="block"><h4>关键实现</h4><pre><button class="copy" type="button">复制</button><code>${escapeHtml(
+                q.code.text,
+              )}</code></pre></div>`
+            : "";
+          const follow = (q.followups || []).length
+            ? `<div class="block follow"><h4>面试追问</h4>${q.followups
+                .map(
+                  (f) =>
+                    `<div class="followup"><p class="fq">Q：${escapeHtml(f.q)}</p><p>A：${escapeHtml(
+                      f.a,
+                    )}</p></div>`,
+                )
+                .join("")}</div>`
+            : "";
+          return `
+            <article class="q ${open ? "open" : ""} ${done ? "done" : ""}" id="q-${q.id}" data-id="${q.id}">
+              <header class="q-head">
+                <span class="q-no">Q${q.id}</span>
+                <div>
+                  <div class="q-title">${renderRich(q.question, state.query)}</div>
+                  <div class="q-meta">${badges}</div>
+                </div>
+                <div class="q-toggle">
+                  <button class="done-toggle" type="button" aria-pressed="${done}" title="标记为已掌握">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m4 12.5 5 5L20 6.5"/></svg>
+                  </button>
+                  <span class="caret"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg></span>
+                </div>
+              </header>
+              <div class="q-body">
+                <div class="block">
+                  <h4>考察点</h4>
+                  <p>${(q.focus || []).map((item) => renderRich(item, state.query)).join(" · ")}</p>
+                </div>
+                <div class="block">
+                  <h4>解题思路</h4>
+                  <ul>${q.thinking.map((t) => `<li>${renderRich(t, state.query)}</li>`).join("")}</ul>
+                </div>
+                <div class="block answer">
+                  <h4>参考答案</h4>
+                  <ul>${q.answer.map((t) => `<li>${renderRich(t, state.query)}</li>`).join("")}</ul>
+                </div>
+                ${codeBlock}
+                ${follow}
+              </div>
+            </article>`;
+        }
+
+        function render() {
+          const visible = QUESTIONS.filter(matches);
+          list.innerHTML = visible.length
+            ? visible.map(renderCard).join("")
+            : `<div class="empty">没有匹配的题目，换个关键词或清除筛选试试。</div>`;
+          renderNav();
+          renderStats();
+          bindCards();
+        }
+
+        function bindCards() {
+          list.querySelectorAll(".q").forEach((card) => {
+            const id = card.dataset.id;
+            const head = card.querySelector(".q-head");
+            const doneBtn = card.querySelector(".done-toggle");
+            head.addEventListener("click", (event) => {
+              if (event.target.closest(".done-toggle")) return;
+              toggleCard(card);
+            });
+            doneBtn.addEventListener("click", (event) => {
+              event.stopPropagation();
+              if (state.done.has(id)) state.done.delete(id);
+              else state.done.add(id);
+              saveProgress();
+              render();
+            });
+          });
+          list.querySelectorAll(".copy").forEach((button) => {
+            button.addEventListener("click", async (event) => {
+              event.stopPropagation();
+              const code = button.parentElement.querySelector("code").textContent;
+              try {
+                await navigator.clipboard.writeText(code);
+                button.textContent = "已复制";
+                setTimeout(() => (button.textContent = "复制"), 1400);
+              } catch {
+                button.textContent = "复制失败";
+              }
+            });
+          });
+        }
+
+        function toggleCard(card, force) {
+          const open = force === undefined ? !card.classList.contains("open") : force;
+          card.classList.toggle("open", open);
+          const id = card.dataset.id;
+          const key = "open:" + id;
+          if (open) state.done.add(key);
+          else state.done.delete(key);
+          saveProgress();
+          const url = "#q-" + id;
+          if (open && history.replaceState) history.replaceState(null, "", url);
+        }
+
+        searchInput.addEventListener("input", (event) => {
+          state.query = event.target.value;
+          render();
+        });
+
+        document.getElementById("difficultyFilter").addEventListener("click", (event) => {
+          const chip = event.target.closest(".chip");
+          if (!chip) return;
+          const value = Number(chip.dataset.diff);
+          if (state.diffs.has(value)) state.diffs.delete(value);
+          else state.diffs.add(value);
+          chip.setAttribute("aria-pressed", state.diffs.has(value) ? "true" : "false");
+          render();
+        });
+
+        document.getElementById("expandAll").addEventListener("click", () => {
+          state.done = new Set([...state.done].filter((k) => !String(k).startsWith("open:")));
+          QUESTIONS.filter(matches).forEach((q) => state.done.add("open:" + q.id));
+          saveProgress();
+          render();
+        });
+
+        document.getElementById("collapseAll").addEventListener("click", () => {
+          state.done = new Set([...state.done].filter((k) => !String(k).startsWith("open:")));
+          saveProgress();
+          render();
+        });
+
+        const themeToggle = document.getElementById("themeToggle");
+        const savedTheme = (() => {
+          try {
+            return localStorage.getItem("astro-theme");
+          } catch {
+            return null;
+          }
+        })();
+        const prefersLight =
+          window.matchMedia &&
+          window.matchMedia("(prefers-color-scheme: light)").matches;
+        document.documentElement.dataset.theme = savedTheme || (prefersLight ? "light" : "dark");
+
+        themeToggle.addEventListener("click", () => {
+          const next =
+            document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+          document.documentElement.dataset.theme = next;
+          try {
+            localStorage.setItem("astro-theme", next);
+          } catch {
+            /* ignore */
+          }
+        });
+
+        document.getElementById("printBtn").addEventListener("click", () => {
+          state.done = new Set([
+            ...state.done,
+            ...QUESTIONS.map((q) => "open:" + q.id),
+          ]);
+          render();
+          setTimeout(() => window.print(), 120);
+        });
+
+        document.addEventListener("keydown", (event) => {
+          const typing =
+            event.target.tagName === "INPUT" ||
+            event.target.tagName === "TEXTAREA";
+          if (event.key === "/" && !typing) {
+            event.preventDefault();
+            searchInput.focus();
+            searchInput.select();
+            return;
+          }
+          if (event.key === "Escape") {
+            searchInput.value = "";
+            state.query = "";
+            state.diffs.clear();
+            state.module = "all";
+            document
+              .querySelectorAll("#difficultyFilter .chip")
+              .forEach((chip) => chip.setAttribute("aria-pressed", "false"));
+            render();
+            return;
+          }
+          if (typing) return;
+          if (event.key === "e") document.getElementById("expandAll").click();
+          if (event.key === "c") document.getElementById("collapseAll").click();
+        });
+
+        const hashMatch = /^#q-(\d+)$/.exec(window.location.hash);
+        renderHero();
+        render();
+        if (hashMatch) {
+          const card = document.getElementById("q-" + hashMatch[1]);
+          if (card) {
+            toggleCard(card, true);
+            setTimeout(
+              () => card.scrollIntoView({ block: "start", behavior: "smooth" }),
+              60,
+            );
+          }
+        }
+        window.addEventListener("hashchange", () => {
+          const match = /^#q-(\d+)$/.exec(window.location.hash);
+          if (!match) return;
+          const card = document.getElementById("q-" + match[1]);
+          if (card) toggleCard(card, true);
+        });
+      })();
+    </script>
+  </body>
+</html>
