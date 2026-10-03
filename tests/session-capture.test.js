@@ -23,7 +23,9 @@ function captureHook(environment, eventName, source = "trae") {
     }),
     encoding: "utf8",
     env: { ...process.env, ...environment, ASTRO_AUTO_OPEN: "0" },
-    timeout: 5000,
+    // Generous enough to survive a loaded machine; the recorder is synchronous
+    // and normally finishes in well under a second.
+    timeout: 20000,
   });
 }
 

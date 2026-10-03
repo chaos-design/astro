@@ -28,7 +28,7 @@ const require = createRequire(import.meta.url);
 const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const pluginSourceDir = join(packageDir, "opencode-plugin");
 const runtimeDependencies = ["dotenv", "yaml"];
-const pluginFiles = ["index.ts", "mapping.ts", "package.json"];
+const pluginFiles = ["index.ts", "mapping.ts", "claim.ts", "package.json", "README.md"];
 
 export function getOpenCodeConfigDir(openCodeHome = homedir()) {
   const configured = process.env.XDG_CONFIG_HOME;

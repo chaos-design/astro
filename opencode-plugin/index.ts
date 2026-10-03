@@ -1,7 +1,9 @@
 import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
-import { dirname, join } from "node:path";
+import { homedir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { claimSession } from "./claim";
 import {
   isTerminalEventName,
   mapOpenCodeEvent,
@@ -9,6 +11,7 @@ import {
 } from "./mapping";
 
 type AstroRecorder = {
+  resolveAstroHome?: (environment?: NodeJS.ProcessEnv) => string;
   appendTraceEvents?: (
     payloads: unknown[],
     environment?: NodeJS.ProcessEnv,
@@ -30,6 +33,28 @@ const recorderCandidates = [
 
 const source = "opencode";
 const flushIntervalMs = 150;
+
+/**
+ * A session is recorded by exactly one plugin instance. OpenCode can keep an
+ * event subscription alive per location across configuration reloads, so the
+ * same session can reach several instances; the first instance to create the
+ * claim file owns recording for that session.
+ */
+function resolveAstroHome(): string {
+  const fromRecorder = loaded?.module.resolveAstroHome?.(process.env);
+  if (fromRecorder) {
+    return fromRecorder;
+  }
+  // Mirrors plugin/storage-paths.cjs so claims still work when the recorder
+  // module cannot be required in-process and recording falls back to the CLI.
+  const configured = process.env.ASTRO_HOME || process.env.AOT_HOME;
+  if (configured) {
+    return configured.startsWith("~/")
+      ? join(homedir(), configured.slice(2))
+      : resolve(configured);
+  }
+  return join(homedir(), ".astrox");
+}
 
 function loadRecorder(): { module: AstroRecorder; file: string } | null {
   const requireModule = createRequire(import.meta.url);
@@ -64,7 +89,9 @@ export default {
   id: "astro-capture",
   async setup(ctx: any) {
     const location = ctx?.location?.directory || process.cwd();
-    const seenSessions = new Set<string>();
+    const ownedSessions = new Set<string>();
+    const foreignSessions = new Set<string>();
+    const startedSessions = new Set<string>();
     const sessionDirs = new Map<string, string>();
     // A declined tool reports both session.step.failed and
     // session.execution.interrupted; only the first terminal event is kept.
@@ -120,6 +147,19 @@ export default {
       if (!eventDirectory || eventDirectory !== location) {
         return;
       }
+      if (foreignSessions.has(sessionId)) {
+        return;
+      }
+      if (!ownedSessions.has(sessionId)) {
+        if (claimSession(sessionId, { home: resolveAstroHome(), source })) {
+          ownedSessions.add(sessionId);
+        } else {
+          // Another live instance owns this session.
+          foreignSessions.add(sessionId);
+          return;
+        }
+      }
+
       const callId = event?.data?.id;
       const toolKey = callId ? `${sessionId}:${callId}` : "";
       if (event?.type === "session.tool.input.started" && callId) {
@@ -131,8 +171,8 @@ export default {
       if (!payloads.length) {
         return;
       }
-      if (!seenSessions.has(sessionId)) {
-        seenSessions.add(sessionId);
+      if (!startedSessions.has(sessionId)) {
+        startedSessions.add(sessionId);
         enqueue({
           eventName: "SessionStart",
           sessionId,
@@ -153,8 +193,11 @@ export default {
           lastTerminal.delete(sessionId);
         }
         enqueue({ sessionId, cwd: eventDirectory, ...payload });
-        if (toolKey && (payload.eventName === "PostToolUse" ||
-            payload.eventName === "PostToolUseFailure")) {
+        if (
+          toolKey &&
+          (payload.eventName === "PostToolUse" ||
+            payload.eventName === "PostToolUseFailure")
+        ) {
           toolNames.delete(toolKey);
         }
       }
