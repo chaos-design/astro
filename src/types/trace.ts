@@ -187,6 +187,7 @@ export type PlatformId =
   | "claude"
   | "codex"
   | "deepseek"
+  | "opencode"
   | "trae"
   | "workbuddy";
 

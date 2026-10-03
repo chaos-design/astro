@@ -17,6 +17,7 @@
     "build:plugin": "pnpm build && pnpm build:native-plugins && node scripts/build-plugin.mjs",
     "dev": "vite",
     "install-hooks": "node scripts/install-hooks.mjs",
+    "install-opencode-plugin": "node scripts/install-opencode-plugin.mjs",
     "install-plugins": "node scripts/install-plugins.mjs",
     "import-codex": "node bin/astro.mjs import-codex",
     "start": "node server/server.mjs",

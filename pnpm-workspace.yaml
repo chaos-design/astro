@@ -1,9 +1,5 @@
-packages:
-  - opencode-plugin
-
 allowBuilds:
   msgpackr-extract: set this to true or false
-
 minimumReleaseAgeExclude:
   - '@types/node@26.5.0'
   - lucide-react@1.42.0

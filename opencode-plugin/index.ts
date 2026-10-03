@@ -1,156 +1,155 @@
-import { Plugin } from "@opencode/plugin"
-import { spawn } from "node:child_process"
-import { dirname, join } from "node:path"
-import { fileURLToPath } from "node:url"
+import { spawn } from "node:child_process";
+import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { mapOpenCodeEvent, type AstroPayload } from "./mapping";
 
-const recorder = join(
-  dirname(fileURLToPath(import.meta.url)),
-  "..",
-  "plugin",
-  "trace-recorder.cjs",
-)
+type AstroRecorder = {
+  appendTraceEvents?: (
+    payloads: unknown[],
+    environment?: NodeJS.ProcessEnv,
+    options?: { source?: string },
+  ) => unknown[];
+  launchDashboardForEvents?: (
+    events: unknown[],
+    environment?: NodeJS.ProcessEnv,
+  ) => unknown;
+};
 
-function send(payload: Record<string, unknown>) {
-  try {
-    const child = spawn("node", [recorder, "--source=opencode", "--quiet"], {
-      stdio: ["pipe", "ignore", "pipe"],
-    })
-    child.stdin.on("error", () => {})
-    child.stderr.on("data", () => {})
-    child.stdin.end(JSON.stringify(payload))
-  } catch {
-    // Observability must never interrupt the agent execution path.
+// The plugin ships next to the canonical recorder in the ASTRO repository, so
+// the recorder is loaded in-process when present and the CLI is the fallback for
+// installed copies that keep it one level deeper.
+const recorderCandidates = [
+  join(dirname(fileURLToPath(import.meta.url)), "..", "plugin", "trace-recorder.cjs"),
+  join(dirname(fileURLToPath(import.meta.url)), "plugin", "trace-recorder.cjs"),
+];
+
+const source = "opencode";
+const flushIntervalMs = 150;
+
+function loadRecorder(): { module: AstroRecorder; file: string } | null {
+  const requireModule = createRequire(import.meta.url);
+  for (const file of recorderCandidates) {
+    try {
+      return { module: requireModule(file), file };
+    } catch {
+      // Try the next layout.
+    }
+  }
+  return null;
+}
+
+const loaded = loadRecorder();
+
+function spawnRecord(file: string, payloads: AstroPayload[]) {
+  for (const payload of payloads) {
+    try {
+      const child = spawn("node", [file, `--source=${source}`, "--quiet"], {
+        stdio: ["pipe", "ignore", "pipe"],
+      });
+      child.stdin.on("error", () => {});
+      child.stderr.on("data", () => {});
+      child.stdin.end(JSON.stringify(payload));
+    } catch {
+      // Observability must never interrupt the agent execution path.
+    }
   }
 }
 
-export default Plugin.define({
+export default {
   id: "astro-capture",
-  async setup(ctx) {
-    const location = ctx.location.directory
-    const seenSessions = new Set<string>()
-    const sessionDirs = new Map<string, string>()
+  async setup(ctx: any) {
+    const location = ctx?.location?.directory || process.cwd();
+    const seenSessions = new Set<string>();
+    const sessionDirs = new Map<string, string>();
+    let queue: AstroPayload[] = [];
+    let timer: ReturnType<typeof setTimeout> | undefined;
 
-    const eventDirectory = (event: any): string => {
-      const direct =
+    const flush = () => {
+      timer = undefined;
+      if (!queue.length) {
+        return;
+      }
+      const batch = queue;
+      queue = [];
+      if (loaded?.module.appendTraceEvents) {
+        try {
+          const events = loaded.module.appendTraceEvents(batch, process.env, {
+            source,
+          });
+          loaded.module.launchDashboardForEvents?.(events, process.env);
+          return;
+        } catch {
+          // Fall through to the CLI path when in-process recording fails.
+        }
+      }
+      if (loaded) {
+        spawnRecord(loaded.file, batch);
+      }
+    };
+
+    const enqueue = (payload: AstroPayload) => {
+      queue.push(payload);
+      timer ??= setTimeout(flush, flushIntervalMs);
+    };
+
+    const emit = (event: any) => {
+      const sessionId = event?.data?.sessionID;
+      if (!sessionId) {
+        return;
+      }
+      const eventDirectory =
         event?.location?.directory ||
         event?.data?.location?.directory ||
-        event?.data?.info?.location?.directory ||
-        ""
-      if (direct) {
-        return direct
+        sessionDirs.get(sessionId) ||
+        "";
+      if (eventDirectory) {
+        sessionDirs.set(sessionId, eventDirectory);
       }
-      const sessionId = event?.data?.sessionID
-      return (sessionId && sessionDirs.get(sessionId)) || ""
-    }
-
-    const emit = (
-      event: any,
-      eventName: string,
-      extra: Record<string, unknown> = {},
-    ) => {
-      const sessionId = event?.data?.sessionID
-      if (!sessionId) {
-        return
+      // The event stream is global and every location runs a plugin instance,
+      // so only the instance that owns this session may record it.
+      if (!eventDirectory || eventDirectory !== location) {
+        return;
       }
-      const directory = eventDirectory(event)
-      if (directory) {
-        sessionDirs.set(sessionId, directory)
-      }
-      // The event stream is global and every location runs a plugin instance;
-      // only the instance that owns this session's directory may record it.
-      if (directory && directory !== location) {
-        return
-      }
-      if (!directory && sessionDirs.has(sessionId) === false) {
-        return
+      const payloads = mapOpenCodeEvent(event);
+      if (!payloads.length) {
+        return;
       }
       if (!seenSessions.has(sessionId)) {
-        seenSessions.add(sessionId)
-        send({ eventName: "SessionStart", sessionId, cwd: directory })
+        seenSessions.add(sessionId);
+        enqueue({
+          eventName: "SessionStart",
+          sessionId,
+          cwd: eventDirectory,
+        });
       }
-      send({ eventName, sessionId, cwd: directory, ...extra })
-    }
+      for (const payload of payloads) {
+        if (payload.eventName === "SessionStart") {
+          continue;
+        }
+        enqueue({ sessionId, cwd: eventDirectory, ...payload });
+      }
+    };
 
-    const controller = new AbortController()
+    const controller = new AbortController();
     void (async () => {
       try {
         for await (const event of ctx.event.subscribe({
           signal: controller.signal,
         }) as AsyncIterable<any>) {
-          const type = event?.type
-          const data = event?.data ?? {}
-          switch (type) {
-            case "session.created": {
-              const sessionId = data?.sessionID
-              if (!sessionId) break
-              const directory = eventDirectory(event)
-              if (directory) sessionDirs.set(sessionId, directory)
-              if (directory && directory !== location) break
-              if (!seenSessions.has(sessionId)) {
-                seenSessions.add(sessionId)
-                send({ eventName: "SessionStart", sessionId, cwd: directory })
-              }
-              break
-            }
-            case "session.inbox.enqueued":
-              if (data?.item?.type === "user") {
-                emit(event, "UserPromptSubmit", {
-                  prompt: data?.item?.payload?.text,
-                })
-              }
-              break
-            case "session.step.started":
-              emit(event, "Notification", {
-                message: `step started (${data?.model?.id ?? "unknown"})`,
-              })
-              break
-            case "session.tool.called":
-              emit(event, "PreToolUse", {
-                toolUseId: data?.id,
-                toolName: data?.name,
-                tool_input: data?.input,
-              })
-              break
-            case "session.tool.success":
-              emit(event, "PostToolUse", {
-                toolUseId: data?.id,
-                tool_response: data?.content,
-              })
-              break
-            case "session.tool.error":
-            case "session.tool.failed":
-              emit(event, "PostToolUseFailure", {
-                toolUseId: data?.id,
-                tool_response: data?.error ?? data?.content,
-                status: "failed",
-              })
-              break
-            case "session.reasoning.ended":
-              emit(event, "Reasoning", { message: data?.text })
-              break
-            case "session.text.ended":
-              emit(event, "AgentMessage", { message: data?.text })
-              break
-            case "session.execution.succeeded":
-              emit(event, "Stop")
-              break
-            case "session.execution.failed":
-              emit(event, "StopFailure", { status: "failed" })
-              break
-            case "session.execution.interrupted":
-            case "session.execution.aborted":
-              emit(event, "Interrupt")
-              break
-            case "session.deleted":
-              emit(event, "SessionEnd")
-              break
-          }
+          emit(event);
         }
       } catch {
         // Stream closed or plugin unloaded.
       }
-    })()
+    })();
 
-    return () => controller.abort()
+    return () => {
+      controller.abort();
+      if (timer) {
+        clearTimeout(timer);
+      }
+      flush();
+    };
   },
-})
+};

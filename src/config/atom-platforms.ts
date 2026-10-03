@@ -570,6 +570,13 @@ const platformDefinitions: Record<PlatformId, PlatformDefinition> = {
     runtime: "DeepSeek Harness",
     eventAtomMap: defaultEventAtomMap,
   },
+  opencode: {
+    id: "opencode",
+    label: "OpenCode",
+    source: "opencode",
+    runtime: "OpenCode coding runtime",
+    eventAtomMap: defaultEventAtomMap,
+  },
   trae: {
     id: "trae",
     label: "Trae",
