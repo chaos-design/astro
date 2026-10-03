@@ -15,6 +15,10 @@ use Node.js ES modules or CommonJS according to their existing file extension.
 - `server/`: HTTP, SSE, static hosting, and JSONL repositories.
 - `plugin/`: canonical recorder, adapters, storage paths, and browser client.
 - `*-plugin/`: portable client-specific plugin packages.
+- `opencode-plugin/`: zero-dependency OpenCode plugin installed globally by
+  `scripts/install-opencode-plugin.mjs`; `mapping.ts` maps OpenCode server
+  events onto canonical event names, `claim.ts` guarantees one recorder per
+  session.
 - `scripts/`: installation, migration, validation, and packaging scripts.
 - `tests/`: Node test runner suites.
 - `docs/`: English and Chinese architecture, protocol, operation, and user docs.
@@ -48,6 +52,8 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   display keys.
 - `Notification` is displayed as `user.question` (`AskUserQuestion`) in the
   event log.
+- `PreCompact` / `PostCompact` cover context compaction for every client that
+  reports it; streaming compaction deltas are never recorded.
 
 ## Validation
 

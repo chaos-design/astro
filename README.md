@@ -8,8 +8,8 @@ web framework.
 
 Local-first runtime observability, search, and replay for coding agents.
 ASTRO gives Trae, Claude Code, Codex, DeepSeek Harness, WorkBuddy / CodeBuddy
-Code, browser extensions, and custom clients one versioned event protocol and
-one execution console without sending trace data off the machine.
+Code, OpenCode, browser extensions, and custom clients one versioned event
+protocol and one execution console without sending trace data off the machine.
 
 ![ASTRO desktop console](docs/assets/astro-desktop.png)
 
@@ -112,6 +112,7 @@ schedule tools, approve permissions, or alter agent decisions.
 | Codex | Yes | Active and archived rollout JSONL | `~/.astrox/codex/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` | Native plugin, direct hooks, and adapter |
 | DeepSeek Harness | Yes | JSON/JSONL UI import | `~/.astrox/deepseek/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` | Native `dsh` bundle |
 | WorkBuddy / CodeBuddy Code | Yes | JSON/JSONL UI import | `~/.astrox/workbuddy/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` | Native plugin or direct hooks |
+| OpenCode | Yes | Native events only | `~/.astrox/opencode/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` | Global OpenCode plugin |
 | Browser / extension | Yes | JSON/JSONL UI import | `~/.astrox/browser/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` | Dependency-free ES module |
 | Custom client | Yes | CLI or JSON/JSONL UI import | `~/.astrox/<source>/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` | HTTP API or CLI |
 
@@ -161,6 +162,7 @@ Direct hook installation starts and opens the dashboard automatically.
 | Claude Code | Native `claude-plugin/` | User, project, or local | `~/.astrox/claude/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` |
 | DeepSeek Harness | `deepseek-plugin/` bundle | Profile | `~/.astrox/deepseek/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` |
 | WorkBuddy / CodeBuddy Code | Native `workbuddy-plugin/` | User, project, or local | `~/.astrox/workbuddy/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` |
+| OpenCode | Global plugin (`opencode-plugin/`) | User | `~/.astrox/opencode/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` |
 | Trae | Direct project hooks | Project | `~/.astrox/trae/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` |
 | Browser / extension | Browser SDK | Client-defined | `~/.astrox/browser/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` |
 | Custom agent | HTTP API or CLI | Client-defined | `~/.astrox/<source>/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` |
@@ -233,6 +235,23 @@ codebuddy plugin install astro@astro-local --scope user
 See the [WorkBuddy plugin guide](workbuddy-plugin/README.md) for the supported
 Hook events and local data layout. The plugin preserves permission,
 elicitation, and rate-limit signals as waiting states.
+
+### OpenCode plugin
+
+OpenCode has no hook protocol, so ASTRO ships a global OpenCode plugin that
+subscribes to the server event stream:
+
+```bash
+pnpm run install-opencode-plugin
+```
+
+The plugin is copied to `~/.config/opencode/plugins/astro-capture/`, which
+OpenCode discovers automatically, so no `opencode.json` entry is required.
+Re-running the command replaces the installed copy, and it removes a stale
+absolute-path entry from `opencode.json` if one exists. Start a new session or
+run `opencode service restart` to activate it. See the
+[OpenCode plugin guide](opencode-plugin/README.md) for the event mapping and
+removal steps.
 
 ### DeepSeek Harness plugin
 

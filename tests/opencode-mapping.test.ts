@@ -212,11 +212,41 @@ test("terminal event names are recognizable for deduplication", () => {
   assert.equal(isTerminalEventName("PreToolUse"), false);
 });
 
+test("compaction maps to the canonical compact events", () => {
+  assert.deepEqual(
+    mapOpenCodeEvent({
+      type: "session.compaction.started",
+      data: { sessionID: session, reason: "manual", inputID: "msg_1" },
+    }),
+    [{ eventName: "PreCompact", reason: "manual" }],
+  );
+  const ended = mapOpenCodeEvent({
+    type: "session.compaction.ended",
+    data: { sessionID: session, reason: "manual", text: "## Objective" },
+  });
+  assert.equal(ended[0]?.eventName, "PostCompact");
+  assert.equal(ended[0]?.message, "## Objective");
+
+  const failed = mapOpenCodeEvent({
+    type: "session.compaction.failed",
+    data: { sessionID: session, error: { type: "provider", message: "500" } },
+  });
+  assert.equal(failed[0]?.eventName, "PostCompact");
+  assert.equal(failed[0]?.status, "failed");
+
+  // Streaming deltas carry no trajectory meaning.
+  assert.deepEqual(
+    mapOpenCodeEvent({
+      type: "session.compaction.delta",
+      data: { sessionID: session, text: "##" },
+    }),
+    [],
+  );
+});
+
 test("events with unverified payloads stay unmapped", () => {
   for (const type of [
     "session.idle",
-    "session.compaction.started",
-    "session.compaction.ended",
     "session.instructions.updated",
     "session.inbox.delivered",
     "session.message.content.updated",

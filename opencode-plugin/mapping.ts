@@ -211,12 +211,35 @@ export function mapOpenCodeEvent(
     ];
   }
 
+  if (type === "session.compaction.started") {
+    return [{ eventName: "PreCompact", reason: data?.reason }];
+  }
+
+  if (type === "session.compaction.ended") {
+    return [
+      {
+        eventName: "PostCompact",
+        reason: data?.reason,
+        message: data?.text,
+      },
+    ];
+  }
+
+  if (type === "session.compaction.failed") {
+    return [
+      {
+        eventName: "PostCompact",
+        status: "failed",
+        error: describeError(data?.error),
+      },
+    ];
+  }
+
   if (type === "session.deleted") {
     return [{ eventName: "SessionEnd" }];
   }
 
-  // session.idle and session.compaction.* exist but their payload shape is not
-  // verified yet; mapping them from guesswork would invent semantics, so they
-  // stay unmapped until observed on a real stream.
+  // session.idle exists but its firing cadence is unverified: treating it as a
+  // terminal event would split a long run, so it stays unmapped.
   return [];
 }

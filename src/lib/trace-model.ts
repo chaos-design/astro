@@ -52,6 +52,8 @@ export const eventMeta: Record<string, EventMeta> = {
   StopFailure: { label: "Response failure", tone: "failed", lane: 0 },
   Elicitation: { label: "Input requested", tone: "signal", lane: 2 },
   ElicitationResult: { label: "Input received", tone: "signal", lane: 2 },
+  PreCompact: { label: "Compacting", tone: "reasoning", lane: 2 },
+  PostCompact: { label: "Compacted", tone: "agent", lane: 2 },
   Interrupt: { label: "Interrupted", tone: "failed", lane: 0 },
   Unknown: { label: "Event", tone: "unknown", lane: 2 },
 };

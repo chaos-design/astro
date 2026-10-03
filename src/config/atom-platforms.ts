@@ -539,6 +539,8 @@ const defaultEventAtomMap: Record<string, string> = {
   PermissionDenied: "user-question",
   Elicitation: "user-question",
   ElicitationResult: "user-question",
+  PreCompact: "trace-append",
+  PostCompact: "trace-append",
   Notification: "trace-append",
   SubagentStart: "handoff",
   SubagentStop: "agent-result",
