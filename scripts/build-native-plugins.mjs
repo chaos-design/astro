@@ -33,6 +33,11 @@ const pluginDefinitions = [
     manifest: join(".codebuddy-plugin", "plugin.json"),
   },
   {
+    directory: "zcode-plugin",
+    manifest: join(".zcode-plugin", "plugin.json"),
+    extraRuntimeFiles: ["zcode-adapter.cjs"],
+  },
+  {
     directory: "deepseek-plugin",
     manifest: "package.json",
   },
@@ -85,7 +90,7 @@ for (const definition of pluginDefinitions) {
   const manifest = JSON.parse(readFileSync(manifestFile, "utf8"));
 
   mkdirSync(runtimeDir, { recursive: true });
-  for (const file of runtimeFiles) {
+  for (const file of [...runtimeFiles, ...(definition.extraRuntimeFiles ?? [])]) {
     copyFileSync(join(projectDir, "plugin", file), join(runtimeDir, file));
   }
   copyRuntimeDependencies(runtimeDir);

@@ -65,6 +65,7 @@ export const sourceMeta = {
   deepseek: { label: "DEEPSEEK", tone: "cyan" },
   browser: { label: "BROWSER", tone: "violet" },
   opencode: { label: "OPENCODE", tone: "violet" },
+  zcode: { label: "ZCODE", tone: "violet" },
   workbuddy: { label: "WORKBUDDY", tone: "lime" },
   generic: { label: "GENERIC", tone: "neutral" },
 };
@@ -88,6 +89,7 @@ function normalizeSource(value: unknown, fallback = "generic") {
   }
   if (source.includes("trae")) return "trae";
   if (source.includes("opencode")) return "opencode";
+  if (source.includes("zcode")) return "zcode";
   if (
     source.includes("browser") ||
     source.includes("chrome") ||

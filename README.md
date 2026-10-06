@@ -8,8 +8,9 @@ web framework.
 
 Local-first runtime observability, search, and replay for coding agents.
 ASTRO gives Trae, Claude Code, Codex, DeepSeek Harness, WorkBuddy / CodeBuddy
-Code, OpenCode, browser extensions, and custom clients one versioned event
-protocol and one execution console without sending trace data off the machine.
+Code, OpenCode, ZCode, browser extensions, and custom clients one versioned
+event protocol and one execution console without sending trace data off the
+machine.
 
 ![ASTRO desktop console](docs/assets/astro-desktop.png)
 
@@ -113,6 +114,7 @@ schedule tools, approve permissions, or alter agent decisions.
 | DeepSeek Harness | Yes | JSON/JSONL UI import | `~/.astrox/deepseek/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` | Native `dsh` bundle |
 | WorkBuddy / CodeBuddy Code | Yes | JSON/JSONL UI import | `~/.astrox/workbuddy/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` | Native plugin or direct hooks |
 | OpenCode | Yes | Native events only | `~/.astrox/opencode/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` | Global OpenCode plugin |
+| ZCode | Yes | Native events only | `~/.astrox/zcode/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` | Native ZCode plugin |
 | Browser / extension | Yes | JSON/JSONL UI import | `~/.astrox/browser/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` | Dependency-free ES module |
 | Custom client | Yes | CLI or JSON/JSONL UI import | `~/.astrox/<source>/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` | HTTP API or CLI |
 
@@ -163,6 +165,7 @@ Direct hook installation starts and opens the dashboard automatically.
 | DeepSeek Harness | `deepseek-plugin/` bundle | Profile | `~/.astrox/deepseek/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` |
 | WorkBuddy / CodeBuddy Code | Native `workbuddy-plugin/` | User, project, or local | `~/.astrox/workbuddy/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` |
 | OpenCode | Global plugin (`opencode-plugin/`) | User | `~/.astrox/opencode/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` |
+| ZCode | Native `zcode-plugin/` | User | `~/.astrox/zcode/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` |
 | Trae | Direct project hooks | Project | `~/.astrox/trae/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` |
 | Browser / extension | Browser SDK | Client-defined | `~/.astrox/browser/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` |
 | Custom agent | HTTP API or CLI | Client-defined | `~/.astrox/<source>/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` |
@@ -252,6 +255,27 @@ absolute-path entry from `opencode.json` if one exists. Start a new session or
 run `opencode service restart` to activate it. See the
 [OpenCode plugin guide](opencode-plugin/README.md) for the event mapping and
 removal steps.
+
+### ZCode plugin
+
+ZCode exposes exactly seven hook events, so ASTRO ships a native ZCode plugin
+that registers all of them and normalizes the payloads through
+`plugin/zcode-adapter.cjs`:
+
+```bash
+pnpm build
+pnpm build:native-plugins
+pnpm run install-zcode-plugin
+```
+
+The installer adds `zcode-plugin/` as a local marketplace, installs
+`astro@astro-zcode-local`, and copies the shared ASTRO skill into
+`~/.agents/skills`, which ZCode imports by reference instead of caching a
+plugin-internal copy. Without the `zcode` CLI, add the `zcode-plugin/`
+directory under Plugin Marketplace → Add → Add Plugin Marketplace and install
+the ASTRO entry manually. Start a new session to activate it. See the
+[ZCode plugin guide](zcode-plugin/README.md) for the hook surface and removal
+steps.
 
 ### DeepSeek Harness plugin
 

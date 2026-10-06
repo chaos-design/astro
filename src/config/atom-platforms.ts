@@ -579,6 +579,13 @@ const platformDefinitions: Record<PlatformId, PlatformDefinition> = {
     runtime: "OpenCode coding runtime",
     eventAtomMap: defaultEventAtomMap,
   },
+  zcode: {
+    id: "zcode",
+    label: "ZCode",
+    source: "zcode",
+    runtime: "ZCode coding runtime",
+    eventAtomMap: defaultEventAtomMap,
+  },
   trae: {
     id: "trae",
     label: "Trae",

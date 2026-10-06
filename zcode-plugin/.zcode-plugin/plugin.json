@@ -1,0 +1,18 @@
+{
+  "name": "astro",
+  "displayName": "ASTRO",
+  "version": "0.0.1",
+  "description": "ASTRO captures ZCode lifecycle events locally for search, inspection, and replay.",
+  "author": {
+    "name": "ASTRO Contributors"
+  },
+  "keywords": [
+    "zcode",
+    "agent-state",
+    "observability",
+    "tracing",
+    "hooks",
+    "replay"
+  ],
+  "hooks": "./hooks/hooks.json"
+}

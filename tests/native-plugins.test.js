@@ -34,30 +34,39 @@ test("native plugin manifests and marketplaces reference local packages", () => 
   const workbuddyManifest = readJson(
     "workbuddy-plugin/.codebuddy-plugin/plugin.json",
   );
+  const zcodeManifest = readJson(
+    "zcode-plugin/.zcode-plugin/plugin.json",
+  );
   const deepseekManifest = readJson("deepseek-plugin/package.json");
   const codexMarketplace = readJson(".agents/plugins/marketplace.json");
   const claudeMarketplace = readJson(".claude-plugin/marketplace.json");
   const workbuddyMarketplace = readJson(
     ".codebuddy-plugin/marketplace.json",
   );
+  const zcodeMarketplace = readJson("zcode-plugin/marketplace.json");
 
   assert.equal(codexManifest.name, "astro");
   assert.equal(claudeManifest.name, "astro");
   assert.equal(workbuddyManifest.name, "astro");
+  assert.equal(zcodeManifest.name, "astro");
   assert.equal(deepseekManifest.name, "dsh-astro-plugin");
   assert.equal(codexManifest.version, packageMetadata.version);
   assert.equal(claudeManifest.version, packageMetadata.version);
   assert.equal(workbuddyManifest.version, packageMetadata.version);
+  assert.equal(zcodeManifest.version, packageMetadata.version);
   assert.equal(deepseekManifest.version, packageMetadata.version);
   assert.equal(codexManifest.hooks, "./hooks/hooks.json");
   assert.equal(claudeManifest.hooks, "./hooks/hooks.json");
   assert.equal(workbuddyManifest.hooks, "./hooks/hooks.json");
+  assert.equal(zcodeManifest.hooks, "./hooks/hooks.json");
   assert.equal(codexMarketplace.name, "astro-local");
   assert.equal(claudeMarketplace.name, "astro-local");
   assert.equal(workbuddyMarketplace.name, "astro-local");
+  assert.equal(zcodeMarketplace.name, "astro-zcode-local");
   assert.equal(codexMarketplace.plugins[0].name, "astro");
   assert.equal(claudeMarketplace.plugins[0].name, "astro");
   assert.equal(workbuddyMarketplace.plugins[0].name, "astro");
+  assert.equal(zcodeMarketplace.plugins[0].name, "astro");
   assert.equal(
     codexMarketplace.plugins[0].source.path,
     "./codex-plugin",
@@ -67,6 +76,7 @@ test("native plugin manifests and marketplaces reference local packages", () => 
     workbuddyMarketplace.plugins[0].source,
     "./workbuddy-plugin",
   );
+  assert.equal(zcodeMarketplace.plugins[0].source, ".");
 });
 
 test("DeepSeek plugin declares an installable Harness bundle", () => {
@@ -134,11 +144,49 @@ test("native plugin hooks use portable plugin-root paths", () => {
   );
 });
 
+test("ZCode plugin registers only the events ZCode supports", () => {
+  const hooks = readJson("zcode-plugin/hooks/hooks.json").hooks;
+  const zcode = readJson("zcode-plugin/.zcode-plugin/plugin.json");
+
+  // ZCode fires exactly seven hook events; anything else never triggers.
+  assert.deepEqual(Object.keys(hooks).sort(), [
+    "PermissionRequest",
+    "PostToolUse",
+    "PostToolUseFailure",
+    "PreToolUse",
+    "SessionStart",
+    "Stop",
+    "UserPromptSubmit",
+  ]);
+  const handlers = getHandlers(hooks);
+  assert.equal(handlers.length, 7);
+  for (const groups of Object.values(hooks)) {
+    for (const group of groups) {
+      // A "*" matcher is an invalid regular expression in ZCode and never
+      // matches; an omitted matcher matches everything instead.
+      assert.equal(group.matcher, undefined);
+    }
+  }
+  assert.ok(
+    handlers.every(
+      (handler) =>
+        handler.command.includes("${CLAUDE_PLUGIN_ROOT}") &&
+        handler.command.includes("zcode-adapter.cjs") &&
+        handler.command.includes("--source=zcode") &&
+        // ZCode validates hook stdout against a strict JSON schema, so the
+        // adapter must not print hook control output.
+        handler.command.includes("--quiet"),
+    ),
+  );
+  assert.equal(zcode.hooks, "./hooks/hooks.json");
+});
+
 test("native plugin recorders stay synchronized with the shared runtime", () => {
   for (const directory of [
     "codex-plugin",
     "claude-plugin",
     "workbuddy-plugin",
+    "zcode-plugin",
     "deepseek-plugin",
   ]) {
     for (const file of [
