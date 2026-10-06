@@ -1,0 +1,21 @@
+{
+  "name": "astro-zcode-local",
+  "owner": {
+    "name": "ASTRO Contributors"
+  },
+  "plugins": [
+    {
+      "name": "astro",
+      "source": ".",
+      "description": "Capture ZCode lifecycle events locally for ASTRO.",
+      "displayName": "ASTRO",
+      "displayName_i18n": {
+        "zh-CN": "ASTRO"
+      },
+      "description_i18n": {
+        "zh-CN": "本地记录 ZCode 生命周期事件，供 ASTRO 检索与回放。"
+      },
+      "category": "developer-tools"
+    }
+  ]
+}

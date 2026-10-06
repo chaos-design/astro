@@ -189,6 +189,7 @@ export type PlatformId =
   | "deepseek"
   | "opencode"
   | "trae"
+  | "zcode"
   | "workbuddy";
 
 export type PlatformDefinition = {

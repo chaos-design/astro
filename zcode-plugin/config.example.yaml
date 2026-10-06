@@ -1,0 +1,34 @@
+# ASTRO shared plugin configuration.
+# Installed as <ASTRO_HOME>/plugins/astro/config.yaml.
+version: 1
+
+server:
+  host: 127.0.0.1
+  port: 4318
+  maxBodyBytes: 5242880
+
+runtime:
+  autoOpen: true
+
+storage:
+  traceDir: null
+  projectDir: null
+
+clients:
+  codex:
+    home: ~/.codex
+  claude:
+    home: ~/.claude
+  deepseek:
+    home: ~/.dsh
+    command: dsh
+  workbuddy:
+    home: ~/.codebuddy
+    command: codebuddy
+
+# Integration-specific settings may reference values from the plugin .env:
+#
+# integrations:
+#   example:
+#     apiKey: ${EXAMPLE_API_KEY}
+integrations: {}
