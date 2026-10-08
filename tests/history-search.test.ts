@@ -8,10 +8,12 @@ import {
 import {
   buildSessionPromptRuns,
   buildSessions,
+  getMessageCategory,
   normalizeTraceEvent,
 } from "../src/lib/trace-model.ts";
 import type {
   EventTone,
+  MessageCategory,
   TraceEventInput,
   TraceRunStatus,
 } from "../src/types/trace.ts";
@@ -96,6 +98,7 @@ function filters(
   overrides: Partial<{
     categories: ReadonlySet<EventTone>;
     from: number | null;
+    messageCategories: ReadonlySet<MessageCategory>;
     query: string;
     sources: ReadonlySet<string>;
     statuses: ReadonlySet<TraceRunStatus>;
@@ -105,6 +108,7 @@ function filters(
   return {
     categories: new Set<EventTone>(),
     from: null,
+    messageCategories: new Set<MessageCategory>(),
     query: "",
     sources: new Set<string>(),
     statuses: new Set<TraceRunStatus>(),
@@ -169,6 +173,51 @@ test("filters by event category without fuzzy scoring", () => {
   );
 
   assert.deepEqual(matches.map((entry) => entry.eventId), ["tool-a"]);
+});
+
+test("filters by common message category", () => {
+  const entries = searchFixture();
+
+  assert.deepEqual(
+    entries.find((entry) => entry.eventId === "tool-a")?.messageCategory,
+    "tool",
+  );
+  assert.deepEqual(
+    entries.find((entry) => entry.eventId === "stop-a")?.messageCategory,
+    "agent",
+  );
+  assert.deepEqual(
+    entries.find((entry) => entry.eventId === "wait-b")?.messageCategory,
+    "interaction",
+  );
+
+  const interactions = filterHistorySearchEntries(
+    entries,
+    filters({ messageCategories: new Set(["interaction"]) }),
+  );
+  assert.deepEqual(interactions.map((entry) => entry.eventId), ["wait-b"]);
+
+  const prompts = filterHistorySearchEntries(
+    entries,
+    filters({ messageCategories: new Set(["prompt"]) }),
+  );
+  assert.deepEqual(
+    prompts.map((entry) => entry.eventId).sort(),
+    ["prompt-a", "prompt-b"],
+  );
+});
+
+test("routes unrecognized events into the others category", () => {
+  assert.equal(getMessageCategory({ eventName: "Unknown" }), "others");
+  assert.equal(getMessageCategory({ eventName: "SomeNativeEvent" }), "others");
+  assert.equal(getMessageCategory({ eventName: "PreToolUse" }), "tool");
+
+  const entries = searchFixture();
+  const unrecognized = filterHistorySearchEntries(
+    entries,
+    filters({ messageCategories: new Set(["others"]) }),
+  );
+  assert.deepEqual(unrecognized, []);
 });
 
 test("returns no matches for invalid or reversed time bounds", () => {

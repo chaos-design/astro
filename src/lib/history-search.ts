@@ -1,8 +1,9 @@
 import { differenceInCalendarDays } from "date-fns";
 
-import { eventMeta, getEventSummary } from "./trace-model.ts";
+import { eventMeta, getEventSummary, getMessageCategory } from "./trace-model.ts";
 import type {
   EventTone,
+  MessageCategory,
   TraceEvent,
   TracePromptRun,
   TraceRunStatus,
@@ -24,6 +25,7 @@ export type HistorySearchEntry = {
   event: TraceEvent;
   eventId: string;
   eventLabel: string;
+  messageCategory: MessageCategory;
   normalizedSearchFields: readonly string[];
   promptIndex: number | null;
   promptRunKey: string;
@@ -46,6 +48,7 @@ export type HistorySearchMatch = HistorySearchEntry & {
 export type HistorySearchFilters = {
   categories: ReadonlySet<EventTone>;
   from: number | null;
+  messageCategories: ReadonlySet<MessageCategory>;
   query: string;
   sources: ReadonlySet<string>;
   statuses: ReadonlySet<TraceRunStatus>;
@@ -187,6 +190,7 @@ export function buildHistorySearchIndex(
       const summary = compactText(getEventSummary(event));
       const meta = eventMeta[event.eventName] ?? eventMeta.Unknown;
       const eventLabel = event.toolName || meta.label;
+      const messageCategory = getMessageCategory(event);
       const status = promptRun?.status ?? session.status;
       const searchFields = [
         session.title,
@@ -202,6 +206,7 @@ export function buildHistorySearchIndex(
         event.source,
         status,
         meta.tone,
+        messageCategory,
         ...collectSearchValues(event.payload),
       ].filter(Boolean);
       return [{
@@ -209,6 +214,7 @@ export function buildHistorySearchIndex(
         event,
         eventId: event.id,
         eventLabel,
+        messageCategory,
         normalizedSearchFields: searchFields.map(normalizeSearchText),
         promptIndex: promptRun?.index ?? null,
         promptRunKey: promptRun?.key ?? "",
@@ -248,6 +254,8 @@ export function filterHistorySearchEntries(
       (filters.to !== null && entry.timestamp > filters.to) ||
       (filters.categories.size &&
         !filters.categories.has(entry.category)) ||
+      (filters.messageCategories.size &&
+        !filters.messageCategories.has(entry.messageCategory)) ||
       (filters.sources.size && !filters.sources.has(entry.source)) ||
       (filters.statuses.size && !filters.statuses.has(entry.status))
     ) {

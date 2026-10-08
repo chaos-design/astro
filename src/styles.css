@@ -777,6 +777,34 @@ pre,
   background: var(--red);
 }
 
+.history-search__filter-menu i.msg-category-prompt,
+.history-search__filter-menu i.msg-category-tool {
+  color: var(--blue);
+  background: var(--blue);
+}
+
+.history-search__filter-menu i.msg-category-agent,
+.history-search__filter-menu i.msg-category-session {
+  color: var(--teal);
+  background: var(--teal);
+}
+
+.history-search__filter-menu i.msg-category-reasoning,
+.history-search__filter-menu i.msg-category-subagent {
+  color: var(--violet);
+  background: var(--violet);
+}
+
+.history-search__filter-menu i.msg-category-interaction {
+  color: var(--pink);
+  background: var(--pink);
+}
+
+.history-search__filter-menu i.msg-category-others {
+  color: var(--muted-soft);
+  background: var(--muted-soft);
+}
+
 .history-search__filter-menu i.status-active,
 .history-search__result-rail i.status-active {
   color: var(--status-running);

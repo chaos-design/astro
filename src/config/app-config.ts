@@ -64,6 +64,7 @@ export const appLayout = {
 export const storageKeys = {
   consoleOpen: "ASTROX_CONSOLE_OPEN",
   historyOpen: "ASTROX_HISTORY_OPEN",
+  inspectorTab: "ASTROX_INSPECTOR_TAB",
   platform: "ASTROX_PLATFORM",
   theme: "ASTROX_THEME",
 } as const;
