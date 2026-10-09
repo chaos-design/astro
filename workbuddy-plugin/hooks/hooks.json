@@ -36,7 +36,6 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "*",
         "hooks": [
           {
             "type": "command",
@@ -48,7 +47,6 @@
     ],
     "PermissionRequest": [
       {
-        "matcher": "*",
         "hooks": [
           {
             "type": "command",
@@ -60,7 +58,6 @@
     ],
     "PermissionDenied": [
       {
-        "matcher": "*",
         "hooks": [
           {
             "type": "command",
@@ -72,7 +69,6 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "*",
         "hooks": [
           {
             "type": "command",
@@ -84,7 +80,6 @@
     ],
     "PostToolUseFailure": [
       {
-        "matcher": "*",
         "hooks": [
           {
             "type": "command",
@@ -96,7 +91,6 @@
     ],
     "Notification": [
       {
-        "matcher": "*",
         "hooks": [
           {
             "type": "command",
@@ -108,7 +102,6 @@
     ],
     "SubagentStart": [
       {
-        "matcher": "*",
         "hooks": [
           {
             "type": "command",
@@ -120,7 +113,6 @@
     ],
     "SubagentStop": [
       {
-        "matcher": "*",
         "hooks": [
           {
             "type": "command",
@@ -165,7 +157,6 @@
     ],
     "StopFailure": [
       {
-        "matcher": "*",
         "hooks": [
           {
             "type": "command",
@@ -188,7 +179,6 @@
     ],
     "InstructionsLoaded": [
       {
-        "matcher": "*",
         "hooks": [
           {
             "type": "command",
@@ -200,7 +190,6 @@
     ],
     "ConfigChange": [
       {
-        "matcher": "*",
         "hooks": [
           {
             "type": "command",
@@ -245,7 +234,6 @@
     ],
     "PreCompact": [
       {
-        "matcher": "*",
         "hooks": [
           {
             "type": "command",
@@ -257,7 +245,6 @@
     ],
     "PostCompact": [
       {
-        "matcher": "*",
         "hooks": [
           {
             "type": "command",
@@ -269,7 +256,6 @@
     ],
     "Elicitation": [
       {
-        "matcher": "*",
         "hooks": [
           {
             "type": "command",
@@ -281,7 +267,6 @@
     ],
     "ElicitationResult": [
       {
-        "matcher": "*",
         "hooks": [
           {
             "type": "command",

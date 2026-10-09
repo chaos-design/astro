@@ -254,6 +254,7 @@ test("launches the dashboard once after a submitted prompt", () => {
   const dependencies = {
     dashboardFile: "/tmp/astro/server/server.mjs",
     isProcessRunning: () => false,
+    probeDashboardPort: () => ({ state: "free" }),
     spawn: (_command, _arguments, options) => {
       spawnCount += 1;
       spawnOptions = options;
@@ -525,6 +526,7 @@ test("restarts the dashboard when a stale pid belongs to another server", () => 
   const dependencies = {
     dashboardFile: "/tmp/new-astro/server/server.mjs",
     isProcessRunning: (pid) => pid === 12345,
+    probeDashboardPort: () => ({ state: "free" }),
     spawn: () => {
       spawnCount += 1;
       return { pid: 54321, unref() {} };
@@ -545,4 +547,109 @@ test("restarts the dashboard when a stale pid belongs to another server", () => 
   assert.equal(updatedPid.pid, 54321);
   assert.equal(updatedPid.server, dependencies.dashboardFile);
   fs.rmSync(astroHome, { recursive: true, force: true });
+});
+
+test("skips launching when an ASTRO instance already owns the port", (t) => {
+  const astroHome = fs.mkdtempSync(path.join(os.tmpdir(), "astro-port-"));
+  t.after(() => fs.rmSync(astroHome, { recursive: true, force: true }));
+  const pidFile = path.join(astroHome, "dashboard-4400.pid");
+  let notice = "";
+
+  assert.equal(
+    launchDashboardForEvents(
+      [{
+        eventName: "UserPromptSubmit",
+        source: "trae",
+        sessionId: "session-port",
+      }],
+      { ASTRO_HOME: astroHome, ASTRO_PORT: "4400" },
+      {
+        dashboardFile: "/tmp/astro/server/server.mjs",
+        probeDashboardPort: () => ({
+          state: "astro",
+          pid: 999,
+          url: "http://127.0.0.1:4400",
+        }),
+        spawn: () => assert.fail("must not start another server"),
+        onAlreadyRunning: (message) => {
+          notice = message;
+        },
+      },
+    ),
+    false,
+  );
+  assert.match(notice, /ASTRO is already running/);
+  assert.match(notice, /session=session-port/);
+  // The stale pid record is refreshed from the health probe payload.
+  assert.deepEqual(JSON.parse(fs.readFileSync(pidFile, "utf8")), {
+    pid: 999,
+    server: "",
+    url: "http://127.0.0.1:4400",
+  });
+});
+
+test("skips launching when an unknown process occupies the port", (t) => {
+  const astroHome = fs.mkdtempSync(path.join(os.tmpdir(), "astro-port-"));
+  t.after(() => fs.rmSync(astroHome, { recursive: true, force: true }));
+  let notice = "";
+
+  assert.equal(
+    launchDashboardForEvents(
+      [{ eventName: "SessionStart", source: "trae" }],
+      { ASTRO_HOME: astroHome, ASTRO_PORT: "4400" },
+      {
+        dashboardFile: "/tmp/astro/server/server.mjs",
+        probeDashboardPort: () => ({ state: "occupied" }),
+        spawn: () => assert.fail("must not start another server"),
+        onAlreadyRunning: (message) => {
+          notice = message;
+        },
+      },
+    ),
+    false,
+  );
+  assert.match(notice, /Port 4400 is already in use/);
+  assert.equal(
+    fs.existsSync(path.join(astroHome, "dashboard-4400.pid")),
+    false,
+  );
+});
+
+test("reopens the dashboard found by the port probe when requested", (t) => {
+  const astroHome = fs.mkdtempSync(path.join(os.tmpdir(), "astro-port-"));
+  t.after(() => fs.rmSync(astroHome, { recursive: true, force: true }));
+  let openedUrl = "";
+
+  assert.equal(
+    launchDashboardForEvents(
+      [{
+        eventName: "UserPromptSubmit",
+        source: "trae",
+        sessionId: "session-reopen",
+      }],
+      { ASTRO_HOME: astroHome, ASTRO_PORT: "4400" },
+      {
+        dashboardFile: "/tmp/astro/server/server.mjs",
+        reopenExisting: true,
+        probeDashboardPort: () => ({
+          state: "astro",
+          pid: 999,
+          url: "http://127.0.0.1:4400",
+        }),
+        openDashboard: (url) => {
+          openedUrl = url;
+          return true;
+        },
+        spawn: () => assert.fail("must not start another server"),
+      },
+    ),
+    true,
+  );
+  assert.equal(
+    openedUrl,
+    createDashboardUrl("http://127.0.0.1:4400", {
+      source: "trae",
+      sessionId: "session-reopen",
+    }),
+  );
 });

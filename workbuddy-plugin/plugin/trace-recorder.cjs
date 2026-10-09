@@ -557,6 +557,67 @@ function isCompatibleDashboard(existingFile, requestedFile) {
   );
 }
 
+const dashboardProbeScript = `
+const http = require("node:http");
+const port = Number(process.argv[1]);
+const host = process.argv[2] || "127.0.0.1";
+const request = http.get(
+  { host, port, path: "/api/health", timeout: 750 },
+  (response) => {
+    let body = "";
+    response.setEncoding("utf8");
+    response.on("data", (chunk) => {
+      body += chunk;
+    });
+    response.on("end", () => {
+      let pid = 0;
+      let url = "";
+      try {
+        const health = JSON.parse(body);
+        if (health && health.status === "ok") {
+          pid = Number(health.pid) || 0;
+          url = typeof health.url === "string" ? health.url : "";
+        }
+      } catch {
+        // A non-ASTRO response still means the port is occupied.
+      }
+      process.stdout.write(
+        JSON.stringify(
+          pid ? { state: "astro", pid, url } : { state: "occupied" },
+        ),
+      );
+    });
+  },
+);
+request.on("timeout", () => request.destroy(new Error("probe timeout")));
+request.on("error", (error) => {
+  process.stdout.write(
+    JSON.stringify({
+      state: error && error.code === "ECONNREFUSED" ? "free" : "occupied",
+    }),
+  );
+});
+`;
+
+function probeDashboardPort(port, options = {}) {
+  const host = options.host || "127.0.0.1";
+  try {
+    const result = childProcess.spawnSync(
+      process.execPath,
+      ["-e", dashboardProbeScript, String(port), host],
+      { encoding: "utf8", timeout: 2_000 },
+    );
+    const probe = JSON.parse(result.stdout || "{}");
+    return ["astro", "occupied", "free"].includes(probe?.state)
+      ? probe
+      : { state: "free" };
+  } catch {
+    // Probe failures fall back to the previous launch behavior; the spawned
+    // server still handles EADDRINUSE by walking to the next port.
+    return { state: "free" };
+  }
+}
+
 function readDashboardPid(pidFile) {
   try {
     const value = JSON.parse(fs.readFileSync(pidFile, "utf8"));
@@ -657,6 +718,56 @@ function launchDashboardForEvents(
     const message = existing.url
       ? `ASTRO is already running at ${createDashboardUrl(existing.url, triggerEvent)}. Switch to the existing dashboard tab or refresh it; no new tab was opened.`
       : "ASTRO is already starting. Switch to the existing dashboard tab or refresh it when ready; no new tab was opened.";
+    if (dependencies.onAlreadyRunning) {
+      dependencies.onAlreadyRunning(message);
+    } else {
+      process.stderr.write(`${message}\n`);
+    }
+    return false;
+  }
+
+  // A stale or foreign pid file does not prove the port is free. Probe the
+  // requested port before spawning so an already-running instance is reused
+  // instead of silently drifting to the next port.
+  const probePort = dependencies.probeDashboardPort || probeDashboardPort;
+  const probeHost =
+    environment.ASTRO_HOST ||
+    environment.AGENT_TRACE_HOST ||
+    environment.TRAE_TRACE_HOST ||
+    "127.0.0.1";
+  const probe = probePort(requestedPort, { host: probeHost });
+  if (probe.state !== "free") {
+    const runningUrl = createDashboardUrl(
+      probe.url || `http://${probeHost}:${requestedPort}`,
+      triggerEvent,
+    );
+    if (probe.state === "astro") {
+      if (!processRunning(existing.pid) && Number(probe.pid) > 0) {
+        // Refresh the stale pid record so later triggers skip the probe.
+        try {
+          fs.mkdirSync(astroHome, { recursive: true });
+          fs.writeFileSync(
+            pidFile,
+            `${JSON.stringify({
+              pid: Number(probe.pid),
+              server: existing.server || "",
+              url: probe.url || `http://${probeHost}:${requestedPort}`,
+            })}\n`,
+            "utf8",
+          );
+        } catch {
+          // A read-only ASTRO home only costs a repeated probe later.
+        }
+      }
+      if (dependencies.reopenExisting && probe.url) {
+        const open = dependencies.openDashboard || openDashboard;
+        return open(runningUrl);
+      }
+    }
+    const message =
+      probe.state === "astro"
+        ? `ASTRO is already running at ${runningUrl}. Switch to the existing dashboard tab or refresh it; no new tab was opened.`
+        : `Port ${requestedPort} is already in use by another process; no new ASTRO dashboard was started.`;
     if (dependencies.onAlreadyRunning) {
       dependencies.onAlreadyRunning(message);
     } else {

@@ -142,6 +142,14 @@ test("native plugin hooks use portable plugin-root paths", () => {
         !handler.command.includes("--quiet"),
     ),
   );
+  for (const groups of Object.values(workbuddyHooks)) {
+    for (const group of groups) {
+      // WorkBuddy validates hook matchers as regular expressions; a "*"
+      // matcher is an invalid regular expression that never matches. An
+      // omitted matcher matches everything instead.
+      assert.equal(group.matcher, undefined);
+    }
+  }
 });
 
 test("ZCode plugin registers only the events ZCode supports", () => {
