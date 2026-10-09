@@ -60,7 +60,7 @@ test("derives the parent row status from the last Prompt run", () => {
   }
 });
 
-test("updates the parent duration only while the latest Prompt is active", () => {
+test("updates the parent duration while the latest Prompt is active or waiting", () => {
   const session = {
     duration: 4_000,
     start: 1_000,
@@ -78,7 +78,6 @@ test("updates the parent duration only while the latest Prompt is active", () =>
   );
 
   for (const status of [
-    "waiting",
     "complete",
     "failed",
     "terminated",
@@ -97,7 +96,7 @@ test("updates the parent duration only while the latest Prompt is active", () =>
       [],
       now,
     ),
-    session.duration,
+    10_000,
   );
 });
 
@@ -138,12 +137,25 @@ test("terminates the parent display when its active duration reaches the limit",
     getRunHistoryDisplayState(
       session,
       [{ status: "waiting" }],
+      session.start + timeout - 1,
+      timeout,
+    ),
+    {
+      duration: timeout - 1,
+      status: "waiting",
+    },
+  );
+  // A waiting run whose message stream went silent also terminates.
+  assert.deepEqual(
+    getRunHistoryDisplayState(
+      session,
+      [{ status: "waiting" }],
       session.start + timeout * 2,
       timeout,
     ),
     {
-      duration: session.duration,
-      status: "waiting",
+      duration: timeout,
+      status: "terminated",
     },
   );
 });

@@ -386,7 +386,7 @@ projection, and stored JSONL remain available for inspection and replay.
 
 | Surface | Advances for | Freezes for | Timeout result |
 | --- | --- | --- | --- |
-| Session parent row | latest Prompt is `active` | latest Prompt is `waiting`, `complete`, `failed`, or `terminated` | cap parent duration and derive `terminated` |
+| Session parent row | latest Prompt is `active` or `waiting` | latest Prompt is `complete`, `failed`, or `terminated` | cap parent duration and derive `terminated` |
 | Nested Prompt row | `active` or `waiting` | `complete`, `failed`, or `terminated` | cap Prompt duration and derive `terminated` |
 | Selected execution | effective selected status is `active` | every other effective status | stop Live animation and running markers |
 
@@ -395,6 +395,34 @@ its duration equals the limit and its effective status becomes `terminated`.
 Values beyond the limit remain capped. Existing terminal states bypass this
 calculation, so a historical completed duration longer than the configured
 live limit is preserved.
+
+### 8.3 Terminal-state rules: failures and termination
+
+Run History rows must reflect the run's real outcome: once a failure occurs
+or the message stream terminates, the row status must settle into a terminal
+state (`failed` / `terminated` / `complete`) and never remain stuck at
+`active` / `waiting`.
+
+Event-driven terminal rules (`getTraceRunStatus`):
+
+| Event | Status | Notes |
+| --- | --- | --- |
+| `Stop` | `complete` | normal completion |
+| `StopFailure` | `failed` | stop-level failure ends the run; progress noise afterwards (e.g. `SubagentStop`) never resurrects the status to `active` |
+| `SessionEnd` / `Interrupt` | `terminated` | session ended or interrupted by the user |
+| event `status` failed, `PermissionDenied`, `PostToolUseFailure`, `tool_response.error`, non-zero `exitCode` | `failed` | mid-run failure; if execution progress follows, the run is considered recoverable and returns to `active` |
+
+Additional rules:
+
+- The Prompt event window is truncated at the first stop-level event
+  (`Stop`, `StopFailure`, `SessionEnd`, `Interrupt`); noise after that point
+  does not participate in the run's status derivation.
+- When the message stream goes silent without any terminal event, both
+  `active` and `waiting` runs are capped at `activeRunTimeoutMs` and derive
+  `terminated`; the displayed duration stops advancing.
+- The parent row takes the effective status of the latest Prompt
+  (`getRunHistoryDisplayStatus`), so a terminal latest Prompt terminates the
+  parent row as well.
 
 ## 9. Execution Topology
 

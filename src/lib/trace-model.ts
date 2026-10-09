@@ -479,21 +479,29 @@ export function getSessionTitle(events: TraceEvent[]) {
 
 function getTraceRunStatus(events: readonly TraceEvent[]): TraceRunStatus {
   let status: TraceRunStatus = "active";
+  let runEnded = false;
   for (const event of events) {
     if (
       event.eventName === "SessionStart" ||
       event.eventName === "UserPromptSubmit"
     ) {
       status = "active";
+      runEnded = false;
     } else if (isTerminationEvent(event)) {
       status = "terminated";
+      runEnded = true;
     } else if (isWaitingTraceEvent(event)) {
       status = "waiting";
     } else if (isFailureEvent(event)) {
       status = "failed";
+      // A stop-level failure ends the run: later progress noise must not
+      // resurrect it to "active" in the run history.
+      runEnded = event.eventName === "StopFailure";
     } else if (event.eventName === "Stop") {
       status = "complete";
+      runEnded = true;
     } else if (
+      !runEnded &&
       (status === "waiting" || status === "failed") &&
       isExecutionProgressEvent(event)
     ) {
@@ -514,7 +522,9 @@ export function buildSessionPromptRuns(
     const endIndex = promptIndexes[index + 1] ?? session.events.length;
     const promptWindow = session.events.slice(startIndex, endIndex);
     const terminalIndex = promptWindow.findIndex((event) =>
-      ["Stop", "SessionEnd", "Interrupt"].includes(event.eventName),
+      ["Stop", "StopFailure", "SessionEnd", "Interrupt"].includes(
+        event.eventName,
+      ),
     );
     const events =
       terminalIndex >= 0

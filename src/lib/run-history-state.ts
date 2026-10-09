@@ -41,7 +41,11 @@ export function getRunHistoryDisplayState(
     session.status,
     promptRuns,
   );
-  if (status !== "active") {
+  // "active" and "waiting" are both live states: the duration keeps
+  // advancing and the run terminates once the message stream goes silent
+  // past the active-run timeout. Terminal states (complete/failed/
+  // terminated) keep their recorded duration.
+  if (status !== "active" && status !== "waiting") {
     return {
       duration: session.duration,
       status,

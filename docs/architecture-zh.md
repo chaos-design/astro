@@ -364,13 +364,36 @@ Prompt 的会话仍以完整会话作为兼容回退。
 
 | 界面层级 | 继续计时条件 | 冻结条件 | 超时结果 |
 | --- | --- | --- | --- |
-| Session 父行 | 最新 Prompt 为 `active` | 最新 Prompt 为 `waiting`、`complete`、`failed` 或 `terminated` | 封顶父会话时长并派生 `terminated` |
+| Session 父行 | 最新 Prompt 为 `active` 或 `waiting` | 最新 Prompt 为 `complete`、`failed` 或 `terminated` | 封顶父会话时长并派生 `terminated` |
 | Prompt 子行 | `active` 或 `waiting` | `complete`、`failed` 或 `terminated` | 封顶 Prompt 时长并派生 `terminated` |
 | 当前选中执行 | 有效选中状态为 `active` | 其他全部有效状态 | 停止 Live 动画和运行标记 |
 
 在 `阈值 - 1 ms` 时，继续计时状态保持不变；恰好到达阈值时，显示时长等于阈值，
 有效状态变为 `terminated`；超过阈值后仍保持封顶。已有终态不经过这项计算，因此历史
 complete 记录即使超过当前实时阈值，也保留其原始时长。
+
+### 8.3 终态判定：失败与终止
+
+Run History 行的状态必须与运行的真实结局一致：一旦出现失败或消息流终止，行状态
+必须落入终态（`failed` / `terminated` / `complete`），不得停留在 `active` / `waiting`。
+
+事件驱动的终态规则（`getTraceRunStatus`）：
+
+| 事件 | 状态 | 说明 |
+| --- | --- | --- |
+| `Stop` | `complete` | 正常收尾 |
+| `StopFailure` | `failed` | stop 级失败，运行结束；其后到达的进度噪声（如 `SubagentStop`）不会把状态复活为 `active` |
+| `SessionEnd` / `Interrupt` | `terminated` | 会话结束或用户打断 |
+| 事件 `status` 为 failed、`PermissionDenied`、`PostToolUseFailure`、`tool_response.error`、非零 `exitCode` | `failed` | 运行中途失败；若随后仍有执行进度事件，则视为可恢复，状态回到 `active` |
+
+补充规则：
+
+- Prompt 事件窗口在首个 stop 级事件（`Stop`、`StopFailure`、`SessionEnd`、
+  `Interrupt`）处截断，stop 级事件之后的噪声不参与该次运行的状态派生。
+- 消息流静默（未收到任何终态事件）时，`active` 与 `waiting` 都按
+  `activeRunTimeoutMs` 封顶并派生 `terminated`，运行时长停止推进。
+- 父行状态取最新 Prompt 的有效状态（`getRunHistoryDisplayStatus`），因此最新
+  Prompt 落入终态后父行同步终止。
 
 ## 9. 执行拓扑
 
