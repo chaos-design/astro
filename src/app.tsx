@@ -1096,22 +1096,20 @@ function InspectorOverview({
 }
 
 function TraceInspector({
-  node,
-  event,
+  activeTab,
   atom,
+  event,
   index,
+  node,
+  onActiveTabChange,
 }: {
-  node: TraceNodeType | null;
-  event: TraceEvent | null;
+  activeTab: string;
   atom: HarnessNodeData | null;
+  event: TraceEvent | null;
   index: number;
+  node: TraceNodeType | null;
+  onActiveTabChange: (tab: string) => void;
 }) {
-  const [activeTab, setActiveTab] = useState("overview");
-
-  useEffect(() => {
-    setActiveTab("overview");
-  }, [atom?.key, event?.id]);
-
   if ((!node || !event) && !atom) {
     return (
       <section className="message-inspector message-inspector--empty flex min-h-0 flex-col items-center justify-center gap-[7px] p-[22px] text-center">
@@ -1212,7 +1210,7 @@ function TraceInspector({
       </header>
       <Tabs
         value={activeTab}
-        onValueChange={setActiveTab}
+        onValueChange={onActiveTabChange}
         className="inspector-tabs min-h-0 gap-0"
       >
         <TabsList variant="line" aria-label="检查器数据">
@@ -2131,9 +2129,20 @@ export default function App() {
   const [locateRequest, setLocateRequest] = useState(0);
   const [trajectoryLocateRequest, setTrajectoryLocateRequest] = useState(0);
   const [logLocateRequest, setLogLocateRequest] = useState(0);
+  const [inspectorTab, setInspectorTab] = useState<string>(() =>
+    readStorageValue(
+      window.localStorage,
+      storageKeys.inspectorTab,
+      "overview",
+    ),
+  );
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const preserveAtomSelectionRef = useRef(false);
   const previousAtomRef = useRef("");
+
+  useEffect(() => {
+    writeStorageValue(window.localStorage, storageKeys.inspectorTab, inspectorTab);
+  }, [inspectorTab]);
 
   useEffect(() => {
     const media = window.matchMedia("(prefers-color-scheme: dark)");
@@ -3075,10 +3084,12 @@ export default function App() {
                 }}
               />
               <TraceInspector
+                activeTab={inspectorTab}
                 node={selectedNode}
                 event={selectedEvent}
                 atom={selectedAtom}
                 index={selectedEventIndex}
+                onActiveTabChange={setInspectorTab}
               />
             </>
           ) : (

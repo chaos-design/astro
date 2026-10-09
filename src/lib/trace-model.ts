@@ -3,6 +3,7 @@ import { isWaitingTraceEvent } from "./trace-status.ts";
 import type {
   EventMeta,
   FlowEntry,
+  MessageCategory,
   TraceEvent,
   TraceEventInput,
   TraceFlow,
@@ -69,6 +70,63 @@ export const sourceMeta = {
   workbuddy: { label: "WORKBUDDY", tone: "lime" },
   generic: { label: "GENERIC", tone: "neutral" },
 };
+
+/**
+ * Maps known canonical event names onto common, user-facing message categories.
+ * Any event name that is not present here (including `Unknown` and native event
+ * names that have no canonical mapping) falls through to `others`, so that
+ * bucket only ever holds genuinely unrecognized messages.
+ */
+const messageCategoryByEvent: Record<string, MessageCategory> = {
+  SessionStart: "session",
+  SessionEnd: "session",
+  Interrupt: "session",
+  UserPromptSubmit: "prompt",
+  AgentMessage: "agent",
+  Stop: "agent",
+  StopFailure: "agent",
+  Reasoning: "reasoning",
+  PreCompact: "reasoning",
+  PostCompact: "reasoning",
+  PreToolUse: "tool",
+  PostToolUse: "tool",
+  PostToolUseFailure: "tool",
+  PermissionRequest: "interaction",
+  PermissionDenied: "interaction",
+  Notification: "interaction",
+  Elicitation: "interaction",
+  ElicitationResult: "interaction",
+  SubagentStart: "subagent",
+  SubagentStop: "subagent",
+};
+
+export const messageCategoryOrder: readonly MessageCategory[] = [
+  "prompt",
+  "agent",
+  "reasoning",
+  "tool",
+  "interaction",
+  "subagent",
+  "session",
+  "others",
+];
+
+export const messageCategoryLabels: Readonly<Record<MessageCategory, string>> = {
+  prompt: "Prompt",
+  agent: "Agent",
+  reasoning: "Reasoning",
+  tool: "Tool",
+  interaction: "Interaction",
+  subagent: "Subagent",
+  session: "Session",
+  others: "Other",
+};
+
+export function getMessageCategory(
+  event: Pick<TraceEvent, "eventName">,
+): MessageCategory {
+  return messageCategoryByEvent[event.eventName] ?? "others";
+}
 
 function stableHash(value: string) {
   let hash = 2166136261;

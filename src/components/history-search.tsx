@@ -6,6 +6,7 @@ import {
   FilterX,
   Search,
   Shapes,
+  Tags,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { format } from "date-fns";
@@ -53,10 +54,15 @@ import {
   type HistorySearchMatch,
   type HistoryTimeRange,
 } from "@/lib/history-search";
+import {
+  messageCategoryLabels,
+  messageCategoryOrder,
+} from "@/lib/trace-model";
 import { cn } from "@/lib/utils";
 import { atomPlatformOptions } from "@/config/atom-platforms";
 import type {
   EventTone,
+  MessageCategory,
   PlatformId,
   TraceRunStatus,
 } from "@/types/trace";
@@ -449,6 +455,9 @@ export function HistorySearch({
   const [categories, setCategories] = useState<ReadonlySet<EventTone>>(
     () => new Set(),
   );
+  const [messageCategories, setMessageCategories] = useState<
+    ReadonlySet<MessageCategory>
+  >(() => new Set());
   const [sources, setSources] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
@@ -495,6 +504,16 @@ export function HistorySearch({
         value: category,
       }));
   }, [entries]);
+  const messageCategoryOptions = useMemo(() => {
+    const available = new Set(entries.map((entry) => entry.messageCategory));
+    return messageCategoryOrder
+      .filter((category) => available.has(category))
+      .map((category) => ({
+        label: messageCategoryLabels[category],
+        tone: `msg-category-${category}`,
+        value: category,
+      }));
+  }, [entries]);
   const dateBounds = useMemo(
     () =>
       getHistoryDateBounds(
@@ -511,12 +530,13 @@ export function HistorySearch({
     () => ({
       categories,
       from: dateBounds.valid ? dateBounds.from : Number.NaN,
+      messageCategories,
       query,
       sources,
       statuses,
       to: dateBounds.to,
     }),
-    [categories, dateBounds, query, sources, statuses],
+    [categories, dateBounds, messageCategories, query, sources, statuses],
   );
   const deferredFilters = useDeferredValue(filterInput);
   const matches = useMemo(
@@ -531,6 +551,7 @@ export function HistorySearch({
     query.length > 0 ||
     timeRange !== defaultTimeRange ||
     categories.size > 0 ||
+    messageCategories.size > 0 ||
     sources.size > 0 ||
     statuses.size > 0;
 
@@ -572,6 +593,7 @@ export function HistorySearch({
     setTimeRange(defaultTimeRange);
     setCustomRange(undefined);
     setCategories(new Set());
+    setMessageCategories(new Set());
     setSources(new Set());
     setStatuses(new Set());
     inputRef.current?.focus();
@@ -655,6 +677,13 @@ export function HistorySearch({
               onChange={setCategories}
               options={categoryOptions}
               values={categories}
+            />
+            <MultiSelectFilter
+              icon={Tags}
+              label="Category"
+              onChange={setMessageCategories}
+              options={messageCategoryOptions}
+              values={messageCategories}
             />
           </div>
           <Button
