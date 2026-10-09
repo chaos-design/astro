@@ -17,6 +17,7 @@ import {
   Layers,
   ListTree,
   LocateFixed,
+  Loader2,
   Menu,
   Network,
   Pause,
@@ -586,7 +587,9 @@ function RunHistory({
   activeKey,
   activePromptRunKey,
   canLoadMore,
+  initialLoading,
   isDemo,
+  loadingMore,
   now,
   promptRunsBySession,
   onLoadMore,
@@ -599,6 +602,8 @@ function RunHistory({
   now: number;
   promptRunsBySession: ReadonlyMap<string, TracePromptRun[]>;
   canLoadMore: boolean;
+  initialLoading: boolean;
+  loadingMore: boolean;
   onLoadMore: () => void;
   onSelect: (sessionKey: string, promptRunKey?: string) => void;
 }) {
@@ -850,7 +855,12 @@ function RunHistory({
             </article>
           );
         })}
-        {sessions.length === 0 ? (
+        {initialLoading ? (
+          <div className="run-history__loading" aria-busy="true">
+            <Loader2 className="size-4 animate-spin" />
+            <span>LOADING RUNS…</span>
+          </div>
+        ) : sessions.length === 0 ? (
           <output className="run-history__empty">No runs in this window</output>
         ) : null}
         {canLoadMore ? (
@@ -859,6 +869,12 @@ function RunHistory({
             className="run-history__more"
             ref={sentinelRef}
           />
+        ) : null}
+        {loadingMore ? (
+          <div className="run-history__loading run-history__loading--more" aria-busy="true">
+            <Loader2 className="size-4 animate-spin" />
+            <span>LOADING MORE…</span>
+          </div>
         ) : null}
       </div>
     </section>
@@ -2161,6 +2177,8 @@ export default function App() {
   const [runHistoryDays, setRunHistoryDays] = useState(
     DEFAULT_RUN_HISTORY_DAYS,
   );
+  const [runHistoryLoadingMore, setRunHistoryLoadingMore] = useState(false);
+  const runHistoryLoadingMoreRef = useRef(false);
   const [theme, setTheme] = useState<Theme>(
     () =>
       readStorageValue(
@@ -2911,11 +2929,22 @@ export default function App() {
               now={now}
               promptRunsBySession={promptRunsBySession}
               canLoadMore={canLoadMoreRunHistory}
-              onLoadMore={() =>
+              initialLoading={!eventsLoaded && !isDemo}
+              loadingMore={runHistoryLoadingMore}
+              onLoadMore={() => {
+                if (runHistoryLoadingMoreRef.current) {
+                  return;
+                }
+                runHistoryLoadingMoreRef.current = true;
+                setRunHistoryLoadingMore(true);
                 setRunHistoryDays((current) =>
                   nextRunHistoryVisibleDays(filteredSessions, now, current),
-                )
-              }
+                );
+                window.setTimeout(() => {
+                  runHistoryLoadingMoreRef.current = false;
+                  setRunHistoryLoadingMore(false);
+                }, 320);
+              }}
               onSelect={selectSession}
             />
           ) : (

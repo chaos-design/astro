@@ -1588,6 +1588,29 @@ pre,
   min-height: 1px;
 }
 
+.run-history__loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 10px 6px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  color: var(--muted-soft);
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+  letter-spacing: 0.08em;
+  background: var(--panel-hover);
+}
+
+.run-history__loading svg {
+  color: var(--muted-soft);
+}
+
+.run-history__loading--more {
+  margin: 8px 6px;
+}
+
 .platform-icon {
   width: 14px;
   height: 14px;

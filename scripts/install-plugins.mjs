@@ -353,6 +353,77 @@ export function installPluginRuntime(astroHome) {
   return runtime;
 }
 
+/**
+ * Refresh already-installed plugin content in place. Re-copies the runtime
+ * recorder, vendor dependencies, dist/server bundles and the DeepSeek plugin
+ * into the existing ASTRO_HOME, preserving user hook configs and trace data.
+ * Intended for "update plugin content" after pulling a newer build: it does
+ * NOT re-create hook integrations or migrate data (that is `installClients`).
+ */
+export function updateInstalledPlugins({
+  astroHome,
+  environment = process.env,
+  refreshDeepseek = true,
+} = {}) {
+  const resolvedAstroHome = resolveAstroHome({
+    ...environment,
+    ASTRO_HOME: astroHome || environment.ASTRO_HOME,
+  });
+  const runtime = getInstalledRuntimePaths(resolvedAstroHome);
+  if (!existsSync(runtime.pluginDir)) {
+    throw new Error(
+      `No installed ASTRO plugin found under ${runtime.pluginDir}. Run "astro-trace install" first.`,
+    );
+  }
+  const runtimePluginDir = join(runtime.pluginDir, "plugin");
+  mkdirSync(runtimePluginDir, { recursive: true });
+  initializeRuntimeConfig({
+    astroHome: resolvedAstroHome,
+    environment: { ASTRO_HOME: resolvedAstroHome },
+    pluginDir: runtime.pluginDir,
+    templateDir: packageDir,
+  });
+  copyFileSync(recorderFile, runtime.recorderFile);
+  copyFileSync(runtimeConfigFile, join(runtimePluginDir, "runtime-config.cjs"));
+  copyFileSync(storagePathsFile, join(runtimePluginDir, "storage-paths.cjs"));
+  copyRuntimeDependencies(runtimePluginDir);
+  for (const directory of ["dist", "server"]) {
+    const source = join(packageDir, directory);
+    if (!existsSync(source)) {
+      continue;
+    }
+    const destination = join(runtime.pluginDir, directory);
+    rmSync(destination, { recursive: true, force: true });
+    cpSync(source, destination, { recursive: true });
+  }
+  writeFileSync(
+    join(runtime.pluginDir, "plugin.json"),
+    `${JSON.stringify(
+      {
+        id: "astro",
+        name: "ASTRO",
+        fullName: "Agent State Trace & Runtime Observations",
+        version: packageMetadata.version,
+        config: runtime.configFile,
+        entry: runtime.recorderFile,
+        environment: runtime.envFile,
+        dashboard: existsSync(runtime.dashboardFile)
+          ? runtime.dashboardFile
+          : null,
+        dataRoot: resolvedAstroHome,
+        clients: [...supportedClients],
+      },
+      null,
+      2,
+    )}\n`,
+    "utf8",
+  );
+  if (refreshDeepseek) {
+    installDeepseekPluginRuntime(runtime, resolvedAstroHome);
+  }
+  return runtime;
+}
+
 export function resolveHomePath(value, fallback) {
   const selected = value || fallback;
   if (selected === "~") {
