@@ -74,8 +74,8 @@ export const sourceMeta = {
 /**
  * Maps known canonical event names onto common, user-facing message categories.
  * Any event name that is not present here (including `Unknown` and native event
- * names that have no canonical mapping) falls through to `others`, so that
- * bucket only ever holds genuinely unrecognized messages.
+ * names that have no canonical mapping) falls back to `session`, so every
+ * event is covered by one of the user-facing buckets.
  */
 const messageCategoryByEvent: Record<string, MessageCategory> = {
   SessionStart: "session",
@@ -108,7 +108,6 @@ export const messageCategoryOrder: readonly MessageCategory[] = [
   "interaction",
   "subagent",
   "session",
-  "others",
 ];
 
 export const messageCategoryLabels: Readonly<Record<MessageCategory, string>> = {
@@ -119,13 +118,12 @@ export const messageCategoryLabels: Readonly<Record<MessageCategory, string>> = 
   interaction: "Interaction",
   subagent: "Subagent",
   session: "Session",
-  others: "Other",
 };
 
 export function getMessageCategory(
   event: Pick<TraceEvent, "eventName">,
 ): MessageCategory {
-  return messageCategoryByEvent[event.eventName] ?? "others";
+  return messageCategoryByEvent[event.eventName] ?? "session";
 }
 
 function stableHash(value: string) {

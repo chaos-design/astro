@@ -14,6 +14,7 @@ import {
   Download,
   FileInput,
   Focus,
+  Layers,
   ListTree,
   LocateFixed,
   Menu,
@@ -141,6 +142,14 @@ import {
   buildHistorySearchIndex,
   type HistorySearchEntry,
 } from "./lib/history-search";
+import {
+  DEFAULT_RUN_HISTORY_DAYS,
+  OTHERS_AGENT_ID,
+  canLoadMoreRunHistoryDays,
+  filterSessionsByAgent,
+  nextRunHistoryVisibleDays,
+  selectVisibleRunHistory,
+} from "./lib/run-history-window";
 import { atomLevel, projectTraceEvents } from "./lib/atomic-projection";
 import {
   buildTraceTurnIndex,
@@ -576,9 +585,11 @@ function RunHistory({
   sessions,
   activeKey,
   activePromptRunKey,
+  canLoadMore,
   isDemo,
   now,
   promptRunsBySession,
+  onLoadMore,
   onSelect,
 }: {
   sessions: TraceSession[];
@@ -587,12 +598,16 @@ function RunHistory({
   isDemo: boolean;
   now: number;
   promptRunsBySession: ReadonlyMap<string, TracePromptRun[]>;
+  canLoadMore: boolean;
+  onLoadMore: () => void;
   onSelect: (sessionKey: string, promptRunKey?: string) => void;
 }) {
   const [expandedRuns, setExpandedRuns] = useState<Set<string>>(
     () => new Set(),
   );
   const activePromptRunRef = useRef<HTMLDivElement | null>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
   const activePromptCount =
     promptRunsBySession.get(activeKey)?.length ?? 0;
 
@@ -611,6 +626,30 @@ function RunHistory({
     });
   }, [activePromptRunKey]);
 
+  // On-demand loading: reveal one more day of history when the sentinel near
+  // the bottom of the list scrolls into view.
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    const list = listRef.current;
+    if (!canLoadMore || !sentinel || !list) {
+      return undefined;
+    }
+    if (typeof IntersectionObserver === "undefined") {
+      onLoadMore();
+      return undefined;
+    }
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) {
+          onLoadMore();
+        }
+      },
+      { root: list, rootMargin: "160px" },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [canLoadMore, onLoadMore, sessions.length]);
+
   const toggleRun = (key: string) => {
     setExpandedRuns((current) => toggleExpandedRun(current, key));
   };
@@ -623,7 +662,7 @@ function RunHistory({
           <strong>{sessions.length} runs</strong>
         </div>
       </header>
-      <div className="run-history__list min-h-0 overflow-auto p-1.5">
+      <div className="run-history__list min-h-0 overflow-auto p-1.5" ref={listRef}>
         {sessions.map((session) => {
           const promptRuns = promptRunsBySession.get(session.key) ?? [];
           const firstPromptRun = promptRuns[0];
@@ -811,6 +850,16 @@ function RunHistory({
             </article>
           );
         })}
+        {sessions.length === 0 ? (
+          <output className="run-history__empty">No runs in this window</output>
+        ) : null}
+        {canLoadMore ? (
+          <div
+            aria-hidden="true"
+            className="run-history__more"
+            ref={sentinelRef}
+          />
+        ) : null}
       </div>
     </section>
   );
@@ -2103,6 +2152,15 @@ export default function App() {
           legacyStorageKeys.platform,
         ) as PlatformId),
   );
+  // The agent dropdown drives which agent's runs load. A configured agent is a
+  // PlatformId; OTHERS_AGENT_ID is the trailing catch-all. Picking a configured
+  // agent also drives the topology platform; "Others" leaves it unchanged.
+  const [agentId, setAgentId] = useState<PlatformId | typeof OTHERS_AGENT_ID>(
+    platformId,
+  );
+  const [runHistoryDays, setRunHistoryDays] = useState(
+    DEFAULT_RUN_HISTORY_DAYS,
+  );
   const [theme, setTheme] = useState<Theme>(
     () =>
       readStorageValue(
@@ -2239,6 +2297,22 @@ export default function App() {
       ),
     [sessions],
   );
+  const configuredSources = useMemo(
+    () => new Set(atomPlatformOptions.map((platform) => platform.source)),
+    [],
+  );
+  // Runs shown in RUN HISTORY: narrowed to the selected agent, then to the
+  // visible day window (most recent N days). Both are derived at render time.
+  const filteredSessions = useMemo(
+    () => filterSessionsByAgent(sessions, agentId, configuredSources),
+    [agentId, configuredSources, sessions],
+  );
+  const visibleSessions = useMemo(
+    () => selectVisibleRunHistory(filteredSessions, now, runHistoryDays),
+    [filteredSessions, now, runHistoryDays],
+  );
+  const canLoadMoreRunHistory =
+    canLoadMoreRunHistoryDays(filteredSessions, now, runHistoryDays);
   const hasAdvancingRun =
     !isDemo &&
     sessions.some((session) => {
@@ -2830,12 +2904,18 @@ export default function App() {
           />
           {historyOpen ? (
             <RunHistory
-              sessions={sessions}
+              sessions={visibleSessions}
               activeKey={activeSession?.key || ""}
               activePromptRunKey={activePromptRun?.key || ""}
               isDemo={isDemo}
               now={now}
               promptRunsBySession={promptRunsBySession}
+              canLoadMore={canLoadMoreRunHistory}
+              onLoadMore={() =>
+                setRunHistoryDays((current) =>
+                  nextRunHistoryVisibleDays(filteredSessions, now, current),
+                )
+              }
               onSelect={selectSession}
             />
           ) : (
@@ -2856,15 +2936,24 @@ export default function App() {
             <div className="toolbar-actions flex min-w-0 items-center gap-1.5">
               <Tooltip>
                 <Select
-                  value={platformId}
-                  onValueChange={(value) => setPlatformId(value as PlatformId)}
+                  value={agentId}
+                  onValueChange={(value) => {
+                    const nextAgent = value as PlatformId | typeof OTHERS_AGENT_ID;
+                    setAgentId(nextAgent);
+                    setRunHistoryDays(DEFAULT_RUN_HISTORY_DAYS);
+                    if (nextAgent !== OTHERS_AGENT_ID) {
+                      setPlatformId(nextAgent);
+                    }
+                  }}
                 >
                   <TooltipTrigger asChild>
                     <SelectTrigger
                       size="sm"
                       className={cn(
                         "platform-select",
-                        `platform-select--${platformId}`,
+                        agentId === OTHERS_AGENT_ID
+                          ? "platform-select--others"
+                          : `platform-select--${agentId}`,
                       )}
                       aria-label="切换智能体平台"
                     >
@@ -2879,6 +2968,10 @@ export default function App() {
                           {platform.label}
                         </SelectItem>
                       ))}
+                      <SelectItem value={OTHERS_AGENT_ID}>
+                        <Layers />
+                        <span>Others</span>
+                      </SelectItem>
                     </SelectGroup>
                   </SelectContent>
                 </Select>

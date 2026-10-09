@@ -800,11 +800,6 @@ pre,
   background: var(--pink);
 }
 
-.history-search__filter-menu i.msg-category-others {
-  color: var(--muted-soft);
-  background: var(--muted-soft);
-}
-
 .history-search__filter-menu i.status-active,
 .history-search__result-rail i.status-active {
   color: var(--status-running);
@@ -1571,6 +1566,26 @@ pre,
   outline: none;
   border-color: var(--line-bright);
   box-shadow: none;
+}
+
+.platform-select--others {
+  color: var(--text);
+}
+
+.platform-select--others svg:first-child {
+  color: var(--muted-soft);
+}
+
+.run-history__empty {
+  margin: 8px 6px;
+  color: var(--muted-soft);
+  font-size: var(--text-caption);
+  text-align: center;
+}
+
+.run-history__more {
+  height: 1px;
+  min-height: 1px;
 }
 
 .platform-icon {
