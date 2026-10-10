@@ -424,6 +424,57 @@ Additional rules:
   (`getRunHistoryDisplayStatus`), so a terminal latest Prompt terminates the
   parent row as well.
 
+### 8.4 Session and run data structures
+
+`TraceSession` and `TracePromptRun` are lossless, read-only projections of the
+source events; neither rewrites the original events, and status and duration are
+derived at read time.
+
+`TraceSession` (aggregated by `source::workspaceId::sessionId`):
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `key` | `string` | composite key `source::workspaceId::sessionId`, avoiding cross-platform collisions |
+| `id` | `string` | native session ID |
+| `source` | `string` | platform source id |
+| `workspaceId` | `string` | workspace identifier |
+| `cwd` | `string \| null` | working directory at capture time |
+| `events` | `TraceEvent[]` | all events in the session |
+| `title` | `string` | derived title (first prompt or session identity) |
+| `start` / `end` | `number` | event time bounds (epoch ms) |
+| `duration` | `number` | `end - start` (`end` uses the live clock while active) |
+| `status` | `TraceRunStatus` | `active` / `complete` / `failed` / `terminated` / `waiting` |
+| `toolCount` | `number` | number of tool-call events |
+
+`TracePromptRun` (partitioned inside a `TraceSession` at each `UserPromptSubmit`):
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `key` | `string` | composite key including session and index |
+| `sessionKey` / `sessionId` | `string` | owning session key / native session ID |
+| `source` / `workspaceId` / `cwd` | same as `TraceSession` | inherited from the owning session |
+| `prompt` | `TraceEvent` | the `UserPromptSubmit` event that opens the interval |
+| `events` | `TraceEvent[]` | every event up to the next prompt (the first interval inherits terminal session state) |
+| `index` | `number` | interval index, starting at 0 |
+| `role` | `"initial" \| "follow-up"` | `initial` for the first interval, `follow-up` otherwise |
+| `title` / `start` / `end` / `duration` / `status` / `toolCount` | same as `TraceSession` | computed independently per interval |
+
+Derivation chain: `buildSessions()` aggregates events into `TraceSession`;
+`buildSessionPromptRuns()` losslessly partitions each session at every prompt.
+The first interval is `initial`, later ones `follow-up`, and historical intervals
+remain immutable diagnostic units. Sessions without prompts fall back to the full
+session as a compatibility case.
+
+On-disk layout (resolved by `storage-paths.cjs`):
+
+- Session event files: `<ASTRO_HOME>/<source>/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl`, organized by source, date, and timestamp directory, appended as a single JSONL file.
+- Dashboard daemon state: `<ASTRO_HOME>/dashboard-<port>.pid` (JSON with `pid`, `url`, `server`), written by the server itself so any launcher can discover a running instance.
+- Dashboard run log: `<ASTRO_HOME>/dashboard.log`, written when `astrox start` launches the daemon.
+
+`ASTRO_HOME` defaults to `~/.astrox`; `ASTRO_TRACE_DIR` / `AGENT_TRACE_DIR` /
+`TRAE_TRACE_DIR` redirect the trace root as a whole, while `ASTRO_PROJECT_DIR`
+and similar control the project subpath.
+
 ## 9. Execution Topology
 
 The base topology contains 6 domains, 27 atoms, and 28 defined edges. Platform selection changes runtime context while preserving atom semantics.

@@ -259,6 +259,16 @@ remains a separate API.
 
 ### 5.3 Run History
 
+Run History is filtered to the selected agent and, by default, shows the most
+recent two days. Scroll to the bottom of the list to reveal one earlier day at
+a time; each reveal shows a brief bottom spinner. While the dashboard first
+loads events, the list shows a left-side loading indicator before runs appear.
+
+The agent list comes from the toolbar platform dropdown: the configured agents
+are listed first and a trailing **Others** catch-all collects runs whose source
+is not a configured agent. Selecting a configured agent also switches the
+topology platform; selecting **Others** leaves the platform unchanged.
+
 Each parent row represents one session and shows:
 
 - active, complete, or failed status;
@@ -292,7 +302,8 @@ The workspace renders the selected prompt run. It provides:
 
 Toolbar controls:
 
-- platform context: Codex, Claude Code, or Trae;
+- platform context: Codex, Claude Code, Trae, and other configured agents,
+  plus an **Others** catch-all;
 - topology/trajectory switch;
 - atom and edge guide;
 - all atoms/runtime atoms switch;
@@ -300,6 +311,7 @@ Toolbar controls:
 
 Platform switching does not change raw events. All supported platform contexts
 preserve the same stable 27-atom semantics.
+The agent dropdown also narrows Run History to the selected agent.
 The platform choice is stored in `ASTROX_PLATFORM`.
 
 ### 5.5 Event Panel
@@ -525,11 +537,19 @@ Deterministic IDs make unchanged imports idempotent.
 ```text
 astro-trace serve
 astro-trace install [--target DIR] [--clients trae,claude,codex,deepseek,workbuddy] [--scope user|project]
+astro-trace update [--no-deepseek] [--astro-home DIR]
 astro-trace doctor [--target DIR] [--scope user|project] [--deepseek-profile NAME]
 astro-trace migrate [FILE_OR_DIR] [--astro-home DIR]
 astro-trace import-codex [FILE ...] [--codex-home DIR]
 astro-trace ingest [FILE] [--source NAME]
 ```
+
+`astro-trace update` refreshes the already-installed plugin runtime in place
+(recorder, `runtime-config`, `storage-paths`, bundled vendor dependencies, the
+`dist` and `server` bundles, and the DeepSeek plugin) without touching hook
+configurations, `.env`, or captured trace data. Use it after pulling a newer
+build; re-run `astro-trace install` only when you also need to refresh hooks
+or migrate data.
 
 Ingest generic JSONL from a file:
 
@@ -544,6 +564,54 @@ printf '%s\n' \
   '{"sessionId":"s1","eventName":"AgentMessage","payload":{"message":"Done"}}' \
   | node bin/astro.mjs ingest --source custom-agent
 ```
+
+### 12.1 astrox plugin control
+
+`astrox` is a thin control CLI for the ASTRO plugin: it wraps starting and
+stopping the dashboard daemon, refreshing the plugin runtime, and inspecting
+status and trace data. Diagnostics, installation, and migration delegate to the
+underlying `astro-trace` shown above.
+
+```text
+astrox start [--port N] [--host H] [--open] [--no-global] [--bin-dir DIR]
+astrox stop
+astrox restart
+astrox status [--json] [--deepseek-profile web]
+astrox info [--json]
+astrox update [--no-deepseek]
+astrox doctor [options]        run the full astro-trace diagnostics
+astrox install [options]       install or refresh hook integrations
+astrox migrate [FILE_OR_DIR]   migrate legacy trace data
+astrox open                    open the running dashboard in a browser
+astrox logs [--lines N]        tail the dashboard log
+astrox path                    print ASTRO home, plugin dir, and CLI entry
+```
+
+- `start` launches the dashboard daemon (default `127.0.0.1:4318`). It also
+  registers this entry as the global `astrox` command: on Unix it symlinks into
+  the first writable of `/usr/local/bin`, `~/.local/bin`, or `~/bin`; on Windows
+  it writes `%USERPROFILE%\.astrox\bin\astrox.cmd`. An existing symlink already
+  pointing at this entry is reused, while one pointing elsewhere is left alone.
+  `--no-global` skips registration; `--bin-dir DIR` overrides the candidate
+  directories; `--open` opens the browser after launch.
+- Once launched, the daemon writes `<ASTRO_HOME>/dashboard-<port>.pid` (with
+  `pid` and `url`); the run log lands at `<ASTRO_HOME>/dashboard.log`.
+  `logs [--lines N]` tails the last 40 lines by default.
+- `stop` sends `SIGTERM` (then `SIGKILL` if needed) to the daemon and clears the
+  process; no extra cleanup runs. `restart` is `stop` followed by `start`.
+- `status` summarizes the plugin config (config.yaml / .env as OK, WARN, or
+  MISSING), the global CLI state, the dashboard run state, and per-client hook
+  integrations (codex, claude, workbuddy, trae, deepseek). `--json` emits a
+  machine-readable report.
+- `info` lists each source's trace file count and byte total (claude, codex,
+  copilot, cursor, deepseek, gemini, iflow, llama, opencode, pi, qwen, trae,
+  workbuddy, zcode, …) plus the trace root, plugin directory, and global CLI
+  path. `--json` behaves the same.
+- `update` refreshes the installed plugin runtime in place (equivalent to
+  `astro-trace update`); `--no-deepseek` skips the DeepSeek plugin package.
+
+> The control commands require an installed plugin runtime; run `astrox install`
+> (or `astro-trace install`) first.
 
 ## 13. HTTP API
 

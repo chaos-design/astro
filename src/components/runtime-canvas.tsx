@@ -18,7 +18,15 @@ import {
   TerminalSquare,
   type LucideIcon,
 } from "lucide-react";
-import { useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  memo,
+  useEffect,
+  useEffectEvent,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { CSSProperties } from "react";
 import {
   guideAtomCopy,
@@ -82,7 +90,7 @@ type RuntimeCanvasProps = {
   topology: ExecutionTopology;
 };
 
-export function RuntimeCanvas({
+export const RuntimeCanvas = memo(function RuntimeCanvas({
   activeAtomId,
   activeEdgeIds,
   atomicEvents,
@@ -368,7 +376,7 @@ export function RuntimeCanvas({
       )}
     </div>
   );
-}
+});
 
 function DomainZone({
   layer,

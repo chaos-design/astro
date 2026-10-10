@@ -150,7 +150,7 @@ export function projectTraceEvents(
     const fallbackAtomId = config.eventAtomMap[traceEvent.eventName] ?? "trace-append";
     const steps: readonly ProjectionStep[] = isUserQuestionEvent(traceEvent)
       ? userQuestionProjection(traceEvent)
-      : isWaitingTraceEvent(traceEvent)
+      : isWaitingTraceEvent(traceEvent, config.waitingEvents)
         ? waitingProjection(traceEvent)
         : EVENT_PROJECTIONS[traceEvent.eventName] ?? [
             { atomId: fallbackAtomId, phase: fallbackPhase(traceEvent) },

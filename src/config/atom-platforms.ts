@@ -560,9 +560,37 @@ const platformDefinitions: Record<PlatformId, PlatformDefinition> = {
   },
   claude: {
     id: "claude",
-    label: "Claude Code",
+    label: "Claude",
     source: "claude",
     runtime: "Anthropic coding runtime",
+    eventAtomMap: defaultEventAtomMap,
+  },
+  gpt: {
+    id: "gpt",
+    label: "GPT",
+    source: "gpt",
+    runtime: "OpenAI GPT coding runtime",
+    eventAtomMap: defaultEventAtomMap,
+  },
+  gemini: {
+    id: "gemini",
+    label: "Gemini",
+    source: "gemini",
+    runtime: "Google Gemini CLI",
+    eventAtomMap: defaultEventAtomMap,
+  },
+  llama: {
+    id: "llama",
+    label: "Llama",
+    source: "llama",
+    runtime: "Meta Llama coding runtime",
+    eventAtomMap: defaultEventAtomMap,
+  },
+  pi: {
+    id: "pi",
+    label: "Pi Agent",
+    source: "pi",
+    runtime: "Pi agent runtime",
     eventAtomMap: defaultEventAtomMap,
   },
   deepseek: {
@@ -584,6 +612,9 @@ const platformDefinitions: Record<PlatformId, PlatformDefinition> = {
     label: "ZCode",
     source: "zcode",
     runtime: "ZCode coding runtime",
+    // ZCode fires exactly seven hook events and cannot capture Notification
+    // or Elicitation, so only PermissionRequest marks a pending run.
+    waitingEvents: ["PermissionRequest"],
     eventAtomMap: defaultEventAtomMap,
   },
   trae: {
@@ -600,9 +631,92 @@ const platformDefinitions: Record<PlatformId, PlatformDefinition> = {
     runtime: "Tencent CodeBuddy Code",
     eventAtomMap: defaultEventAtomMap,
   },
+  qwen: {
+    id: "qwen",
+    label: "Qwen Code",
+    source: "qwen",
+    runtime: "Alibaba Qwen Code",
+    eventAtomMap: defaultEventAtomMap,
+  },
+  copilot: {
+    id: "copilot",
+    label: "GitHub Copilot",
+    source: "copilot",
+    runtime: "GitHub Copilot coding agent",
+    eventAtomMap: defaultEventAtomMap,
+  },
+  cursor: {
+    id: "cursor",
+    label: "Cursor",
+    source: "cursor",
+    runtime: "Cursor agent runtime",
+    eventAtomMap: defaultEventAtomMap,
+  },
+  cline: {
+    id: "cline",
+    label: "Cline",
+    source: "cline",
+    runtime: "Cline agent runtime",
+    eventAtomMap: defaultEventAtomMap,
+  },
+  windsurf: {
+    id: "windsurf",
+    label: "Windsurf",
+    source: "windsurf",
+    runtime: "Windsurf agent runtime",
+    eventAtomMap: defaultEventAtomMap,
+  },
+  iflow: {
+    id: "iflow",
+    label: "iFlow CLI",
+    source: "iflow",
+    runtime: "iFlow CLI agent",
+    eventAtomMap: defaultEventAtomMap,
+  },
 };
 
 export const atomPlatformOptions = Object.values(platformDefinitions);
+
+/**
+ * Agent dropdown order. Common model agents come first, followed by coding
+ * runtimes; the first entry is the default selection. `run-history-window.ts`
+ * appends the "Others" catch-all at render time.
+ */
+const agentOrder: readonly PlatformId[] = [
+  "claude",
+  "gpt",
+  "gemini",
+  "llama",
+  "pi",
+  "codex",
+  "copilot",
+  "cursor",
+  "cline",
+  "windsurf",
+  "opencode",
+  "zcode",
+  "qwen",
+  "deepseek",
+  "trae",
+  "workbuddy",
+  "iflow",
+];
+
+/** Dropdown options in display order; the first option is the default agent. */
+export const agentOptions: readonly PlatformDefinition[] = agentOrder.map(
+  (id) => platformDefinitions[id],
+);
+
+/**
+ * Pending-signal configuration for a trace source. Unknown sources (browser,
+ * generic, custom adapters) fall back to the shared default detection.
+ */
+export function getWaitingEventsForSource(
+  source: string,
+): readonly string[] | undefined {
+  return atomPlatformOptions.find((platform) => platform.source === source)
+    ?.waitingEvents;
+}
 
 function resolvePlatform(platformId: string): PlatformDefinition {
   return platformDefinitions[platformId as PlatformId] || platformDefinitions.codex;

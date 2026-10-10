@@ -15,3 +15,5 @@ docs/superpowers/
 .env
 *.log
 .DS_Store
+.codebuddy/
+.workbuddy/

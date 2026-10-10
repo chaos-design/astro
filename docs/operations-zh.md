@@ -345,6 +345,14 @@ pnpm build:native-plugins
 
 然后重新安装所选原生插件，或再次执行 `pnpm install-plugins`。直接安装器会更新 ASTRO 命令并保留无关 Hook。
 
+如果只需刷新已安装插件的内容（recorder、`runtime-config`、`storage-paths`、内联的 vendor 依赖、`dist` 与 `server` 以及 DeepSeek 插件），且不触碰 Hook 配置、`.env` 和已捕获的 Trace 数据，执行：
+
+```bash
+astro-trace update
+```
+
+`--no-deepseek` 可跳过刷新 DeepSeek 插件运行时；`--astro-home /path/to/.astrox` 可覆盖默认数据根。该命令是一次「内容刷新」：把新的运行时文件重新复制到现有 `<ASTRO_HOME>/plugins/astro`，并按当前版本重写 `plugin.json`；若该路径从未安装过则直接报错而不是静默创建。
+
 升级前后检查：
 
 1. `/api/health.dataRoot` 未意外改变；

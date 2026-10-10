@@ -9,10 +9,10 @@ export const OTHERS_AGENT_ID = "others";
 
 /**
  * RUN HISTORY loads on demand: the most recent {@link DEFAULT_RUN_HISTORY_DAYS}
- * days are visible first, and scrolling further reveals one additional day at
- * a time instead of loading every historical run up front.
+ * day(s) are visible first, and scrolling further reveals one additional day
+ * at a time instead of loading every historical run up front.
  */
-export const DEFAULT_RUN_HISTORY_DAYS = 2;
+export const DEFAULT_RUN_HISTORY_DAYS = 1;
 
 const DAY_MS = 86_400_000;
 
@@ -24,14 +24,37 @@ export function getCalendarDayStart(timestamp: number): number {
 }
 
 /**
- * Lower bound of the visible window for `visibleDays` days ending at `now`.
- * With 2 days this is local midnight of yesterday, so today + yesterday show.
+ * The day the visible window is anchored to: the most recent day that
+ * actually has data for the filtered agent, falling back to today while
+ * nothing has been recorded yet.
+ */
+export function getRunHistoryAnchorDayStart(
+  sessions: readonly TraceSession[],
+  now: number,
+): number {
+  let latest = 0;
+  for (const session of sessions) {
+    if (session.start > latest) {
+      latest = session.start;
+    }
+  }
+  return latest > 0 ? getCalendarDayStart(latest) : getCalendarDayStart(now);
+}
+
+/**
+ * Lower bound of the visible window: `visibleDays` calendar days ending at
+ * the anchor day (the most recent day with data). With one day this shows
+ * only the anchor day; scrolling back reveals one earlier day at a time.
  */
 export function getRunHistoryWindowStart(
+  sessions: readonly TraceSession[],
   now: number,
   visibleDays: number,
 ): number {
-  return getCalendarDayStart(now) - Math.max(0, visibleDays - 1) * DAY_MS;
+  return (
+    getRunHistoryAnchorDayStart(sessions, now) -
+    Math.max(0, visibleDays - 1) * DAY_MS
+  );
 }
 
 /**
@@ -43,7 +66,7 @@ export function selectVisibleRunHistory(
   now: number,
   visibleDays: number,
 ): TraceSession[] {
-  const from = getRunHistoryWindowStart(now, visibleDays);
+  const from = getRunHistoryWindowStart(sessions, now, visibleDays);
   return sessions.filter((session) => session.start >= from);
 }
 
@@ -56,7 +79,7 @@ export function canLoadMoreRunHistoryDays(
   now: number,
   visibleDays: number,
 ): boolean {
-  const from = getRunHistoryWindowStart(now, visibleDays);
+  const from = getRunHistoryWindowStart(sessions, now, visibleDays);
   return sessions.some((session) => session.start < from);
 }
 
@@ -69,7 +92,9 @@ export function nextRunHistoryVisibleDays(
   now: number,
   current: number,
 ): number {
-  return canLoadMoreRunHistoryDays(sessions, now, current) ? current + 1 : current;
+  return canLoadMoreRunHistoryDays(sessions, now, current)
+    ? current + 1
+    : current;
 }
 
 /**

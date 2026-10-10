@@ -11,6 +11,10 @@ type AppDefaults = {
   guideOpen: boolean;
   historyOpenMinWidth: number;
   menuOpen: boolean;
+  /**
+   * Fallback agent when no preference is stored. This mirrors the first entry
+   * of the agent dropdown so the default selection is the top of the list.
+   */
   platform: PlatformId;
   replayCursor: number;
   replayMode: boolean;
@@ -30,13 +34,19 @@ export const appDefaults: AppDefaults = {
   guideOpen: false,
   historyOpenMinWidth: 900,
   menuOpen: false,
-  platform: "codex",
+  platform: "claude",
   replayCursor: 0,
   replayMode: false,
   replayPlaying: false,
   replaySpeed: 1,
   theme: "dark",
 };
+
+/**
+ * Release string shown in the application header. Kept in sync with the
+ * root package.json version and asserted by tests/app-config.test.ts.
+ */
+export const appVersion = "0.0.2-alpha.2";
 
 /**
  * Timing values shared by live UI effects.

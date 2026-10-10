@@ -42,6 +42,26 @@ test("uses portable home-relative paths in hook commands", () => {
   );
 });
 
+test("names WorkBuddy hook events explicitly because it pipes no payload", () => {
+  const astroHome = join(homedir(), ".astrox");
+  const recorderFile = join(
+    astroHome,
+    "plugins",
+    "astro",
+    "plugin",
+    "trace-recorder.cjs",
+  );
+
+  assert.equal(
+    getHookCommand("workbuddy", recorderFile, astroHome, "PermissionRequest"),
+    "ASTRO_HOME=~/.astrox node ~/.astrox/plugins/astro/plugin/trace-recorder.cjs --source=workbuddy --event=PermissionRequest",
+  );
+  assert.equal(
+    getHookCommand("claude", recorderFile, astroHome, "PermissionRequest"),
+    "ASTRO_HOME=~/.astrox node ~/.astrox/plugins/astro/plugin/trace-recorder.cjs --source=claude",
+  );
+});
+
 test("rejects unsupported clients instead of silently doing nothing", () => {
   assert.throws(
     () => installClients({ clients: ["deepseak"] }),
@@ -155,6 +175,12 @@ test("merges client hooks without replacing existing commands", () => {
   assert.match(
     workbuddy.hooks.PermissionRequest[0].hooks[0].command,
     /--source=workbuddy/,
+  );
+  // WorkBuddy does not pipe hook payloads into stdin, so every command
+  // names its event explicitly.
+  assert.match(
+    workbuddy.hooks.PermissionRequest[0].hooks[0].command,
+    /--event=PermissionRequest/,
   );
   assert.ok(workbuddy.hooks.StopFailure);
   assert.ok(workbuddy.hooks.Elicitation);
