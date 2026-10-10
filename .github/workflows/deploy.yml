@@ -1,4 +1,4 @@
-# Builds the docs/ static site and deploys it to Vercel.
+# Builds the docs site (site/ React+Vite SPA over docs/) and deploys it to Vercel.
 #
 # Triggers:
 #   - push to `main`            -> production deploy (`vercel deploy --prod`)
@@ -57,15 +57,17 @@ jobs:
 
       - name: Verify build output
         run: |
-          test -f docs/dist/index.html
-          echo "Published pages:"
-          ls docs/dist
+          test -f site/dist/index.html
+          test -f site/dist/decks/project-overview-slides-zh.html
+          echo "Published output:"
+          ls site/dist
+          ls site/dist/decks
 
       - name: Upload docs build
         uses: actions/upload-artifact@v4
         with:
           name: docs-dist
-          path: docs/dist
+          path: site/dist
           retention-days: 7
 
   deploy:

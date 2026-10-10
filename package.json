@@ -13,10 +13,11 @@
   },
   "scripts": {
     "build": "vite build",
-    "build:docs": "node scripts/build-docs-site.mjs",
+    "build:docs": "vite build --config site/vite.config.ts",
     "build:native-plugins": "node scripts/build-native-plugins.mjs",
     "build:plugin": "pnpm build && pnpm build:native-plugins && node scripts/build-plugin.mjs",
     "dev": "vite",
+    "dev:docs": "vite --config site/vite.config.ts",
     "install-hooks": "node scripts/install-hooks.mjs",
     "install-opencode-plugin": "node scripts/install-opencode-plugin.mjs",
     "install-plugins": "node scripts/install-plugins.mjs",
@@ -50,7 +51,9 @@
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
     "@vitejs/plugin-react": "^6.1.1",
+    "highlight.js": "^11.11.1",
     "marked": "^18.1.0",
+    "mermaid": "^11.11.0",
     "tailwindcss": "^4.3.3",
     "typescript": "^7.0.2",
     "vite": "^8.2.2"
