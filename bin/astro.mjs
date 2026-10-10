@@ -16,6 +16,7 @@ import {
   getInstalledRuntimePaths,
   installClients,
   openInstalledDashboard,
+  updateInstalledPlugins,
 } from "../scripts/install-plugins.mjs";
 import {
   getTraceStats,
@@ -243,6 +244,32 @@ function install() {
         ? "Started or opened the ASTRO dashboard."
         : "The ASTRO dashboard is installed; automatic opening is disabled.",
     );
+    console.log(`Manual start: node ${runtime.dashboardFile}`);
+  }
+}
+
+function update() {
+  const astroHome =
+    getOption("astro-home") ||
+    getOption("aot-home") ||
+    process.env.ASTRO_HOME ||
+    process.env.AOT_HOME;
+  const refreshDeepseek = !process.argv.includes("--no-deepseek");
+  const runtime = updateInstalledPlugins({
+    astroHome,
+    environment: process.env,
+    refreshDeepseek,
+  });
+  loadedRuntimeConfig = null;
+  const runtimeConfig = getRuntimeConfig({ initialize: false });
+  console.log(`Updated ASTRO plugin runtime in ${runtime.pluginDir}`);
+  console.log(`ASTRO configuration: ${runtimeConfig.files.config.path}`);
+  console.log(`ASTRO environment: ${runtimeConfig.files.env.path}`);
+  console.log(
+    "Hook integrations and trace data were left untouched. " +
+      "Re-run 'astro-trace install' to refresh hooks or migrate data.",
+  );
+  if (existsSync(runtime.dashboardFile)) {
     console.log(`Manual start: node ${runtime.dashboardFile}`);
   }
 }
@@ -490,6 +517,7 @@ function printHelp() {
 
 Usage:
   astro-trace install [--clients trae,claude,codex,deepseek,workbuddy] [--scope user|project]
+  astro-trace update [--no-deepseek]
   astro-trace serve
   astro-trace doctor [--scope user|project] [--deepseek-profile web]
   astro-trace migrate [FILE_OR_DIR]
@@ -517,6 +545,8 @@ if (command === "serve" || command === "start") {
   await import("../server/server.mjs");
 } else if (command === "install") {
   install();
+} else if (command === "update") {
+  update();
 } else if (command === "doctor") {
   doctor();
 } else if (command === "migrate") {

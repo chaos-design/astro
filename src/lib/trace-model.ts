@@ -74,8 +74,8 @@ export const sourceMeta = {
 /**
  * Maps known canonical event names onto common, user-facing message categories.
  * Any event name that is not present here (including `Unknown` and native event
- * names that have no canonical mapping) falls through to `others`, so that
- * bucket only ever holds genuinely unrecognized messages.
+ * names that have no canonical mapping) falls back to `session`, so every
+ * event is covered by one of the user-facing buckets.
  */
 const messageCategoryByEvent: Record<string, MessageCategory> = {
   SessionStart: "session",
@@ -108,7 +108,6 @@ export const messageCategoryOrder: readonly MessageCategory[] = [
   "interaction",
   "subagent",
   "session",
-  "others",
 ];
 
 export const messageCategoryLabels: Readonly<Record<MessageCategory, string>> = {
@@ -119,13 +118,12 @@ export const messageCategoryLabels: Readonly<Record<MessageCategory, string>> = 
   interaction: "Interaction",
   subagent: "Subagent",
   session: "Session",
-  others: "Other",
 };
 
 export function getMessageCategory(
   event: Pick<TraceEvent, "eventName">,
 ): MessageCategory {
-  return messageCategoryByEvent[event.eventName] ?? "others";
+  return messageCategoryByEvent[event.eventName] ?? "session";
 }
 
 function stableHash(value: string) {
@@ -481,21 +479,29 @@ export function getSessionTitle(events: TraceEvent[]) {
 
 function getTraceRunStatus(events: readonly TraceEvent[]): TraceRunStatus {
   let status: TraceRunStatus = "active";
+  let runEnded = false;
   for (const event of events) {
     if (
       event.eventName === "SessionStart" ||
       event.eventName === "UserPromptSubmit"
     ) {
       status = "active";
+      runEnded = false;
     } else if (isTerminationEvent(event)) {
       status = "terminated";
+      runEnded = true;
     } else if (isWaitingTraceEvent(event)) {
       status = "waiting";
     } else if (isFailureEvent(event)) {
       status = "failed";
+      // A stop-level failure ends the run: later progress noise must not
+      // resurrect it to "active" in the run history.
+      runEnded = event.eventName === "StopFailure";
     } else if (event.eventName === "Stop") {
       status = "complete";
+      runEnded = true;
     } else if (
+      !runEnded &&
       (status === "waiting" || status === "failed") &&
       isExecutionProgressEvent(event)
     ) {
@@ -516,7 +522,9 @@ export function buildSessionPromptRuns(
     const endIndex = promptIndexes[index + 1] ?? session.events.length;
     const promptWindow = session.events.slice(startIndex, endIndex);
     const terminalIndex = promptWindow.findIndex((event) =>
-      ["Stop", "SessionEnd", "Interrupt"].includes(event.eventName),
+      ["Stop", "StopFailure", "SessionEnd", "Interrupt"].includes(
+        event.eventName,
+      ),
     );
     const events =
       terminalIndex >= 0

@@ -494,11 +494,18 @@ node bin/astro.mjs import-codex --codex-home=/path/to/.codex
 ```text
 astro-trace serve
 astro-trace install [--target DIR] [--clients trae,claude,codex,deepseek,workbuddy] [--scope user|project]
+astro-trace update [--no-deepseek]
 astro-trace doctor [--target DIR] [--scope user|project] [--deepseek-profile NAME]
 astro-trace migrate [FILE_OR_DIR] [--astro-home DIR]
 astro-trace import-codex [FILE ...] [--codex-home DIR]
 astro-trace ingest [FILE] [--source NAME]
 ```
+
+`astro-trace update` 原地刷新已安装插件的内容：重新拷贝 recorder、vendor 依赖、
+`dist` 与 `server` 产物并更新 `plugin.json` 版本，同时刷新 DeepSeek 插件包
+（`--no-deepseek` 可跳过）。它不改动 hook 配置，也不迁移 trace 数据；构建新版本后
+执行 `pnpm build && astro-trace update` 即可让已安装的插件用上新内容。需要重建
+hook 集成或迁移数据时，仍使用 `astro-trace install`。
 
 从文件导入通用 JSONL：
 

@@ -586,3 +586,92 @@ test("keeps atom semantics stable across platform configurations", () => {
     deepseek.nodes.every((node) => node.data.platform === "deepseek"),
   );
 });
+
+test("a stop-level failure stays failed when progress noise follows it", () => {
+  const base = {
+    source: "workbuddy",
+    workspaceId: "workspace",
+    cwd: "/tmp/workspace",
+    payload: {},
+  };
+  const events = [
+    {
+      ...base,
+      id: "prompt",
+      sessionId: "s1",
+      eventName: "UserPromptSubmit",
+      capturedAt: "2026-09-08T08:00:00.000Z",
+      payload: { prompt: "Run the task" },
+    },
+    {
+      ...base,
+      id: "fail",
+      sessionId: "s1",
+      eventName: "StopFailure",
+      capturedAt: "2026-09-08T08:00:10.000Z",
+    },
+    // Progress noise emitted after the run already failed must not
+    // resurrect the run history status back to "active".
+    {
+      ...base,
+      id: "noise",
+      sessionId: "s1",
+      eventName: "SubagentStop",
+      capturedAt: "2026-09-08T08:00:12.000Z",
+    },
+  ];
+  const sessions = buildSessions(events);
+
+  assert.equal(sessions[0].status, "failed");
+
+  const [promptRun] = buildSessionPromptRuns(sessions[0]);
+  assert.equal(promptRun.status, "failed");
+  // The prompt window truncates at the stop-level failure event.
+  assert.equal(promptRun.events.at(-1)?.eventName, "StopFailure");
+});
+
+test("a mid-run tool failure still recovers to complete after progress", () => {
+  const base = {
+    source: "claude",
+    workspaceId: "workspace",
+    cwd: "/tmp/workspace",
+    payload: {},
+  };
+  const events = [
+    {
+      ...base,
+      id: "prompt",
+      sessionId: "s1",
+      eventName: "UserPromptSubmit",
+      capturedAt: "2026-09-08T08:00:00.000Z",
+      payload: { prompt: "Run the task" },
+    },
+    {
+      ...base,
+      id: "tool-fail",
+      sessionId: "s1",
+      eventName: "PostToolUseFailure",
+      capturedAt: "2026-09-08T08:00:05.000Z",
+    },
+    {
+      ...base,
+      id: "progress",
+      sessionId: "s1",
+      eventName: "PostToolUse",
+      capturedAt: "2026-09-08T08:00:08.000Z",
+    },
+    {
+      ...base,
+      id: "stop",
+      sessionId: "s1",
+      eventName: "Stop",
+      capturedAt: "2026-09-08T08:00:10.000Z",
+    },
+  ];
+  const sessions = buildSessions(events);
+
+  assert.equal(sessions[0].status, "complete");
+
+  const [promptRun] = buildSessionPromptRuns(sessions[0]);
+  assert.equal(promptRun.status, "complete");
+});

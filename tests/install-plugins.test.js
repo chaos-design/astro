@@ -17,6 +17,7 @@ import {
   installClients,
   openInstalledDashboard,
   resolveHomePath,
+  updateInstalledPlugins,
 } from "../scripts/install-plugins.mjs";
 
 test("uses portable home-relative paths in hook commands", () => {
@@ -328,6 +329,49 @@ test("falls back to the official npx launcher when dsh is not on PATH", () => {
     "--yes",
     "@deepseek-ai/dsh",
   ]);
+
+  rmSync(root, { recursive: true, force: true });
+});
+
+test("updates installed plugin content in place and leaves missing installs alone", () => {
+  const root = mkdtempSync(join(tmpdir(), "astro-update-"));
+  const astroHome = join(root, "astro-home");
+  const pluginDir = join(astroHome, "plugins", "astro");
+  const recorderFile = join(pluginDir, "plugin", "trace-recorder.cjs");
+
+  // No install yet -> update refuses instead of silently creating one.
+  assert.throws(
+    () =>
+      updateInstalledPlugins({
+        astroHome,
+        environment: { ASTRO_HOME: astroHome },
+        refreshDeepseek: false,
+      }),
+    /No installed ASTRO plugin/,
+  );
+
+  // Install once, then stamp a user value and confirm an update preserves it.
+  installClients({
+    targetDir: root,
+    astroHome,
+    clients: [],
+  });
+  const envFile = join(pluginDir, ".env");
+  writeFileSync(envFile, "PRIVATE_VALUE=preserved\n");
+
+  updateInstalledPlugins({
+    astroHome,
+    environment: { ASTRO_HOME: astroHome },
+    refreshDeepseek: false,
+  });
+
+  assert.equal(existsSync(recorderFile), true);
+  const pluginJson = JSON.parse(
+    readFileSync(join(pluginDir, "plugin.json"), "utf8"),
+  );
+  assert.equal(pluginJson.id, "astro");
+  // User-managed files are not clobbered by a content refresh.
+  assert.equal(readFileSync(envFile, "utf8"), "PRIVATE_VALUE=preserved\n");
 
   rmSync(root, { recursive: true, force: true });
 });

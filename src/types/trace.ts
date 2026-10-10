@@ -134,8 +134,8 @@ export type EventTone =
 /**
  * Common, user-facing message categories used to filter trace events.
  * These group the raw event names into semantic buckets for the observability
- * UI. `others` is a catch-all reserved for events that are not recognized, so
- * it should only ever contain genuinely unknown messages.
+ * UI. Events without a canonical mapping fall back to `session`, so every
+ * known and unknown event is covered by one of these buckets.
  */
 export type MessageCategory =
   | "prompt"
@@ -144,8 +144,7 @@ export type MessageCategory =
   | "tool"
   | "interaction"
   | "subagent"
-  | "session"
-  | "others";
+  | "session";
 
 export type EventMeta = {
   label: string;

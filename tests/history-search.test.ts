@@ -207,17 +207,17 @@ test("filters by common message category", () => {
   );
 });
 
-test("routes unrecognized events into the others category", () => {
-  assert.equal(getMessageCategory({ eventName: "Unknown" }), "others");
-  assert.equal(getMessageCategory({ eventName: "SomeNativeEvent" }), "others");
+test("routes unrecognized events into the session category", () => {
+  assert.equal(getMessageCategory({ eventName: "Unknown" }), "session");
+  assert.equal(getMessageCategory({ eventName: "SomeNativeEvent" }), "session");
   assert.equal(getMessageCategory({ eventName: "PreToolUse" }), "tool");
 
   const entries = searchFixture();
-  const unrecognized = filterHistorySearchEntries(
+  const sessions = filterHistorySearchEntries(
     entries,
-    filters({ messageCategories: new Set(["others"]) }),
+    filters({ messageCategories: new Set(["session"]) }),
   );
-  assert.deepEqual(unrecognized, []);
+  assert.deepEqual(sessions.map((entry) => entry.eventId).sort(), []);
 });
 
 test("returns no matches for invalid or reversed time bounds", () => {

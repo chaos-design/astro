@@ -800,11 +800,6 @@ pre,
   background: var(--pink);
 }
 
-.history-search__filter-menu i.msg-category-others {
-  color: var(--muted-soft);
-  background: var(--muted-soft);
-}
-
 .history-search__filter-menu i.status-active,
 .history-search__result-rail i.status-active {
   color: var(--status-running);
@@ -1571,6 +1566,49 @@ pre,
   outline: none;
   border-color: var(--line-bright);
   box-shadow: none;
+}
+
+.platform-select--others {
+  color: var(--text);
+}
+
+.platform-select--others svg:first-child {
+  color: var(--muted-soft);
+}
+
+.run-history__empty {
+  margin: 8px 6px;
+  color: var(--muted-soft);
+  font-size: var(--text-caption);
+  text-align: center;
+}
+
+.run-history__more {
+  height: 1px;
+  min-height: 1px;
+}
+
+.run-history__loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 10px 6px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  color: var(--muted-soft);
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+  letter-spacing: 0.08em;
+  background: var(--panel-hover);
+}
+
+.run-history__loading svg {
+  color: var(--muted-soft);
+}
+
+.run-history__loading--more {
+  margin: 8px 6px;
 }
 
 .platform-icon {
