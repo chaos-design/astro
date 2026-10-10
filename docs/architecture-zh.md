@@ -395,6 +395,49 @@ Run History 行的状态必须与运行的真实结局一致：一旦出现失�
 - 父行状态取最新 Prompt 的有效状态（`getRunHistoryDisplayStatus`），因此最新
   Prompt 落入终态后父行同步终止。
 
+### 8.4 会话与运行的数据结构
+
+`TraceSession` 与 `TracePromptRun` 是前端对来源事件做无损投影后得到的诊断单元，二者都不改写来源事件，状态与时长均为读取时派生。
+
+`TraceSession`（按 `source::workspaceId::sessionId` 聚合）：
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `key` | `string` | 组合键 `source::workspaceId::sessionId`，避免跨平台冲突 |
+| `id` | `string` | 原生会话 ID |
+| `source` | `string` | 平台来源标识 |
+| `workspaceId` | `string` | 工作区标识 |
+| `cwd` | `string \| null` | 采集时的工作目录 |
+| `events` | `TraceEvent[]` | 该会话内的全部事件 |
+| `title` | `string` | 派生命名（首条 Prompt 或会话标识） |
+| `start` / `end` | `number` | 事件时间边界（epoch 毫秒） |
+| `duration` | `number` | `end - start`（实时态下 `end` 取当前时钟） |
+| `status` | `TraceRunStatus` | `active` / `complete` / `failed` / `terminated` / `waiting` |
+| `toolCount` | `number` | 工具调用事件数 |
+
+`TracePromptRun`（在 `TraceSession` 内按每条 `UserPromptSubmit` 切分）：
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `key` | `string` | 组合键，含会话与序号 |
+| `sessionKey` / `sessionId` | `string` | 所属会话键 / 原生会话 ID |
+| `source` / `workspaceId` / `cwd` | 同源 | 继承所属会话 |
+| `prompt` | `TraceEvent` | 该区间起始的 `UserPromptSubmit` 事件 |
+| `events` | `TraceEvent[]` | 该 Prompt 至下一条 Prompt 之前的全部事件（首个区间继承会话终态） |
+| `index` | `number` | 区间序号，从 0 开始 |
+| `role` | `"initial" \| "follow-up"` | 首个区间为 `initial`，其余为 `follow-up` |
+| `title` / `start` / `end` / `duration` / `status` / `toolCount` | 同 `TraceSession` | 按当前区间独立计算 |
+
+派生链路：`buildSessions()` 把事件聚合成 `TraceSession`，`buildSessionPromptRuns()` 在每个 Prompt 处无损切分为 `TracePromptRun`；首个区间标记为 `initial`，后续为 `follow-up`，历史区间作为不可变诊断单元。没有 Prompt 的会话仍以完整会话作为兼容回退。
+
+运行数据在磁盘上的布局（由 `storage-paths.cjs` 解析）：
+
+- 会话事件文件：`<ASTRO_HOME>/<source>/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl`，按来源、日期和时间戳目录组织，单文件 JSONL 追加写入。
+- 仪表盘守护进程状态：`<ASTRO_HOME>/dashboard-<port>.pid`（含 `pid`、`url`、`server` 的 JSON），由服务端自身写入，任何启动器都能据此发现运行中的实例。
+- 仪表盘运行日志：`<ASTRO_HOME>/dashboard.log`，由 `astrox start` 触发写入。
+
+`ASTRO_HOME` 默认 `~/.astrox`；`ASTRO_TRACE_DIR` / `AGENT_TRACE_DIR` / `TRAE_TRACE_DIR` 可整体重定向 trace 根目录，`ASTRO_PROJECT_DIR` 等控制项目子路径。
+
 ## 9. 执行拓扑
 
 基础拓扑包含 6 个领域、27 个原子和 28 条定义连线。平台切换只改变平台标识与事件映射上下文，原子语义保持稳定。

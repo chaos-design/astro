@@ -12,7 +12,7 @@ import {
 } from "../src/config/app-config.ts";
 
 test("keeps user preference defaults and storage keys in app config", () => {
-  assert.equal(appDefaults.platform, "codex");
+  assert.equal(appDefaults.platform, "claude");
   assert.equal(appDefaults.theme, "dark");
   assert.equal(appDefaults.activeView, "topology");
   assert.equal(appTimings.activeRunTimeoutMs, 24 * 60 * 60 * 1_000);

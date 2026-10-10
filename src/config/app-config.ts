@@ -11,6 +11,10 @@ type AppDefaults = {
   guideOpen: boolean;
   historyOpenMinWidth: number;
   menuOpen: boolean;
+  /**
+   * Fallback agent when no preference is stored. This mirrors the first entry
+   * of the agent dropdown so the default selection is the top of the list.
+   */
   platform: PlatformId;
   replayCursor: number;
   replayMode: boolean;
@@ -30,7 +34,7 @@ export const appDefaults: AppDefaults = {
   guideOpen: false,
   historyOpenMinWidth: 900,
   menuOpen: false,
-  platform: "codex",
+  platform: "claude",
   replayCursor: 0,
   replayMode: false,
   replayPlaying: false,

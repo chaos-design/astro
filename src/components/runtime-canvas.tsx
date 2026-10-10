@@ -82,7 +82,7 @@ type RuntimeCanvasProps = {
   topology: ExecutionTopology;
 };
 
-export function RuntimeCanvas({
+export const RuntimeCanvas = memo(function RuntimeCanvas({
   activeAtomId,
   activeEdgeIds,
   atomicEvents,
@@ -368,7 +368,7 @@ export function RuntimeCanvas({
       )}
     </div>
   );
-}
+});
 
 function DomainZone({
   layer,

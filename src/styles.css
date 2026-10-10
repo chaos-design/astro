@@ -1583,6 +1583,12 @@ pre,
   box-shadow: none;
 }
 
+/* The agent list is long; cap the menu so it scrolls instead of covering the
+   canvas. Unlayered rules win over the radix available-height utility. */
+.agent-select__content {
+  max-height: 268px;
+}
+
 .platform-select--others {
   color: var(--text);
 }
@@ -3327,6 +3333,19 @@ pre,
   background: color-mix(in srgb, var(--violet-deep) 8%, var(--panel));
 }
 
+/* The log is windowed: the viewport reserves the full scroll height while the
+   slice holds only the mounted rows. */
+.atomic-log__viewport {
+  position: relative;
+  width: 100%;
+}
+
+.atomic-log__slice {
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+}
+
 .atomic-log__row {
   --log-tone: var(--muted-soft);
 
@@ -3344,7 +3363,6 @@ pre,
   cursor: pointer;
   text-align: left;
   background: transparent;
-  content-visibility: auto;
   transition:
     border-color 150ms ease,
     background 150ms ease,

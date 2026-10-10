@@ -560,9 +560,37 @@ const platformDefinitions: Record<PlatformId, PlatformDefinition> = {
   },
   claude: {
     id: "claude",
-    label: "Claude Code",
+    label: "Claude",
     source: "claude",
     runtime: "Anthropic coding runtime",
+    eventAtomMap: defaultEventAtomMap,
+  },
+  gpt: {
+    id: "gpt",
+    label: "GPT",
+    source: "gpt",
+    runtime: "OpenAI GPT coding runtime",
+    eventAtomMap: defaultEventAtomMap,
+  },
+  gemini: {
+    id: "gemini",
+    label: "Gemini",
+    source: "gemini",
+    runtime: "Google Gemini CLI",
+    eventAtomMap: defaultEventAtomMap,
+  },
+  llama: {
+    id: "llama",
+    label: "Llama",
+    source: "llama",
+    runtime: "Meta Llama coding runtime",
+    eventAtomMap: defaultEventAtomMap,
+  },
+  pi: {
+    id: "pi",
+    label: "Pi Agent",
+    source: "pi",
+    runtime: "Pi agent runtime",
     eventAtomMap: defaultEventAtomMap,
   },
   deepseek: {
@@ -601,13 +629,6 @@ const platformDefinitions: Record<PlatformId, PlatformDefinition> = {
     label: "WorkBuddy",
     source: "workbuddy",
     runtime: "Tencent CodeBuddy Code",
-    eventAtomMap: defaultEventAtomMap,
-  },
-  gemini: {
-    id: "gemini",
-    label: "Gemini CLI",
-    source: "gemini",
-    runtime: "Google Gemini CLI",
     eventAtomMap: defaultEventAtomMap,
   },
   qwen: {
@@ -655,6 +676,36 @@ const platformDefinitions: Record<PlatformId, PlatformDefinition> = {
 };
 
 export const atomPlatformOptions = Object.values(platformDefinitions);
+
+/**
+ * Agent dropdown order. Common model agents come first, followed by coding
+ * runtimes; the first entry is the default selection. `run-history-window.ts`
+ * appends the "Others" catch-all at render time.
+ */
+const agentOrder: readonly PlatformId[] = [
+  "claude",
+  "gpt",
+  "gemini",
+  "llama",
+  "pi",
+  "codex",
+  "copilot",
+  "cursor",
+  "cline",
+  "windsurf",
+  "opencode",
+  "zcode",
+  "qwen",
+  "deepseek",
+  "trae",
+  "workbuddy",
+  "iflow",
+];
+
+/** Dropdown options in display order; the first option is the default agent. */
+export const agentOptions: readonly PlatformDefinition[] = agentOrder.map(
+  (id) => platformDefinitions[id],
+);
 
 /**
  * Pending-signal configuration for a trace source. Unknown sources (browser,

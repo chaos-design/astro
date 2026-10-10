@@ -14,7 +14,6 @@ import {
   Download,
   FileInput,
   Focus,
-  Layers,
   ListTree,
   LocateFixed,
   Loader2,
@@ -32,9 +31,11 @@ import {
   Trash2,
 } from "lucide-react";
 import {
-  Fragment,
+  memo,
   useCallback,
+  useDeferredValue,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -46,6 +47,7 @@ import type {
 } from "react";
 import { JsonViewer } from "./components/json-viewer";
 import { HistorySearch } from "./components/history-search";
+import { OthersAgentIcon } from "./components/agent-icons";
 import { PlatformIcon } from "./components/platform-icon";
 import { PromptContent } from "./components/prompt-content";
 import { RuntimeCanvas } from "./components/runtime-canvas";
@@ -116,6 +118,7 @@ import {
   type Theme,
 } from "./config/app-config";
 import {
+  agentOptions,
   atomPlatformOptions,
   getAtomIdForEvent,
   getAtomPlatformConfig,
@@ -144,6 +147,15 @@ import {
   buildHistorySearchIndex,
   type HistorySearchEntry,
 } from "./lib/history-search";
+import { matchesEventQuery } from "./lib/event-search";
+import {
+  type LogRowMetrics,
+  LOG_ROW_ESTIMATE,
+  LOG_TURN_ESTIMATE,
+  buildLogLayout,
+  findVisibleRange,
+  resolveScrollTopForRow,
+} from "./lib/log-window";
 import {
   DEFAULT_RUN_HISTORY_DAYS,
   OTHERS_AGENT_ID,
@@ -191,6 +203,13 @@ import type {
 } from "@/types/trace";
 
 type InspectorTab = "input" | "output" | "raw";
+
+/**
+ * Shared empty collections. Reusing one instance keeps memoized children from
+ * re-rendering on every parent render when there is nothing to show.
+ */
+const EMPTY_EVENTS: TraceEvent[] = [];
+const EMPTY_HISTORY_ENTRIES: HistorySearchEntry[] = [];
 type ActiveTransition = {
   fromId: string;
   toId: string;
@@ -583,7 +602,7 @@ function RunHistoryTooltipContent({
   );
 }
 
-function RunHistory({
+const RunHistory = memo(function RunHistory({
   sessions,
   activeKey,
   activePromptRunKey,
@@ -880,9 +899,13 @@ function RunHistory({
       </div>
     </section>
   );
-}
+});
 
-function AtomicLog({
+/**
+ * The event log mounts only the rows intersecting the viewport, so a session
+ * with tens of thousands of events stays responsive while streaming.
+ */
+const AtomicLog = memo(function AtomicLog({
   events,
   runningEventId,
   selectedEventId,
@@ -905,20 +928,35 @@ function AtomicLog({
 }) {
   const listRef = useRef<HTMLDivElement | null>(null);
   const locateRequestRef = useRef(locateRequest);
+  const scrollFrameRef = useRef(0);
+  const [metrics, setMetrics] = useState<LogRowMetrics>({
+    row: LOG_ROW_ESTIMATE,
+    turn: LOG_TURN_ESTIMATE,
+  });
+  const [viewport, setViewport] = useState({ height: 0, top: 0 });
   const [scrollPosition, setScrollPosition] = useState({
     canScrollDown: false,
     canScrollUp: false,
   });
+  // Typing stays responsive: filtering runs at a lower priority than input.
+  const deferredQuery = useDeferredValue(query);
   const visibleEntries = useMemo(() => {
-    const needle = query.trim().toLowerCase();
+    const needle = deferredQuery.trim().toLowerCase();
     const entries = buildLogEntries(events);
     const matched = needle
-      ? entries.filter(({ event }) =>
-          JSON.stringify(event).toLowerCase().includes(needle),
-        )
+      ? entries.filter(({ event }) => matchesEventQuery(event, needle))
       : entries;
     return [...matched].reverse();
-  }, [events, query]);
+  }, [events, deferredQuery]);
+  const layout = useMemo(
+    () => buildLogLayout(visibleEntries, metrics),
+    [metrics, visibleEntries],
+  );
+  const range = useMemo(
+    () => findVisibleRange(layout.offsets, viewport.top, viewport.height),
+    [layout.offsets, viewport.height, viewport.top],
+  );
+  const slice = layout.items.slice(range.start, range.end);
 
   const syncScrollPosition = useCallback(() => {
     const list = listRef.current;
@@ -932,18 +970,101 @@ function AtomicLog({
     });
   }, []);
 
+  // Track the viewport before paint so the first visible slice mounts without
+  // an empty frame.
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    if (!list) {
+      return undefined;
+    }
+    const syncViewport = () => {
+      setViewport({ height: list.clientHeight, top: list.scrollTop });
+    };
+    syncViewport();
+    if (typeof ResizeObserver === "undefined") {
+      return undefined;
+    }
+    const observer = new ResizeObserver(syncViewport);
+    observer.observe(list);
+    return () => observer.disconnect();
+  }, []);
+
+  // Measure the real row and separator heights once they are in the DOM.
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    if (!list) {
+      return;
+    }
+    const row = list.querySelector<HTMLElement>(".atomic-log__row");
+    const turn = list.querySelector<HTMLElement>(".atomic-log__turn");
+    const next = {
+      row: row?.offsetHeight || metrics.row,
+      turn: turn?.offsetHeight || metrics.turn,
+    };
+    if (next.row !== metrics.row || next.turn !== metrics.turn) {
+      setMetrics(next);
+    }
+  }, [metrics, visibleEntries]);
+
+  const handleScroll = useCallback(() => {
+    if (scrollFrameRef.current) {
+      return;
+    }
+    scrollFrameRef.current = window.requestAnimationFrame(() => {
+      scrollFrameRef.current = 0;
+      const list = listRef.current;
+      if (!list) {
+        return;
+      }
+      setViewport((current) =>
+        current.top === list.scrollTop
+          ? current
+          : { height: current.height, top: list.scrollTop },
+      );
+      syncScrollPosition();
+    });
+  }, [syncScrollPosition]);
+
+  useEffect(
+    () => () => {
+      if (scrollFrameRef.current) {
+        window.cancelAnimationFrame(scrollFrameRef.current);
+      }
+    },
+    [],
+  );
+
   useEffect(() => {
     const explicitLocate = locateRequestRef.current !== locateRequest;
     locateRequestRef.current = locateRequest;
     const list = listRef.current;
-    scrollRowWithinContainer(
-      list,
-      list?.querySelector<HTMLElement>(
-        '.atomic-log__row[aria-pressed="true"]',
-      ) ?? null,
-      explicitLocate,
+    if (!list || !selectedEventId) {
+      return;
+    }
+    const entryIndex = visibleEntries.findIndex(
+      (entry) => entry.event.id === selectedEventId,
     );
-  }, [locateRequest, query, selectedEventId]);
+    if (entryIndex < 0) {
+      return;
+    }
+    const nextTop = resolveScrollTopForRow({
+      center: explicitLocate,
+      rowHeight: metrics.row,
+      scrollTop: list.scrollTop,
+      top: layout.rowTops[entryIndex],
+      viewportHeight: list.clientHeight,
+    });
+    if (nextTop === null) {
+      return;
+    }
+    list.scrollTo({ behavior: explicitLocate ? "smooth" : "auto", top: nextTop });
+  }, [
+    layout.rowTops,
+    locateRequest,
+    metrics.row,
+    selectedEventId,
+    visibleEntries,
+  ]);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(syncScrollPosition);
@@ -997,66 +1118,80 @@ function AtomicLog({
           ref={listRef}
           className="atomic-log__list size-full min-h-0 overflow-auto px-2 py-1.5 outline-none [scroll-padding-block:38px]"
           aria-label="事件日志，可使用方向键或 Page Up、Page Down 滚动"
-          onScroll={syncScrollPosition}
+          onScroll={handleScroll}
           tabIndex={0}
         >
-          {visibleEntries.map(({ event, index, turn }, visibleIndex) => {
-            const selected = event.id === selectedEventId;
-            const running = event.id === runningEventId;
-            const meta = eventMeta[event.eventName] || eventMeta.Unknown;
-            const startsTurn =
-              visibleIndex === 0 ||
-              visibleEntries[visibleIndex - 1]?.turn !== turn;
-            return (
-              <Fragment key={event.id}>
-                {startsTurn ? (
-                  <div className="atomic-log__turn" aria-label={`Turn ${turn}`}>
-                    <span>TURN {String(turn).padStart(2, "0")}</span>
-                  </div>
-                ) : null}
-                <div
-                  data-event-id={event.id}
-                  role="button"
-                  tabIndex={0}
-                  aria-pressed={selected}
-                  className={cn(
-                    "atomic-log__row",
-                    `tone-${meta.tone}`,
-                    running && "is-running",
-                    selected && !running && "is-selected",
-                  )}
-                  onClick={() => onSelect(event.id)}
-                  onKeyDown={(keyEvent) => {
-                    if (keyEvent.key === "Enter" || keyEvent.key === " ") {
-                      keyEvent.preventDefault();
-                      onSelect(event.id);
-                    }
-                  }}
-                >
-                  <span className="log-sequence">
-                    #{String(index + 1).padStart(3, "0")}
-                  </span>
-                  <i className="phase-dot" />
-                  <strong>{getTraceEventKey(event)}</strong>
-                  <time dateTime={event.capturedAt} title={event.capturedAt}>
-                    <span>{formatDate(event.capturedAt)}</span>
-                    {formatClock(event.capturedAt)}
-                  </time>
-                  <small>
-                    <span>{getEventAction(event)}</span>
-                    <span className="atomic-log__summary">
-                      {getEventSummary(event)}
-                    </span>
-                  </small>
-                </div>
-              </Fragment>
-            );
-          })}
-          {!visibleEntries.length ? (
+          {visibleEntries.length ? (
+            <div
+              className="atomic-log__viewport"
+              style={{ height: layout.total }}
+            >
+              <div
+                className="atomic-log__slice"
+                style={{ transform: `translateY(${slice[0]?.top ?? 0}px)` }}
+              >
+                {slice.map((item) => {
+                  if (item.kind === "turn") {
+                    return (
+                      <div
+                        className="atomic-log__turn"
+                        aria-label={`Turn ${item.turn}`}
+                        key={`turn-${item.turn}`}
+                      >
+                        <span>TURN {String(item.turn).padStart(2, "0")}</span>
+                      </div>
+                    );
+                  }
+                  const { event, index } = visibleEntries[item.index];
+                  const selected = event.id === selectedEventId;
+                  const running = event.id === runningEventId;
+                  const meta = eventMeta[event.eventName] || eventMeta.Unknown;
+                  return (
+                    <div
+                      data-event-id={event.id}
+                      role="button"
+                      tabIndex={0}
+                      aria-pressed={selected}
+                      className={cn(
+                        "atomic-log__row",
+                        `tone-${meta.tone}`,
+                        running && "is-running",
+                        selected && !running && "is-selected",
+                      )}
+                      key={event.id}
+                      onClick={() => onSelect(event.id)}
+                      onKeyDown={(keyEvent) => {
+                        if (keyEvent.key === "Enter" || keyEvent.key === " ") {
+                          keyEvent.preventDefault();
+                          onSelect(event.id);
+                        }
+                      }}
+                    >
+                      <span className="log-sequence">
+                        #{String(index + 1).padStart(3, "0")}
+                      </span>
+                      <i className="phase-dot" />
+                      <strong>{getTraceEventKey(event)}</strong>
+                      <time dateTime={event.capturedAt} title={event.capturedAt}>
+                        <span>{formatDate(event.capturedAt)}</span>
+                        {formatClock(event.capturedAt)}
+                      </time>
+                      <small>
+                        <span>{getEventAction(event)}</span>
+                        <span className="atomic-log__summary">
+                          {getEventSummary(event)}
+                        </span>
+                      </small>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
             <output className="atomic-log__empty grid h-full place-items-center">
               No matching events
             </output>
-          ) : null}
+          )}
         </div>
         {scrollPosition.canScrollUp ? (
           <IconAction
@@ -1081,7 +1216,7 @@ function AtomicLog({
       </div>
     </section>
   );
-}
+});
 
 function InspectorOverview({
   node,
@@ -1433,7 +1568,7 @@ function loopRowForTurn(turn: TrajectoryTurn): TrajectoryDisplayRow {
   };
 }
 
-function TrajectoryView({
+const TrajectoryView = memo(function TrajectoryView({
   atomNodes,
   atomicEvents,
   nodes,
@@ -1690,9 +1825,9 @@ function TrajectoryView({
       </div>
     </section>
   );
-}
+});
 
-function ReplayFooter({
+const ReplayFooter = memo(function ReplayFooter({
   events,
   cursor,
   live,
@@ -1813,7 +1948,7 @@ function ReplayFooter({
       </label>
     </footer>
   );
-}
+});
 
 function AtomGuide({
   open,
@@ -2159,16 +2294,23 @@ export default function App() {
         window.innerWidth >= appDefaults.consoleOpenMinWidth,
       ),
   );
-  const [platformId, setPlatformId] = useState<PlatformId>(
-    () =>
-      getPlatformForSource(initialLocation?.source) ??
-      (readStorageValue(
-          window.localStorage,
-          storageKeys.platform,
-          appDefaults.platform,
-          legacyStorageKeys.platform,
-        ) as PlatformId),
-  );
+  // The default agent is the first dropdown option unless a deep link or a
+  // stored preference names an agent that is still offered.
+  const [platformId, setPlatformId] = useState<PlatformId>(() => {
+    const fromUrl = getPlatformForSource(initialLocation?.source);
+    if (fromUrl) {
+      return fromUrl;
+    }
+    const stored = readStorageValue(
+      window.localStorage,
+      storageKeys.platform,
+      appDefaults.platform,
+      legacyStorageKeys.platform,
+    );
+    return agentOptions.some((option) => option.id === stored)
+      ? (stored as PlatformId)
+      : agentOptions[0].id;
+  });
   // The agent dropdown drives which agent's runs load. A configured agent is a
   // PlatformId; OTHERS_AGENT_ID is the trailing catch-all. Picking a configured
   // agent also drives the topology platform; "Others" leaves it unchanged.
@@ -2332,34 +2474,43 @@ export default function App() {
   );
   const canLoadMoreRunHistory =
     canLoadMoreRunHistoryDays(filteredSessions, now, runHistoryDays);
-  const hasAdvancingRun =
-    !isDemo &&
-    sessions.some((session) => {
-      const promptRuns = promptRunsBySession.get(session.key) ?? [];
-      const parentState = getRunHistoryDisplayState(
-        session,
-        promptRuns,
-        now,
-        appTimings.activeRunTimeoutMs,
-      );
-      if (parentState.status === "active") {
-        return true;
-      }
-      return promptRuns.some((promptRun) => {
-        const promptState = getSessionDisplayState(
-          promptRun,
+  // Recomputed only when the inputs change instead of on every parent render.
+  const hasAdvancingRun = useMemo(
+    () =>
+      !isDemo &&
+      sessions.some((session) => {
+        const promptRuns = promptRunsBySession.get(session.key) ?? [];
+        const parentState = getRunHistoryDisplayState(
+          session,
+          promptRuns,
           now,
           appTimings.activeRunTimeoutMs,
         );
-        return (
-          promptState.status === "active" ||
-          promptState.status === "waiting"
-        );
-      });
-    });
+        if (parentState.status === "active") {
+          return true;
+        }
+        return promptRuns.some((promptRun) => {
+          const promptState = getSessionDisplayState(
+            promptRun,
+            now,
+            appTimings.activeRunTimeoutMs,
+          );
+          return (
+            promptState.status === "active" ||
+            promptState.status === "waiting"
+          );
+        });
+      }),
+    [isDemo, now, promptRunsBySession, sessions],
+  );
+  // The search index covers every session, so it is built only while the
+  // dialog can actually use it.
   const historySearchEntries = useMemo(
-    () => buildHistorySearchIndex(sessions, promptRunsBySession),
-    [promptRunsBySession, sessions],
+    () =>
+      historySearchOpen
+        ? buildHistorySearchIndex(sessions, promptRunsBySession)
+        : EMPTY_HISTORY_ENTRIES,
+    [historySearchOpen, promptRunsBySession, sessions],
   );
 
   useEffect(() => {
@@ -2451,7 +2602,8 @@ export default function App() {
     activePromptRuns.find((run) => run.key === activePromptRunKey) ||
     activePromptRuns.at(-1);
   const latestPromptRun = activePromptRuns.at(-1);
-  const activeEvents = activePromptRun?.events ?? activeSession?.events ?? [];
+  const activeEvents =
+    activePromptRun?.events ?? activeSession?.events ?? EMPTY_EVENTS;
   const activeDisplayState = activePromptRun
     ? getSessionDisplayState(
         activePromptRun,
@@ -2674,27 +2826,30 @@ export default function App() {
     return () => window.clearTimeout(timer);
   }, [activeExecutionAtomId, animatingFlow]);
 
-  const selectSession = (key: string, promptRunKey?: string) => {
-    const session = sessionsByKey.get(key);
-    const promptRuns = promptRunsBySession.get(key) ?? [];
-    const promptRun =
-      promptRuns.find((candidate) => candidate.key === promptRunKey) ||
-      promptRuns.at(-1);
-    const event = promptRun?.events.at(-1) || session?.events.at(-1);
-    setActiveSessionKey(key);
-    setActivePromptRunKey(promptRun?.key || "");
-    setSelectedEventId(event?.id || "");
-    setSelectedAtomId(
-      getPromptAtomSelection(
-        promptRun?.status ?? session?.status,
-        getAtomIdForEvent(event || null, platformId),
-      ),
-    );
-    setConsoleOpen(true);
-    setQuery("");
-    setReplayMode(false);
-    setPlaying(false);
-  };
+  const selectSession = useCallback(
+    (key: string, promptRunKey?: string) => {
+      const session = sessionsByKey.get(key);
+      const promptRuns = promptRunsBySession.get(key) ?? [];
+      const promptRun =
+        promptRuns.find((candidate) => candidate.key === promptRunKey) ||
+        promptRuns.at(-1);
+      const event = promptRun?.events.at(-1) || session?.events.at(-1);
+      setActiveSessionKey(key);
+      setActivePromptRunKey(promptRun?.key || "");
+      setSelectedEventId(event?.id || "");
+      setSelectedAtomId(
+        getPromptAtomSelection(
+          promptRun?.status ?? session?.status,
+          getAtomIdForEvent(event || null, platformId),
+        ),
+      );
+      setConsoleOpen(true);
+      setQuery("");
+      setReplayMode(false);
+      setPlaying(false);
+    },
+    [platformId, promptRunsBySession, sessionsByKey],
+  );
 
   const selectHistorySearchResult = (entry: HistorySearchEntry) => {
     const targetPlatform = getPlatformForSource(entry.source) ?? platformId;
@@ -2765,20 +2920,23 @@ export default function App() {
     }
   };
 
-  const focusAtom = (atomId: string) => {
-    const node = harnessFlow.nodes.find((item) => item.id === atomId);
-    if (!node) {
-      return;
-    }
-    setPlaying(false);
-    setReplayMode(false);
-    setSelectedAtomId(atomId);
-    setSelectedEventId((node.data.endEvent || node.data.event)?.id || "");
-    setDeepView(true);
-    setLocateRequest((current) => current + 1);
-  };
+  const focusAtom = useCallback(
+    (atomId: string) => {
+      const node = harnessFlow.nodes.find((item) => item.id === atomId);
+      if (!node) {
+        return;
+      }
+      setPlaying(false);
+      setReplayMode(false);
+      setSelectedAtomId(atomId);
+      setSelectedEventId((node.data.endEvent || node.data.event)?.id || "");
+      setDeepView(true);
+      setLocateRequest((current) => current + 1);
+    },
+    [harnessFlow.nodes],
+  );
 
-  const locateTrajectorySelection = () => {
+  const locateTrajectorySelection = useCallback(() => {
     if (!locateAtomId || !locateAtomEvent) {
       return;
     }
@@ -2793,7 +2951,123 @@ export default function App() {
     setQuery("");
     setTrajectoryLocateRequest((current) => current + 1);
     setLogLocateRequest((current) => current + 1);
-  };
+  }, [
+    activeExecutionAtomId,
+    hasManualAtomSelection,
+    locateAtomEvent,
+    locateAtomId,
+  ]);
+
+  // Event log selection. Kept stable so the virtualized log does not
+  // re-reconcile on unrelated parent renders.
+  const handleLogSelect = useCallback(
+    (eventId: string) => {
+      setPlaying(false);
+      setReplayMode(false);
+      const selecting = selectedEventId !== eventId;
+      const event = activeEvents.find((candidate) => candidate.id === eventId);
+      setSelectedAtomId(
+        selecting ? getAtomIdForEvent(event || null, platformId) || null : null,
+      );
+      setSelectedEventId(selecting ? eventId : "");
+    },
+    [activeEvents, platformId, selectedEventId],
+  );
+
+  const handleLogLocateAtom = useCallback(() => {
+    if (!currentAtomId) {
+      return;
+    }
+    setActiveView("topology");
+    focusAtom(currentAtomId);
+  }, [currentAtomId, focusAtom]);
+
+  const handleTrajectorySelect = useCallback(
+    (eventId: string, atomId?: string) => {
+      setPlaying(false);
+      setReplayMode(false);
+      setConsoleOpen(true);
+      setQuery("");
+      const event = activeEvents.find((candidate) => candidate.id === eventId);
+      setSelectedAtomId(
+        atomId || getAtomIdForEvent(event || null, platformId) || null,
+      );
+      setSelectedEventId(eventId);
+      setTrajectoryLocateRequest((current) => current + 1);
+      setLogLocateRequest((current) => current + 1);
+    },
+    [activeEvents, platformId],
+  );
+
+  const handleCanvasSelectNode = useCallback(
+    (node: HarnessNode) => {
+      const deselecting = selectedAtomId === node.id;
+      setPlaying(false);
+      setReplayMode(false);
+      setSelectedAtomId((current) => toggleAtomSelection(current, node.id));
+      const boundEvent = node.data.endEvent || node.data.event;
+      setSelectedEventId(deselecting ? "" : boundEvent?.id || "");
+    },
+    [selectedAtomId],
+  );
+
+  const handleReplaySeek = useCallback((index: number) => {
+    setSelectedAtomId(undefined);
+    setReplayMode(true);
+    setPlaying(false);
+    setReplayCursor(index);
+  }, []);
+
+  const handleReplayRestart = useCallback(() => {
+    setSelectedAtomId(undefined);
+    setReplayMode(true);
+    setReplayCursor(0);
+    setPlaying(true);
+  }, []);
+
+  const handleReplayTogglePlay = useCallback(() => {
+    setSelectedAtomId(undefined);
+    if (!replayMode || replayCursor >= activeEvents.length - 1) {
+      setReplayMode(true);
+      setReplayCursor(0);
+      setPlaying(true);
+      return;
+    }
+    setPlaying((current) => !current);
+  }, [activeEvents.length, replayCursor, replayMode]);
+
+  const handleReplayExit = useCallback(() => {
+    const latestSession = sessions[0];
+    const latestPromptRuns =
+      promptRunsBySession.get(latestSession?.key || "") ?? [];
+    const latestPromptRun = latestPromptRuns.at(-1);
+    const latestEvents =
+      latestPromptRun?.events ?? latestSession?.events ?? activeEvents;
+    if (latestSession && latestSession.key !== activeSession?.key) {
+      setActiveSessionKey(latestSession.key);
+    }
+    setActivePromptRunKey(latestPromptRun?.key || "");
+    setSelectedEventId(latestEvents.at(-1)?.id || "");
+    setSelectedAtomId(undefined);
+    setPlaying(false);
+    setReplayMode(false);
+    setReplayCursor(Math.max(0, latestEvents.length - 1));
+  }, [activeEvents, activeSession?.key, promptRunsBySession, sessions]);
+
+  const handleLoadMoreRunHistory = useCallback(() => {
+    if (runHistoryLoadingMoreRef.current) {
+      return;
+    }
+    runHistoryLoadingMoreRef.current = true;
+    setRunHistoryLoadingMore(true);
+    setRunHistoryDays((current) =>
+      nextRunHistoryVisibleDays(filteredSessions, now, current),
+    );
+    window.setTimeout(() => {
+      runHistoryLoadingMoreRef.current = false;
+      setRunHistoryLoadingMore(false);
+    }, 320);
+  }, [filteredSessions, now]);
 
   return (
     <main className="studio-shell">
@@ -2935,20 +3209,7 @@ export default function App() {
               canLoadMore={canLoadMoreRunHistory}
               initialLoading={!eventsLoaded && !isDemo}
               loadingMore={runHistoryLoadingMore}
-              onLoadMore={() => {
-                if (runHistoryLoadingMoreRef.current) {
-                  return;
-                }
-                runHistoryLoadingMoreRef.current = true;
-                setRunHistoryLoadingMore(true);
-                setRunHistoryDays((current) =>
-                  nextRunHistoryVisibleDays(filteredSessions, now, current),
-                );
-                window.setTimeout(() => {
-                  runHistoryLoadingMoreRef.current = false;
-                  setRunHistoryLoadingMore(false);
-                }, 320);
-              }}
+              onLoadMore={handleLoadMoreRunHistory}
               onSelect={selectSession}
             />
           ) : (
@@ -2993,16 +3254,20 @@ export default function App() {
                       <SelectValue />
                     </SelectTrigger>
                   </TooltipTrigger>
-                  <SelectContent position="popper" align="end">
+                  <SelectContent
+                    position="popper"
+                    align="end"
+                    className="agent-select__content"
+                  >
                     <SelectGroup>
-                      {atomPlatformOptions.map((platform) => (
+                      {agentOptions.map((platform) => (
                         <SelectItem key={platform.id} value={platform.id}>
                           <PlatformIcon platform={platform.id} />
                           {platform.label}
                         </SelectItem>
                       ))}
                       <SelectItem value={OTHERS_AGENT_ID}>
-                        <Layers />
+                        <OthersAgentIcon />
                         <span>Others</span>
                       </SelectItem>
                     </SelectGroup>
@@ -3063,16 +3328,7 @@ export default function App() {
                 atomicEvents={atomicProjection.events}
                 deepView={deepView}
                 locateRequest={locateRequest}
-                onSelectNode={(node) => {
-                  const deselecting = selectedAtomId === node.id;
-                  setPlaying(false);
-                  setReplayMode(false);
-                  setSelectedAtomId((current) =>
-                    toggleAtomSelection(current, node.id),
-                  );
-                  const boundEvent = node.data.endEvent || node.data.event;
-                  setSelectedEventId(deselecting ? "" : boundEvent?.id || "");
-                }}
+                onSelectNode={handleCanvasSelectNode}
                 selectedAtomId={currentAtomId}
                 topology={harnessFlow}
               />
@@ -3096,21 +3352,7 @@ export default function App() {
                 selectedNodeId={selectedNodeId}
                 canLocateSelection={Boolean(locateAtomId && locateAtomEvent)}
                 onLocateSelection={locateTrajectorySelection}
-                onSelect={(eventId, atomId) => {
-                  setPlaying(false);
-                  setReplayMode(false);
-                  setConsoleOpen(true);
-                  setQuery("");
-                  const event = activeEvents.find(
-                    (candidate) => candidate.id === eventId,
-                  );
-                  setSelectedAtomId(
-                    atomId || getAtomIdForEvent(event || null, platformId) || null,
-                  );
-                  setSelectedEventId(eventId);
-                  setTrajectoryLocateRequest((current) => current + 1);
-                  setLogLocateRequest((current) => current + 1);
-                }}
+                onSelect={handleTrajectorySelect}
               />
             </div>
           </div>
@@ -3121,51 +3363,11 @@ export default function App() {
             live={executingLive}
             playing={playing}
             speed={replaySpeed}
-            onSeek={(index) => {
-              setSelectedAtomId(undefined);
-              setReplayMode(true);
-              setPlaying(false);
-              setReplayCursor(index);
-            }}
-            onRestart={() => {
-              setSelectedAtomId(undefined);
-              setReplayMode(true);
-              setReplayCursor(0);
-              setPlaying(true);
-            }}
-            onTogglePlay={() => {
-              setSelectedAtomId(undefined);
-              if (
-                !replayMode ||
-                replayCursor >= activeEvents.length - 1
-              ) {
-                setReplayMode(true);
-                setReplayCursor(0);
-                setPlaying(true);
-                return;
-              }
-              setPlaying((current) => !current);
-            }}
+            onSeek={handleReplaySeek}
+            onRestart={handleReplayRestart}
+            onTogglePlay={handleReplayTogglePlay}
             onSpeedChange={setReplaySpeed}
-            onExit={() => {
-              const latestSession = sessions[0];
-              const latestPromptRuns =
-                promptRunsBySession.get(latestSession?.key || "") ?? [];
-              const latestPromptRun = latestPromptRuns.at(-1);
-              const latestEvents =
-                latestPromptRun?.events ?? latestSession?.events ?? activeEvents;
-              if (latestSession && latestSession.key !== activeSession?.key) {
-                setActiveSessionKey(latestSession.key);
-              }
-              setActivePromptRunKey(latestPromptRun?.key || "");
-              setSelectedEventId(latestEvents.at(-1)?.id || "");
-              setSelectedAtomId(undefined);
-              setPlaying(false);
-              setReplayMode(false);
-              setReplayCursor(
-                Math.max(0, latestEvents.length - 1),
-              );
-            }}
+            onExit={handleReplayExit}
           />
         </section>
 
@@ -3186,28 +3388,9 @@ export default function App() {
                 locateRequest={logLocateRequest}
                 query={query}
                 onQueryChange={setQuery}
-                onSelect={(eventId) => {
-                  setPlaying(false);
-                  setReplayMode(false);
-                  const selecting = selectedEventId !== eventId;
-                  const event = activeEvents.find(
-                    (candidate) => candidate.id === eventId,
-                  );
-                  setSelectedAtomId(
-                    selecting
-                      ? getAtomIdForEvent(event || null, platformId) || null
-                      : null,
-                  );
-                  setSelectedEventId(selecting ? eventId : "");
-                }}
+                onSelect={handleLogSelect}
                 canLocateSelectedAtom={Boolean(currentAtomId)}
-                onLocateSelectedAtom={() => {
-                  if (!currentAtomId) {
-                    return;
-                  }
-                  setActiveView("topology");
-                  focusAtom(currentAtomId);
-                }}
+                onLocateSelectedAtom={handleLogLocateAtom}
               />
               <TraceInspector
                 activeTab={inspectorTab}
