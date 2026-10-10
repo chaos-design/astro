@@ -389,6 +389,21 @@ pre,
   white-space: nowrap;
 }
 
+.studio-brand__title {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.studio-brand__version {
+  flex: none;
+  color: var(--muted);
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+}
+
 .studio-brand__copy small,
 .eyebrow {
   color: var(--muted);
@@ -4928,6 +4943,10 @@ pre,
 
   .studio-brand__copy strong {
     font-size: var(--text-label);
+  }
+
+  .studio-brand__version {
+    font-size: var(--text-meta);
   }
 
   .observer-banner strong {

@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import test from "node:test";
 import {
   appDefaults,
   appLayout,
   appTimings,
+  appVersion,
   shouldShowDemo,
   storageKeys,
 } from "../src/config/app-config.ts";
@@ -18,6 +21,13 @@ test("keeps user preference defaults and storage keys in app config", () => {
   assert.ok(
     Object.values(storageKeys).every((key) => key.startsWith("ASTROX_")),
   );
+});
+
+test("keeps the header version in sync with the release version", () => {
+  const rootPackage = JSON.parse(
+    readFileSync(path.resolve(import.meta.dirname, "../package.json"), "utf8"),
+  ) as { version: string };
+  assert.equal(appVersion, rootPackage.version);
 });
 
 test("shows demo data only in development or test environments", () => {

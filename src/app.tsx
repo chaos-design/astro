@@ -101,6 +101,7 @@ import {
   appDefaults,
   appLayout,
   appTimings,
+  appVersion,
   defaultThemeOption,
   legacyStorageKeys,
   panelHeaderClass,
@@ -2802,7 +2803,10 @@ export default function App() {
             <Boxes />
           </span>
           <div className="studio-brand__copy">
-            <strong>ASTRO</strong>
+            <span className="studio-brand__title">
+              <strong>ASTRO</strong>
+              <span className="studio-brand__version">{`v${appVersion}`}</span>
+            </span>
             <small>AGENT STATE TRACE &amp; RUNTIME OBSERVATIONS</small>
           </div>
           <div className="menu-control">
