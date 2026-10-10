@@ -476,13 +476,38 @@ export function getExecutionInstruction(
   );
 }
 
+/**
+ * Raw prompt text, without the display placeholder that
+ * {@link getEventSummary} falls back to. Empty when the client reported the
+ * prompt lifecycle without delivering its input (WorkBuddy, for example).
+ */
+export function getPromptInput(event: TraceEvent): string {
+  const payload = (event.payload || {}) as Record<string, unknown>;
+  const nested = payload.payload as Record<string, unknown> | undefined;
+  const value =
+    payload.prompt ??
+    payload.message ??
+    nested?.message ??
+    extractText(payload.content ?? nested?.content);
+  return extractText(value).replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Session title: the first prompt that actually carries input. Prompts whose
+ * text was never delivered are skipped so the run list shows a real request
+ * instead of a placeholder.
+ */
 export function getSessionTitle(events: TraceEvent[]) {
-  const prompt = events.find((event) => event.eventName === "UserPromptSubmit");
-  const value = prompt ? getEventSummary(prompt) : "";
-  if (!value) {
-    return events[0]?.cwd?.split("/").filter(Boolean).at(-1) || "Untitled trace";
+  for (const event of events) {
+    if (event.eventName !== "UserPromptSubmit") {
+      continue;
+    }
+    const value = getPromptInput(event);
+    if (value) {
+      return value;
+    }
   }
-  return String(value).replace(/\s+/g, " ").trim();
+  return events[0]?.cwd?.split("/").filter(Boolean).at(-1) || "Untitled trace";
 }
 
 function getTraceRunStatus(
@@ -567,7 +592,9 @@ export function buildSessionPromptRuns(
       cwd: session.cwd,
       prompt,
       events,
-      title: getEventSummary(prompt).replace(/\s+/g, " ").trim(),
+      title:
+        getPromptInput(prompt) ||
+        getEventSummary(prompt).replace(/\s+/g, " ").trim(),
       index,
       role: index === 0 ? "initial" : "follow-up",
       start,

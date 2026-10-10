@@ -9,6 +9,8 @@ import {
   formatDuration,
   getExecutionInstruction,
   getFlowNodeIdForEvent,
+  getPromptInput,
+  getSessionTitle,
   getSessionDisplayState,
   getSessionDuration,
   parseImportedTrace,
@@ -708,4 +710,85 @@ test("a mid-run tool failure still recovers to complete after progress", () => {
 
   const [promptRun] = buildSessionPromptRuns(sessions[0]);
   assert.equal(promptRun.status, "complete");
+});
+
+test("reads prompt text from every common payload shape", () => {
+  const event = (payload: Record<string, unknown>) =>
+    ({ eventName: "UserPromptSubmit", payload }) as never;
+
+  assert.equal(getPromptInput(event({ prompt: "Direct prompt" })), "Direct prompt");
+  assert.equal(getPromptInput(event({ message: "Message prompt" })), "Message prompt");
+  assert.equal(
+    getPromptInput(event({ payload: { message: "Nested prompt" } })),
+    "Nested prompt",
+  );
+  assert.equal(
+    getPromptInput(event({ content: [{ text: "Content prompt" }] })),
+    "Content prompt",
+  );
+  assert.equal(getPromptInput(event({ prompt: "   " })), "");
+  assert.equal(getPromptInput(event({})), "");
+});
+
+test("the session title uses the first prompt that carries input", () => {
+  const base = {
+    source: "workbuddy",
+    workspaceId: "workspace",
+    cwd: "/tmp/astro-workspace",
+  };
+  const events = [
+    {
+      ...base,
+      id: "prompt-empty",
+      sessionId: "s1",
+      eventName: "UserPromptSubmit",
+      capturedAt: "2026-09-08T08:00:00.000Z",
+      payload: {},
+    },
+    {
+      ...base,
+      id: "prompt-real",
+      sessionId: "s1",
+      eventName: "UserPromptSubmit",
+      capturedAt: "2026-09-08T08:00:02.000Z",
+      payload: { prompt: "  Add the astrox CLI  " },
+    },
+  ] as never[];
+
+  assert.equal(getSessionTitle(events), "Add the astrox CLI");
+
+  const session = buildSessions(events)[0];
+  assert.equal(session.title, "Add the astrox CLI");
+  assert.deepEqual(
+    buildSessionPromptRuns(session).map((run) => run.title),
+    ["Prompt submitted", "Add the astrox CLI"],
+  );
+});
+
+test("the session title falls back to the workspace when no prompt has input", () => {
+  const events = [
+    {
+      source: "workbuddy",
+      workspaceId: "workspace",
+      cwd: "/tmp/astro-workspace",
+      id: "start",
+      sessionId: "s1",
+      eventName: "SessionStart",
+      capturedAt: "2026-09-08T08:00:00.000Z",
+      payload: {},
+    },
+    {
+      source: "workbuddy",
+      workspaceId: "workspace",
+      cwd: "/tmp/astro-workspace",
+      id: "prompt-empty",
+      sessionId: "s1",
+      eventName: "UserPromptSubmit",
+      capturedAt: "2026-09-08T08:00:01.000Z",
+      payload: {},
+    },
+  ] as never[];
+
+  assert.equal(getSessionTitle(events), "astro-workspace");
+  assert.equal(buildSessions(events)[0].title, "astro-workspace");
 });
