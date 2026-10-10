@@ -33,7 +33,6 @@ import {
 import {
   memo,
   useCallback,
-  useDeferredValue,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -147,10 +146,11 @@ import {
   buildHistorySearchIndex,
   type HistorySearchEntry,
 } from "./lib/history-search";
-import { matchesEventQuery } from "./lib/event-search";
+import { getEventSearchText, matchesEventQuery } from "./lib/event-search";
 import {
   type LogRowMetrics,
   LOG_ROW_ESTIMATE,
+  LOG_ROW_GAP,
   LOG_TURN_ESTIMATE,
   buildLogLayout,
   findVisibleRange,
@@ -930,6 +930,7 @@ const AtomicLog = memo(function AtomicLog({
   const locateRequestRef = useRef(locateRequest);
   const scrollFrameRef = useRef(0);
   const [metrics, setMetrics] = useState<LogRowMetrics>({
+    gap: LOG_ROW_GAP,
     row: LOG_ROW_ESTIMATE,
     turn: LOG_TURN_ESTIMATE,
   });
@@ -938,16 +939,24 @@ const AtomicLog = memo(function AtomicLog({
     canScrollDown: false,
     canScrollUp: false,
   });
-  // Typing stays responsive: filtering runs at a lower priority than input.
-  const deferredQuery = useDeferredValue(query);
+  // Filtering scans the cached haystacks, so repeated keystrokes stay cheap;
+  // the cache itself is warmed below, outside the keystroke path.
   const visibleEntries = useMemo(() => {
-    const needle = deferredQuery.trim().toLowerCase();
+    const needle = query.trim().toLowerCase();
     const entries = buildLogEntries(events);
     const matched = needle
       ? entries.filter(({ event }) => matchesEventQuery(event, needle))
       : entries;
     return [...matched].reverse();
-  }, [events, deferredQuery]);
+  }, [events, query]);
+
+  // Serialize every event once, right after commit, so the first keystroke
+  // filters against ready-made haystacks instead of stringifying 10k payloads.
+  useEffect(() => {
+    for (const { event } of visibleEntries) {
+      getEventSearchText(event);
+    }
+  }, [visibleEntries]);
   const layout = useMemo(
     () => buildLogLayout(visibleEntries, metrics),
     [metrics, visibleEntries],
@@ -998,6 +1007,7 @@ const AtomicLog = memo(function AtomicLog({
     const row = list.querySelector<HTMLElement>(".atomic-log__row");
     const turn = list.querySelector<HTMLElement>(".atomic-log__turn");
     const next = {
+      gap: metrics.gap,
       row: row?.offsetHeight || metrics.row,
       turn: turn?.offsetHeight || metrics.turn,
     };

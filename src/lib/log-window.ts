@@ -11,10 +11,14 @@
 export const LOG_ROW_ESTIMATE = 50;
 export const LOG_TURN_ESTIMATE = 30;
 
+/** Vertical gap between stacked log items, mirroring the log list CSS. */
+export const LOG_ROW_GAP = 6;
+
 /** Extra items rendered above and below the viewport to smooth scrolling. */
 export const LOG_OVERSCAN = 6;
 
 export type LogRowMetrics = {
+  gap: number;
   row: number;
   turn: number;
 };
@@ -48,36 +52,43 @@ type LogEntry = {
  */
 export function buildLogLayout(
   entries: readonly LogEntry[],
-  metrics: LogRowMetrics = { row: LOG_ROW_ESTIMATE, turn: LOG_TURN_ESTIMATE },
+  metrics: LogRowMetrics = {
+    gap: LOG_ROW_GAP,
+    row: LOG_ROW_ESTIMATE,
+    turn: LOG_TURN_ESTIMATE,
+  },
 ): LogLayout {
   const items: LogLayoutItem[] = [];
   const offsets: number[] = [];
   const rowTops: number[] = new Array(entries.length);
   let top = 0;
 
+  const push = (item: Omit<LogLayoutItem, "top">) => {
+    if (items.length) {
+      top += metrics.gap;
+    }
+    offsets.push(top);
+    items.push({ ...item, top });
+    top += item.height;
+  };
+
   for (let index = 0; index < entries.length; index += 1) {
     const entry = entries[index];
     if (index === 0 || entries[index - 1].turn !== entry.turn) {
-      offsets.push(top);
-      items.push({
+      push({
         height: metrics.turn,
         index: -1,
         kind: "turn",
-        top,
         turn: entry.turn,
       });
-      top += metrics.turn;
     }
-    rowTops[index] = top;
-    offsets.push(top);
-    items.push({
+    rowTops[index] = items.length ? top + metrics.gap : top;
+    push({
       height: metrics.row,
       index,
       kind: "row",
-      top,
       turn: entry.turn,
     });
-    top += metrics.row;
   }
 
   return { items, offsets, rowTops, total: top };
