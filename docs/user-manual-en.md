@@ -259,6 +259,16 @@ remains a separate API.
 
 ### 5.3 Run History
 
+Run History is filtered to the selected agent and, by default, shows the most
+recent two days. Scroll to the bottom of the list to reveal one earlier day at
+a time; each reveal shows a brief bottom spinner. While the dashboard first
+loads events, the list shows a left-side loading indicator before runs appear.
+
+The agent list comes from the toolbar platform dropdown: the configured agents
+are listed first and a trailing **Others** catch-all collects runs whose source
+is not a configured agent. Selecting a configured agent also switches the
+topology platform; selecting **Others** leaves the platform unchanged.
+
 Each parent row represents one session and shows:
 
 - active, complete, or failed status;
@@ -292,7 +302,8 @@ The workspace renders the selected prompt run. It provides:
 
 Toolbar controls:
 
-- platform context: Codex, Claude Code, or Trae;
+- platform context: Codex, Claude Code, Trae, and other configured agents,
+  plus an **Others** catch-all;
 - topology/trajectory switch;
 - atom and edge guide;
 - all atoms/runtime atoms switch;
@@ -300,6 +311,7 @@ Toolbar controls:
 
 Platform switching does not change raw events. All supported platform contexts
 preserve the same stable 27-atom semantics.
+The agent dropdown also narrows Run History to the selected agent.
 The platform choice is stored in `ASTROX_PLATFORM`.
 
 ### 5.5 Event Panel
@@ -525,11 +537,19 @@ Deterministic IDs make unchanged imports idempotent.
 ```text
 astro-trace serve
 astro-trace install [--target DIR] [--clients trae,claude,codex,deepseek,workbuddy] [--scope user|project]
+astro-trace update [--no-deepseek] [--astro-home DIR]
 astro-trace doctor [--target DIR] [--scope user|project] [--deepseek-profile NAME]
 astro-trace migrate [FILE_OR_DIR] [--astro-home DIR]
 astro-trace import-codex [FILE ...] [--codex-home DIR]
 astro-trace ingest [FILE] [--source NAME]
 ```
+
+`astro-trace update` refreshes the already-installed plugin runtime in place
+(recorder, `runtime-config`, `storage-paths`, bundled vendor dependencies, the
+`dist` and `server` bundles, and the DeepSeek plugin) without touching hook
+configurations, `.env`, or captured trace data. Use it after pulling a newer
+build; re-run `astro-trace install` only when you also need to refresh hooks
+or migrate data.
 
 Ingest generic JSONL from a file:
 

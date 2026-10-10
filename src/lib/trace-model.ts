@@ -1,5 +1,6 @@
 import { buildExecutionTopology } from "./execution-topology.ts";
 import { isWaitingTraceEvent } from "./trace-status.ts";
+import { getWaitingEventsForSource } from "../config/atom-platforms.ts";
 import type {
   EventMeta,
   FlowEntry,
@@ -68,6 +69,13 @@ export const sourceMeta = {
   opencode: { label: "OPENCODE", tone: "violet" },
   zcode: { label: "ZCODE", tone: "violet" },
   workbuddy: { label: "WORKBUDDY", tone: "lime" },
+  gemini: { label: "GEMINI", tone: "cyan" },
+  qwen: { label: "QWEN", tone: "violet" },
+  copilot: { label: "COPILOT", tone: "amber" },
+  cursor: { label: "CURSOR", tone: "lime" },
+  cline: { label: "CLINE", tone: "violet" },
+  windsurf: { label: "WINDSURF", tone: "cyan" },
+  iflow: { label: "IFLOW", tone: "amber" },
   generic: { label: "GENERIC", tone: "neutral" },
 };
 
@@ -477,7 +485,10 @@ export function getSessionTitle(events: TraceEvent[]) {
   return String(value).replace(/\s+/g, " ").trim();
 }
 
-function getTraceRunStatus(events: readonly TraceEvent[]): TraceRunStatus {
+function getTraceRunStatus(
+  events: readonly TraceEvent[],
+  waitingEvents?: readonly string[],
+): TraceRunStatus {
   let status: TraceRunStatus = "active";
   let runEnded = false;
   for (const event of events) {
@@ -490,7 +501,7 @@ function getTraceRunStatus(events: readonly TraceEvent[]): TraceRunStatus {
     } else if (isTerminationEvent(event)) {
       status = "terminated";
       runEnded = true;
-    } else if (isWaitingTraceEvent(event)) {
+    } else if (isWaitingTraceEvent(event, waitingEvents)) {
       status = "waiting";
     } else if (isFailureEvent(event)) {
       status = "failed";
@@ -536,7 +547,10 @@ export function buildSessionPromptRuns(
     }
     const start = getEventTimestamp(prompt);
     const end = getEventTimestamp(events.at(-1) || prompt);
-    const observedStatus = getTraceRunStatus(events);
+    const observedStatus = getTraceRunStatus(
+      events,
+      getWaitingEventsForSource(session.source),
+    );
     const status =
       observedStatus === "active"
         ? index < promptIndexes.length - 1
@@ -597,7 +611,10 @@ export function buildSessions(
       }
       const start = getEventTimestamp(first);
       const end = getEventTimestamp(events.at(-1) || first);
-      const status = getTraceRunStatus(events);
+      const status = getTraceRunStatus(
+        events,
+        getWaitingEventsForSource(first.source),
+      );
 
       return {
         key,

@@ -205,7 +205,14 @@ export type PlatformId =
   | "opencode"
   | "trae"
   | "zcode"
-  | "workbuddy";
+  | "workbuddy"
+  | "gemini"
+  | "qwen"
+  | "copilot"
+  | "cursor"
+  | "cline"
+  | "windsurf"
+  | "iflow";
 
 export type PlatformDefinition = {
   id: PlatformId;
@@ -213,6 +220,14 @@ export type PlatformDefinition = {
   source: string;
   runtime: string;
   eventAtomMap: Record<string, string>;
+  /**
+   * Canonical event names whose arrival marks the run as pending ("waiting")
+   * for this agent. When omitted, the shared default waiting detection
+   * applies. Configure this per agent so the pending display matches what the
+   * agent can actually report (e.g. ZCode cannot capture Elicitation or
+   * Notification events).
+   */
+  waitingEvents?: readonly string[];
 };
 
 export type PlatformConfig = PlatformDefinition & {

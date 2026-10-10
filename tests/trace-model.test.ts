@@ -114,6 +114,40 @@ test("classifies permission and rate-limit hooks as waiting", () => {
   );
 });
 
+test("derives pending status from each agent's waiting-events config", () => {
+  const base = {
+    workspaceId: "workspace",
+    cwd: "/tmp/workspace",
+  };
+  const buildSession = (source: string, sessionId: string) =>
+    buildSessions([
+      {
+        ...base,
+        source,
+        id: `${sessionId}-prompt`,
+        sessionId,
+        eventName: "UserPromptSubmit",
+        capturedAt: "2026-09-08T08:00:00.000Z",
+        payload: { prompt: "Continue" },
+      },
+      {
+        ...base,
+        source,
+        id: `${sessionId}-wait`,
+        sessionId,
+        eventName: "Elicitation",
+        capturedAt: "2026-09-08T08:00:01.000Z",
+        payload: { message: "Choose an option" },
+      },
+    ])[0];
+
+  // ZCode cannot capture Elicitation: its config only treats
+  // PermissionRequest as a pending signal, so this run stays active.
+  assert.equal(buildSession("zcode", "zcode-elicit").status, "active");
+  // Claude uses the default waiting signals: Elicitation marks it pending.
+  assert.equal(buildSession("claude", "claude-elicit").status, "waiting");
+});
+
 test("returns a waiting session to active when execution resumes", () => {
   const events = [
     {
