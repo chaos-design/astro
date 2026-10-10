@@ -8,6 +8,7 @@ const {
   appendTraceEvent,
   createDashboardUrl,
   createTraceEvent,
+  createWorkspaceId,
   launchDashboardForEvents,
   redactValue,
   resolveAstroHome,
@@ -88,6 +89,46 @@ test("normalizes CodeBuddy input to the WorkBuddy source", () => {
 
   assert.equal(event.source, "workbuddy");
   assert.equal(event.eventName, "UserPromptSubmit");
+});
+
+test("falls back to WorkBuddy hook environment context for empty payloads", () => {
+  const environment = {
+    CODEBUDDY_SESSION_ID: "wb-env-session",
+    CODEBUDDY_PROJECT_DIR: "/tmp/wb-project",
+  };
+  const event = createTraceEvent(
+    {},
+    {
+      source: "workbuddy",
+      eventName: "SessionStart",
+      capturedAt: "2026-09-07T08:00:00.000Z",
+    },
+    undefined,
+    environment,
+  );
+
+  assert.equal(event.eventName, "SessionStart");
+  assert.equal(event.sessionId, "wb-env-session");
+  assert.equal(event.workspaceId, createWorkspaceId("/tmp/wb-project"));
+  assert.equal(event.cwd, "/tmp/wb-project");
+});
+
+test("payload session and cwd values win over hook environment context", () => {
+  const event = createTraceEvent(
+    {
+      session_id: "payload-session",
+      cwd: "/tmp/payload-project",
+    },
+    { source: "workbuddy", eventName: "Stop" },
+    undefined,
+    {
+      CODEBUDDY_SESSION_ID: "env-session",
+      CODEBUDDY_PROJECT_DIR: "/tmp/env-project",
+    },
+  );
+
+  assert.equal(event.sessionId, "payload-session");
+  assert.equal(event.cwd, "/tmp/payload-project");
 });
 
 test("appends one valid JSONL event to the configured directory", () => {
@@ -652,4 +693,44 @@ test("reopens the dashboard found by the port probe when requested", (t) => {
       sessionId: "session-reopen",
     }),
   );
+});
+
+test("records WorkBuddy hooks that carry no stdin payload", () => {
+  const astroHome = fs.mkdtempSync(path.join(os.tmpdir(), "astro-workbuddy-cli-"));
+  const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), "astro-workbuddy-cwd-"));
+  const result = spawnSync(
+    process.execPath,
+    [
+      path.join(__dirname, "..", "plugin", "trace-recorder.cjs"),
+      "--source=workbuddy",
+      "--event=PermissionRequest",
+    ],
+    {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        ASTRO_HOME: astroHome,
+        ASTRO_AUTO_OPEN: "0",
+        CODEBUDDY_SESSION_ID: "wb-cli-session",
+        CODEBUDDY_PROJECT_DIR: projectDir,
+      },
+      input: "",
+      timeout: 10_000,
+    },
+  );
+
+  assert.equal(result.status, 0, result.stderr);
+  const traceFile = fs
+    .readdirSync(path.join(astroHome, "workbuddy"), { recursive: true })
+    .map((entry) => path.join(astroHome, "workbuddy", entry))
+    .find((entry) => entry.endsWith("events.jsonl"));
+  assert.ok(traceFile, "WorkBuddy hook without a stdin payload must record");
+  assert.match(traceFile, /wb-cli-session/);
+  const event = JSON.parse(fs.readFileSync(traceFile, "utf8").trim());
+  assert.equal(event.source, "workbuddy");
+  assert.equal(event.eventName, "PermissionRequest");
+  assert.equal(event.sessionId, "wb-cli-session");
+  assert.equal(event.workspaceId, createWorkspaceId(projectDir));
+  fs.rmSync(astroHome, { recursive: true, force: true });
+  fs.rmSync(projectDir, { recursive: true, force: true });
 });

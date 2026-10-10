@@ -155,7 +155,7 @@ function shellPath(value) {
         .replaceAll("`", "\\`")}"`;
 }
 
-export function getHookCommand(source, installedRecorderFile, astroHome) {
+export function getHookCommand(source, installedRecorderFile, astroHome, eventName) {
   const parts = [
     `ASTRO_HOME=${shellPath(astroHome)}`,
     "node",
@@ -164,6 +164,12 @@ export function getHookCommand(source, installedRecorderFile, astroHome) {
   ];
   if (source === "codex") {
     parts.push("--quiet");
+  }
+  // WorkBuddy runs command hooks without piping its event payload into
+  // stdin, so its hook commands name the event explicitly instead. Other
+  // clients carry the event in their stdin payload and never need it.
+  if (source === "workbuddy" && eventName) {
+    parts.push(`--event=${eventName}`);
   }
   return parts.join(" ");
 }
@@ -195,6 +201,8 @@ function installHookConfig(configFile, source, hookCommand) {
   }
 
   for (const [name, matcher] of eventDefinitions[source]) {
+    const command =
+      typeof hookCommand === "function" ? hookCommand(name) : hookCommand;
     const groups = config.hooks[name] || [];
     const installedGroup = groups.find((group) => isInstalled(group, source));
     if (installedGroup) {
@@ -204,14 +212,14 @@ function installHookConfig(configFile, source, hookCommand) {
             hook.command?.includes("hook-recorder.cjs")) &&
           hook.command?.includes(`--source=${source}`),
       );
-      installedHook.command = hookCommand;
+      installedHook.command = command;
       installedHook.timeout = 5;
     } else {
       const group = {
         hooks: [
           {
             type: "command",
-            command: hookCommand,
+            command,
             timeout: 5,
           },
         ],
@@ -598,11 +606,13 @@ export function installClients({
       installHookConfig(
         workbuddyConfig,
         "workbuddy",
-        getHookCommand(
-          "workbuddy",
-          sharedRuntime.recorderFile,
-          resolvedAstroHome,
-        ),
+        (eventName) =>
+          getHookCommand(
+            "workbuddy",
+            sharedRuntime.recorderFile,
+            resolvedAstroHome,
+            eventName,
+          ),
       ),
     );
   }

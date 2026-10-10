@@ -333,7 +333,7 @@ function createTraceLocator(event) {
   )}/${encodeURIComponent(event.id)}`;
 }
 
-function createTraceEvent(payload, optionsOrCapturedAt = {}, legacyCapturedAt) {
+function createTraceEvent(payload, optionsOrCapturedAt = {}, legacyCapturedAt, environment) {
   const options =
     typeof optionsOrCapturedAt === "string"
       ? { capturedAt: optionsOrCapturedAt }
@@ -341,6 +341,19 @@ function createTraceEvent(payload, optionsOrCapturedAt = {}, legacyCapturedAt) {
   if (legacyCapturedAt) {
     options.capturedAt = legacyCapturedAt;
   }
+
+  // WorkBuddy runs command hooks without piping the event payload into
+  // stdin; it only carries session and workspace context through the hook
+  // environment. Fall back to those variables when the payload omits them.
+  const hookEnvironment = environment || {};
+  const envSessionId =
+    hookEnvironment.CODEBUDDY_SESSION_ID ||
+    hookEnvironment.CLAUDE_SESSION_ID ||
+    "";
+  const envCwd =
+    hookEnvironment.CODEBUDDY_PROJECT_DIR ||
+    hookEnvironment.CLAUDE_PROJECT_DIR ||
+    "";
 
   const source = normalizeSource(
     options.source ||
@@ -366,6 +379,7 @@ function createTraceEvent(payload, optionsOrCapturedAt = {}, legacyCapturedAt) {
       payload.cwd ||
       payload.payload?.cwd ||
       payload.payload?.session_meta?.cwd ||
+      envCwd ||
       "",
   ) || null;
   const sessionId = String(
@@ -375,6 +389,7 @@ function createTraceEvent(payload, optionsOrCapturedAt = {}, legacyCapturedAt) {
       payload.threadId ||
       payload.thread_id ||
       (payload.type === "session_meta" ? payload.payload?.id : "") ||
+      envSessionId ||
       "unknown-session",
   );
   const capturedAt =
@@ -470,7 +485,9 @@ function resolveTraceFile(
 
 function appendTraceEvents(payloads, environment = process.env, options = {}) {
   const values = Array.isArray(payloads) ? payloads : [payloads];
-  const events = values.map((payload) => createTraceEvent(payload, options));
+  const events = values.map((payload) =>
+    createTraceEvent(payload, options, undefined, environment),
+  );
   if (!events.length) {
     return [];
   }
@@ -845,6 +862,9 @@ async function run() {
     const payload = JSON.parse(input || "{}");
     const event = appendTraceEvent(payload, runtimeConfig.environment, {
       source: getCliOption("source") || undefined,
+      // WorkBuddy never writes its hook payload to stdin, so its hook
+      // commands carry the event name as an explicit flag instead.
+      eventName: getCliOption("event") || undefined,
     });
     recorded = true;
     for (const diagnostic of runtimeConfig.diagnostics) {
