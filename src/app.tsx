@@ -237,14 +237,24 @@ function scrollRowWithinContainer(
     (container.clientHeight - rowBounds.height) / 2;
 }
 
+// Reused Intl formatters: constructing one per call is expensive, and these
+// run for every log/trajectory row on every render.
+const clockFormatter = new Intl.DateTimeFormat(undefined, {
+  hour12: false,
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  fractionalSecondDigits: 3,
+});
+const runTimeFormatter = new Intl.DateTimeFormat(undefined, {
+  hour12: false,
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+});
+
 function formatClock(timestamp: string | number) {
-  return new Date(timestamp).toLocaleTimeString([], {
-    hour12: false,
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    fractionalSecondDigits: 3,
-  });
+  return clockFormatter.format(new Date(timestamp));
 }
 
 function formatDate(timestamp: string | number) {
@@ -257,12 +267,7 @@ function formatDate(timestamp: string | number) {
 }
 
 function formatRunDate(timestamp: string | number) {
-  return `${formatDate(timestamp)} ${new Date(timestamp).toLocaleTimeString([], {
-    hour12: false,
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  })}`;
+  return `${formatDate(timestamp)} ${runTimeFormatter.format(new Date(timestamp))}`;
 }
 
 function getEventAction(event: TraceEvent) {
@@ -2427,19 +2432,26 @@ export default function App() {
 
   useEffect(() => {
     const source = new EventSource("/api/stream");
+    // Ids seen so far: an O(1) set keeps per-event dedup linear in total
+    // events instead of rescanning the accumulated array on every message.
+    const seenIds = new Set<string>();
     source.addEventListener("ready", () => setConnected(true));
     source.addEventListener("trace", (message: MessageEvent<string>) => {
       const event = normalizeTraceEvent(JSON.parse(message.data));
-      setLiveEvents((current) =>
-        current.some((item) => item.id === event.id)
-          ? current
-          : [...current, event],
-      );
+      if (seenIds.has(event.id)) {
+        return;
+      }
+      seenIds.add(event.id);
+      setLiveEvents((current) => [...current, event]);
     });
     source.addEventListener("reset", (message: MessageEvent<string>) => {
-      setLiveEvents(
-        (JSON.parse(message.data) as TraceEvent[]).map(normalizeTraceEvent),
+      const events = (JSON.parse(message.data) as TraceEvent[]).map(
+        normalizeTraceEvent,
       );
+      for (const event of events) {
+        seenIds.add(event.id);
+      }
+      setLiveEvents(events);
       setEventsLoaded(true);
     });
     source.onerror = () => setConnected(false);
