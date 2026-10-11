@@ -1,12 +1,13 @@
 {
   "name": "astro",
-  "version": "0.0.1",
+  "version": "0.0.2-alpha.2",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@11.21.0",
   "description": "Agent State Trace & Runtime Observations: local-first observability for coding agents.",
   "bin": {
-    "astro-trace": "bin/astro.mjs"
+    "astro-trace": "bin/astro.mjs",
+    "astrox": "bin/astrox.mjs"
   },
   "exports": {
     "./browser": "./plugin/browser-client.js"
@@ -17,6 +18,7 @@
     "build:native-plugins": "node scripts/build-native-plugins.mjs",
     "build:plugin": "pnpm build && pnpm build:native-plugins && node scripts/build-plugin.mjs",
     "dev": "vite",
+    "astrox": "node bin/astrox.mjs",
     "dev:docs": "vite --config site/vite.config.ts",
     "install-hooks": "node scripts/install-hooks.mjs",
     "install-opencode-plugin": "node scripts/install-opencode-plugin.mjs",

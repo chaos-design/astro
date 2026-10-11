@@ -5,6 +5,7 @@ import {
   OTHERS_AGENT_ID,
   canLoadMoreRunHistoryDays,
   filterSessionsByAgent,
+  getRunHistoryAnchorDayStart,
   getRunHistoryWindowStart,
   nextRunHistoryVisibleDays,
   selectVisibleRunHistory,
@@ -32,22 +33,39 @@ function session(start: number, source = "codex"): TraceSession {
 const NOW = Date.parse("2026-10-09T14:00:00");
 
 test("exposes stable window constants", () => {
-  assert.equal(DEFAULT_RUN_HISTORY_DAYS, 2);
+  assert.equal(DEFAULT_RUN_HISTORY_DAYS, 1);
   assert.equal(OTHERS_AGENT_ID, "others");
 });
 
-test("window start is local midnight of (now - days + 1)", () => {
+test("anchor day is the most recent day with data, else today", () => {
+  const sessions = [
+    session(Date.parse("2026-10-06T08:00:00")),
+    session(Date.parse("2026-10-08T21:00:00")),
+  ];
   assert.equal(
-    getRunHistoryWindowStart(NOW, 2),
+    getRunHistoryAnchorDayStart(sessions, NOW),
     Date.parse("2026-10-08T00:00:00"),
   );
   assert.equal(
-    getRunHistoryWindowStart(NOW, 3),
-    Date.parse("2026-10-07T00:00:00"),
+    getRunHistoryAnchorDayStart([], NOW),
+    Date.parse("2026-10-09T00:00:00"),
+  );
+});
+
+test("window start counts back from the anchor data day", () => {
+  const sessions = [
+    session(Date.parse("2026-10-08T21:00:00")),
+    session(Date.parse("2026-10-05T08:00:00")),
+  ];
+  // Default single day shows only the most recent data day, even when today
+  // (2026-10-09) has no runs for this agent.
+  assert.equal(
+    getRunHistoryWindowStart(sessions, NOW, 1),
+    Date.parse("2026-10-08T00:00:00"),
   );
   assert.equal(
-    getRunHistoryWindowStart(NOW, 1),
-    Date.parse("2026-10-09T00:00:00"),
+    getRunHistoryWindowStart(sessions, NOW, 3),
+    Date.parse("2026-10-06T00:00:00"),
   );
 });
 
@@ -57,9 +75,11 @@ test("selects only sessions inside the visible window", () => {
     session(Date.parse("2026-10-08T08:00:00")),
     session(Date.parse("2026-10-07T08:00:00")),
   ];
-  const visible = selectVisibleRunHistory(sessions, NOW, 2);
-  assert.equal(visible.length, 2);
+  const visible = selectVisibleRunHistory(sessions, NOW, 1);
+  assert.equal(visible.length, 1);
   assert.equal(visible[0].start, Date.parse("2026-10-09T08:00:00"));
+  const twoDays = selectVisibleRunHistory(sessions, NOW, 2);
+  assert.equal(twoDays.length, 2);
 });
 
 test("reports whether earlier days remain", () => {
@@ -67,8 +87,10 @@ test("reports whether earlier days remain", () => {
     session(Date.parse("2026-10-09T08:00:00")),
     session(Date.parse("2026-10-07T08:00:00")),
   ];
+  assert.equal(canLoadMoreRunHistoryDays(sessions, NOW, 1), true);
+  // Two days covers Oct 8-9; the Oct 7 run is still outside the window.
   assert.equal(canLoadMoreRunHistoryDays(sessions, NOW, 2), true);
-  // Widen enough to cover everything -> no more to load.
+  // Three days reaches the anchor day plus the older run -> no more to load.
   assert.equal(canLoadMoreRunHistoryDays(sessions, NOW, 3), false);
 });
 
@@ -77,7 +99,7 @@ test("advances the window by one day and clamps when exhausted", () => {
     session(Date.parse("2026-10-09T08:00:00")),
     session(Date.parse("2026-10-06T08:00:00")),
   ];
-  assert.equal(nextRunHistoryVisibleDays(sessions, NOW, 2), 3);
+  assert.equal(nextRunHistoryVisibleDays(sessions, NOW, 1), 2);
   assert.equal(nextRunHistoryVisibleDays(sessions, NOW, 3), 4);
   // 4 days covers everything -> stays put.
   assert.equal(nextRunHistoryVisibleDays(sessions, NOW, 4), 4);

@@ -71,6 +71,23 @@ worktree lifecycle events. Permission prompts, elicitation, and rate-limit
 failures remain in a waiting state until a later progress or terminal event
 is observed.
 
+## Hook payload contract
+
+Unlike Claude Code, WorkBuddy opens the hook stdin but never writes its event
+payload into it; the payload is only recorded in WorkBuddy's debug log. The
+event name and the session/workspace context instead arrive through the hook
+environment:
+
+- every hook command therefore names its event with an explicit
+  `--event=<Name>` flag (kept in sync with the registered event list), and
+- `trace-recorder.cjs` falls back to `CLAUDE_SESSION_ID` /
+  `CODEBUDDY_SESSION_ID` and `CLAUDE_PROJECT_DIR` /
+  `CODEBUDDY_PROJECT_DIR` for the session id and workspace when the payload is
+  empty.
+
+Because no tool payload is delivered, WorkBuddy traces record named
+lifecycle events without tool input/output detail.
+
 Set `runtime.autoOpen: false` in the shared `config.yaml` to disable automatic
 dashboard startup.
 

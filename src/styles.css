@@ -389,6 +389,21 @@ pre,
   white-space: nowrap;
 }
 
+.studio-brand__title {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.studio-brand__version {
+  flex: none;
+  color: var(--muted);
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+}
+
 .studio-brand__copy small,
 .eyebrow {
   color: var(--muted);
@@ -1566,6 +1581,12 @@ pre,
   outline: none;
   border-color: var(--line-bright);
   box-shadow: none;
+}
+
+/* The agent list is long; cap the menu so it scrolls instead of covering the
+   canvas. Unlayered rules win over the radix available-height utility. */
+.agent-select__content {
+  max-height: 268px;
 }
 
 .platform-select--others {
@@ -3312,6 +3333,24 @@ pre,
   background: color-mix(in srgb, var(--violet-deep) 8%, var(--panel));
 }
 
+/* The log is windowed: the viewport reserves the full scroll height while the
+   slice holds only the mounted rows. `flex: none` keeps the list's flex column
+   from shrinking the reserved height back to the visible area. */
+.atomic-log__viewport {
+  position: relative;
+  flex: none;
+  width: 100%;
+}
+
+.atomic-log__slice {
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
 .atomic-log__row {
   --log-tone: var(--muted-soft);
 
@@ -3329,7 +3368,6 @@ pre,
   cursor: pointer;
   text-align: left;
   background: transparent;
-  content-visibility: auto;
   transition:
     border-color 150ms ease,
     background 150ms ease,
@@ -4928,6 +4966,10 @@ pre,
 
   .studio-brand__copy strong {
     font-size: var(--text-label);
+  }
+
+  .studio-brand__version {
+    font-size: var(--text-meta);
   }
 
   .observer-banner strong {

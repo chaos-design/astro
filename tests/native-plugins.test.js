@@ -96,7 +96,6 @@ test("native plugin hooks use portable plugin-root paths", () => {
   const workbuddyHooks = readJson("workbuddy-plugin/hooks/hooks.json").hooks;
   const codexHandlers = getHandlers(codexHooks);
   const claudeHandlers = getHandlers(claudeHooks);
-  const workbuddyHandlers = getHandlers(workbuddyHooks);
 
   assert.deepEqual(
     Object.keys(codexHooks),
@@ -134,20 +133,22 @@ test("native plugin hooks use portable plugin-root paths", () => {
   assert.ok(workbuddyHooks.StopFailure);
   assert.ok(workbuddyHooks.PermissionRequest);
   assert.ok(workbuddyHooks.Elicitation);
-  assert.ok(
-    workbuddyHandlers.every(
-      (handler) =>
-        handler.command.includes("${CODEBUDDY_PLUGIN_ROOT}") &&
-        handler.command.includes("--source=workbuddy") &&
-        !handler.command.includes("--quiet"),
-    ),
-  );
-  for (const groups of Object.values(workbuddyHooks)) {
+  for (const [eventName, groups] of Object.entries(workbuddyHooks)) {
     for (const group of groups) {
-      // WorkBuddy validates hook matchers as regular expressions; a "*"
-      // matcher is an invalid regular expression that never matches. An
-      // omitted matcher matches everything instead.
-      assert.equal(group.matcher, undefined);
+      for (const handler of group.hooks) {
+        // WorkBuddy validates hook matchers as regular expressions; a "*"
+        // matcher is an invalid regular expression that never matches. An
+        // omitted matcher matches everything instead.
+        assert.equal(group.matcher, undefined);
+        // WorkBuddy never pipes its hook payload into the command's stdin,
+        // so each command names the event explicitly via --event.
+        assert.ok(
+          handler.command.includes("${CODEBUDDY_PLUGIN_ROOT}") &&
+            handler.command.includes("--source=workbuddy") &&
+            handler.command.includes(`--event=${eventName}`) &&
+            !handler.command.includes("--quiet"),
+        );
+      }
     }
   }
 });

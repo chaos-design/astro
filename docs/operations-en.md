@@ -345,6 +345,20 @@ pnpm build:native-plugins
 
 Reinstall the selected native plugin or rerun `pnpm install-plugins`. The direct installer updates ASTRO commands while preserving unrelated hooks.
 
+To refresh only the installed plugin content (recorder, `runtime-config`,
+`storage-paths`, bundled vendor dependencies, the `dist` and `server` bundles,
+and the DeepSeek plugin) without touching hook configurations, `.env`, or
+captured trace data, run:
+
+```bash
+astro-trace update
+```
+
+Use `--no-deepseek` to skip refreshing the DeepSeek plugin runtime, and
+`--astro-home /path/to/.astrox` to override the default data root. The command
+is a no-op-safe content refresh: it re-copies the runtime into the existing
+`<ASTRO_HOME>/plugins/astro` and rewrites `plugin.json` with the current version.
+
 Before and after upgrade, confirm the data root is unchanged, native recorder copies are synchronized, old sessions remain readable, new follow-up turns append, production empty state contains no Demo, and local UI preferences migrate.
 
 ## 12. Browser-local State

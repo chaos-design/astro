@@ -1,5 +1,6 @@
 import { buildExecutionTopology } from "./execution-topology.ts";
 import { isWaitingTraceEvent } from "./trace-status.ts";
+import { getWaitingEventsForSource } from "../config/atom-platforms.ts";
 import type {
   EventMeta,
   FlowEntry,
@@ -68,6 +69,13 @@ export const sourceMeta = {
   opencode: { label: "OPENCODE", tone: "violet" },
   zcode: { label: "ZCODE", tone: "violet" },
   workbuddy: { label: "WORKBUDDY", tone: "lime" },
+  gemini: { label: "GEMINI", tone: "cyan" },
+  qwen: { label: "QWEN", tone: "violet" },
+  copilot: { label: "COPILOT", tone: "amber" },
+  cursor: { label: "CURSOR", tone: "lime" },
+  cline: { label: "CLINE", tone: "violet" },
+  windsurf: { label: "WINDSURF", tone: "cyan" },
+  iflow: { label: "IFLOW", tone: "amber" },
   generic: { label: "GENERIC", tone: "neutral" },
 };
 
@@ -468,16 +476,44 @@ export function getExecutionInstruction(
   );
 }
 
-export function getSessionTitle(events: TraceEvent[]) {
-  const prompt = events.find((event) => event.eventName === "UserPromptSubmit");
-  const value = prompt ? getEventSummary(prompt) : "";
-  if (!value) {
-    return events[0]?.cwd?.split("/").filter(Boolean).at(-1) || "Untitled trace";
-  }
-  return String(value).replace(/\s+/g, " ").trim();
+/**
+ * Raw prompt text, without the display placeholder that
+ * {@link getEventSummary} falls back to. Empty when the client reported the
+ * prompt lifecycle without delivering its input (WorkBuddy, for example).
+ */
+export function getPromptInput(event: TraceEvent): string {
+  const payload = (event.payload || {}) as Record<string, unknown>;
+  const nested = payload.payload as Record<string, unknown> | undefined;
+  const value =
+    payload.prompt ??
+    payload.message ??
+    nested?.message ??
+    extractText(payload.content ?? nested?.content);
+  return extractText(value).replace(/\s+/g, " ").trim();
 }
 
-function getTraceRunStatus(events: readonly TraceEvent[]): TraceRunStatus {
+/**
+ * Session title: the first prompt that actually carries input. Prompts whose
+ * text was never delivered are skipped so the run list shows a real request
+ * instead of a placeholder.
+ */
+export function getSessionTitle(events: TraceEvent[]) {
+  for (const event of events) {
+    if (event.eventName !== "UserPromptSubmit") {
+      continue;
+    }
+    const value = getPromptInput(event);
+    if (value) {
+      return value;
+    }
+  }
+  return events[0]?.cwd?.split("/").filter(Boolean).at(-1) || "Untitled trace";
+}
+
+function getTraceRunStatus(
+  events: readonly TraceEvent[],
+  waitingEvents?: readonly string[],
+): TraceRunStatus {
   let status: TraceRunStatus = "active";
   let runEnded = false;
   for (const event of events) {
@@ -490,7 +526,7 @@ function getTraceRunStatus(events: readonly TraceEvent[]): TraceRunStatus {
     } else if (isTerminationEvent(event)) {
       status = "terminated";
       runEnded = true;
-    } else if (isWaitingTraceEvent(event)) {
+    } else if (isWaitingTraceEvent(event, waitingEvents)) {
       status = "waiting";
     } else if (isFailureEvent(event)) {
       status = "failed";
@@ -536,7 +572,10 @@ export function buildSessionPromptRuns(
     }
     const start = getEventTimestamp(prompt);
     const end = getEventTimestamp(events.at(-1) || prompt);
-    const observedStatus = getTraceRunStatus(events);
+    const observedStatus = getTraceRunStatus(
+      events,
+      getWaitingEventsForSource(session.source),
+    );
     const status =
       observedStatus === "active"
         ? index < promptIndexes.length - 1
@@ -553,7 +592,9 @@ export function buildSessionPromptRuns(
       cwd: session.cwd,
       prompt,
       events,
-      title: getEventSummary(prompt).replace(/\s+/g, " ").trim(),
+      title:
+        getPromptInput(prompt) ||
+        getEventSummary(prompt).replace(/\s+/g, " ").trim(),
       index,
       role: index === 0 ? "initial" : "follow-up",
       start,
@@ -597,7 +638,10 @@ export function buildSessions(
       }
       const start = getEventTimestamp(first);
       const end = getEventTimestamp(events.at(-1) || first);
-      const status = getTraceRunStatus(events);
+      const status = getTraceRunStatus(
+        events,
+        getWaitingEventsForSource(first.source),
+      );
 
       return {
         key,

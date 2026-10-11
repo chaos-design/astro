@@ -113,9 +113,14 @@ function getAtomStatus(
   event: TraceEvent | null | undefined,
   events: TraceEvent[],
   complete: boolean,
+  waitingEvents?: readonly string[],
 ): AtomStatus {
   if (!event) return "idle";
-  if (!complete && event.id === events.at(-1)?.id && isWaitingTraceEvent(event)) {
+  if (
+    !complete &&
+    event.id === events.at(-1)?.id &&
+    isWaitingTraceEvent(event, waitingEvents)
+  ) {
     return "waiting";
   }
   if (
@@ -170,7 +175,12 @@ function createBaseNodes(
         count,
         platform: platform.id,
         actor: event?.source?.toUpperCase() || "SYSTEM",
-        status: getAtomStatus(endEvent || event, events, complete),
+        status: getAtomStatus(
+          endEvent || event,
+          events,
+          complete,
+          platform.waitingEvents,
+        ),
         gateState:
           atom.kind === "gate"
             ? event

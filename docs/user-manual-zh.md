@@ -521,6 +521,34 @@ printf '%s\n' \
   | node bin/astro.mjs ingest --source custom-agent
 ```
 
+### 12.1 astrox 插件控制命令
+
+`astrox` 是 ASTRO 插件的轻量控制命令行，封装了仪表盘守护进程的启停、插件刷新以及状态与数据检视。诊断、安装与数据迁移等复杂任务会委托给底层 `astro-trace`（见上方命令表）。
+
+```text
+astrox start [--port N] [--host H] [--open] [--no-global] [--bin-dir DIR]
+astrox stop
+astrox restart
+astrox status [--json] [--deepseek-profile web]
+astrox info [--json]
+astrox update [--no-deepseek]
+astrox doctor [options]        运行完整的 astro-trace 诊断
+astrox install [options]       安装或刷新 Hook 集成
+astrox migrate [FILE_OR_DIR]   迁移旧版 trace 数据
+astrox open                   在浏览器中打开运行中的仪表盘
+astrox logs [--lines N]        查看仪表盘日志尾部
+astrox path                   打印 ASTRO home、插件目录与 CLI 入口
+```
+
+- `start` 启动仪表盘守护进程（默认 `127.0.0.1:4318`）。它会同时把当前入口注册为全局 `astrox` 命令——在 Unix 下软链到 `/usr/local/bin`、`~/.local/bin` 或 `~/bin` 中第一个可写目录，在 Windows 下写入 `%USERPROFILE%\.astrox\bin\astrox.cmd`。已存在的同名软链若指向本入口则复用，指向其他文件则保留不动。`--no-global` 跳过注册，`--bin-dir DIR` 指定候选目录，`--open` 在启动后自动打开浏览器。
+- 守护进程启动后写入 `<ASTRO_HOME>/dashboard-<port>.pid`（含 `pid` 与 `url`），运行日志落在 `<ASTRO_HOME>/dashboard.log`。`logs [--lines N]` 默认查看末尾 40 行。
+- `stop` 向守护进程发送 `SIGTERM`（必要时 `SIGKILL`）并结束进程，不触发额外清理；`restart` 等价于先 `stop` 再 `start`。
+- `status` 汇总插件配置（config.yaml / .env 的 OK、WARN、MISSING）、global cli 状态、仪表盘运行状态，以及各客户端 Hook 集成（codex、claude、workbuddy、trae、deepseek）。`--json` 输出机器可读报告。
+- `info` 列出每个来源（claude、codex、copilot、cursor、deepseek、gemini、iflow、llama、opencode、pi、qwen、trae、workbuddy、zcode 等）的 trace 文件数与字节数及合计，并展示 trace 根目录、插件目录与全局 CLI 路径。`--json` 同效。
+- `update` 原地刷新已安装的插件运行时（等价于 `astro-trace update`），`--no-deepseek` 跳过 DeepSeek 插件包。
+
+> 控制命令依赖已安装的插件运行时；首次使用请先执行 `astrox install`（或 `astro-trace install`）。
+
 ## 13. HTTP API
 
 ### 13.1 健康检查

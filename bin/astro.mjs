@@ -541,7 +541,19 @@ Environment:
   CODEBUDDY_COMMAND     WorkBuddy / CodeBuddy executable (default codebuddy)`);
 }
 
-if (command === "serve" || command === "start") {
+if (command === "help" || command === "--help" || command === "-h") {
+  printHelp();
+} else if (command === "--version" || command === "-v") {
+  try {
+    console.log(
+      JSON.parse(
+        readFileSync(join(import.meta.dirname, "..", "package.json"), "utf8"),
+      ).version,
+    );
+  } catch {
+    console.log("unknown");
+  }
+} else if (command === "serve" || command === "start") {
   await import("../server/server.mjs");
 } else if (command === "install") {
   install();
@@ -556,5 +568,7 @@ if (command === "serve" || command === "start") {
 } else if (command === "ingest") {
   await ingest();
 } else {
+  console.error(`Unknown astro-trace command: ${command}`);
   printHelp();
+  process.exitCode = 1;
 }

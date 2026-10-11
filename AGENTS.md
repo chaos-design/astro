@@ -76,6 +76,22 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   copies them to `~/.agents/skills`, which ZCode imports by reference. The
   plugin package itself never carries skill copies.
 
+## WorkBuddy Capture
+
+- WorkBuddy (CodeBuddy Code) pipes the hook stdin but never writes its event
+  payload into it: the payload is only logged to its debug service. Session
+  and workspace context arrive through the hook environment instead
+  (`CLAUDE_SESSION_ID` / `CODEBUDDY_SESSION_ID`, `CLAUDE_PROJECT_DIR` /
+  `CODEBUDDY_PROJECT_DIR`, `CLAUDE_PLUGIN_ROOT` / `CODEBUDDY_PLUGIN_ROOT`).
+- Because the payload and event name are unavailable at runtime, WorkBuddy
+  hook commands name their event with an explicit `--event=<Name>` flag, and
+  `plugin/trace-recorder.cjs` falls back to the hook environment for session
+  and workspace when the (empty) payload omits them. Both `workbuddy-plugin/hooks/hooks.json`
+  and the `workbuddy` client in `scripts/install-plugins.mjs` must keep the
+  flag synchronized with their registered event lists.
+- Tool inputs, outputs, and prompts are not delivered for WorkBuddy, so
+  WorkBuddy traces carry named lifecycle events without tool payload detail.
+
 ## Validation
 
 Run these checks after TypeScript or frontend changes:
