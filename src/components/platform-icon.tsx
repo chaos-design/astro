@@ -2,10 +2,16 @@ import type { CSSProperties } from "react";
 import type { PlatformId } from "../types/trace";
 import {
   ClaudeIcon,
+  ClineIcon,
+  CopilotIcon,
+  CursorIcon,
   GeminiIcon,
   GptIcon,
+  IflowIcon,
   LlamaIcon,
   PiAgentIcon,
+  QwenIcon,
+  WindsurfIcon,
 } from "./agent-icons";
 
 const paths: Readonly<
@@ -48,6 +54,12 @@ const brandIcons: Readonly<
   gemini: GeminiIcon,
   llama: LlamaIcon,
   pi: PiAgentIcon,
+  qwen: QwenIcon,
+  copilot: CopilotIcon,
+  cursor: CursorIcon,
+  cline: ClineIcon,
+  windsurf: WindsurfIcon,
+  iflow: IflowIcon,
 };
 
 type PlatformIconProps = {
@@ -56,19 +68,6 @@ type PlatformIconProps = {
   height?: number | string;
   style?: CSSProperties;
   width?: number | string;
-};
-
-/**
- * Agents without brand assets render a lettered monogram tile so every
- * dropdown entry keeps a consistent icon slot.
- */
-const monograms: Readonly<Partial<Record<PlatformId, string>>> = {
-  qwen: "Q",
-  copilot: "CP",
-  cursor: "Cu",
-  cline: "Cl",
-  windsurf: "Ws",
-  iflow: "iF",
 };
 
 export function PlatformIcon({
@@ -164,40 +163,6 @@ export function PlatformIcon({
           fillOpacity="0.35"
         />
         <path d="M20 8 6 16h4.5L20 10.75Z" fill="currentColor" />
-      </svg>
-    );
-  }
-  const monogram = monograms[platform];
-  if (monogram) {
-    return (
-      <svg
-        aria-hidden="true"
-        className={iconClassName}
-        fill="none"
-        viewBox="0 0 24 24"
-        {...props}
-      >
-        <rect
-          height="19"
-          rx="4.5"
-          ry="4.5"
-          width="19"
-          x="2.5"
-          y="2.5"
-          stroke="currentColor"
-          strokeOpacity="0.45"
-        />
-        <text
-          dominantBaseline="central"
-          fill="currentColor"
-          fontSize={monogram.length > 1 ? 9 : 12}
-          fontWeight="600"
-          textAnchor="middle"
-          x="12"
-          y="12.6"
-        >
-          {monogram}
-        </text>
       </svg>
     );
   }
