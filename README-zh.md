@@ -7,7 +7,7 @@
 
 一个面向编码智能体的本地优先运行时可观测、搜索与回放控制台。
 ASTRO 将 Trae、Claude Code、Codex、DeepSeek Harness、WorkBuddy / CodeBuddy Code、
-OpenCode、ZCode、浏览器扩展和自定义客户端接入统一的版本化事件协议，无需将追踪数据发送到本机之外。
+OpenCode、ZCode、Pi、浏览器扩展和自定义客户端接入统一的版本化事件协议，无需将追踪数据发送到本机之外。
 
 ![ASTRO 桌面控制台](docs/assets/astro-desktop.png)
 
@@ -101,6 +101,7 @@ ASTRO 只观察智能体执行，不负责调用模型、调度工具、批准�
 | DeepSeek Harness | 支持 | UI 导入 JSON/JSONL | `~/.astrox/deepseek/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` | 原生 `dsh` bundle |
 | WorkBuddy / CodeBuddy Code | 支持 | UI 导入 JSON/JSONL | `~/.astrox/workbuddy/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` | 原生插件或直接 Hook |
 | OpenCode | 支持 | 仅原生事件 | `~/.astrox/opencode/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` | 全局 OpenCode 插件 |
+| Pi | 支持 | 仅原生事件 | `~/.astrox/pi/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` | 全局 Pi 扩展 |
 | ZCode | 支持 | 仅原生事件 | `~/.astrox/zcode/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` | 原生 ZCode 插件 |
 | 浏览器 / 扩展 | 支持 | UI 导入 JSON/JSONL | `~/.astrox/browser/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` | 无依赖 ES Module |
 | 自定义客户端 | 支持 | CLI 或 UI 导入 JSON/JSONL | `~/.astrox/<source>/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` | HTTP API 或 CLI |
@@ -148,6 +149,7 @@ pnpm start
 | DeepSeek Harness | `deepseek-plugin/` bundle | Profile | `~/.astrox/deepseek/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` |
 | WorkBuddy / CodeBuddy Code | 原生 `workbuddy-plugin/` | 用户级、项目级或本地 | `~/.astrox/workbuddy/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` |
 | OpenCode | 全局插件（`opencode-plugin/`） | 用户级 | `~/.astrox/opencode/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` |
+| Pi | 全局扩展（`pi-plugin/`） | 用户级 | `~/.astrox/pi/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` |
 | ZCode | 原生 `zcode-plugin/` | 用户级 | `~/.astrox/zcode/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` |
 | Trae | 直接项目 Hook | 项目级 | `~/.astrox/trae/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` |
 | 浏览器 / 扩展 | Browser SDK | 客户端自定义 | `~/.astrox/browser/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` |
@@ -228,6 +230,22 @@ pnpm run install-opencode-plugin
 `opencode.json` 中可能残留的绝对路径配置项。启用后新建会话或执行
 `opencode service restart`。事件映射与卸载方式见
 [OpenCode 插件指南](opencode-plugin/README.md)。
+
+### Pi 扩展
+
+Pi 同样没有 Hook 协议，因此 ASTRO 提供全局 Pi 扩展，接入其扩展事件系统：
+
+```bash
+pnpm run install-pi-plugin
+```
+
+扩展会被复制到 `~/.pi/agent/extensions/astro-trace/`，Pi 会自动发现该目录，
+重复执行该命令即为升级（整体替换已安装副本）。启用后新建会话或重启 Pi 即可。
+用户输入通过 `input` 与 `before_agent_start` 配对生成提示词运行；工具调用映射为
+`PreToolUse` / `PostToolUse`；助手消息按 stopReason 推导 `Stop`、`StopFailure`
+或 `Interrupt`。Pi 会话支持 resume，认领文件会记录持有进程 pid，前一个 Pi 进程
+退出后，后续进程可接手同一会话继续记录。完整事件映射见
+[Pi 插件指南](pi-plugin/README.md)。
 
 ### ZCode 插件
 

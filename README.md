@@ -8,7 +8,7 @@ web framework.
 
 Local-first runtime observability, search, and replay for coding agents.
 ASTRO gives Trae, Claude Code, Codex, DeepSeek Harness, WorkBuddy / CodeBuddy
-Code, OpenCode, ZCode, browser extensions, and custom clients one versioned
+Code, OpenCode, ZCode, Pi, browser extensions, and custom clients one versioned
 event protocol and one execution console without sending trace data off the
 machine.
 
@@ -114,6 +114,7 @@ schedule tools, approve permissions, or alter agent decisions.
 | DeepSeek Harness | Yes | JSON/JSONL UI import | `~/.astrox/deepseek/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` | Native `dsh` bundle |
 | WorkBuddy / CodeBuddy Code | Yes | JSON/JSONL UI import | `~/.astrox/workbuddy/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` | Native plugin or direct hooks |
 | OpenCode | Yes | Native events only | `~/.astrox/opencode/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` | Global OpenCode plugin |
+| Pi | Yes | Native events only | `~/.astrox/pi/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` | Global Pi extension |
 | ZCode | Yes | Native events only | `~/.astrox/zcode/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` | Native ZCode plugin |
 | Browser / extension | Yes | JSON/JSONL UI import | `~/.astrox/browser/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` | Dependency-free ES module |
 | Custom client | Yes | CLI or JSON/JSONL UI import | `~/.astrox/<source>/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` | HTTP API or CLI |
@@ -165,6 +166,7 @@ Direct hook installation starts and opens the dashboard automatically.
 | DeepSeek Harness | `deepseek-plugin/` bundle | Profile | `~/.astrox/deepseek/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` |
 | WorkBuddy / CodeBuddy Code | Native `workbuddy-plugin/` | User, project, or local | `~/.astrox/workbuddy/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` |
 | OpenCode | Global plugin (`opencode-plugin/`) | User | `~/.astrox/opencode/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` |
+| Pi | Global extension (`pi-plugin/`) | User | `~/.astrox/pi/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` |
 | ZCode | Native `zcode-plugin/` | User | `~/.astrox/zcode/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` |
 | Trae | Direct project hooks | Project | `~/.astrox/trae/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` |
 | Browser / extension | Browser SDK | Client-defined | `~/.astrox/browser/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` |
@@ -255,6 +257,25 @@ absolute-path entry from `opencode.json` if one exists. Start a new session or
 run `opencode service restart` to activate it. See the
 [OpenCode plugin guide](opencode-plugin/README.md) for the event mapping and
 removal steps.
+
+### Pi extension
+
+Pi has no hook protocol either, so ASTRO ships a global Pi extension that
+subscribes to the extension event system:
+
+```bash
+pnpm run install-pi-plugin
+```
+
+The extension is copied to `~/.pi/agent/extensions/astro-trace/`, which Pi
+discovers automatically. Re-running the command replaces the installed copy.
+Start a new session or restart Pi to activate it. Prompts pair the `input`
+event with `before_agent_start`, tool calls map to `PreToolUse` /
+`PostToolUse`, and assistant message endings derive `Stop`, `StopFailure`, or
+`Interrupt` from the stop reason. Because Pi sessions are resumable, claim
+files carry the owning pid so a later Pi process keeps recording the same
+session after the previous owner exits. See the
+[Pi plugin guide](pi-plugin/README.md) for the full event mapping.
 
 ### ZCode plugin
 
