@@ -37,6 +37,7 @@ import {
   useLayoutEffect,
   useMemo,
   useRef,
+  startTransition,
   useState,
 } from "react";
 import type {
@@ -46,8 +47,7 @@ import type {
 } from "react";
 import { JsonViewer } from "./components/json-viewer";
 import { HistorySearch } from "./components/history-search";
-import { OthersAgentIcon } from "./components/agent-icons";
-import { PlatformIcon } from "./components/platform-icon";
+import { AgentSelect } from "./components/agent-select";
 import { PromptContent } from "./components/prompt-content";
 import { RuntimeCanvas } from "./components/runtime-canvas";
 import { Badge } from "@/components/ui/badge";
@@ -2435,6 +2435,20 @@ export default function App() {
     // Ids seen so far: an O(1) set keeps per-event dedup linear in total
     // events instead of rescanning the accumulated array on every message.
     const seenIds = new Set<string>();
+    // Live capture arrives in bursts (streaming tool output, subagent
+    // storms). Coalescing the queue into one state update per short window
+    // re-derives sessions, runs, and flows once per batch instead of once
+    // per event, which keeps interaction latency flat while recording.
+    let pending: TraceEvent[] = [];
+    let flushTimer: number | null = null;
+    const flush = () => {
+      flushTimer = null;
+      const batch = pending;
+      pending = [];
+      if (batch.length) {
+        setLiveEvents((current) => [...current, ...batch]);
+      }
+    };
     source.addEventListener("ready", () => setConnected(true));
     source.addEventListener("trace", (message: MessageEvent<string>) => {
       const event = normalizeTraceEvent(JSON.parse(message.data));
@@ -2442,7 +2456,8 @@ export default function App() {
         return;
       }
       seenIds.add(event.id);
-      setLiveEvents((current) => [...current, event]);
+      pending.push(event);
+      flushTimer ??= window.setTimeout(flush, 80);
     });
     source.addEventListener("reset", (message: MessageEvent<string>) => {
       const events = (JSON.parse(message.data) as TraceEvent[]).map(
@@ -2451,12 +2466,24 @@ export default function App() {
       for (const event of events) {
         seenIds.add(event.id);
       }
+      // A snapshot replaces queued increments; replaying them afterwards
+      // would reorder the event stream.
+      if (flushTimer !== null) {
+        window.clearTimeout(flushTimer);
+        flushTimer = null;
+      }
+      pending = [];
       setLiveEvents(events);
       setEventsLoaded(true);
     });
     source.onerror = () => setConnected(false);
     source.onopen = () => setConnected(true);
-    return () => source.close();
+    return () => {
+      if (flushTimer !== null) {
+        window.clearTimeout(flushTimer);
+      }
+      source.close();
+    };
   }, []);
 
   const allEvents = useMemo(
@@ -3034,46 +3061,56 @@ export default function App() {
   );
 
   const handleReplaySeek = useCallback((index: number) => {
-    setSelectedAtomId(undefined);
-    setReplayMode(true);
-    setPlaying(false);
-    setReplayCursor(index);
+    // Seeking truncates the displayed event prefix and rebuilds the flow;
+    // run the derived work as a transition so rapid clicks stay responsive.
+    startTransition(() => {
+      setSelectedAtomId(undefined);
+      setReplayMode(true);
+      setPlaying(false);
+      setReplayCursor(index);
+    });
   }, []);
 
   const handleReplayRestart = useCallback(() => {
-    setSelectedAtomId(undefined);
-    setReplayMode(true);
-    setReplayCursor(0);
-    setPlaying(true);
-  }, []);
-
-  const handleReplayTogglePlay = useCallback(() => {
-    setSelectedAtomId(undefined);
-    if (!replayMode || replayCursor >= activeEvents.length - 1) {
+    startTransition(() => {
+      setSelectedAtomId(undefined);
       setReplayMode(true);
       setReplayCursor(0);
       setPlaying(true);
-      return;
-    }
-    setPlaying((current) => !current);
+    });
+  }, []);
+
+  const handleReplayTogglePlay = useCallback(() => {
+    startTransition(() => {
+      setSelectedAtomId(undefined);
+      if (!replayMode || replayCursor >= activeEvents.length - 1) {
+        setReplayMode(true);
+        setReplayCursor(0);
+        setPlaying(true);
+        return;
+      }
+      setPlaying((current) => !current);
+    });
   }, [activeEvents.length, replayCursor, replayMode]);
 
   const handleReplayExit = useCallback(() => {
-    const latestSession = sessions[0];
-    const latestPromptRuns =
-      promptRunsBySession.get(latestSession?.key || "") ?? [];
-    const latestPromptRun = latestPromptRuns.at(-1);
-    const latestEvents =
-      latestPromptRun?.events ?? latestSession?.events ?? activeEvents;
-    if (latestSession && latestSession.key !== activeSession?.key) {
-      setActiveSessionKey(latestSession.key);
-    }
-    setActivePromptRunKey(latestPromptRun?.key || "");
-    setSelectedEventId(latestEvents.at(-1)?.id || "");
-    setSelectedAtomId(undefined);
-    setPlaying(false);
-    setReplayMode(false);
-    setReplayCursor(Math.max(0, latestEvents.length - 1));
+    startTransition(() => {
+      const latestSession = sessions[0];
+      const latestPromptRuns =
+        promptRunsBySession.get(latestSession?.key || "") ?? [];
+      const latestPromptRun = latestPromptRuns.at(-1);
+      const latestEvents =
+        latestPromptRun?.events ?? latestSession?.events ?? activeEvents;
+      if (latestSession && latestSession.key !== activeSession?.key) {
+        setActiveSessionKey(latestSession.key);
+      }
+      setActivePromptRunKey(latestPromptRun?.key || "");
+      setSelectedEventId(latestEvents.at(-1)?.id || "");
+      setSelectedAtomId(undefined);
+      setPlaying(false);
+      setReplayMode(false);
+      setReplayCursor(Math.max(0, latestEvents.length - 1));
+    });
   }, [activeEvents, activeSession?.key, promptRunsBySession, sessions]);
 
   const handleLoadMoreRunHistory = useCallback(() => {
@@ -3251,50 +3288,26 @@ export default function App() {
             </div>
             <div className="toolbar-actions flex min-w-0 items-center gap-1.5">
               <Tooltip>
-                <Select
-                  value={agentId}
-                  onValueChange={(value) => {
-                    const nextAgent = value as PlatformId | typeof OTHERS_AGENT_ID;
-                    setAgentId(nextAgent);
-                    setRunHistoryDays(DEFAULT_RUN_HISTORY_DAYS);
-                    if (nextAgent !== OTHERS_AGENT_ID) {
-                      setPlatformId(nextAgent);
-                    }
-                  }}
-                >
-                  <TooltipTrigger asChild>
-                    <SelectTrigger
-                      size="sm"
-                      className={cn(
-                        "platform-select",
-                        agentId === OTHERS_AGENT_ID
-                          ? "platform-select--others"
-                          : `platform-select--${agentId}`,
-                      )}
-                      aria-label="切换智能体平台"
-                    >
-                      <SelectValue />
-                    </SelectTrigger>
-                  </TooltipTrigger>
-                  <SelectContent
-                    position="popper"
-                    align="end"
-                    className="agent-select__content"
-                  >
-                    <SelectGroup>
-                      {agentOptions.map((platform) => (
-                        <SelectItem key={platform.id} value={platform.id}>
-                          <PlatformIcon platform={platform.id} />
-                          {platform.label}
-                        </SelectItem>
-                      ))}
-                      <SelectItem value={OTHERS_AGENT_ID}>
-                        <OthersAgentIcon />
-                        <span>Others</span>
-                      </SelectItem>
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
+                <TooltipTrigger asChild>
+                  <div>
+                    <AgentSelect
+                      value={agentId}
+                      onChange={(nextAgent) => {
+                        // Switching agents re-filters run history and
+                        // re-projects the whole flow for large sessions; keep
+                        // the picker responsive by treating the derived work
+                        // as a transition.
+                        startTransition(() => {
+                          setAgentId(nextAgent);
+                          setRunHistoryDays(DEFAULT_RUN_HISTORY_DAYS);
+                          if (nextAgent !== OTHERS_AGENT_ID) {
+                            setPlatformId(nextAgent);
+                          }
+                        });
+                      }}
+                    />
+                  </div>
+                </TooltipTrigger>
                 <TooltipContent side="bottom">切换智能体平台</TooltipContent>
               </Tooltip>
               <div className="canvas-view-switch" role="group" aria-label="画布视图">
