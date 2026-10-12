@@ -1,5 +1,6 @@
 import { deckPages } from "./decks";
 import { docCatalog } from "./docs";
+import { LangToggle } from "./LangToggle";
 import { GITHUB_REPO, ROUTES, type Route } from "./routes";
 
 const githubIcon = (
@@ -12,10 +13,12 @@ export function Sidebar({ route }: { route: Route }) {
   const activeKind = route.kind;
   const activeSlug =
     activeKind === "doc" ? route.slug : activeKind === "deck" ? route.slug : null;
+  const activeDocSlug = activeKind === "doc" ? route.slug : null;
 
   return (
     <aside className="sidebar">
-      <div className="sidebar-scroll">
+      {/* Pinned header: the brand stays put while the nav scrolls under it. */}
+      <div className="sidebar-head">
         <div className="brand">
           <div className="brand-mark">A</div>
           <div>
@@ -23,7 +26,9 @@ export function Sidebar({ route }: { route: Route }) {
             <div className="brand-sub">Docs &amp; Decks</div>
           </div>
         </div>
+      </div>
 
+      <div className="sidebar-scroll">
         <nav className="nav-group">
           <div className="nav-label">Navigate</div>
           <a href={ROUTES.home} className={`nav-item ${activeKind === "home" ? "active" : ""}`}>
@@ -71,14 +76,15 @@ export function Sidebar({ route }: { route: Route }) {
         </div>
       </div>
 
-      {/* Pinned at the bottom of the sidebar; does not scroll with the menu.
-          On mobile the GitHub entry moves to the BottomBar instead. */}
+      {/* Pinned footer: the GitHub entry and the current doc's language switch
+          live together; neither scrolls with the nav. */}
       <div className="sidebar-github">
         <a href={GITHUB_REPO} target="_blank" rel="noreferrer">
           {githubIcon}
           <span>GitHub</span>
           <span className="ext-arrow">↗</span>
         </a>
+        <LangToggle slug={activeDocSlug} />
       </div>
     </aside>
   );

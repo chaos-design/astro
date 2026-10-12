@@ -32,7 +32,7 @@ export function App() {
     <div className="shell">
       <Sidebar route={route} />
       <main className="content">{view}</main>
-      <BottomBar />
+      <BottomBar slug={route.kind === "doc" ? route.slug : null} />
     </div>
   );
 }

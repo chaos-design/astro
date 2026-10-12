@@ -1,3 +1,4 @@
+import { LangToggle } from "./LangToggle";
 import { GITHUB_REPO } from "./routes";
 
 const githubIcon = (
@@ -6,11 +7,13 @@ const githubIcon = (
   </svg>
 );
 
-// Persistent GitHub entry. Shown as a full-width 吸底 bar on mobile; on desktop
-// the same entry lives in the pinned sidebar footer, so this is hidden there.
-export function BottomBar() {
+// Persistent GitHub entry paired with the current doc's language switch.
+// Shown as a full-width 吸底 bar on mobile; on desktop the same pair lives in
+// the pinned sidebar footer, so this is hidden there.
+export function BottomBar({ slug }: { slug: string | null }) {
   return (
     <nav className="bottombar" aria-label="GitHub">
+      <LangToggle slug={slug} />
       <a href={GITHUB_REPO} target="_blank" rel="noreferrer" className="bottombar-item external">
         {githubIcon}
         <span>GitHub</span>

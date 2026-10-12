@@ -86,7 +86,13 @@ a:hover {
   flex: 1 1 auto;
   overflow-y: auto;
   min-height: 0;
-  padding: 20px 16px 16px;
+  padding: 12px 16px 16px;
+}
+/* Pinned header: the brand never scrolls with the nav below it. */
+.sidebar-head {
+  flex: 0 0 auto;
+  padding: 20px 16px 0;
+  border-bottom: 1px solid var(--line);
 }
 /* Pinned at the bottom of the sidebar; does not scroll with the menu. */
 .sidebar-github {
@@ -94,6 +100,9 @@ a:hover {
   padding: 12px 16px;
   border-top: 1px solid var(--line);
   background: var(--surface-2);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 .sidebar-github a {
   display: flex;
@@ -120,6 +129,16 @@ a:hover {
 .sidebar-github .ext-arrow {
   margin-left: auto;
   color: var(--faint);
+}
+/* The language switch shares the pinned footer with the GitHub entry. */
+.sidebar-github .lang-toggle {
+  width: 100%;
+}
+.sidebar-github .lang-toggle span,
+.sidebar-github .lang-toggle a {
+  flex: 1;
+  justify-content: center;
+  text-align: center;
 }
 
 .brand {
@@ -221,19 +240,7 @@ a:hover {
   text-decoration: none;
 }
 
-/* Doc header row: breadcrumb + language toggle */
-.doc-head {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 10px;
-  flex-wrap: wrap;
-}
-.doc-head .crumb {
-  flex: 1 1 auto;
-  min-width: 0;
-  margin-bottom: 0;
-}
+/* Segmented language switch (sidebar footer). */
 .lang-toggle {
   flex: 0 0 auto;
   display: inline-flex;
@@ -920,19 +927,30 @@ a:hover {
     border-right: none;
     border-bottom: 1px solid var(--line);
   }
+  /* The brand header stays put while the nav scrolls under it. */
+  .sidebar-head {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: var(--surface);
+  }
   .sidebar-scroll {
     overflow: visible;
-    padding: 20px 16px 12px;
+    padding: 12px 16px 12px;
   }
-  /* GitHub is reachable from the mobile 吸底 bar instead, so drop the footer. */
+  /* The GitHub entry and the language switch are paired in the mobile 吸底
+     bar instead, so drop the pinned sidebar footer entirely. */
   .sidebar-github {
     display: none;
   }
-  /* Full-width 吸底 GitHub bar. */
+  /* Full-width 吸底 bar: language switch + GitHub entry side by side. */
   .bottombar {
     display: flex;
     left: 0;
     min-height: var(--bottombar-h);
+  }
+  .bottombar .lang-toggle {
+    flex: 0 0 auto;
   }
   /* Pager stacks just above the GitHub bar on mobile (吸底, scroll-independent). */
   .pager {
