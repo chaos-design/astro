@@ -19,6 +19,10 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   `scripts/install-opencode-plugin.mjs`; `mapping.ts` maps OpenCode server
   events onto canonical event names, `claim.ts` guarantees one recorder per
   session.
+- `pi-plugin/`: zero-dependency Pi extension installed globally by
+  `scripts/install-pi-plugin.mjs`; `mapping.ts` maps Pi extension events onto
+  canonical event names, and `claim.ts` stores the owning pid so resumable Pi
+  sessions keep recording across Pi restarts.
 - `zcode-plugin/`: portable ZCode plugin and its local marketplace catalog;
   `plugin/zcode-adapter.cjs` normalizes ZCode hook payloads before they reach
   the canonical recorder.
@@ -91,6 +95,22 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   flag synchronized with their registered event lists.
 - Tool inputs, outputs, and prompts are not delivered for WorkBuddy, so
   WorkBuddy traces carry named lifecycle events without tool payload detail.
+
+## Pi Capture
+
+- Pi has no hook protocol; capture is a global extension loaded by jiti from
+  `~/.pi/agent/extensions/astro-trace/` and installed by
+  `scripts/install-pi-plugin.mjs`.
+- Prompt runs pair the `input` event with `before_agent_start`: slash commands
+  and other non-agent inputs never create prompt runs.
+- Assistant `message_end` derives the terminal event from `stopReason`
+  (`error` → `StopFailure`, `aborted` → `Interrupt`, `stop`/`length` →
+  `Stop`); `toolUse` keeps the run active. `tool_call` / `tool_result` carry
+  the tool lifecycle; message and tool execution deltas stay unmapped.
+- Pi sessions are resumable, so claim files record the owning pid and a later
+  Pi process takes a session over only after the previous owner exits.
+- The extension reads event shapes defensively (Pi adds fields across
+  releases) and must never block the agent loop; recording failures fail open.
 
 ## Validation
 

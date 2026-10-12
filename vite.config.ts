@@ -33,6 +33,34 @@ export default defineConfig(() => {
         "@": path.resolve(import.meta.dirname, "./src"),
       },
     },
+    build: {
+      rollupOptions: {
+        output: {
+          // Split stable vendor code from fast-moving application code so
+          // repeat visits reuse cached chunks while the app bundle iterates.
+          // React and react-dom share one chunk: react-dom imports react and
+          // keeping them together avoids cross-chunk initialization order.
+          manualChunks(id) {
+            if (!id.includes("node_modules")) {
+              return undefined;
+            }
+            if (/[\\/]node_modules[\\/](react|react-dom|scheduler)[\\/]/.test(id)) {
+              return "vendor-react";
+            }
+            if (/[\\/]node_modules[\\/](radix-ui|@radix-ui)[\\/]/.test(id)) {
+              return "vendor-radix";
+            }
+            if (/[\\/]node_modules[\\/]lucide-react[\\/]/.test(id)) {
+              return "vendor-icons";
+            }
+            if (/[\\/]node_modules[\\/]date-fns[\\/]/.test(id)) {
+              return "vendor-date";
+            }
+            return undefined;
+          },
+        },
+      },
+    },
     server: {
       proxy: {
         "/api": {

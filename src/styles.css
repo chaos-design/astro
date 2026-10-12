@@ -5093,3 +5093,72 @@ pre,
     transition-duration: 0.01ms !important;
   }
 }
+/*
+ * Searchable agent dropdown (combobox). The trigger reuses .platform-select;
+ * the popover adds a search input above the option list.
+ */
+.agent-select__popover {
+  width: 236px;
+  gap: 6px;
+  padding: 6px;
+}
+
+.agent-select__search {
+  height: 30px;
+}
+
+.agent-select__list {
+  display: flex;
+  max-height: 262px;
+  min-height: 34px;
+  flex-direction: column;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.agent-select__option {
+  display: flex;
+  min-height: 28px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 5px;
+  color: var(--muted-soft);
+  text-align: left;
+  background: transparent;
+  cursor: pointer;
+  font-size: var(--text-body);
+}
+
+.agent-select__option:hover,
+.agent-select__option.is-focused {
+  color: var(--text);
+  background: var(--panel-hover);
+}
+
+.agent-select__option.is-selected {
+  color: var(--selection-text);
+  background: var(--atom-selected-bg);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--selection-border) 45%, transparent);
+}
+
+.agent-select__option > svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+
+.agent-select__option > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-select__empty {
+  padding: 10px 8px;
+  color: var(--muted-soft);
+  font-size: var(--text-caption);
+  text-align: center;
+}
