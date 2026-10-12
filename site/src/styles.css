@@ -94,21 +94,27 @@ a:hover {
   padding: 20px 16px 0;
   border-bottom: 1px solid var(--line);
 }
-/* Pinned at the bottom of the sidebar; does not scroll with the menu. */
+/* Pinned at the bottom of the sidebar; does not scroll with the menu.
+   中文, EN, and GitHub share the row as three equal-size cells. */
 .sidebar-github {
   flex: 0 0 auto;
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
   padding: 12px 16px;
   border-top: 1px solid var(--line);
   background: var(--surface-2);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
 }
-.sidebar-github a {
+/* Direct child only: the language switch nests its own <a> cells, and they
+   must not inherit the GitHub cell's border and background. */
+.sidebar-github > a {
+  flex: 1 1 0;
+  min-width: 0;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
+  justify-content: center;
+  gap: 7px;
+  padding: 8px 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface-3);
@@ -116,29 +122,15 @@ a:hover {
   font-size: 13px;
   text-decoration: none;
 }
-.sidebar-github a:hover {
+.sidebar-github > a:hover {
   border-color: var(--blue);
   color: var(--ink);
   text-decoration: none;
 }
-.sidebar-github svg {
+.sidebar-github > a svg {
   width: 16px;
   height: 16px;
   flex: 0 0 auto;
-}
-.sidebar-github .ext-arrow {
-  margin-left: auto;
-  color: var(--faint);
-}
-/* The language switch shares the pinned footer with the GitHub entry. */
-.sidebar-github .lang-toggle {
-  width: 100%;
-}
-.sidebar-github .lang-toggle span,
-.sidebar-github .lang-toggle a {
-  flex: 1;
-  justify-content: center;
-  text-align: center;
 }
 
 .brand {
@@ -240,13 +232,16 @@ a:hover {
   text-decoration: none;
 }
 
-/* Segmented language switch (sidebar footer). */
+/* Segmented 中文/EN switch (sidebar footer + mobile bottom bar). The toggle
+   spans two cell widths, so 中文, EN, and GitHub render as three equal-size
+   buttons in one row. */
 .lang-toggle {
-  flex: 0 0 auto;
+  flex: 2 1 0;
+  min-width: 0;
   display: inline-flex;
   align-items: stretch;
   border: 1px solid var(--line);
-  border-radius: 7px;
+  border-radius: 8px;
   overflow: hidden;
   background: var(--surface);
 }
@@ -255,11 +250,16 @@ a:hover {
 }
 .lang-toggle span,
 .lang-toggle a {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-family: var(--mono);
   font-size: 11px;
   letter-spacing: 0.04em;
   line-height: 1;
-  padding: 5px 11px;
+  padding: 5px 4px;
   color: var(--muted);
   white-space: nowrap;
 }
@@ -943,14 +943,11 @@ a:hover {
   .sidebar-github {
     display: none;
   }
-  /* Full-width 吸底 bar: language switch + GitHub entry side by side. */
+  /* Full-width 吸底 bar: 中文, EN, and GitHub as three equal-size cells. */
   .bottombar {
     display: flex;
     left: 0;
     min-height: var(--bottombar-h);
-  }
-  .bottombar .lang-toggle {
-    flex: 0 0 auto;
   }
   /* Pager stacks just above the GitHub bar on mobile (吸底, scroll-independent). */
   .pager {

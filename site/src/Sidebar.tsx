@@ -76,15 +76,14 @@ export function Sidebar({ route }: { route: Route }) {
         </div>
       </div>
 
-      {/* Pinned footer: the GitHub entry and the current doc's language switch
-          live together; neither scrolls with the nav. */}
+      {/* Pinned footer: the current doc's language switch and the GitHub entry
+          share one row as three equal-size cells; neither scrolls with the nav. */}
       <div className="sidebar-github">
+        <LangToggle slug={activeDocSlug} />
         <a href={GITHUB_REPO} target="_blank" rel="noreferrer">
           {githubIcon}
           <span>GitHub</span>
-          <span className="ext-arrow">↗</span>
         </a>
-        <LangToggle slug={activeDocSlug} />
       </div>
     </aside>
   );
