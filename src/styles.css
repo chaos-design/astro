@@ -1638,16 +1638,57 @@ pre,
   flex: 0 0 14px;
 }
 
-.platform-icon--codex {
-  color: #10a37f;
-}
-
+/*
+ * Agent brand colors. Brand marks inherit currentColor so each platform keeps
+ * its recognizable hue; near-black brands swap to light variants in the dark
+ * theme to stay visible on dark panels. Ordered like the agent dropdown.
+ */
 .platform-icon--claude {
   color: #d97757;
 }
 
+.platform-icon--codex {
+  color: #10a37f;
+}
+
 .platform-icon--deepseek {
   color: #4d6bfe;
+}
+
+.platform-icon--zcode {
+  color: #18181b;
+}
+
+.dark .platform-icon--zcode {
+  color: #e4e4e7;
+}
+
+.platform-icon--gpt {
+  color: #74aa9c;
+}
+
+.platform-icon--gemini {
+  color: #8e75b2;
+}
+
+.platform-icon--llama {
+  color: #0467df;
+}
+
+.platform-icon--pi {
+  color: #7c3aed;
+}
+
+.dark .platform-icon--pi {
+  color: #a78bfa;
+}
+
+.platform-icon--opencode {
+  color: #3f3f46;
+}
+
+.dark .platform-icon--opencode {
+  color: #d4d4d8;
 }
 
 .platform-icon--trae {
@@ -1658,6 +1699,50 @@ pre,
   color: #38bdf8;
   object-fit: cover;
   object-position: left center;
+}
+
+.platform-icon--qwen {
+  color: #6950ef;
+}
+
+.platform-icon--copilot {
+  color: #24292f;
+}
+
+.dark .platform-icon--copilot {
+  color: #e6edf3;
+}
+
+.platform-icon--cursor {
+  color: #1f2328;
+}
+
+.dark .platform-icon--cursor {
+  color: #e6e6e6;
+}
+
+.platform-icon--cline {
+  color: #18181b;
+}
+
+.dark .platform-icon--cline {
+  color: #e4e4e7;
+}
+
+.platform-icon--windsurf {
+  color: #0b100f;
+}
+
+.dark .platform-icon--windsurf {
+  color: #9ae6c8;
+}
+
+.platform-icon--iflow {
+  color: #0e7490;
+}
+
+.dark .platform-icon--iflow {
+  color: #22d3ee;
 }
 
 .canvas-view-switch {
