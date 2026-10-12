@@ -167,7 +167,16 @@ export class TraceRepository extends EventEmitter {
   }
 
   async append(inputEvents) {
-    const knownIds = new Set(this.getEvents().map((event) => event.id));
+    // Build known ids directly from each store: sorting the full merged event
+    // list (as getEvents does) costs O(n log n) per POST for no benefit here.
+    const knownIds = new Set();
+    for (const store of this.stores.values()) {
+      for (const event of store.getEvents()) {
+        if (event.id) {
+          knownIds.add(event.id);
+        }
+      }
+    }
     const eventsByFile = new Map();
     const traceFileBySession = new Map();
 
