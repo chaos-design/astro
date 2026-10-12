@@ -69,13 +69,17 @@ a:hover {
   display: grid;
   grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
 /* ===== Sidebar ===== */
 .sidebar {
   position: sticky;
   top: 0;
+  /* Dynamic viewport height keeps the menu at full visible height on mobile
+     browsers, where 100vh overshoots the URL-bar-visible area. */
   height: 100vh;
+  height: 100dvh;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -210,6 +214,7 @@ a:hover {
 /* ===== Content ===== */
 .content {
   min-height: 100vh;
+  min-height: 100dvh;
   padding: 0 0 80px;
 }
 .content-inner {
@@ -230,6 +235,63 @@ a:hover {
 .crumb a:hover {
   color: var(--blue);
   text-decoration: none;
+}
+
+/* ===== Content loading placeholder =====
+   Shown while the markdown + mermaid pipeline renders a doc. */
+.doc-loading {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 6px 0 24px;
+}
+.doc-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.doc-skeleton i {
+  display: block;
+  height: 14px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--surface-2) 25%, var(--surface-3) 45%, var(--surface-2) 65%);
+  background-size: 200% 100%;
+  animation: doc-shimmer 1.4s linear infinite;
+}
+.doc-loading-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--faint);
+}
+.doc-loading-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--line);
+  border-top-color: var(--blue);
+  border-radius: 50%;
+  animation: doc-spin 0.8s linear infinite;
+}
+@keyframes doc-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+@keyframes doc-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .doc-skeleton i,
+  .doc-loading-spinner {
+    animation: none;
+  }
 }
 
 /* Segmented 中文/EN switch (sidebar footer + mobile bottom bar). The toggle
@@ -621,6 +683,7 @@ a:hover {
 .artifact-frame {
   width: 100%;
   height: calc(100vh - 180px);
+  height: calc(100dvh - 180px);
   min-height: 620px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -921,21 +984,19 @@ a:hover {
   }
   .sidebar {
     position: static;
-    height: auto;
-    overflow: visible;
-    display: block;
+    /* The menu occupies exactly one viewport and scrolls internally, so its
+       height never follows the page content. */
+    height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
     border-right: none;
     border-bottom: 1px solid var(--line);
   }
-  /* The brand header stays put while the nav scrolls under it. */
-  .sidebar-head {
-    position: sticky;
-    top: 0;
-    z-index: 20;
-    background: var(--surface);
-  }
   .sidebar-scroll {
-    overflow: visible;
+    overflow-y: auto;
+    min-height: 0;
     padding: 12px 16px 12px;
   }
   /* The GitHub entry and the language switch are paired in the mobile 吸底
