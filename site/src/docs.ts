@@ -151,3 +151,21 @@ export function sectionOf(slug: string): DocSection | null {
 export function orderedDocSlugs(): string[] {
   return catalog.sections.flatMap((s) => s.items.map((i) => i.slug));
 }
+
+/** Language of a doc slug ("-zh" / "-en" suffix), or null for language-neutral docs. */
+export function docLang(slug: string): "zh" | "en" | null {
+  if (slug.endsWith("-zh")) return "zh";
+  if (slug.endsWith("-en")) return "en";
+  return null;
+}
+
+/**
+ * Slug of the same document in the other language ("user-manual-zh" ↔
+ * "user-manual-en"), or null when the doc has no translated pair.
+ */
+export function counterpartSlug(slug: string): string | null {
+  const lang = docLang(slug);
+  if (!lang) return null;
+  const candidate = `${slug.slice(0, -3)}-${lang === "zh" ? "en" : "zh"}`;
+  return catalog.index[candidate] ? candidate : null;
+}
