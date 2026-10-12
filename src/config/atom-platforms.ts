@@ -678,27 +678,29 @@ const platformDefinitions: Record<PlatformId, PlatformDefinition> = {
 export const atomPlatformOptions = Object.values(platformDefinitions);
 
 /**
- * Agent dropdown order. Common model agents come first, followed by coding
- * runtimes; the first entry is the default selection. `run-history-window.ts`
- * appends the "Others" catch-all at render time.
+ * Agent dropdown order. The agents switched between most often sit at the top
+ * (Claude, Codex, DeepSeek, ZCode), followed by the remaining model agents and
+ * coding runtimes; the first entry is the default selection.
+ * `run-history-window.ts` appends the "Others" catch-all at render time, so it
+ * always trails the list.
  */
 const agentOrder: readonly PlatformId[] = [
   "claude",
+  "codex",
+  "deepseek",
+  "zcode",
   "gpt",
   "gemini",
   "llama",
   "pi",
-  "codex",
+  "opencode",
+  "trae",
+  "workbuddy",
+  "qwen",
   "copilot",
   "cursor",
   "cline",
   "windsurf",
-  "opencode",
-  "zcode",
-  "qwen",
-  "deepseek",
-  "trae",
-  "workbuddy",
   "iflow",
 ];
 
