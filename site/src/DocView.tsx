@@ -1,8 +1,34 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getDoc, orderedDocSlugs, sectionOf } from "./docs";
+import { counterpartSlug, docLang, getDoc, orderedDocSlugs, sectionOf } from "./docs";
 import { Lightbox } from "./Lightbox";
 import { type RenderedDoc, renderMarkdown } from "./markdown";
 import { ROUTES } from "./routes";
+
+/** Segmented 中文 / EN switch; links to the translated twin of the current doc. */
+function LangToggle({ slug }: { slug: string }) {
+  const lang = docLang(slug);
+  const counterpart = counterpartSlug(slug);
+  // Language-neutral docs (index, plugin-installation) have no twin to switch to.
+  if (!lang || !counterpart) return null;
+  return (
+    <div className="lang-toggle" role="group" aria-label="切换语言 / Switch language">
+      {lang === "zh" ? (
+        <span className="active">中文</span>
+      ) : (
+        <a href={ROUTES.doc(counterpart)} title="切换到中文">
+          中文
+        </a>
+      )}
+      {lang === "en" ? (
+        <span className="active">EN</span>
+      ) : (
+        <a href={ROUTES.doc(counterpart)} title="Switch to English">
+          EN
+        </a>
+      )}
+    </div>
+  );
+}
 
 export function DocView({ slug }: { slug: string }) {
   const result = getDoc(slug);
@@ -96,9 +122,12 @@ export function DocView({ slug }: { slug: string }) {
 
   return (
     <div className="content-inner">
-      <div className="crumb">
-        <a href={ROUTES.home}>ASTRO</a> / {section?.title ?? "文档"} /{" "}
-        {result.item.title}
+      <div className="doc-head">
+        <div className="crumb">
+          <a href={ROUTES.home}>ASTRO</a> / {section?.title ?? "文档"} /{" "}
+          {result.item.title}
+        </div>
+        <LangToggle slug={slug} />
       </div>
 
       <div className="doc-layout">
