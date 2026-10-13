@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getDoc, orderedDocSlugs, sectionOf } from "./docs";
+import { docLang, getDoc, orderedDocSlugs, sectionOf } from "./docs";
 import { Lightbox } from "./Lightbox";
 import { type RenderedDoc, renderMarkdown } from "./markdown";
 import { ROUTES } from "./routes";
 
 export function DocView({ slug }: { slug: string }) {
   const result = getDoc(slug);
+  // Loading chrome follows the doc's language, mirroring the paired -zh/-en
+  // docs: readers of an English page get English feedback while it renders.
+  const loadingText = docLang(slug) === "en" ? "Rendering document…" : "文档渲染中…";
   const [doc, setDoc] = useState<RenderedDoc | null>(null);
   const [zoomSvg, setZoomSvg] = useState<string | null>(null);
   const [zoomTitle, setZoomTitle] = useState<string>("");
@@ -122,7 +125,7 @@ export function DocView({ slug }: { slug: string }) {
               </span>
               <span className="doc-loading-note">
                 <span className="doc-loading-spinner" aria-hidden="true" />
-                文档渲染中…
+                {loadingText}
               </span>
             </div>
           ) : null}
