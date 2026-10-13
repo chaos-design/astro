@@ -65,21 +65,28 @@ a:hover {
 }
 
 /* ===== Shell ===== */
+/* Locked to exactly one viewport: the sidebar keeps a stable 100vh box and
+   only the content column scrolls, so a long document (or an empty one) can
+   never stretch or collapse the menu. */
 .shell {
   display: grid;
   grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
-  min-height: 100vh;
-  min-height: 100dvh;
+  grid-template-rows: minmax(0, 1fr);
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
 }
 
 /* ===== Sidebar ===== */
 .sidebar {
-  position: sticky;
-  top: 0;
-  /* Dynamic viewport height keeps the menu at full visible height on mobile
-     browsers, where 100vh overshoots the URL-bar-visible area. */
-  height: 100vh;
-  height: 100dvh;
+  position: relative;
+  height: 100%;
+  /* Grid items stretch to the row; cap the height so content can't push it.
+     dvh keeps the full box visible on mobile browsers with a URL bar. */
+  max-height: 100vh;
+  max-height: 100dvh;
+  min-height: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -90,58 +97,71 @@ a:hover {
   flex: 1 1 auto;
   overflow-y: auto;
   min-height: 0;
-  padding: 12px 16px 16px;
+  padding: 16px 16px 16px;
 }
-/* Pinned header: the brand never scrolls with the nav below it. */
+/* Pinned header: the brand stays fixed while the nav scrolls under it. */
 .sidebar-head {
   flex: 0 0 auto;
-  padding: 20px 16px 0;
+  padding: 20px 16px 14px;
   border-bottom: 1px solid var(--line);
+  background: var(--surface);
 }
 /* Pinned at the bottom of the sidebar; does not scroll with the menu.
-   中文, EN, and GitHub share the row as three equal-size cells. */
+   The GitHub link and the language button split the row as a matched pair
+   of equal-size cells. */
 .sidebar-github {
   flex: 0 0 auto;
   display: flex;
-  align-items: stretch;
+  align-items: center;
   gap: 8px;
   padding: 12px 16px;
   border-top: 1px solid var(--line);
   background: var(--surface-2);
 }
-/* Direct child only: the language switch nests its own <a> cells, and they
-   must not inherit the GitHub cell's border and background. */
-.sidebar-github > a {
+.sidebar-github a,
+.sidebar-github .lang-toggle {
   flex: 1 1 0;
   min-width: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 7px;
-  padding: 8px 10px;
+  gap: 8px;
+  height: 36px;
+  padding: 0 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface-3);
   color: var(--ink);
+  font-family: inherit;
   font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
   text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
 }
-.sidebar-github > a:hover {
+.sidebar-github a:hover,
+.sidebar-github .lang-toggle:hover {
   border-color: var(--blue);
   color: var(--ink);
   text-decoration: none;
 }
-.sidebar-github > a svg {
+.sidebar-github svg {
   width: 16px;
   height: 16px;
   flex: 0 0 auto;
+}
+.sidebar-github .ext-arrow {
+  margin-left: 0;
+  color: var(--faint);
 }
 
 .brand {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 4px 8px 16px;
+  padding: 0;
 }
 .brand-mark {
   width: 30px;
@@ -212,9 +232,12 @@ a:hover {
 }
 
 /* ===== Content ===== */
+/* Owns its own scrollbar inside the fixed-height shell. */
 .content {
-  min-height: 100vh;
-  min-height: 100dvh;
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 0 0 80px;
 }
 .content-inner {
@@ -294,45 +317,23 @@ a:hover {
   }
 }
 
-/* Segmented 中文/EN switch (sidebar footer + mobile bottom bar). The toggle
-   spans two cell widths, so 中文, EN, and GitHub render as three equal-size
-   buttons in one row. */
+/* Language pill button (sidebar footer). In the footer row the shared cell
+   rule above restyles it to match the GitHub cell exactly. */
 .lang-toggle {
-  flex: 2 1 0;
-  min-width: 0;
-  display: inline-flex;
-  align-items: stretch;
   border: 1px solid var(--line);
-  border-radius: 8px;
-  overflow: hidden;
-  background: var(--surface);
-}
-.lang-toggle > * + * {
-  border-left: 1px solid var(--line);
-}
-.lang-toggle span,
-.lang-toggle a {
-  flex: 1 1 0;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: var(--mono);
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  line-height: 1;
-  padding: 5px 4px;
-  color: var(--muted);
-  white-space: nowrap;
-}
-.lang-toggle a:hover {
   background: var(--surface-2);
-  color: var(--ink);
-  text-decoration: none;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 4px 9px;
+  border-radius: 999px;
+  cursor: pointer;
+  flex: 0 0 auto;
+  transition: color 0.15s ease, border-color 0.15s ease;
 }
-.lang-toggle .active {
-  background: var(--surface-3);
+.lang-toggle:hover {
   color: var(--ink);
+  border-color: var(--blue);
 }
 
 .page-title {
@@ -981,30 +982,45 @@ a:hover {
 @media (max-width: 860px) {
   .shell {
     grid-template-columns: 1fr;
+    /* Mobile falls back to normal document flow: the page scrolls as a whole
+       and the sidebar is a stacked block above the content. */
+    grid-template-rows: auto;
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
+  }
+  .content {
+    height: auto;
+    min-height: 0;
+    overflow: visible;
   }
   .sidebar {
     position: static;
-    /* The menu occupies exactly one viewport and scrolls internally, so its
-       height never follows the page content. */
-    height: 100vh;
-    height: 100dvh;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
+    height: auto;
+    max-height: none;
+    overflow: visible;
+    display: block;
     border-right: none;
     border-bottom: 1px solid var(--line);
   }
   .sidebar-scroll {
-    overflow-y: auto;
-    min-height: 0;
-    padding: 12px 16px 12px;
+    overflow: visible;
+    padding: 16px 16px 12px;
   }
-  /* The GitHub entry and the language switch are paired in the mobile 吸底
-     bar instead, so drop the pinned sidebar footer entirely. */
+  /* GitHub is reachable from the mobile 吸底 bar instead; keep the footer
+     row only for the language pill. */
   .sidebar-github {
+    justify-content: flex-end;
+  }
+  .sidebar-github a {
     display: none;
   }
-  /* Full-width 吸底 bar: 中文, EN, and GitHub as three equal-size cells. */
+  /* GitHub is not rendered here; the lone language pill stays compact and
+     right-aligned instead of stretching across the row. */
+  .sidebar-github .lang-toggle {
+    flex: 0 0 auto;
+  }
+  /* Full-width 吸底 GitHub bar. */
   .bottombar {
     display: flex;
     left: 0;

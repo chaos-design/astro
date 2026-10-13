@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { docLang, getDoc, orderedDocSlugs, sectionOf } from "./docs";
+import { catalogFor, getDoc, orderedDocSlugs } from "./docs";
+import { useLang } from "./i18n";
 import { Lightbox } from "./Lightbox";
 import { type RenderedDoc, renderMarkdown } from "./markdown";
 import { ROUTES } from "./routes";
 
 export function DocView({ slug }: { slug: string }) {
+  const { lang, t } = useLang();
   const result = getDoc(slug);
-  // Loading chrome follows the doc's language, mirroring the paired -zh/-en
-  // docs: readers of an English page get English feedback while it renders.
-  const loadingText = docLang(slug) === "en" ? "Rendering document…" : "文档渲染中…";
+  const catalog = catalogFor(lang);
   const [doc, setDoc] = useState<RenderedDoc | null>(null);
   const [zoomSvg, setZoomSvg] = useState<string | null>(null);
   const [zoomTitle, setZoomTitle] = useState<string>("");
@@ -81,26 +81,35 @@ export function DocView({ slug }: { slug: string }) {
   if (!result) {
     return (
       <div className="content-inner">
-        <div className="crumb">文档</div>
-        <h1 className="page-title">未找到文档</h1>
+        <div className="crumb">{t.docCrumb}</div>
+        <h1 className="page-title">{t.docNotFound}</h1>
         <p className="page-desc">
-          没有 slug 为 <code>{slug}</code> 的文档。
-          <a href={ROUTES.home}>返回首页</a>。
+          {lang === "en" ? (
+            <>
+              No doc with slug <code>{slug}</code>. <a href={ROUTES.home}>{t.backHome}</a>.
+            </>
+          ) : (
+            <>
+              没有 slug 为 <code>{slug}</code> 的文档。
+              <a href={ROUTES.home}>{t.backHome}</a>。
+            </>
+          )}
         </p>
       </div>
     );
   }
 
-  const slugs = orderedDocSlugs();
+  // The pager walks the current language's reading order only.
+  const slugs = orderedDocSlugs(lang);
   const i = slugs.indexOf(slug);
   const prev = i > 0 ? slugs[i - 1] : null;
   const next = i >= 0 && i < slugs.length - 1 ? slugs[i + 1] : null;
-  const section = sectionOf(slug);
+  const section = catalog.sections.find((s) => s.items.some((item) => item.slug === slug));
 
   return (
     <div className="content-inner">
       <div className="crumb">
-        <a href={ROUTES.home}>ASTRO</a> / {section?.title ?? "文档"} /{" "}
+        <a href={ROUTES.home}>ASTRO</a> / {section?.title ?? t.docCrumb} /{" "}
         {result.item.title}
       </div>
 
@@ -125,7 +134,7 @@ export function DocView({ slug }: { slug: string }) {
               </span>
               <span className="doc-loading-note">
                 <span className="doc-loading-spinner" aria-hidden="true" />
-                {loadingText}
+                {t.loadingNote}
               </span>
             </div>
           ) : null}
@@ -133,24 +142,28 @@ export function DocView({ slug }: { slug: string }) {
           <div className="pager">
             {prev ? (
               <a href={ROUTES.doc(prev)}>
-                <span className="pager-kicker">← 上一篇</span>
-                <span className="pager-title">{getDoc(prev)?.item.title ?? prev}</span>
+                <span className="pager-kicker">{t.pagerPrev}</span>
+                <span className="pager-title">
+                  {catalog.index[prev]?.title ?? getDoc(prev)?.item.title ?? prev}
+                </span>
               </a>
             ) : (
               <a className="empty" href={ROUTES.home}>
-                <span className="pager-kicker">← 上一篇</span>
-                <span className="pager-title">首页</span>
+                <span className="pager-kicker">{t.pagerPrev}</span>
+                <span className="pager-title">{t.pagerHome}</span>
               </a>
             )}
             {next ? (
               <a href={ROUTES.doc(next)}>
-                <span className="pager-kicker">下一篇 →</span>
-                <span className="pager-title">{getDoc(next)?.item.title ?? next}</span>
+                <span className="pager-kicker">{t.pagerNext}</span>
+                <span className="pager-title">
+                  {catalog.index[next]?.title ?? getDoc(next)?.item.title ?? next}
+                </span>
               </a>
             ) : (
               <a className="empty" href={ROUTES.gallery}>
-                <span className="pager-kicker">下一篇 →</span>
-                <span className="pager-title">演示与题库</span>
+                <span className="pager-kicker">{t.pagerNext}</span>
+                <span className="pager-title">{t.pagerGallery}</span>
               </a>
             )}
           </div>
@@ -158,11 +171,11 @@ export function DocView({ slug }: { slug: string }) {
 
         {doc && doc.toc.length > 0 ? (
           <div className="doc-toc">
-            <h4>本页目录</h4>
+            <h4>{t.tocTitle}</h4>
             <ol>
-              {doc.toc.map((t) => (
-                <li key={t.id} style={{ paddingLeft: t.depth === 3 ? 14 : 0 }}>
-                  <a href={`#${t.id}`}>{t.text}</a>
+              {doc.toc.map((tocItem) => (
+                <li key={tocItem.id} style={{ paddingLeft: tocItem.depth === 3 ? 14 : 0 }}>
+                  <a href={`#${tocItem.id}`}>{tocItem.text}</a>
                 </li>
               ))}
             </ol>

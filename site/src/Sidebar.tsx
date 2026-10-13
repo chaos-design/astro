@@ -1,7 +1,7 @@
 import { deckPages } from "./decks";
-import { docCatalog } from "./docs";
-import { LangToggle } from "./LangToggle";
-import { GITHUB_REPO, ROUTES, type Route } from "./routes";
+import { counterpartSlug, catalogFor } from "./docs";
+import { nextLang, useLang } from "./i18n";
+import { GITHUB_REPO, ROUTES, navigate, type Route } from "./routes";
 
 const githubIcon = (
   <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -10,39 +10,47 @@ const githubIcon = (
 );
 
 export function Sidebar({ route }: { route: Route }) {
+  const { lang, setLang, t } = useLang();
+  const catalog = catalogFor(lang);
   const activeKind = route.kind;
   const activeSlug =
     activeKind === "doc" ? route.slug : activeKind === "deck" ? route.slug : null;
-  const activeDocSlug = activeKind === "doc" ? route.slug : null;
+
+  // The language button flips the whole chrome and, when a translated twin of
+  // the current doc exists, jumps straight to it (paired-slug docs).
+  const onToggleLang = () => {
+    const target = activeKind === "doc" ? counterpartSlug(route.slug) : null;
+    setLang(nextLang(lang));
+    if (target) navigate(ROUTES.doc(target));
+  };
 
   return (
     <aside className="sidebar">
-      {/* Pinned header: the brand stays put while the nav scrolls under it. */}
       <div className="sidebar-head">
         <div className="brand">
           <div className="brand-mark">A</div>
           <div>
             <div className="brand-name">ASTRO</div>
-            <div className="brand-sub">Docs &amp; Decks</div>
+            <div className="brand-sub">{t.brandSub}</div>
           </div>
         </div>
       </div>
 
       <div className="sidebar-scroll">
         <nav className="nav-group">
-          <div className="nav-label">Navigate</div>
+          <div className="nav-label">{t.navigate}</div>
           <a href={ROUTES.home} className={`nav-item ${activeKind === "home" ? "active" : ""}`}>
-            <span>首页 / 总览</span>
+            <span>{t.home}</span>
           </a>
           <a
             href={ROUTES.gallery}
             className={`nav-item ${activeKind === "gallery" ? "active" : ""}`}
           >
-            <span>演示与题库</span>
+            <span>{t.gallery}</span>
           </a>
         </nav>
 
-        {docCatalog.sections.map((section) => (
+        {catalog.sections.map((section) => (
           <div className="nav-group" key={section.id}>
             <div className="nav-label">{section.title}</div>
             {section.items.map((item) => (
@@ -61,7 +69,7 @@ export function Sidebar({ route }: { route: Route }) {
         ))}
 
         <div className="nav-group">
-          <div className="nav-label">演示与题库 (Decks)</div>
+          <div className="nav-label">{t.decks}</div>
           {deckPages.map((d) => (
             <a
               key={d.slug}
@@ -76,14 +84,23 @@ export function Sidebar({ route }: { route: Route }) {
         </div>
       </div>
 
-      {/* Pinned footer: the current doc's language switch and the GitHub entry
-          share one row as three equal-size cells; neither scrolls with the nav. */}
+      {/* Pinned footer: the GitHub entry and the language button form a matched
+          pair of equal cells; neither scrolls with the menu. */}
       <div className="sidebar-github">
-        <LangToggle slug={activeDocSlug} />
         <a href={GITHUB_REPO} target="_blank" rel="noreferrer">
           {githubIcon}
           <span>GitHub</span>
+          <span className="ext-arrow">↗</span>
         </a>
+        <button
+          type="button"
+          className="lang-toggle"
+          onClick={onToggleLang}
+          title={t.langTitle}
+          aria-label={t.langTitle}
+        >
+          {t.langLabel}
+        </button>
       </div>
     </aside>
   );
