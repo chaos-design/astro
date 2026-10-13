@@ -261,17 +261,13 @@ a:hover {
 }
 
 /* ===== Content loading placeholder =====
-   Shown while the markdown + mermaid pipeline renders a doc. */
-.doc-loading {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  padding: 6px 0 24px;
-}
+   Purely visual skeleton shown while the markdown + mermaid pipeline renders
+   a doc; no spinner or text label. */
 .doc-skeleton {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  padding: 6px 0 24px;
 }
 .doc-skeleton i {
   display: block;
@@ -281,21 +277,12 @@ a:hover {
   background-size: 200% 100%;
   animation: doc-shimmer 1.4s linear infinite;
 }
-.doc-loading-note {
-  display: inline-flex;
-  align-items: center;
-  gap: 9px;
-  font-family: var(--mono);
-  font-size: 12px;
-  color: var(--faint);
+.doc-skeleton i.sk-title {
+  height: 26px;
+  border-radius: 8px;
 }
-.doc-loading-spinner {
-  width: 14px;
-  height: 14px;
-  border: 2px solid var(--line);
-  border-top-color: var(--blue);
-  border-radius: 50%;
-  animation: doc-spin 0.8s linear infinite;
+.doc-skeleton i.sk-block {
+  height: 64px;
 }
 @keyframes doc-shimmer {
   0% {
@@ -305,14 +292,8 @@ a:hover {
     background-position: -200% 0;
   }
 }
-@keyframes doc-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
 @media (prefers-reduced-motion: reduce) {
-  .doc-skeleton i,
-  .doc-loading-spinner {
+  .doc-skeleton i {
     animation: none;
   }
 }

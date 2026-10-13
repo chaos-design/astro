@@ -121,21 +121,16 @@ export function DocView({ slug }: { slug: string }) {
             // biome-ignore lint/security/noDangerouslySetInnerHtml: content is generated only by our own marked + hljs + mermaid pipeline over repository-provided docs; no external input can reach this value
             dangerouslySetInnerHTML={doc ? { __html: doc.html } : undefined}
           />
+          {/* Purely visual placeholder (no spinner or text), mirroring memx. */}
           {!doc ? (
-            <div className="doc-loading" role="status" aria-live="polite">
-              <span className="doc-skeleton" aria-hidden="true">
-                <i style={{ width: "42%" }} />
-                <i style={{ width: "96%" }} />
-                <i style={{ width: "88%" }} />
-                <i style={{ width: "93%" }} />
-                <i style={{ width: "71%" }} />
-                <i style={{ width: "90%" }} />
-                <i style={{ width: "57%" }} />
-              </span>
-              <span className="doc-loading-note">
-                <span className="doc-loading-spinner" aria-hidden="true" />
-                {t.loadingNote}
-              </span>
+            <div className="doc-skeleton" role="status" aria-live="polite" aria-busy="true">
+              <i className="sk-title" style={{ width: "42%" }} />
+              <i style={{ width: "96%" }} />
+              <i style={{ width: "88%" }} />
+              <i style={{ width: "93%" }} />
+              <i className="sk-block" style={{ width: "71%" }} />
+              <i style={{ width: "90%" }} />
+              <i style={{ width: "57%" }} />
             </div>
           ) : null}
 
