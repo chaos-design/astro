@@ -921,6 +921,7 @@ const AtomicLog = memo(function AtomicLog({
   onSelect,
   onLocateSelectedAtom,
   canLocateSelectedAtom,
+  live,
 }: {
   events: TraceEvent[];
   runningEventId: string;
@@ -931,6 +932,7 @@ const AtomicLog = memo(function AtomicLog({
   onSelect: (eventId: string) => void;
   onLocateSelectedAtom: () => void;
   canLocateSelectedAtom: boolean;
+  live: boolean;
 }) {
   const listRef = useRef<HTMLDivElement | null>(null);
   const locateRequestRef = useRef(locateRequest);
@@ -1209,7 +1211,9 @@ const AtomicLog = memo(function AtomicLog({
             </output>
           )}
         </div>
-        {scrollPosition.canScrollUp ? (
+        {/* While Live the log rides the stream, so the floating up chevron
+            would only flicker over the newest rows — render it on demand only. */}
+        {scrollPosition.canScrollUp && !live ? (
           <IconAction
             label="滚动到顶部"
             side="left"
@@ -2691,7 +2695,24 @@ export default function App() {
     selectedAtomId,
     latestExecutionAtomId,
   );
-  const liveActive = executingLive && followingLatestExecutionAtom;
+  // The Live marker benchmarks the message status: only an in-flight (START)
+  // message counts, and only while it belongs to the newest executed node.
+  const pendingEvent = useMemo(() => {
+    for (let index = activeEvents.length - 1; index >= 0; index -= 1) {
+      const event = activeEvents[index];
+      if (getEventAction(event) === "START") {
+        return event;
+      }
+    }
+    return null;
+  }, [activeEvents]);
+  const pendingEventOnLatestNode =
+    pendingEvent !== null &&
+    getAtomIdForEvent(pendingEvent, platformId) === latestExecutionAtomId;
+  const liveActive =
+    executingLive &&
+    followingLatestExecutionAtom &&
+    pendingEventOnLatestNode;
 
   useEffect(() => {
     if (!activeSession || initialLocation !== null) {
@@ -3429,8 +3450,9 @@ export default function App() {
               <AtomicLog
                 events={activeEvents}
                 runningEventId={
-                  executingLive ? activeEvents.at(-1)?.id || "" : ""
+                  executingLive && pendingEvent ? pendingEvent.id : ""
                 }
+                live={liveActive}
                 selectedEventId={selectedEventId || ""}
                 locateRequest={logLocateRequest}
                 query={query}
