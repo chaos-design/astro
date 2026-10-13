@@ -175,6 +175,7 @@ import {
 import {
   type AtomSelection,
   isFollowingLive,
+  isLiveFollowingLatest,
   isPromptExecuting,
   resolveLocateAtomId,
   resolveSelectedAtomId,
@@ -2680,6 +2681,17 @@ export default function App() {
     isDemo,
   );
   const executingLive = promptExecuting && !replayMode;
+  // Live rides the newest executed atom: the pulse and the Live button stay
+  // active only while the selection has not fallen behind the newest event.
+  const latestExecutionAtomId = getAtomIdForEvent(
+    activeEvents.at(-1) || null,
+    platformId,
+  );
+  const followingLatestExecutionAtom = isLiveFollowingLatest(
+    selectedAtomId,
+    latestExecutionAtomId,
+  );
+  const liveActive = executingLive && followingLatestExecutionAtom;
 
   useEffect(() => {
     if (!activeSession || initialLocation !== null) {
@@ -2797,8 +2809,8 @@ export default function App() {
     selectedAtomId,
     mappedAtomId,
   );
-  const activeExecutionAtomId = executingLive
-    ? getAtomIdForEvent(activeEvents.at(-1) || null, platformId)
+  const activeExecutionAtomId = liveActive
+    ? latestExecutionAtomId
     : replayMode && playing
       ? currentAtomId
       : "";
@@ -3395,7 +3407,7 @@ export default function App() {
           <ReplayFooter
             events={activeEvents}
             cursor={replayCursor}
-            live={executingLive}
+            live={liveActive}
             playing={playing}
             speed={replaySpeed}
             onSeek={handleReplaySeek}
