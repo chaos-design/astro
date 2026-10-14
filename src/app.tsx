@@ -632,18 +632,23 @@ function RunHistoryDetailsCard({
   title,
 }: RunHistoryRowDetails) {
   const path = useMemo(() => describeWorkspacePath(cwd), [cwd]);
+  const lines: Array<[string, string]> = [
+    ["AGENT", source],
+    ["STATUS", status],
+    ["DURATION", formatDuration(duration)],
+    [extraLabel, String(extraValue)],
+    ["WORKING DIR", path.full || "not recorded"],
+  ];
   return (
     <div className="run-history__tooltip">
       <strong>{title}</strong>
       <span>{formatRunDate(start)}</span>
       <span>{fullCode}</span>
-      <span>AGENT · {source}</span>
-      <span>STATUS · {status}</span>
-      <span>DURATION · {formatDuration(duration)}</span>
-      <span>
-        {extraLabel} · {extraValue}
-      </span>
-      <span>WORKING DIR · {path.full || "not recorded"}</span>
+      {lines.map(([label, value]) => (
+        <span key={label}>
+          <b className="run-history__tooltip-label">{label}</b> · {value}
+        </span>
+      ))}
     </div>
   );
 }

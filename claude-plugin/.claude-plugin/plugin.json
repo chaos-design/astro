@@ -1,7 +1,7 @@
 {
   "name": "astro",
   "displayName": "ASTRO",
-  "version": "0.0.2-alpha.7",
+  "version": "0.0.2-alpha.8",
   "description": "ASTRO captures Claude Code lifecycle events locally for search, inspection, and replay.",
   "author": {
     "name": "ASTRO Contributors"

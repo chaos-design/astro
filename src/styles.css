@@ -1546,6 +1546,14 @@ pre,
   overflow-wrap: anywhere;
 }
 
+/* Field labels inside the card carry the theme accent so they read as tags
+ * distinct from their muted values; both sides stay theme-driven. */
+.run-history__tooltip .run-history__tooltip-label {
+  color: color-mix(in srgb, var(--cyan) 78%, var(--muted-soft));
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.08em;
+}
+
 /*
  * The run's working directory. Only the last segment is rendered; it is plain
  * text now — the row's hover card carries the full path, so the chip itself
