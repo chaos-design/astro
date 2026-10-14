@@ -1584,6 +1584,23 @@ pre,
   white-space: nowrap;
 }
 
+/* Branch badge next to the workspace label. Long branch names ellipsize; the
+ * full name is one hover away via the native title. */
+.run-history__branch {
+  overflow: hidden;
+  min-width: 0;
+  max-width: 88px;
+  padding: 0 5px;
+  border: 1px solid color-mix(in srgb, var(--teal) 38%, transparent);
+  border-radius: 4px;
+  color: var(--teal);
+  background: color-mix(in srgb, var(--teal) 12%, transparent);
+  font-size: 8px;
+  line-height: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .run-history__path.is-unknown,
 .run-history__path.is-unknown > svg {
   color: var(--status-failed);

@@ -248,10 +248,98 @@ function createDashboardUrl(url) {
   return selectedUrl.toString();
 }
 
+/*
+ * Git presentation for the run history: every unique working directory is
+ * probed once (pure file reads — walk up to the closest `.git`, then parse
+ * HEAD) so the UI can show the repository name and branch instead of a bare
+ * path segment. Results are cached per cwd for the lifetime of the process.
+ */
+const gitInfoCache = new Map();
+
+function resolveGitInfo(rawCwd) {
+  const cwd = typeof rawCwd === "string" ? rawCwd.trim() : "";
+  if (!cwd) {
+    return null;
+  }
+  if (gitInfoCache.has(cwd)) {
+    return gitInfoCache.get(cwd);
+  }
+  let info = null;
+  try {
+    let dir = resolve(cwd);
+    for (;;) {
+      const dotGit = join(dir, ".git");
+      let gitDir = null;
+      if (existsSync(dotGit)) {
+        if (statSync(dotGit).isDirectory()) {
+          gitDir = dotGit;
+        } else {
+          // Worktrees and submodules keep a `.git` file pointing at the real
+          // git directory, which may be relative to the worktree.
+          const match = /^gitdir:\s*(.+)$/m.exec(readFileSync(dotGit, "utf8"));
+          const target = match ? resolve(dir, match[1].trim()) : "";
+          if (target && existsSync(join(target, "HEAD"))) {
+            gitDir = target;
+          }
+        }
+      }
+      if (gitDir) {
+        const head = readFileSync(join(gitDir, "HEAD"), "utf8").trim();
+        const ref = /^ref:\s*refs\/heads\/(.+)$/.exec(head);
+        info = {
+          repo: dir.split(sep).filter(Boolean).at(-1) ?? dir,
+          branch: ref ? ref[1] : head.slice(0, 8),
+        };
+        break;
+      }
+      const parent = dirname(dir);
+      if (parent === dir) {
+        break;
+      }
+      dir = parent;
+    }
+  } catch {
+    info = null;
+  }
+  gitInfoCache.set(cwd, info);
+  return info;
+}
+
+function gitMapForEvents(events) {
+  const map = {};
+  for (const event of events) {
+    const cwd = typeof event.cwd === "string" ? event.cwd : "";
+    if (!cwd || map[cwd]) {
+      continue;
+    }
+    const info = resolveGitInfo(cwd);
+    if (info) {
+      map[cwd] = info;
+    }
+  }
+  return map;
+}
+
 await store.initialize();
 store.start();
-store.on("event", (event) => broadcast("trace", event));
-store.on("reset", () => broadcast("reset", store.getEvents()));
+// New working directories are announced once per process: connected clients
+// get a `git` message before the events that reference the cwd, and clients
+// that connect later receive the full map with the reset snapshot.
+const announcedGit = new Set();
+store.on("event", (event) => {
+  const info = event.cwd ? resolveGitInfo(event.cwd) : null;
+  if (info && !announcedGit.has(event.cwd)) {
+    announcedGit.add(event.cwd);
+    broadcast("git", { cwd: event.cwd, ...info });
+  }
+  broadcast("trace", event);
+});
+store.on("reset", () =>
+  broadcast("reset", {
+    events: store.getEvents(),
+    git: gitMapForEvents(store.getEvents()),
+  }),
+);
 store.on("error", (error) => {
   console.error(`[trace-store] ${error.message}`);
 });
@@ -291,7 +379,7 @@ async function handleRequest(request, response) {
       .getEvents()
       .filter((event) => !sessionId || event.sessionId === sessionId)
       .filter((event) => !source || event.source === source);
-    sendJson(response, 200, { events });
+    sendJson(response, 200, { events, git: gitMapForEvents(events) });
     return;
   }
 
@@ -373,12 +461,21 @@ async function handleRequest(request, response) {
     clients.add(response);
     // Keep the snapshot and later events on one ordered connection, including reconnects.
     const events = store.getEvents();
-    sendSse(response, "reset", events);
+    sendSse(response, "reset", {
+      events,
+      git: gitMapForEvents(events),
+    });
     sendSse(response, "ready", {
       eventCount: events.length,
       connectedAt: new Date().toISOString(),
     });
     request.on("close", () => clients.delete(response));
+    return;
+  }
+
+  if (request.method === "GET" && requestUrl.pathname === "/api/git") {
+    const cwd = requestUrl.searchParams.get("cwd");
+    sendJson(response, 200, { git: resolveGitInfo(cwd) });
     return;
   }
 

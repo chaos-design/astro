@@ -550,6 +550,8 @@ type RunHistoryRowDetails = {
   extraValue: string | number;
   /** Unabbreviated id, shown in the hover card only. */
   fullCode: string;
+  /** Git presentation of the working directory, when one was resolved. */
+  git: { repo: string; branch: string } | null;
   source: string;
   start: number;
   status: "demo" | TraceSession["status"];
@@ -563,10 +565,18 @@ const workspacePathIcons = {
 } as const;
 
 /**
- * The run's working directory, shortened to its last segment. The kind icon
- * says what the path points at; the full path lives in the row's hover card.
+ * The run's working directory. When git information was resolved for the
+ * directory, the label becomes the repository name and a branch badge rides
+ * next to it (ellipsized, with the full branch name on hover); otherwise the
+ * last path segment stands in. The full path lives in the row's hover card.
  */
-function RunHistoryPath({ cwd }: { cwd: string | null }) {
+function RunHistoryPath({
+  cwd,
+  git,
+}: {
+  cwd: string | null;
+  git?: { repo: string; branch: string } | null;
+}) {
   const path = useMemo(() => describeWorkspacePath(cwd), [cwd]);
   const Icon = workspacePathIcons[path.kind];
   return (
@@ -577,7 +587,12 @@ function RunHistoryPath({ cwd }: { cwd: string | null }) {
       )}
     >
       <Icon aria-hidden="true" />
-      <span className="run-history__path-name">{path.name}</span>
+      <span className="run-history__path-name">{git?.repo || path.name}</span>
+      {git?.branch ? (
+        <span className="run-history__branch" title={git.branch}>
+          {git.branch}
+        </span>
+      ) : null}
     </span>
   );
 }
@@ -588,6 +603,7 @@ function RunHistoryRowContent({
   duration,
   extraLabel,
   extraValue,
+  git,
   source,
   start,
   status,
@@ -598,7 +614,7 @@ function RunHistoryRowContent({
       <StatusIcon status={status} />
       <span className="run-history__copy">
         <strong>{title}</strong>
-        <RunHistoryPath cwd={cwd} />
+        <RunHistoryPath cwd={cwd} git={git} />
         <small>{formatRunDate(start)}</small>
         <span className="run-history__tags">
           <span>
@@ -626,6 +642,7 @@ function RunHistoryDetailsCard({
   extraLabel,
   extraValue,
   fullCode,
+  git,
   source,
   start,
   status,
@@ -639,6 +656,9 @@ function RunHistoryDetailsCard({
     [extraLabel, String(extraValue)],
     ["WORKING DIR", path.full || "not recorded"],
   ];
+  if (git?.branch) {
+    lines.splice(4, 0, ["BRANCH", git.branch]);
+  }
   return (
     <div className="run-history__tooltip">
       <strong>{title}</strong>
@@ -776,6 +796,7 @@ const RunHistoryRows = memo(function RunHistoryRows({
   activePromptRunKey,
   activePromptRunRef,
   expandedRuns,
+  gitInfo,
   isDemo,
   now,
   onHoverRow,
@@ -788,6 +809,7 @@ const RunHistoryRows = memo(function RunHistoryRows({
   activePromptRunKey: string;
   activePromptRunRef: RefObject<HTMLDivElement | null>;
   expandedRuns: ReadonlySet<string>;
+  gitInfo: Record<string, { repo: string; branch: string } | null>;
   isDemo: boolean;
   now: number;
   onHoverRow: (
@@ -828,6 +850,7 @@ const RunHistoryRows = memo(function RunHistoryRows({
           extraLabel: "PROMPTS",
           extraValue: promptRuns.length,
           fullCode: session.id,
+          git: session.cwd ? gitInfo[session.cwd] ?? null : null,
           source: session.source,
           start: firstPromptRun?.start ?? session.start,
           status: isDemo ? "demo" : displayStatus,
@@ -906,6 +929,9 @@ const RunHistoryRows = memo(function RunHistoryRows({
                       extraLabel: "EVENTS",
                       extraValue: promptRun.events.length,
                       fullCode: promptCode,
+                      git: promptRun.cwd
+                        ? gitInfo[promptRun.cwd] ?? null
+                        : null,
                       source: promptRun.source,
                       start: promptRun.start,
                       status: isDemo ? "demo" : promptDisplayState.status,
@@ -957,6 +983,7 @@ const RunHistory = memo(function RunHistory({
   activeKey,
   activePromptRunKey,
   canLoadMore,
+  gitInfo,
   initialLoading,
   isDemo,
   loadingMore,
@@ -972,6 +999,7 @@ const RunHistory = memo(function RunHistory({
   now: number;
   promptRunsBySession: ReadonlyMap<string, TracePromptRun[]>;
   canLoadMore: boolean;
+  gitInfo: Record<string, { repo: string; branch: string } | null>;
   initialLoading: boolean;
   loadingMore: boolean;
   onLoadMore: () => void;
@@ -1130,6 +1158,7 @@ const RunHistory = memo(function RunHistory({
           onHoverRow={handleRowHover}
           onSelect={onSelect}
           onToggleRun={toggleRun}
+          gitInfo={gitInfo}
           promptRunsBySession={promptRunsBySession}
           sessions={sessions}
         />
@@ -2539,6 +2568,12 @@ export default function App() {
     getInitialLocation,
   );
   const [liveEvents, setLiveEvents] = useState<TraceEvent[]>([]);
+  // Working directory → git presentation (repo name + branch), resolved by the
+  // server from the closest `.git` and delivered with the snapshot plus one
+  // `git` message per newly seen directory.
+  const [gitInfo, setGitInfo] = useState<
+    Record<string, { repo: string; branch: string } | null>
+  >({});
   const [eventsLoaded, setEventsLoaded] = useState(false);
   const [importedEvents, setImportedEvents] = useState<TraceEvent[]>([]);
   const [connected, setConnected] = useState(false);
@@ -2713,6 +2748,22 @@ export default function App() {
       }
     };
     source.addEventListener("ready", () => setConnected(true));
+    // New working directories arrive with their git presentation before the
+    // events that reference them, so run rows can name the repo and branch.
+    source.addEventListener("git", (message: MessageEvent<string>) => {
+      const payload = JSON.parse(message.data) as {
+        cwd: string;
+        repo: string;
+        branch: string;
+      };
+      if (!payload?.cwd || !payload.repo) {
+        return;
+      }
+      setGitInfo((current) => ({
+        ...current,
+        [payload.cwd]: { repo: payload.repo, branch: payload.branch },
+      }));
+    });
     source.addEventListener("trace", (message: MessageEvent<string>) => {
       const event = normalizeTraceEvent(JSON.parse(message.data));
       if (seenIds.has(event.id)) {
@@ -2723,9 +2774,11 @@ export default function App() {
       flushTimer ??= window.setTimeout(flush, 80);
     });
     source.addEventListener("reset", (message: MessageEvent<string>) => {
-      const events = (JSON.parse(message.data) as TraceEvent[]).map(
-        normalizeTraceEvent,
-      );
+      const payload = JSON.parse(message.data) as {
+        events: TraceEvent[];
+        git?: Record<string, { repo: string; branch: string }>;
+      };
+      const events = payload.events.map(normalizeTraceEvent);
       for (const event of events) {
         seenIds.add(event.id);
       }
@@ -2737,6 +2790,7 @@ export default function App() {
       }
       pending = [];
       setLiveEvents(events);
+      setGitInfo(payload.git ?? {});
       setEventsLoaded(true);
     });
     source.onerror = () => setConnected(false);
@@ -3557,6 +3611,7 @@ export default function App() {
               sessions={visibleSessions}
               activeKey={activeSession?.key || ""}
               activePromptRunKey={activePromptRun?.key || ""}
+              gitInfo={gitInfo}
               isDemo={isDemo}
               now={now}
               promptRunsBySession={promptRunsBySession}
