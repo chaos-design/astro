@@ -10,9 +10,9 @@ export function isPromptExecuting(
 export function isFollowingLive(
   selection: AtomSelection,
   replayMode: boolean,
-  isLatestSession: boolean,
+  isFollowable: boolean,
 ): boolean {
-  return selection === undefined && !replayMode && isLatestSession;
+  return selection === undefined && !replayMode && isFollowable;
 }
 
 /**

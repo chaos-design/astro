@@ -2925,18 +2925,18 @@ export default function App() {
           appTimings.activeRunTimeoutMs,
         )
       : undefined;
-  const followingSessionLive = isFollowingLive(
-    selectedAtomId,
-    replayMode,
-    activeSession?.key === sessions[0]?.key,
-  );
-  const followingLive =
-    followingSessionLive &&
-    (!latestPromptRun || activePromptRun?.key === latestPromptRun.key);
+  // Clicking any executing run opens Live: follow mode is allowed while the
+  // ACTIVE run executes, not only for the newest session in the window.
   const promptExecuting = isPromptExecuting(
     activeDisplayState?.status,
     isDemo,
   );
+  const followingSessionLive = isFollowingLive(
+    selectedAtomId,
+    replayMode,
+    promptExecuting,
+  );
+  const followingLive = followingSessionLive;
   const executingLive = promptExecuting && !replayMode;
   // Live rides the newest executed atom: the pulse and the Live button stay
   // active only while the selection has not fallen behind the newest event.
@@ -3169,15 +3169,19 @@ export default function App() {
         promptRuns.find((candidate) => candidate.key === promptRunKey) ||
         promptRuns.at(-1);
       const event = promptRun?.events.at(-1) || session?.events.at(-1);
+      const status = promptRun?.status ?? session?.status;
       setActiveSessionKey(key);
       setActivePromptRunKey(promptRun?.key || "");
       setSelectedEventId(event?.id || "");
       setSelectedAtomId(
-        getPromptAtomSelection(
-          promptRun?.status ?? session?.status,
-          getAtomIdForEvent(event || null, platformId),
-        ),
+        getPromptAtomSelection(status, getAtomIdForEvent(event || null, platformId)),
       );
+      // An executing run opens Live (no explicit selection); a finished run
+      // lands on its last message and closes Live — flash that atom on the
+      // canvas so the landing point is obvious.
+      if (status !== "active") {
+        setLocateRequest((current) => current + 1);
+      }
       setConsoleOpen(true);
       setQuery("");
       setReplayMode(false);
