@@ -1526,8 +1526,9 @@ pre,
 .run-history__tooltip {
   display: flex;
   width: min(320px, calc(100vw - 24px));
-  max-height: min(420px, calc(100vh - 24px));
+  max-height: min(300px, calc(100vh - 24px));
   overflow: auto;
+  overscroll-behavior: contain;
   flex-direction: column;
   gap: 5px;
 }
@@ -1543,6 +1544,81 @@ pre,
   font-family: var(--font-mono);
   font-size: 9px;
   overflow-wrap: anywhere;
+}
+
+/*
+ * The run's working directory. Only the last segment is rendered; it is plain
+ * text now — the row's hover card carries the full path, so the chip itself
+ * has no separate hover affordance.
+ */
+.run-history__path {
+  display: inline-flex;
+  max-width: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted-soft);
+  font-family: var(--font-mono);
+  font-size: 9px;
+}
+
+.run-history__path > svg {
+  width: 11px;
+  height: 11px;
+  flex: none;
+  color: var(--muted);
+}
+
+.run-history__path-name {
+  overflow: hidden;
+  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.run-history__path.is-unknown,
+.run-history__path.is-unknown > svg {
+  color: var(--status-failed);
+}
+
+.run-history__row.is-selected .run-history__path,
+.run-history__row.is-selected .run-history__path > svg {
+  color: var(--selection-muted);
+}
+
+/*
+ * One hover card per list. Positioned imperatively so following a row while the
+ * list scrolls never re-renders anything. It accepts pointer events on purpose:
+ * the pointer has to be able to move onto it, which is what keeps it open while
+ * long content is read or scrolled inside its capped height.
+ */
+.run-history__hovercard {
+  position: fixed;
+  z-index: 60;
+  top: 0;
+  left: 0;
+  visibility: hidden;
+  animation: run-history-hovercard-in 120ms ease-out;
+}
+
+.run-history__card {
+  padding: 6px 12px;
+  border: 1px solid var(--line-bright);
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--panel-raised);
+  box-shadow: 0 10px 28px rgb(0 0 0 / 38%);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+@keyframes run-history-hovercard-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .canvas-column {
