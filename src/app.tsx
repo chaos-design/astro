@@ -649,6 +649,19 @@ function RunHistoryDetailsCard({
   title,
 }: RunHistoryRowDetails) {
   const path = useMemo(() => describeWorkspacePath(cwd), [cwd]);
+  const titleRef = useRef<HTMLElement | null>(null);
+  // Long titles clamp at six lines; the toggle only appears when the text
+  // actually overflows the clamp.
+  const [titleExpanded, setTitleExpanded] = useState(false);
+  const [titleOverflows, setTitleOverflows] = useState(false);
+  useLayoutEffect(() => {
+    const el = titleRef.current;
+    if (!el) {
+      return;
+    }
+    setTitleOverflows(el.scrollHeight > el.clientHeight + 1);
+  }, [title, titleExpanded]);
+  const toggleable = titleOverflows || titleExpanded;
   const lines: Array<[string, string]> = [
     ["AGENT", source],
     ["STATUS", status],
@@ -661,7 +674,34 @@ function RunHistoryDetailsCard({
   }
   return (
     <div className="run-history__tooltip">
-      <strong>{title}</strong>
+      <strong
+        className={cn(
+          "run-history__title",
+          titleExpanded && "is-expanded",
+          toggleable && "is-toggleable",
+        )}
+        onClick={
+          toggleable
+            ? () => setTitleExpanded((current) => !current)
+            : undefined
+        }
+        onKeyDown={
+          toggleable
+            ? (event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  setTitleExpanded((current) => !current);
+                }
+              }
+            : undefined
+        }
+        ref={titleRef}
+        role={toggleable ? "button" : undefined}
+        tabIndex={toggleable ? 0 : undefined}
+        title={toggleable ? (titleExpanded ? "点击折叠" : "点击展开") : undefined}
+      >
+        {title}
+      </strong>
       <span>{formatRunDate(start)}</span>
       <span>{fullCode}</span>
       {lines.map(([label, value]) => (
@@ -780,7 +820,7 @@ const RunHistoryHoverCardLayer = memo(function RunHistoryHoverCardLayer({
       role="tooltip"
     >
       <div className="run-history__card">
-        <RunHistoryDetailsCard {...card.details} />
+        <RunHistoryDetailsCard key={card.key} {...card.details} />
       </div>
     </div>
   );

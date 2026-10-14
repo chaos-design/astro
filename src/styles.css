@@ -1526,9 +1526,7 @@ pre,
 .run-history__tooltip {
   display: flex;
   width: min(320px, calc(100vw - 24px));
-  max-height: min(300px, calc(100vh - 24px));
-  overflow: auto;
-  overscroll-behavior: contain;
+  padding: 6px 12px;
   flex-direction: column;
   gap: 5px;
 }
@@ -1537,6 +1535,27 @@ pre,
   font-size: 11px;
   line-height: 1.4;
   overflow-wrap: anywhere;
+}
+
+/* Long run titles clamp at six lines; clicking the title toggles the rest. */
+.run-history__title {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 6;
+}
+
+.run-history__title.is-expanded {
+  display: block;
+  overflow: visible;
+}
+
+.run-history__title.is-toggleable {
+  cursor: pointer;
+}
+
+.run-history__title.is-toggleable:hover {
+  color: var(--text-strong);
 }
 
 .run-history__tooltip span {
@@ -1626,8 +1645,14 @@ pre,
   animation: run-history-hovercard-in 120ms ease-out;
 }
 
+/*
+ * The scrolling surface is the card itself, so its scrollbar hugs the bubble's
+ * right edge; the inner tooltip only carries the horizontal padding.
+ */
 .run-history__card {
-  padding: 6px 12px;
+  max-height: min(300px, calc(100vh - 24px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
   border: 1px solid var(--line-bright);
   border-radius: 6px;
   color: var(--text);
