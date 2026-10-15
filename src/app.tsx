@@ -12,8 +12,10 @@ import {
   Clock3,
   CornerUpRight,
   Download,
+  File,
   FileInput,
   Focus,
+  Folder,
   ListTree,
   LocateFixed,
   Loader2,
@@ -29,6 +31,8 @@ import {
   Sparkles,
   TerminalSquare,
   Trash2,
+  TriangleAlert,
+  X,
 } from "lucide-react";
 import {
   memo,
@@ -43,7 +47,9 @@ import {
 import type {
   ComponentProps,
   CSSProperties,
+  PointerEvent as ReactPointerEvent,
   ReactNode,
+  RefObject,
 } from "react";
 import { JsonViewer } from "./components/json-viewer";
 import { HistorySearch } from "./components/history-search";
@@ -157,6 +163,9 @@ import {
   resolveScrollTopForRow,
 } from "./lib/log-window";
 import {
+  describeWorkspacePath,
+} from "./lib/workspace-path";
+import {
   DEFAULT_RUN_HISTORY_DAYS,
   OTHERS_AGENT_ID,
   canLoadMoreRunHistoryDays,
@@ -175,6 +184,7 @@ import {
 import {
   type AtomSelection,
   isFollowingLive,
+  isLiveFollowingLatest,
   isPromptExecuting,
   resolveLocateAtomId,
   resolveSelectedAtomId,
@@ -236,6 +246,12 @@ function scrollRowWithinContainer(
     containerBounds.top -
     (container.clientHeight - rowBounds.height) / 2;
 }
+
+/**
+ * Id shared by the mobile nav toggle and the header actions it discloses. The
+ * same element is the horizontal desktop nav, so it is never aria-hidden.
+ */
+const headerNavMenuId = "studio-header-nav-menu";
 
 // Reused Intl formatters: constructing one per call is expensive, and these
 // run for every log/trajectory row on every render.
@@ -410,6 +426,68 @@ function findTransitionEdges(
   );
 }
 
+/**
+ * Subscribes to a CSS media query so the header can drop its mobile-only
+ * disclosure state as soon as the viewport grows past the breakpoint.
+ */
+function useMediaQuery(query: string) {
+  const [matches, setMatches] = useState(() => window.matchMedia(query).matches);
+
+  useEffect(() => {
+    const media = window.matchMedia(query);
+    const sync = () => setMatches(media.matches);
+    sync();
+    media.addEventListener("change", sync);
+    return () => media.removeEventListener("change", sync);
+  }, [query]);
+
+  return matches;
+}
+
+/**
+ * One trace-level action (import / export / clear). The desktop brand menu and
+ * the collapsed mobile header menu share the same list so both stay in step.
+ */
+type HeaderNavAction = {
+  id: string;
+  label: string;
+  icon: typeof Menu;
+  disabled?: boolean;
+  danger?: boolean;
+  run: () => void;
+};
+
+function HeaderNavActions({
+  actions,
+  onSelect,
+}: {
+  actions: ReadonlyArray<HeaderNavAction>;
+  onSelect: () => void;
+}) {
+  return (
+    <>
+      {actions.map(({ id, label, icon: Icon, disabled, danger, run }) => (
+        <button
+          key={id}
+          type="button"
+          className={cn(
+            "nav-menu__action",
+            danger ? "action-menu__danger is-danger" : "",
+          )}
+          disabled={disabled}
+          onClick={() => {
+            run();
+            onSelect();
+          }}
+        >
+          <Icon />
+          {label}
+        </button>
+      ))}
+    </>
+  );
+}
+
 function IconAction({
   label,
   children,
@@ -536,19 +614,65 @@ function ThemeSwitcher({
 type RunHistoryRowDetails = {
   code: string;
   duration: number;
+  cwd: string | null;
   extraLabel: string;
   extraValue: string | number;
+  /** Unabbreviated id, shown in the hover card only. */
+  fullCode: string;
+  /** Git presentation of the working directory, when one was resolved. */
+  git: { repo: string; branch: string } | null;
   source: string;
   start: number;
   status: "demo" | TraceSession["status"];
   title: string;
 };
 
+const workspacePathIcons = {
+  directory: Folder,
+  error: TriangleAlert,
+  file: File,
+} as const;
+
+/**
+ * The run's working directory. When git information was resolved for the
+ * directory, the label becomes the repository name and a branch badge rides
+ * next to it (ellipsized, with the full branch name on hover); otherwise the
+ * last path segment stands in. The full path lives in the row's hover card.
+ */
+function RunHistoryPath({
+  cwd,
+  git,
+}: {
+  cwd: string | null;
+  git?: { repo: string; branch: string } | null;
+}) {
+  const path = useMemo(() => describeWorkspacePath(cwd), [cwd]);
+  const Icon = workspacePathIcons[path.kind];
+  return (
+    <span
+      className={cn(
+        "run-history__path",
+        path.kind === "error" && "is-unknown",
+      )}
+    >
+      <Icon aria-hidden="true" />
+      <span className="run-history__path-name">{git?.repo || path.name}</span>
+      {git?.branch ? (
+        <span className="run-history__branch" title={git.branch}>
+          {git.branch}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
 function RunHistoryRowContent({
   code,
+  cwd,
   duration,
   extraLabel,
   extraValue,
+  git,
   source,
   start,
   status,
@@ -559,6 +683,7 @@ function RunHistoryRowContent({
       <StatusIcon status={status} />
       <span className="run-history__copy">
         <strong>{title}</strong>
+        <RunHistoryPath cwd={cwd} git={git} />
         <small>{formatRunDate(start)}</small>
         <span className="run-history__tags">
           <span>
@@ -580,38 +705,394 @@ function RunHistoryRowContent({
   );
 }
 
-function RunHistoryTooltipContent({
-  code,
+function RunHistoryDetailsCard({
+  cwd,
   duration,
   extraLabel,
   extraValue,
+  fullCode,
+  git,
   source,
   start,
   status,
   title,
 }: RunHistoryRowDetails) {
+  const path = useMemo(() => describeWorkspacePath(cwd), [cwd]);
+  const titleRef = useRef<HTMLElement | null>(null);
+  // Long titles clamp at six lines; the toggle only appears when the text
+  // actually overflows the clamp.
+  const [titleExpanded, setTitleExpanded] = useState(false);
+  const [titleOverflows, setTitleOverflows] = useState(false);
+  useLayoutEffect(() => {
+    const el = titleRef.current;
+    if (!el) {
+      return;
+    }
+    setTitleOverflows(el.scrollHeight > el.clientHeight + 1);
+  }, [title, titleExpanded]);
+  const toggleable = titleOverflows || titleExpanded;
+  const lines: Array<[string, string]> = [
+    ["AGENT", source],
+    ["STATUS", status],
+    ["DURATION", formatDuration(duration)],
+    [extraLabel, String(extraValue)],
+    ["WORKING DIR", path.full || "not recorded"],
+  ];
+  if (git?.branch) {
+    lines.splice(4, 0, ["BRANCH", git.branch]);
+  }
   return (
-    <TooltipContent side="right" align="start" collisionPadding={12}>
-      <div className="run-history__tooltip">
-        <strong>{title}</strong>
-        <span>{formatRunDate(start)}</span>
-        <span>{code}</span>
-        <span>AGENT · {source}</span>
-        <span>STATUS · {status}</span>
-        <span>DURATION · {formatDuration(duration)}</span>
-        <span>
-          {extraLabel} · {extraValue}
+    <div className="run-history__tooltip">
+      <strong
+        className={cn(
+          "run-history__title",
+          titleExpanded && "is-expanded",
+          toggleable && "is-toggleable",
+        )}
+        onClick={
+          toggleable
+            ? () => setTitleExpanded((current) => !current)
+            : undefined
+        }
+        onKeyDown={
+          toggleable
+            ? (event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  setTitleExpanded((current) => !current);
+                }
+              }
+            : undefined
+        }
+        ref={titleRef}
+        role={toggleable ? "button" : undefined}
+        tabIndex={toggleable ? 0 : undefined}
+        title={toggleable ? (titleExpanded ? "点击折叠" : "点击展开") : undefined}
+      >
+        {title}
+      </strong>
+      <span>{formatRunDate(start)}</span>
+      <span>{fullCode}</span>
+      {lines.map(([label, value]) => (
+        <span key={label}>
+          <b className="run-history__tooltip-label">{label}</b> · {value}
         </span>
-      </div>
-    </TooltipContent>
+      ))}
+    </div>
   );
 }
+
+type RunHistoryHoverCard = {
+  details: RunHistoryRowDetails;
+  key: string;
+};
+
+/**
+ * One hover card serves the whole list. A tooltip root per row multiplies into
+ * hundreds of roots that re-render on every clock tick, and while the pointer
+ * sweeps the list fast the previous row's card can outlive its row and stay on
+ * screen. A single layer that follows the hovered row cannot go stale: another
+ * row swaps the content in place, and the card stays open while the pointer
+ * moves onto it, so long content can be read and scrolled.
+ */
+const RunHistoryHoverCardLayer = memo(function RunHistoryHoverCardLayer({
+  anchorRef,
+  card,
+  cardRef,
+  onCardPointerLeave,
+}: {
+  anchorRef: RefObject<HTMLElement | null>;
+  card: RunHistoryHoverCard | null;
+  cardRef: RefObject<HTMLDivElement | null>;
+  onCardPointerLeave: (event: ReactPointerEvent<HTMLDivElement>) => void;
+}) {
+  useLayoutEffect(() => {
+    if (!card) {
+      return undefined;
+    }
+    const element = cardRef.current;
+    if (!element) {
+      return undefined;
+    }
+    let frame = 0;
+    const place = () => {
+      frame = 0;
+      const anchor = anchorRef.current;
+      if (!anchor || !anchor.isConnected) {
+        element.style.visibility = "hidden";
+        return;
+      }
+      const listBounds = anchor
+        .closest(".run-history__list")
+        ?.getBoundingClientRect();
+      const anchorBounds = anchor.getBoundingClientRect();
+      // Scrolled past its row: hide instead of pinning the card to the edge of
+      // the window, and restore it when the row scrolls back into the list.
+      if (
+        listBounds &&
+        (anchorBounds.bottom < listBounds.top ||
+          anchorBounds.top > listBounds.bottom)
+      ) {
+        element.style.visibility = "hidden";
+        return;
+      }
+      const cardBounds = element.getBoundingClientRect();
+      const gap = 8;
+      // To the right of the row, vertically aligned with it; flip to the left
+      // side when the right edge has no room. Both axes are clamped to the
+      // window so the card never lands half outside the viewport.
+      const onRight = anchorBounds.right + gap;
+      const onLeft = anchorBounds.left - gap - cardBounds.width;
+      const left =
+        onRight + cardBounds.width <= window.innerWidth - gap
+          ? onRight
+          : Math.max(
+              gap,
+              Math.min(onLeft, window.innerWidth - gap - cardBounds.width),
+            );
+      const top = Math.min(
+        Math.max(gap, anchorBounds.top),
+        Math.max(gap, window.innerHeight - gap - cardBounds.height),
+      );
+      element.style.transform = `translate3d(${Math.round(left)}px, ${Math.round(top)}px, 0)`;
+      element.style.visibility = "visible";
+    };
+    const schedule = () => {
+      if (frame) {
+        return;
+      }
+      frame = window.requestAnimationFrame(place);
+    };
+    place();
+    // Capture phase: the prompt thread scrolls inside its own viewport, and the
+    // card has to keep tracking its row there as well.
+    document.addEventListener("scroll", schedule, true);
+    window.addEventListener("resize", schedule);
+    return () => {
+      if (frame) {
+        window.cancelAnimationFrame(frame);
+      }
+      document.removeEventListener("scroll", schedule, true);
+      window.removeEventListener("resize", schedule);
+    };
+  }, [anchorRef, card, cardRef]);
+
+  if (!card) {
+    return null;
+  }
+
+  return (
+    <div
+      className="run-history__hovercard"
+      onPointerLeave={onCardPointerLeave}
+      ref={cardRef}
+      role="tooltip"
+    >
+      <div className="run-history__card">
+        <RunHistoryDetailsCard key={card.key} {...card.details} />
+      </div>
+    </div>
+  );
+});
+
+/**
+ * The rows themselves. Memoized apart from the hover card so moving the pointer
+ * across the list only re-renders the card layer instead of every row; only the
+ * clock tick that refreshes run durations reaches the rows.
+ */
+const RunHistoryRows = memo(function RunHistoryRows({
+  activeKey,
+  activePromptRunKey,
+  activePromptRunRef,
+  expandedRuns,
+  gitInfo,
+  isDemo,
+  now,
+  onHoverRow,
+  onSelect,
+  onToggleRun,
+  promptRunsBySession,
+  sessions,
+}: {
+  activeKey: string;
+  activePromptRunKey: string;
+  activePromptRunRef: RefObject<HTMLDivElement | null>;
+  expandedRuns: ReadonlySet<string>;
+  gitInfo: Record<string, { repo: string; branch: string } | null>;
+  isDemo: boolean;
+  now: number;
+  onHoverRow: (
+    event: ReactPointerEvent<HTMLDivElement>,
+    rowKey: string,
+    details: RunHistoryRowDetails,
+  ) => void;
+  onSelect: (sessionKey: string, promptRunKey?: string) => void;
+  onToggleRun: (key: string) => void;
+  promptRunsBySession: ReadonlyMap<string, TracePromptRun[]>;
+  sessions: TraceSession[];
+}) {
+  return (
+    <>
+      {sessions.map((session) => {
+        const promptRuns = promptRunsBySession.get(session.key) ?? [];
+        const firstPromptRun = promptRuns[0];
+        const displayState = getRunHistoryDisplayState(
+          session,
+          promptRuns,
+          now,
+          appTimings.activeRunTimeoutMs,
+        );
+        const displayStatus = displayState.status;
+        const displayDuration = displayState.duration;
+        const hasPromptThread = promptRuns.length > 1;
+        const expanded = hasPromptThread && expandedRuns.has(session.key);
+        const parentSelected = session.key === activeKey && !hasPromptThread;
+        const activeGroup = session.key === activeKey && hasPromptThread;
+        const promptListId = `run-prompts-${session.key.replace(
+          /[^a-zA-Z0-9_-]+/g,
+          "-",
+        )}`;
+        const parentDetails: RunHistoryRowDetails = {
+          code: getShortId(session.id),
+          cwd: session.cwd,
+          duration: displayDuration,
+          extraLabel: "PROMPTS",
+          extraValue: promptRuns.length,
+          fullCode: session.id,
+          git: session.cwd ? gitInfo[session.cwd] ?? null : null,
+          source: session.source,
+          start: firstPromptRun?.start ?? session.start,
+          status: isDemo ? "demo" : displayStatus,
+          title: session.title,
+        };
+
+        return (
+          <article
+            className={cn("run-history__item", activeGroup && "is-active-group")}
+            key={session.key}
+          >
+            <div
+              role="button"
+              tabIndex={0}
+              aria-pressed={parentSelected}
+              className={cn(
+                "run-history__row",
+                hasPromptThread && "has-prompt-thread",
+                parentSelected && "is-selected",
+              )}
+              onClick={() => onSelect(session.key, promptRuns.at(-1)?.key)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  onSelect(session.key, promptRuns.at(-1)?.key);
+                }
+              }}
+              onPointerOver={(event) =>
+                onHoverRow(event, session.key, parentDetails)
+              }
+            >
+              <RunHistoryRowContent {...parentDetails} />
+            </div>
+            {hasPromptThread ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                aria-controls={promptListId}
+                aria-expanded={expanded}
+                aria-label={`${expanded ? "收起" : "展开"} Prompt 层级`}
+                className="run-history__expand"
+                onClick={() => onToggleRun(session.key)}
+              >
+                <ChevronRight />
+              </Button>
+            ) : null}
+            {expanded ? (
+              <ScrollArea
+                id={promptListId}
+                className="run-history__prompt-scroll"
+                style={{
+                  height: Math.min(
+                    appLayout.historyPromptListMaxHeight,
+                    promptRuns.length * appLayout.historyPromptRowEstimate + 8,
+                  ),
+                }}
+              >
+                <ol className="run-history__prompts">
+                  {promptRuns.map((promptRun) => {
+                    const promptSelected = promptRun.key === activePromptRunKey;
+                    const promptDisplayState = getSessionDisplayState(
+                      promptRun,
+                      now,
+                      appTimings.activeRunTimeoutMs,
+                    );
+                    const roleLabel =
+                      promptRun.role === "initial"
+                        ? "INITIAL"
+                        : `FOLLOW-UP ${String(promptRun.index).padStart(2, "0")}`;
+                    const promptCode = `${roleLabel} · ${promptRun.prompt.id}`;
+                    const promptDetails: RunHistoryRowDetails = {
+                      code: promptCode,
+                      cwd: promptRun.cwd,
+                      duration: promptDisplayState.duration,
+                      extraLabel: "EVENTS",
+                      extraValue: promptRun.events.length,
+                      fullCode: promptCode,
+                      git: promptRun.cwd
+                        ? gitInfo[promptRun.cwd] ?? null
+                        : null,
+                      source: promptRun.source,
+                      start: promptRun.start,
+                      status: isDemo ? "demo" : promptDisplayState.status,
+                      title: promptRun.title,
+                    };
+                    return (
+                      <li key={promptRun.key}>
+                        <div
+                          ref={promptSelected ? activePromptRunRef : undefined}
+                          role="button"
+                          tabIndex={0}
+                          aria-pressed={promptSelected}
+                          className={cn(
+                            "run-history__row",
+                            "run-history__prompt-run",
+                            promptSelected && "is-selected",
+                          )}
+                          onClick={() => onSelect(session.key, promptRun.key)}
+                          onKeyDown={(event) => {
+                            if (
+                              event.key === "Enter" ||
+                              event.key === " "
+                            ) {
+                              event.preventDefault();
+                              onSelect(session.key, promptRun.key);
+                            }
+                          }}
+                          onPointerOver={(event) =>
+                            onHoverRow(event, promptRun.key, promptDetails)
+                          }
+                        >
+                          <RunHistoryRowContent {...promptDetails} />
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ol>
+              </ScrollArea>
+            ) : null}
+          </article>
+        );
+      })}
+    </>
+  );
+});
 
 const RunHistory = memo(function RunHistory({
   sessions,
   activeKey,
   activePromptRunKey,
   canLoadMore,
+  gitInfo,
   initialLoading,
   isDemo,
   loadingMore,
@@ -627,6 +1108,7 @@ const RunHistory = memo(function RunHistory({
   now: number;
   promptRunsBySession: ReadonlyMap<string, TracePromptRun[]>;
   canLoadMore: boolean;
+  gitInfo: Record<string, { repo: string; branch: string } | null>;
   initialLoading: boolean;
   loadingMore: boolean;
   onLoadMore: () => void;
@@ -635,9 +1117,12 @@ const RunHistory = memo(function RunHistory({
   const [expandedRuns, setExpandedRuns] = useState<Set<string>>(
     () => new Set(),
   );
+  const [hoverCard, setHoverCard] = useState<RunHistoryHoverCard | null>(null);
   const activePromptRunRef = useRef<HTMLDivElement | null>(null);
+  const hoverCardRef = useRef<HTMLDivElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const hoverAnchorRef = useRef<HTMLElement | null>(null);
   const activePromptCount =
     promptRunsBySession.get(activeKey)?.length ?? 0;
 
@@ -684,6 +1169,81 @@ const RunHistory = memo(function RunHistory({
     setExpandedRuns((current) => toggleExpandedRun(current, key));
   };
 
+  const closeHoverCard = useCallback(() => {
+    hoverAnchorRef.current = null;
+    setHoverCard((current) => (current === null ? current : null));
+  }, []);
+
+  // Anything that changes which rows exist — another agent, another day,
+  // another prompt, a collapsed thread — invalidates a card anchored to one of
+  // them. The list is re-derived on every clock tick with a fresh array
+  // identity, so the effect keys off the row signature instead of the array.
+  const rowSignature = sessions
+    .map(
+      (session) =>
+        `${session.key}:${promptRunsBySession.get(session.key)?.length ?? 0}`,
+    )
+    .join("|");
+  useEffect(() => {
+    closeHoverCard();
+  }, [closeHoverCard, expandedRuns, rowSignature]);
+
+  /**
+   * One handler covers entering a row, whatever part of it the pointer is on
+   * (the working-directory chip included — it is plain text now). The state
+   * update is skipped when nothing changed, which keeps a fast sweep across
+   * the list from re-rendering at pointer-event rate.
+   */
+  const handleRowHover = useCallback(
+    (
+      event: ReactPointerEvent<HTMLDivElement>,
+      rowKey: string,
+      details: RunHistoryRowDetails,
+    ) => {
+      hoverAnchorRef.current = event.currentTarget;
+      setHoverCard((current) =>
+        current !== null && current.key === rowKey
+          ? current
+          : { details, key: rowKey },
+      );
+    },
+    [],
+  );
+
+  // The card is hoverable on purpose: it has to stay open while the pointer
+  // moves onto it so long content can be read and scrolled. Leaving the list is
+  // therefore only a dismissal when the pointer did not move onto the card, and
+  // leaving the card is only a dismissal when it did not move back onto a row.
+  const handleListPointerLeave = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      const card = hoverCardRef.current;
+      if (
+        card &&
+        event.relatedTarget instanceof Node &&
+        card.contains(event.relatedTarget)
+      ) {
+        return;
+      }
+      closeHoverCard();
+    },
+    [closeHoverCard],
+  );
+
+  const handleCardPointerLeave = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      const list = listRef.current;
+      if (
+        list &&
+        event.relatedTarget instanceof Node &&
+        list.contains(event.relatedTarget)
+      ) {
+        return;
+      }
+      closeHoverCard();
+    },
+    [closeHoverCard],
+  );
+
   return (
     <section className="run-history grid size-full min-h-0 grid-rows-[48px_minmax(0,1fr)]">
       <header className={panelHeaderClass}>
@@ -692,194 +1252,25 @@ const RunHistory = memo(function RunHistory({
           <strong>{sessions.length} runs</strong>
         </div>
       </header>
-      <div className="run-history__list min-h-0 overflow-auto p-1.5" ref={listRef}>
-        {sessions.map((session) => {
-          const promptRuns = promptRunsBySession.get(session.key) ?? [];
-          const firstPromptRun = promptRuns[0];
-          const displayState = getRunHistoryDisplayState(
-            session,
-            promptRuns,
-            now,
-            appTimings.activeRunTimeoutMs,
-          );
-          const displayStatus = displayState.status;
-          const displayDuration = displayState.duration;
-          const hasPromptThread = promptRuns.length > 1;
-          const expanded = hasPromptThread && expandedRuns.has(session.key);
-          const parentSelected =
-            session.key === activeKey && !hasPromptThread;
-          const activeGroup =
-            session.key === activeKey && hasPromptThread;
-          const promptListId = `run-prompts-${session.key.replace(
-            /[^a-zA-Z0-9_-]+/g,
-            "-",
-          )}`;
-
-          return (
-            <article
-              className={cn(
-                "run-history__item",
-                activeGroup && "is-active-group",
-              )}
-              key={session.key}
-            >
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <div
-                    role="button"
-                    tabIndex={0}
-                    aria-pressed={parentSelected}
-                    className={cn(
-                      "run-history__row",
-                      hasPromptThread && "has-prompt-thread",
-                      parentSelected && "is-selected",
-                    )}
-                    onClick={() =>
-                      onSelect(session.key, promptRuns.at(-1)?.key)
-                    }
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault();
-                        onSelect(session.key, promptRuns.at(-1)?.key);
-                      }
-                    }}
-                  >
-                    <RunHistoryRowContent
-                      code={getShortId(session.id)}
-                      duration={displayDuration}
-                      extraLabel="PROMPTS"
-                      extraValue={promptRuns.length}
-                      source={session.source}
-                      start={firstPromptRun?.start ?? session.start}
-                      status={isDemo ? "demo" : displayStatus}
-                      title={session.title}
-                    />
-                  </div>
-                </TooltipTrigger>
-                <RunHistoryTooltipContent
-                  code={session.id}
-                  duration={displayDuration}
-                  extraLabel="PROMPTS"
-                  extraValue={promptRuns.length}
-                  source={session.source}
-                  start={firstPromptRun?.start ?? session.start}
-                  status={isDemo ? "demo" : displayStatus}
-                  title={session.title}
-                />
-              </Tooltip>
-              {hasPromptThread ? (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-xs"
-                  aria-controls={promptListId}
-                  aria-expanded={expanded}
-                  aria-label={`${expanded ? "收起" : "展开"} Prompt 层级`}
-                  className="run-history__expand"
-                  onClick={() => toggleRun(session.key)}
-                >
-                  <ChevronRight />
-                </Button>
-              ) : null}
-              {expanded ? (
-                <ScrollArea
-                  id={promptListId}
-                  className="run-history__prompt-scroll"
-                  style={{
-                    height: Math.min(
-                      appLayout.historyPromptListMaxHeight,
-                      promptRuns.length *
-                        appLayout.historyPromptRowEstimate +
-                        8,
-                    ),
-                  }}
-                >
-                  <ol className="run-history__prompts">
-                    {promptRuns.map((promptRun) => {
-                      const promptSelected =
-                        promptRun.key === activePromptRunKey;
-                      const promptDisplayState = getSessionDisplayState(
-                        promptRun,
-                        now,
-                        appTimings.activeRunTimeoutMs,
-                      );
-                      const roleLabel =
-                        promptRun.role === "initial"
-                          ? "INITIAL"
-                          : `FOLLOW-UP ${String(promptRun.index).padStart(2, "0")}`;
-                      return (
-                        <li key={promptRun.key}>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <div
-                                ref={
-                                  promptSelected
-                                    ? activePromptRunRef
-                                    : undefined
-                                }
-                                role="button"
-                                tabIndex={0}
-                                aria-pressed={promptSelected}
-                                className={cn(
-                                  "run-history__row",
-                                  "run-history__prompt-run",
-                                  promptSelected && "is-selected",
-                                )}
-                                onClick={() =>
-                                  onSelect(session.key, promptRun.key)
-                                }
-                                onKeyDown={(event) => {
-                                  if (
-                                    event.key === "Enter" ||
-                                    event.key === " "
-                                  ) {
-                                    event.preventDefault();
-                                    onSelect(session.key, promptRun.key);
-                                  }
-                                }}
-                              >
-                                <RunHistoryRowContent
-                                  code={`${roleLabel} · ${getShortId(
-                                    promptRun.prompt.id,
-                                  )}`}
-                                  duration={promptDisplayState.duration}
-                                  extraLabel="EVENTS"
-                                  extraValue={promptRun.events.length}
-                                  source={promptRun.source}
-                                  start={promptRun.start}
-                                  status={
-                                    isDemo
-                                      ? "demo"
-                                      : promptDisplayState.status
-                                  }
-                                  title={promptRun.title}
-                                />
-                              </div>
-                            </TooltipTrigger>
-                            <RunHistoryTooltipContent
-                              code={`${roleLabel} · ${promptRun.prompt.id}`}
-                              duration={promptDisplayState.duration}
-                              extraLabel="EVENTS"
-                              extraValue={promptRun.events.length}
-                              source={promptRun.source}
-                              start={promptRun.start}
-                              status={
-                                isDemo
-                                  ? "demo"
-                                  : promptDisplayState.status
-                              }
-                              title={promptRun.title}
-                            />
-                          </Tooltip>
-                        </li>
-                      );
-                    })}
-                  </ol>
-                </ScrollArea>
-              ) : null}
-            </article>
-          );
-        })}
+      <div
+        className="run-history__list min-h-0 overflow-auto p-1.5"
+        ref={listRef}
+        onPointerLeave={handleListPointerLeave}
+      >
+        <RunHistoryRows
+          activeKey={activeKey}
+          activePromptRunKey={activePromptRunKey}
+          activePromptRunRef={activePromptRunRef}
+          expandedRuns={expandedRuns}
+          isDemo={isDemo}
+          now={now}
+          onHoverRow={handleRowHover}
+          onSelect={onSelect}
+          onToggleRun={toggleRun}
+          gitInfo={gitInfo}
+          promptRunsBySession={promptRunsBySession}
+          sessions={sessions}
+        />
         {initialLoading ? (
           <div className="run-history__loading" aria-busy="true">
             <Loader2 className="size-4 animate-spin" />
@@ -902,6 +1293,12 @@ const RunHistory = memo(function RunHistory({
           </div>
         ) : null}
       </div>
+      <RunHistoryHoverCardLayer
+        anchorRef={hoverAnchorRef}
+        card={hoverCard}
+        cardRef={hoverCardRef}
+        onCardPointerLeave={handleCardPointerLeave}
+      />
     </section>
   );
 });
@@ -920,6 +1317,7 @@ const AtomicLog = memo(function AtomicLog({
   onSelect,
   onLocateSelectedAtom,
   canLocateSelectedAtom,
+  live,
 }: {
   events: TraceEvent[];
   runningEventId: string;
@@ -930,6 +1328,7 @@ const AtomicLog = memo(function AtomicLog({
   onSelect: (eventId: string) => void;
   onLocateSelectedAtom: () => void;
   canLocateSelectedAtom: boolean;
+  live: boolean;
 }) {
   const listRef = useRef<HTMLDivElement | null>(null);
   const locateRequestRef = useRef(locateRequest);
@@ -1208,7 +1607,9 @@ const AtomicLog = memo(function AtomicLog({
             </output>
           )}
         </div>
-        {scrollPosition.canScrollUp ? (
+        {/* While Live the log rides the stream, so the floating up chevron
+            would only flicker over the newest rows — render it on demand only. */}
+        {scrollPosition.canScrollUp && !live ? (
           <IconAction
             label="滚动到顶部"
             side="left"
@@ -2276,6 +2677,12 @@ export default function App() {
     getInitialLocation,
   );
   const [liveEvents, setLiveEvents] = useState<TraceEvent[]>([]);
+  // Working directory → git presentation (repo name + branch), resolved by the
+  // server from the closest `.git` and delivered with the snapshot plus one
+  // `git` message per newly seen directory.
+  const [gitInfo, setGitInfo] = useState<
+    Record<string, { repo: string; branch: string } | null>
+  >({});
   const [eventsLoaded, setEventsLoaded] = useState(false);
   const [importedEvents, setImportedEvents] = useState<TraceEvent[]>([]);
   const [connected, setConnected] = useState(false);
@@ -2293,6 +2700,9 @@ export default function App() {
   const [guideOpen, setGuideOpen] = useState<boolean>(appDefaults.guideOpen);
   const [historySearchOpen, setHistorySearchOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState<boolean>(appDefaults.menuOpen);
+  // Mobile-only: the header nav collapses into a disclosure below the same
+  // breakpoint the stylesheet uses, so this state is meaningless on desktop.
+  const [navMenuOpen, setNavMenuOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(
     () =>
       readStorageBoolean(
@@ -2373,6 +2783,59 @@ export default function App() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const preserveAtomSelectionRef = useRef(false);
   const previousAtomRef = useRef("");
+  const navMenuRef = useRef<HTMLDivElement | null>(null);
+  const navToggleRef = useRef<HTMLButtonElement | null>(null);
+  const headerNavCollapsed = useMediaQuery(
+    `(max-width: ${appLayout.headerNavCollapseMaxWidth}px)`,
+  );
+
+  const closeNavMenu = useCallback((restoreFocus = false) => {
+    setNavMenuOpen(false);
+    if (restoreFocus) {
+      navToggleRef.current?.focus();
+    }
+  }, []);
+
+  // A viewport that grows past the breakpoint restores the horizontal nav, so
+  // the disclosure state must not survive the resize.
+  useEffect(() => {
+    if (!headerNavCollapsed) {
+      setNavMenuOpen(false);
+    }
+  }, [headerNavCollapsed]);
+
+  useEffect(() => {
+    if (!navMenuOpen) {
+      return undefined;
+    }
+    // Move focus into the panel so keyboard users land on the first control.
+    navMenuRef.current
+      ?.querySelector<HTMLElement>("button:not([disabled]), [role='combobox']")
+      ?.focus();
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (
+        !target ||
+        navMenuRef.current?.contains(target) ||
+        navToggleRef.current?.contains(target)
+      ) {
+        return;
+      }
+      closeNavMenu();
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") {
+        return;
+      }
+      closeNavMenu(true);
+    };
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [closeNavMenu, navMenuOpen]);
 
   useEffect(() => {
     writeStorageValue(window.localStorage, storageKeys.inspectorTab, inspectorTab);
@@ -2450,6 +2913,22 @@ export default function App() {
       }
     };
     source.addEventListener("ready", () => setConnected(true));
+    // New working directories arrive with their git presentation before the
+    // events that reference them, so run rows can name the repo and branch.
+    source.addEventListener("git", (message: MessageEvent<string>) => {
+      const payload = JSON.parse(message.data) as {
+        cwd: string;
+        repo: string;
+        branch: string;
+      };
+      if (!payload?.cwd || !payload.repo) {
+        return;
+      }
+      setGitInfo((current) => ({
+        ...current,
+        [payload.cwd]: { repo: payload.repo, branch: payload.branch },
+      }));
+    });
     source.addEventListener("trace", (message: MessageEvent<string>) => {
       const event = normalizeTraceEvent(JSON.parse(message.data));
       if (seenIds.has(event.id)) {
@@ -2460,9 +2939,11 @@ export default function App() {
       flushTimer ??= window.setTimeout(flush, 80);
     });
     source.addEventListener("reset", (message: MessageEvent<string>) => {
-      const events = (JSON.parse(message.data) as TraceEvent[]).map(
-        normalizeTraceEvent,
-      );
+      const payload = JSON.parse(message.data) as {
+        events: TraceEvent[];
+        git?: Record<string, { repo: string; branch: string }>;
+      };
+      const events = payload.events.map(normalizeTraceEvent);
       for (const event of events) {
         seenIds.add(event.id);
       }
@@ -2474,6 +2955,7 @@ export default function App() {
       }
       pending = [];
       setLiveEvents(events);
+      setGitInfo(payload.git ?? {});
       setEventsLoaded(true);
     });
     source.onerror = () => setConnected(false);
@@ -2667,19 +3149,47 @@ export default function App() {
           appTimings.activeRunTimeoutMs,
         )
       : undefined;
-  const followingSessionLive = isFollowingLive(
-    selectedAtomId,
-    replayMode,
-    activeSession?.key === sessions[0]?.key,
-  );
-  const followingLive =
-    followingSessionLive &&
-    (!latestPromptRun || activePromptRun?.key === latestPromptRun.key);
+  // Clicking any executing run opens Live: follow mode is allowed while the
+  // ACTIVE run executes, not only for the newest session in the window.
   const promptExecuting = isPromptExecuting(
     activeDisplayState?.status,
     isDemo,
   );
+  const followingSessionLive = isFollowingLive(
+    selectedAtomId,
+    replayMode,
+    promptExecuting,
+  );
+  const followingLive = followingSessionLive;
   const executingLive = promptExecuting && !replayMode;
+  // Live rides the newest executed atom: the pulse and the Live button stay
+  // active only while the selection has not fallen behind the newest event.
+  const latestExecutionAtomId = getAtomIdForEvent(
+    activeEvents.at(-1) || null,
+    platformId,
+  );
+  const followingLatestExecutionAtom = isLiveFollowingLatest(
+    selectedAtomId,
+    latestExecutionAtomId,
+  );
+  // The Live marker benchmarks the message status: only an in-flight (START)
+  // message counts, and only while it belongs to the newest executed node.
+  const pendingEvent = useMemo(() => {
+    for (let index = activeEvents.length - 1; index >= 0; index -= 1) {
+      const event = activeEvents[index];
+      if (getEventAction(event) === "START") {
+        return event;
+      }
+    }
+    return null;
+  }, [activeEvents]);
+  const pendingEventOnLatestNode =
+    pendingEvent !== null &&
+    getAtomIdForEvent(pendingEvent, platformId) === latestExecutionAtomId;
+  const liveActive =
+    executingLive &&
+    followingLatestExecutionAtom &&
+    pendingEventOnLatestNode;
 
   useEffect(() => {
     if (!activeSession || initialLocation !== null) {
@@ -2797,8 +3307,8 @@ export default function App() {
     selectedAtomId,
     mappedAtomId,
   );
-  const activeExecutionAtomId = executingLive
-    ? getAtomIdForEvent(activeEvents.at(-1) || null, platformId)
+  const activeExecutionAtomId = liveActive
+    ? latestExecutionAtomId
     : replayMode && playing
       ? currentAtomId
       : "";
@@ -2883,15 +3393,19 @@ export default function App() {
         promptRuns.find((candidate) => candidate.key === promptRunKey) ||
         promptRuns.at(-1);
       const event = promptRun?.events.at(-1) || session?.events.at(-1);
+      const status = promptRun?.status ?? session?.status;
       setActiveSessionKey(key);
       setActivePromptRunKey(promptRun?.key || "");
       setSelectedEventId(event?.id || "");
       setSelectedAtomId(
-        getPromptAtomSelection(
-          promptRun?.status ?? session?.status,
-          getAtomIdForEvent(event || null, platformId),
-        ),
+        getPromptAtomSelection(status, getAtomIdForEvent(event || null, platformId)),
       );
+      // An executing run opens Live (no explicit selection); a finished run
+      // lands on its last message and closes Live — flash that atom on the
+      // canvas so the landing point is obvious.
+      if (status !== "active") {
+        setLocateRequest((current) => current + 1);
+      }
       setConsoleOpen(true);
       setQuery("");
       setReplayMode(false);
@@ -3128,6 +3642,31 @@ export default function App() {
     }, 320);
   }, [filteredSessions, now]);
 
+  const headerNavActions: ReadonlyArray<HeaderNavAction> = [
+    {
+      id: "import",
+      label: "Import run",
+      icon: FileInput,
+      run: () => fileInputRef.current?.click(),
+    },
+    {
+      id: "export",
+      label: "Export run",
+      icon: Download,
+      disabled: !activeSession,
+      run: exportTrace,
+    },
+    {
+      id: "clear",
+      label: "Clear local events",
+      icon: Trash2,
+      danger: true,
+      run: () => {
+        void clearEvents();
+      },
+    },
+  ];
+
   return (
     <main className="studio-shell">
       <header className="studio-header">
@@ -3153,38 +3692,10 @@ export default function App() {
             </IconAction>
             {menuOpen ? (
               <div className="action-menu">
-                <button
-                  type="button"
-                  onClick={() => {
-                    fileInputRef.current?.click();
-                    setMenuOpen(false);
-                  }}
-                >
-                  <FileInput />
-                  Import run
-                </button>
-                <button
-                  type="button"
-                  disabled={!activeSession}
-                  onClick={() => {
-                    exportTrace();
-                    setMenuOpen(false);
-                  }}
-                >
-                  <Download />
-                  Export run
-                </button>
-                <button
-                  type="button"
-                  className="action-menu__danger"
-                  onClick={() => {
-                    clearEvents();
-                    setMenuOpen(false);
-                  }}
-                >
-                  <Trash2 />
-                  Clear local events
-                </button>
+                <HeaderNavActions
+                  actions={headerNavActions}
+                  onSelect={() => setMenuOpen(false)}
+                />
               </div>
             ) : null}
           </div>
@@ -3208,7 +3719,12 @@ export default function App() {
             </strong>
           </div>
         </div>
-        <div className="studio-header__actions">
+        <div
+          className="studio-header__actions"
+          id={headerNavMenuId}
+          ref={navMenuRef}
+          data-open={navMenuOpen}
+        >
           <Button
             type="button"
             variant="outline"
@@ -3220,7 +3736,10 @@ export default function App() {
               "history-search-trigger",
               historySearchOpen && "is-active",
             )}
-            onClick={() => setHistorySearchOpen(true)}
+            onClick={() => {
+              setHistorySearchOpen(true);
+              setNavMenuOpen(false);
+            }}
           >
             <Search data-icon="inline-start" />
             <span>Search history</span>
@@ -3236,7 +3755,25 @@ export default function App() {
             {connected ? "accepted" : isDemo ? "demo" : "offline"}
           </span>
           <ThemeSwitcher theme={theme} onChange={setTheme} />
+          <div className="nav-menu__group">
+            <HeaderNavActions
+              actions={headerNavActions}
+              onSelect={() => setNavMenuOpen(false)}
+            />
+          </div>
         </div>
+        <IconAction
+          ref={navToggleRef}
+          label={navMenuOpen ? "关闭导航菜单" : "打开导航菜单"}
+          className={cn("studio-header__nav-toggle", navMenuOpen && "is-active")}
+          aria-expanded={navMenuOpen}
+          aria-controls={headerNavMenuId}
+          onClick={() =>
+            navMenuOpen ? closeNavMenu(true) : setNavMenuOpen(true)
+          }
+        >
+          {navMenuOpen ? <X /> : <Menu />}
+        </IconAction>
       </header>
 
       <section
@@ -3262,6 +3799,7 @@ export default function App() {
               sessions={visibleSessions}
               activeKey={activeSession?.key || ""}
               activePromptRunKey={activePromptRun?.key || ""}
+              gitInfo={gitInfo}
               isDemo={isDemo}
               now={now}
               promptRunsBySession={promptRunsBySession}
@@ -3395,7 +3933,7 @@ export default function App() {
           <ReplayFooter
             events={activeEvents}
             cursor={replayCursor}
-            live={executingLive}
+            live={liveActive}
             playing={playing}
             speed={replaySpeed}
             onSeek={handleReplaySeek}
@@ -3417,8 +3955,9 @@ export default function App() {
               <AtomicLog
                 events={activeEvents}
                 runningEventId={
-                  executingLive ? activeEvents.at(-1)?.id || "" : ""
+                  executingLive && pendingEvent ? pendingEvent.id : ""
                 }
+                live={liveActive}
                 selectedEventId={selectedEventId || ""}
                 locateRequest={logLocateRequest}
                 query={query}

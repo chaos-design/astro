@@ -10,9 +10,28 @@ export function isPromptExecuting(
 export function isFollowingLive(
   selection: AtomSelection,
   replayMode: boolean,
-  isLatestSession: boolean,
+  isFollowable: boolean,
 ): boolean {
-  return selection === undefined && !replayMode && isLatestSession;
+  return selection === undefined && !replayMode && isFollowable;
+}
+
+/**
+ * Live stays active only while the selection actually tracks the newest
+ * executed atom: an absent selection follows automatically, an explicit
+ * selection keeps following only while it still is the newest atom, and a
+ * cleared or older selection has left Live mode.
+ */
+export function isLiveFollowingLatest(
+  selection: AtomSelection,
+  latestAtomId: string,
+): boolean {
+  if (selection === undefined) {
+    return true;
+  }
+  if (selection === null) {
+    return false;
+  }
+  return selection.length > 0 && selection === latestAtomId;
 }
 
 export function resolveSelectedAtomId(

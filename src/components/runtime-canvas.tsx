@@ -222,6 +222,13 @@ export const RuntimeCanvas = memo(function RuntimeCanvas({
     );
   }, [layout, locateRequest, selectedAtomId]);
 
+  // While Live the pulse rides the newest executed atom, so keep that node
+  // fully inside the viewport (with a breathing margin) whenever the pulse
+  // moves or the stream extends: the whole layout is contain-scaled, so this
+  // pans the canvas instead of scrolling, and no off-screen arrow indicator
+  // is shown for it.
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+
   useEffect(
     () => () => window.clearTimeout(locateTimerRef.current),
     [],
@@ -239,6 +246,57 @@ export const RuntimeCanvas = memo(function RuntimeCanvas({
     0,
     (Math.max(0, viewport.height - CANVAS_INSET * 2) - scaledHeight) / 2,
   );
+
+  // While Live the pulse rides the newest executed atom, so keep that node
+  // fully inside the viewport (with a breathing margin) whenever the pulse
+  // moves or the stream extends: the whole layout is contain-scaled, so this
+  // pans the canvas instead of scrolling, and no off-screen arrow indicator
+  // is shown for it.
+  useEffect(() => {
+    if (!activeAtomId || !layout) {
+      return;
+    }
+    const viewportEl = viewportRef.current;
+    const node = viewportEl?.querySelector<HTMLElement>(
+      `[data-node-id="${CSS.escape(activeAtomId)}"]`,
+    );
+    if (!viewportEl || !node) {
+      return;
+    }
+    const frame = viewportEl.getBoundingClientRect();
+    const box = node.getBoundingClientRect();
+    const margin = 18;
+    let dx = 0;
+    let dy = 0;
+    if (box.top < frame.top + margin) {
+      dy = box.top - (frame.top + margin);
+    } else if (box.bottom > frame.bottom - margin) {
+      dy = box.bottom - (frame.bottom - margin);
+    }
+    if (box.left < frame.left + margin) {
+      dx = box.left - (frame.left + margin);
+    } else if (box.right > frame.right - margin) {
+      dx = box.right - (frame.right - margin);
+    }
+    if (dx === 0 && dy === 0) {
+      return;
+    }
+    setPan((current) => {
+      const next = { x: current.x + dx, y: current.y + dy };
+      // Never pan the canvas past its own edges.
+      const overflowX = Math.max(0, scaledWidth - frame.width) / 2;
+      const overflowY = Math.max(0, scaledHeight - frame.height) / 2;
+      return {
+        x: Math.min(overflowX, Math.max(-overflowX, next.x)),
+        y: Math.min(overflowY, Math.max(-overflowY, next.y)),
+      };
+    });
+  }, [activeAtomId, atomicEvents, layout, pan, scaledHeight, scaledWidth]);
+
+  // A rebuilt layout invalidates the pan offset.
+  useEffect(() => {
+    setPan({ x: 0, y: 0 });
+  }, [graphKey]);
 
   return (
     <div
@@ -322,6 +380,7 @@ export const RuntimeCanvas = memo(function RuntimeCanvas({
             style={{
               height: scaledHeight,
               marginTop: verticalOffset,
+              transform: `translate(${pan.x}px, ${pan.y}px)`,
               width: scaledWidth,
             }}
           >

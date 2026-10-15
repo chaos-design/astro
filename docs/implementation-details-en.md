@@ -1,7 +1,5 @@
 # ASTRO Implementation Details and Delivery Status
 
-Updated: 2026-09-10
-
 This reference turns the project's design decisions into a maintainable view of
 delivery. It answers four questions:
 

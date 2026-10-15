@@ -63,11 +63,40 @@ export const LlamaIcon = createLucideIcon("Llama", [
   ["path", { d: metaPath, fill: "currentColor", stroke: "none" }],
 ]);
 
-/** Pi Agent, drawn as the pi glyph. */
+/**
+ * Pi Agent, from the official pi.dev mark: three brand-colored blocks that
+ * form the π letterform (salmon crossbar, blue left stem, yellow right stem).
+ * The source artwork lives on an 800x800 grid, so the blocks are scaled into
+ * the 24x24 icon frame.
+ */
 export const PiAgentIcon = createLucideIcon("PiAgent", [
-  ["path", { d: "M5.75 6.5h12.5" }],
-  ["path", { d: "M9.25 6.5v11" }],
-  ["path", { d: "M14.75 6.5v4.6a3.4 3.4 0 0 1-3.4 3.4" }],
+  [
+    "path",
+    {
+      d: "M165.29 165.29H517.36V400H400V282.65H165.29Z",
+      fill: "#F09082",
+      stroke: "none",
+      transform: "scale(.03)",
+    },
+  ],
+  [
+    "path",
+    {
+      d: "M165.29 282.65H282.65V400H400V517.36H282.65V634.72H165.29Z",
+      fill: "#4D9ABF",
+      stroke: "none",
+      transform: "scale(.03)",
+    },
+  ],
+  [
+    "path",
+    {
+      d: "M517.36 400H634.72V634.72H517.36Z",
+      fill: "#F1BE58",
+      stroke: "none",
+      transform: "scale(.03)",
+    },
+  ],
 ]);
 
 /** Alibaba Qwen, from the official Tongyi Qianwen mark. */
@@ -134,15 +163,11 @@ export const IflowIcon = createLucideIcon("Iflow", [
 ]);
 
 /**
- * The trailing "Others" entry: a neural node graph standing for every agent
- * without its own brand mark.
+ * The trailing "Others" entry: a plain "AI" lettermark standing for every
+ * agent without its own brand mark.
  */
 export const OthersAgentIcon = createLucideIcon("OthersAgent", [
-  ["circle", { cx: "12", cy: "12", r: "2.5", fill: "currentColor", stroke: "none" }],
-  ["circle", { cx: "5.7", cy: "6.5", r: "1.8", fill: "currentColor", stroke: "none" }],
-  ["circle", { cx: "18.3", cy: "6.5", r: "1.8", fill: "currentColor", stroke: "none" }],
-  ["circle", { cx: "12", cy: "18.8", r: "1.8", fill: "currentColor", stroke: "none" }],
-  ["path", { d: "M7.24 7.65 10.1 10.2" }],
-  ["path", { d: "M16.76 7.65 13.9 10.2" }],
-  ["path", { d: "M12 14.5v2.5" }],
+  ["path", { d: "M3.5 19.5 9.25 4.5 15 19.5" }],
+  ["path", { d: "M5.9 13.5h6.7" }],
+  ["path", { d: "M20.5 4.5v15" }],
 ]);

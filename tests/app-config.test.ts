@@ -30,6 +30,25 @@ test("keeps the header version in sync with the release version", () => {
   assert.equal(appVersion, rootPackage.version);
 });
 
+test("keeps the collapsed header breakpoint in sync with the stylesheet", () => {
+  const styles = readFileSync(
+    path.resolve(import.meta.dirname, "../src/styles.css"),
+    "utf8",
+  );
+  const { headerNavCollapseMaxWidth } = appLayout;
+  const block = new RegExp(
+    `@media \\(max-width: ${headerNavCollapseMaxWidth}px\\) \\{([\\s\\S]*?)\\n\\}`,
+  ).exec(styles);
+  assert.ok(
+    block,
+    `src/styles.css must declare a @media (max-width: ${headerNavCollapseMaxWidth}px) block`,
+  );
+  // The same breakpoint drives the JS media query, so the header rules that
+  // collapse the nav must live in that block.
+  assert.match(block[1], /\.studio-header__nav-toggle/);
+  assert.match(block[1], /\.studio-header__actions\[data-open="true"\]/);
+});
+
 test("shows demo data only in development or test environments", () => {
   assert.equal(shouldShowDemo(0, { DEV: true, MODE: "development" }), true);
   assert.equal(shouldShowDemo(0, { DEV: false, MODE: "test" }), true);

@@ -15,6 +15,15 @@
   --purple: #b893ff;
   --radius: 8px;
   --sidebar-w: 300px;
+  --bottombar-h: 52px;
+  /* Pinned mobile top bar (brand + drawer toggle). Only shown at ≤860px. */
+  --topbar-h: 56px;
+  /* Comfortable reading measure; the column itself grows with the viewport
+     while prose is capped so it never becomes an unreadable wall of text. */
+  --measure: 72ch;
+  /* Fluid side gutter for the content column: tracks the window width instead
+     of a fixed 40px, so the column adapts across desktop sizes. */
+  --content-gutter: clamp(24px, 4.5vw, 72px);
   --display: "Avenir Next Condensed", "DIN Condensed", "Avenir Next", sans-serif;
   --body: "Avenir Next", "Helvetica Neue", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
   --mono: "SFMono-Regular", Menlo, Monaco, Consolas, monospace;
@@ -64,28 +73,103 @@ a:hover {
 }
 
 /* ===== Shell ===== */
+/* Locked to exactly one viewport: the sidebar keeps a stable 100vh box and
+   only the content column scrolls, so a long document (or an empty one) can
+   never stretch or collapse the menu. */
 .shell {
   display: grid;
   grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
-  min-height: 100vh;
+  grid-template-rows: minmax(0, 1fr);
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
 }
 
 /* ===== Sidebar ===== */
 .sidebar {
-  position: sticky;
-  top: 0;
-  height: 100vh;
-  overflow-y: auto;
+  position: relative;
+  height: 100%;
+  /* Grid items stretch to the row; cap the height so content can't push it.
+     dvh keeps the full box visible on mobile browsers with a URL bar. */
+  max-height: 100vh;
+  max-height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
   border-right: 1px solid var(--line);
   background: var(--surface);
-  padding: 20px 16px 40px;
+}
+.sidebar-scroll {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  min-height: 0;
+  padding: 16px 16px 16px;
+}
+/* Pinned header: the brand stays fixed while the nav scrolls under it. */
+.sidebar-head {
+  flex: 0 0 auto;
+  padding: 20px 16px 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+/* Pinned at the bottom of the sidebar; does not scroll with the menu.
+   The GitHub link and the language button split the row as a matched pair
+   of equal-size cells. */
+.sidebar-github {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--line);
+  background: var(--surface-2);
+}
+.sidebar-github a,
+.sidebar-github .lang-toggle {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-3);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.sidebar-github a:hover,
+.sidebar-github .lang-toggle:hover {
+  border-color: var(--blue);
+  color: var(--ink);
+  text-decoration: none;
+}
+.sidebar-github svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+}
+.sidebar-github .ext-arrow {
+  margin-left: 0;
+  color: var(--faint);
 }
 
 .brand {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 4px 8px 16px;
+  padding: 0;
 }
 .brand-mark {
   width: 30px;
@@ -155,32 +239,42 @@ a:hover {
   color: var(--blue);
 }
 
-.sidebar-foot {
-  margin-top: 28px;
-  padding: 14px 10px;
-  border-top: 1px solid var(--line);
-  font-size: 11.5px;
-  color: var(--faint);
-  line-height: 1.6;
-}
-.sidebar-foot code {
-  font-family: var(--mono);
-  font-size: 11px;
-  color: var(--muted);
-  background: var(--surface-2);
-  padding: 1px 5px;
-  border-radius: 4px;
-}
-
 /* ===== Content ===== */
+/* Owns its own scrollbar inside the fixed-height shell. */
 .content {
-  min-height: 100vh;
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 0 0 80px;
 }
+/* The column fills the content grid cell and follows the window width (fluid
+   side gutters, no 1200px cap), so on wide desktop it stretches instead of
+   leaving dead margins; inside it, prose is capped to a readable measure. */
 .content-inner {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 32px 40px 0;
+  max-width: none;
+  margin: 0;
+  padding: 32px var(--content-gutter) 0;
+}
+/* Uncapped prose gets a comfortable measure so it stops stretching
+   edge-to-edge on wide desktop. Elements that already carry a tighter cap
+   (`.page-desc`, `.hero p`), the bordered `.hero` card, and code blocks
+   (`.pre`, horizontal-scroll by design) keep their own width, so the column
+   still feels adaptive at any size. */
+.content-inner .doc-body p,
+.content-inner .doc-body ul,
+.content-inner .doc-body ol,
+.content-inner .doc-body blockquote {
+  max-width: var(--measure);
+}
+/* Images scale down to the column instead of forcing the page wider; a
+   landscape screenshot (e.g. the desktop-console capture) must never create
+   horizontal scroll on a narrow viewport. */
+.content-inner .doc-body img {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
 }
 
 .crumb {
@@ -197,49 +291,61 @@ a:hover {
   text-decoration: none;
 }
 
-/* Doc header row: breadcrumb + language toggle */
-.doc-head {
+/* ===== Content loading placeholder =====
+   Purely visual skeleton shown while the markdown + mermaid pipeline renders
+   a doc; no spinner or text label. */
+.doc-skeleton {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 12px;
-  margin-bottom: 10px;
-  flex-wrap: wrap;
+  padding: 6px 0 24px;
 }
-.doc-head .crumb {
-  flex: 1 1 auto;
-  min-width: 0;
-  margin-bottom: 0;
+.doc-skeleton i {
+  display: block;
+  height: 14px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--surface-2) 25%, var(--surface-3) 45%, var(--surface-2) 65%);
+  background-size: 200% 100%;
+  animation: doc-shimmer 1.4s linear infinite;
 }
+.doc-skeleton i.sk-title {
+  height: 26px;
+  border-radius: 8px;
+}
+.doc-skeleton i.sk-block {
+  height: 64px;
+}
+@keyframes doc-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .doc-skeleton i {
+    animation: none;
+  }
+}
+
+/* Language pill button (sidebar footer). In the footer row the shared cell
+   rule above restyles it to match the GitHub cell exactly. */
 .lang-toggle {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: stretch;
   border: 1px solid var(--line);
-  border-radius: 7px;
-  overflow: hidden;
-  background: var(--surface);
-}
-.lang-toggle > * + * {
-  border-left: 1px solid var(--line);
-}
-.lang-toggle span,
-.lang-toggle a {
-  font-family: var(--mono);
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  line-height: 1;
-  padding: 5px 11px;
-  color: var(--muted);
-  white-space: nowrap;
-}
-.lang-toggle a:hover {
   background: var(--surface-2);
-  color: var(--ink);
-  text-decoration: none;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 4px 9px;
+  border-radius: 999px;
+  cursor: pointer;
+  flex: 0 0 auto;
+  transition: color 0.15s ease, border-color 0.15s ease;
 }
-.lang-toggle .active {
-  background: var(--surface-3);
+.lang-toggle:hover {
   color: var(--ink);
+  border-color: var(--blue);
 }
 
 .page-title {
@@ -317,6 +423,9 @@ a:hover {
 }
 .card-accent.yellow {
   background: var(--yellow);
+}
+.card-accent.red {
+  background: var(--red);
 }
 
 .section-head {
@@ -530,21 +639,29 @@ a:hover {
   color: var(--ink);
 }
 
-/* Doc prev / next */
+/* Doc / deck prev-next — pinned to the bottom of the viewport (吸底);
+   it does not move with the page scroll. */
 .pager {
+  position: fixed;
+  left: var(--sidebar-w);
+  right: 0;
+  bottom: 0;
+  z-index: 40;
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 14px;
-  margin-top: 44px;
+  margin: 0;
+  padding: 12px 24px calc(12px + env(safe-area-inset-bottom));
   border-top: 1px solid var(--line);
-  padding-top: 20px;
+  background: var(--surface);
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.35);
 }
 .pager a {
   display: block;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   padding: 12px 14px;
-  background: var(--surface);
+  background: var(--surface-2);
   text-decoration: none;
 }
 .pager a:hover {
@@ -570,11 +687,16 @@ a:hover {
   border: 1px dashed var(--line);
   background: transparent;
 }
+/* Keep the last content line clear of the pinned pager bar (pager pages only). */
+.content-inner:has(.pager) {
+  padding-bottom: 48px;
+}
 
 /* ===== Artifact (iframe) ===== */
 .artifact-frame {
   width: 100%;
   height: calc(100vh - 180px);
+  height: calc(100dvh - 180px);
   min-height: 620px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -802,26 +924,256 @@ a:hover {
   display: block;
 }
 
+/* ===== Bottom nav bar (吸底 GitHub 入口) =====
+   Shown on mobile only (see the max-width:860px block); on desktop the
+   GitHub entry lives in the pinned sidebar footer instead. */
+.bottombar {
+  position: fixed;
+  left: var(--sidebar-w);
+  right: 0;
+  bottom: 0;
+  z-index: 50;
+  display: none;
+  align-items: stretch;
+  gap: 4px;
+  padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.35);
+}
+.bottombar-item {
+  flex: 1 1 0;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--muted);
+  text-decoration: none;
+  white-space: nowrap;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    border-color 0.15s;
+}
+.bottombar-item svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+}
+.bottombar-item:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+  text-decoration: none;
+}
+.bottombar-item.active {
+  background: var(--surface-3);
+  color: var(--ink);
+  border-color: var(--line);
+}
+.bottombar-item.external {
+  color: var(--cyan);
+}
+.bottombar-item.external:hover {
+  color: var(--cyan);
+}
+
+/* ===== Mobile top bar + drawer (≤860px only; hidden on desktop) =====
+   A pinned header carrying the brand and the drawer toggle. The sidebar
+   becomes an off-canvas panel that slides in from the left over a dim
+   scrim; only the content column scrolls. */
+.mobile-topbar {
+  display: none;
+}
+.topbar-brand {
+  display: none;
+}
+.topbar-toggle {
+  display: none;
+}
+.scrim {
+  display: none;
+}
+
 /* ===== Responsive ===== */
 @media (max-width: 1080px) {
   .doc-layout {
-    grid-template-columns: 1fr;
+    /* minmax(0,1fr) (not 1fr): a plain 1fr track grows to the widest table
+       / code block's natural width, which inflated .doc-body past the viewport
+       on mobile. 0 lets the column shrink to fit the track. */
+    grid-template-columns: minmax(0, 1fr);
   }
   .doc-toc {
     display: none;
   }
 }
 @media (max-width: 860px) {
-  .shell {
-    grid-template-columns: 1fr;
+  html,
+  body {
+    /* Only the content column scrolls; the rest is pinned chrome. */
+    overflow: hidden;
   }
-  .sidebar {
-    position: static;
-    height: auto;
-    border-right: none;
+  .shell {
+    /* Lock the shell to the viewport so nothing but the content region can
+       scroll. The fixed children (top bar / drawer / bottom bar / scrim)
+       anchor to the viewport and .content is the sole scrollable box. */
+    position: fixed;
+    inset: 0;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: none;
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+  }
+  /* Pinned brand + drawer toggle. */
+  .mobile-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: var(--topbar-h);
+    z-index: 80;
+    padding: env(safe-area-inset-top) 16px 0;
+    background: var(--surface);
     border-bottom: 1px solid var(--line);
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
+  }
+  .topbar-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .topbar-brand .brand-mark {
+    width: 26px;
+    height: 26px;
+    font-size: 14px;
+  }
+  .topbar-brand .brand-name {
+    font-size: 15px;
+  }
+  .topbar-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    padding: 0;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--surface-2);
+    color: var(--ink);
+    cursor: pointer;
+    transition: border-color 0.15s ease;
+  }
+  .topbar-toggle:hover {
+    border-color: var(--blue);
+  }
+
+  /* Off-canvas nav drawer sliding in from the left over a dim scrim. */
+  .sidebar {
+    position: fixed;
+    top: var(--topbar-h);
+    bottom: 0;
+    left: 0;
+    width: min(84vw, 320px);
+    height: auto;
+    max-height: none;
+    z-index: 70;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid var(--line);
+    background: var(--surface);
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.45);
+    transform: translateX(-100%);
+    visibility: hidden;
+    transition:
+      transform 0.24s ease,
+      visibility 0.24s ease;
+  }
+  .sidebar.nav-open {
+    transform: translateX(0);
+    visibility: visible;
+  }
+  .sidebar-scroll {
+    overflow-y: auto;
+    padding: 16px 16px 12px;
+  }
+  /* GitHub is reachable from the 吸底 bar instead; keep the footer row for
+     the language pill only. */
+  .sidebar-github {
+    justify-content: flex-end;
+  }
+  .sidebar-github a {
+    display: none;
+  }
+  .sidebar-github .lang-toggle {
+    flex: 0 0 auto;
+  }
+
+  /* Dim backdrop behind the open drawer; a tap closes it. */
+  .scrim {
+    display: block;
+    position: fixed;
+    top: var(--topbar-h);
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 50;
+    background: rgba(0, 0, 0, 0.55);
+    animation: scrim-in 0.24s ease both;
+  }
+  @keyframes scrim-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  /* Content is the ONLY scroll region: a fixed box inset between the pinned
+     top bar and the pinned bottom bar. */
+  .content {
+    position: fixed;
+    top: var(--topbar-h);
+    left: 0;
+    right: 0;
+    bottom: calc(var(--bottombar-h) + env(safe-area-inset-bottom));
+    height: auto;
+    min-height: 0;
+    padding: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
   }
   .content-inner {
-    padding: 24px 20px 0;
+    padding: 20px 16px calc(var(--bottombar-h) + env(safe-area-inset-bottom));
+  }
+
+  /* Pinned 吸底 bars: the GitHub bar sits above the content's bottom edge,
+     and the pager stacks just above the GitHub bar. */
+  .bottombar {
+    display: flex;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 60;
+    min-height: var(--bottombar-h);
+  }
+  .pager {
+    left: 0;
+    right: 0;
+    bottom: calc(var(--bottombar-h) + env(safe-area-inset-bottom));
+    z-index: 60;
+  }
+  .content-inner:has(.pager) {
+    padding-bottom: calc(var(--bottombar-h) + 84px + env(safe-area-inset-bottom));
   }
 }
