@@ -15,6 +15,9 @@ const STRINGS = {
     decks: "演示与题库 (Decks)",
     langLabel: "English",
     langTitle: "切换到 English",
+    // Mobile nav drawer
+    navOpen: "打开导航",
+    navClose: "关闭导航",
     // DocView
     docCrumb: "文档",
     docNotFound: "未找到文档",
@@ -34,6 +37,9 @@ const STRINGS = {
     decks: "Decks",
     langLabel: "中文",
     langTitle: "Switch to 中文",
+    // Mobile nav drawer
+    navOpen: "Open navigation",
+    navClose: "Close navigation",
     // DocView
     docCrumb: "Docs",
     docNotFound: "Doc not found",

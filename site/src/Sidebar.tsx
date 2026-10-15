@@ -9,12 +9,25 @@ const githubIcon = (
   </svg>
 );
 
-export function Sidebar({ route }: { route: Route }) {
+interface SidebarProps {
+  route: Route;
+  /** DOM id applied to the aside (used by the mobile toggle's aria-controls). */
+  id?: string;
+  /** True when the mobile drawer is open; flips the panel in. */
+  navOpen?: boolean;
+  /** Called after any nav-item is tapped so the drawer can close. */
+  onNavigate?: () => void;
+}
+
+export function Sidebar({ route, id, navOpen = false, onNavigate }: SidebarProps) {
   const { lang, setLang, t } = useLang();
   const catalog = catalogFor(lang);
   const activeKind = route.kind;
   const activeSlug =
     activeKind === "doc" ? route.slug : activeKind === "deck" ? route.slug : null;
+
+  // Tapping any nav link closes the drawer (mobile); on desktop this is a no-op.
+  const handleNav = () => onNavigate?.();
 
   // The language button flips the whole chrome and, when a translated twin of
   // the current doc exists, jumps straight to it (paired-slug docs).
@@ -22,10 +35,14 @@ export function Sidebar({ route }: { route: Route }) {
     const target = activeKind === "doc" ? counterpartSlug(route.slug) : null;
     setLang(nextLang(lang));
     if (target) navigate(ROUTES.doc(target));
+    handleNav();
   };
 
   return (
-    <aside className="sidebar">
+    <aside
+      id={id}
+      className={navOpen ? "sidebar nav-open" : "sidebar"}
+    >
       <div className="sidebar-head">
         <div className="brand">
           <div className="brand-mark">A</div>
@@ -39,12 +56,17 @@ export function Sidebar({ route }: { route: Route }) {
       <div className="sidebar-scroll">
         <nav className="nav-group">
           <div className="nav-label">{t.navigate}</div>
-          <a href={ROUTES.home} className={`nav-item ${activeKind === "home" ? "active" : ""}`}>
+          <a
+            href={ROUTES.home}
+            className={`nav-item ${activeKind === "home" ? "active" : ""}`}
+            onClick={handleNav}
+          >
             <span>{t.home}</span>
           </a>
           <a
             href={ROUTES.gallery}
             className={`nav-item ${activeKind === "gallery" ? "active" : ""}`}
+            onClick={handleNav}
           >
             <span>{t.gallery}</span>
           </a>
@@ -61,6 +83,7 @@ export function Sidebar({ route }: { route: Route }) {
                   activeKind === "doc" && activeSlug === item.slug ? "active" : ""
                 }`}
                 title={item.title}
+                onClick={handleNav}
               >
                 <span>{item.title}</span>
               </a>
@@ -77,6 +100,7 @@ export function Sidebar({ route }: { route: Route }) {
               className={`nav-item ${
                 activeKind === "deck" && activeSlug === d.slug ? "active" : ""
               }`}
+              onClick={handleNav}
             >
               <span>{d.title}</span>
             </a>
@@ -87,7 +111,12 @@ export function Sidebar({ route }: { route: Route }) {
       {/* Pinned footer: the GitHub entry and the language button form a matched
           pair of equal cells; neither scrolls with the menu. */}
       <div className="sidebar-github">
-        <a href={GITHUB_REPO} target="_blank" rel="noreferrer">
+        <a
+          href={GITHUB_REPO}
+          target="_blank"
+          rel="noreferrer"
+          onClick={handleNav}
+        >
           {githubIcon}
           <span>GitHub</span>
           <span className="ext-arrow">↗</span>

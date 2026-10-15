@@ -16,6 +16,8 @@
   --radius: 8px;
   --sidebar-w: 300px;
   --bottombar-h: 52px;
+  /* Pinned mobile top bar (brand + drawer toggle). Only shown at ≤860px. */
+  --topbar-h: 56px;
   /* Comfortable reading measure; the column itself grows with the viewport
      while prose is capped so it never becomes an unreadable wall of text. */
   --measure: 72ch;
@@ -980,6 +982,23 @@ a:hover {
   color: var(--cyan);
 }
 
+/* ===== Mobile top bar + drawer (≤860px only; hidden on desktop) =====
+   A pinned header carrying the brand and the drawer toggle. The sidebar
+   becomes an off-canvas panel that slides in from the left over a dim
+   scrim; only the content column scrolls. */
+.mobile-topbar {
+  display: none;
+}
+.topbar-brand {
+  display: none;
+}
+.topbar-toggle {
+  display: none;
+}
+.scrim {
+  display: none;
+}
+
 /* ===== Responsive ===== */
 @media (max-width: 1080px) {
   .doc-layout {
@@ -993,63 +1012,166 @@ a:hover {
   }
 }
 @media (max-width: 860px) {
+  html,
+  body {
+    /* Only the content column scrolls; the rest is pinned chrome. */
+    overflow: hidden;
+  }
   .shell {
-    /* minmax(0,1fr) keeps the single mobile track strictly bounded to the
-       viewport; a plain 1fr would let wide media (e.g. screenshots) inflate
-       the column and force the whole page into horizontal scroll. */
+    /* Lock the shell to the viewport so nothing but the content region can
+       scroll. The fixed children (top bar / drawer / bottom bar / scrim)
+       anchor to the viewport and .content is the sole scrollable box. */
+    position: fixed;
+    inset: 0;
     grid-template-columns: minmax(0, 1fr);
-    /* Mobile falls back to normal document flow: the page scrolls as a whole
-       and the sidebar is a stacked block above the content. */
-    grid-template-rows: auto;
-    height: auto;
-    min-height: 100vh;
-    overflow: visible;
-  }
-  .content {
-    height: auto;
+    grid-template-rows: none;
+    height: 100dvh;
     min-height: 0;
-    overflow: visible;
+    overflow: hidden;
   }
+  /* Pinned brand + drawer toggle. */
+  .mobile-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: var(--topbar-h);
+    z-index: 80;
+    padding: env(safe-area-inset-top) 16px 0;
+    background: var(--surface);
+    border-bottom: 1px solid var(--line);
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
+  }
+  .topbar-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .topbar-brand .brand-mark {
+    width: 26px;
+    height: 26px;
+    font-size: 14px;
+  }
+  .topbar-brand .brand-name {
+    font-size: 15px;
+  }
+  .topbar-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    padding: 0;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--surface-2);
+    color: var(--ink);
+    cursor: pointer;
+    transition: border-color 0.15s ease;
+  }
+  .topbar-toggle:hover {
+    border-color: var(--blue);
+  }
+
+  /* Off-canvas nav drawer sliding in from the left over a dim scrim. */
   .sidebar {
-    position: static;
+    position: fixed;
+    top: var(--topbar-h);
+    bottom: 0;
+    left: 0;
+    width: min(84vw, 320px);
     height: auto;
     max-height: none;
-    overflow: visible;
-    display: block;
-    border-right: none;
-    border-bottom: 1px solid var(--line);
+    z-index: 70;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid var(--line);
+    background: var(--surface);
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.45);
+    transform: translateX(-100%);
+    visibility: hidden;
+    transition:
+      transform 0.24s ease,
+      visibility 0.24s ease;
+  }
+  .sidebar.nav-open {
+    transform: translateX(0);
+    visibility: visible;
   }
   .sidebar-scroll {
-    overflow: visible;
+    overflow-y: auto;
     padding: 16px 16px 12px;
   }
-  /* GitHub is reachable from the mobile 吸底 bar instead; keep the footer
-     row only for the language pill. */
+  /* GitHub is reachable from the 吸底 bar instead; keep the footer row for
+     the language pill only. */
   .sidebar-github {
     justify-content: flex-end;
   }
   .sidebar-github a {
     display: none;
   }
-  /* GitHub is not rendered here; the lone language pill stays compact and
-     right-aligned instead of stretching across the row. */
   .sidebar-github .lang-toggle {
     flex: 0 0 auto;
   }
-  /* Full-width 吸底 GitHub bar. */
+
+  /* Dim backdrop behind the open drawer; a tap closes it. */
+  .scrim {
+    display: block;
+    position: fixed;
+    top: var(--topbar-h);
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 50;
+    background: rgba(0, 0, 0, 0.55);
+    animation: scrim-in 0.24s ease both;
+  }
+  @keyframes scrim-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  /* Content is the ONLY scroll region: a fixed box inset between the pinned
+     top bar and the pinned bottom bar. */
+  .content {
+    position: fixed;
+    top: var(--topbar-h);
+    left: 0;
+    right: 0;
+    bottom: calc(var(--bottombar-h) + env(safe-area-inset-bottom));
+    height: auto;
+    min-height: 0;
+    padding: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .content-inner {
+    padding: 20px 16px calc(var(--bottombar-h) + env(safe-area-inset-bottom));
+  }
+
+  /* Pinned 吸底 bars: the GitHub bar sits above the content's bottom edge,
+     and the pager stacks just above the GitHub bar. */
   .bottombar {
     display: flex;
     left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 60;
     min-height: var(--bottombar-h);
   }
-  /* Pager stacks just above the GitHub bar on mobile (吸底, scroll-independent). */
   .pager {
     left: 0;
+    right: 0;
     bottom: calc(var(--bottombar-h) + env(safe-area-inset-bottom));
-  }
-  /* Clear the GitHub bar on every mobile page; add the pager's height on pager pages. */
-  .content-inner {
-    padding: 24px 20px calc(var(--bottombar-h) + env(safe-area-inset-bottom));
+    z-index: 60;
   }
   .content-inner:has(.pager) {
     padding-bottom: calc(var(--bottombar-h) + 84px + env(safe-area-inset-bottom));
