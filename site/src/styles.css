@@ -16,6 +16,12 @@
   --radius: 8px;
   --sidebar-w: 300px;
   --bottombar-h: 52px;
+  /* Comfortable reading measure; the column itself grows with the viewport
+     while prose is capped so it never becomes an unreadable wall of text. */
+  --measure: 72ch;
+  /* Fluid side gutter for the content column: tracks the window width instead
+     of a fixed 40px, so the column adapts across desktop sizes. */
+  --content-gutter: clamp(24px, 4.5vw, 72px);
   --display: "Avenir Next Condensed", "DIN Condensed", "Avenir Next", sans-serif;
   --body: "Avenir Next", "Helvetica Neue", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
   --mono: "SFMono-Regular", Menlo, Monaco, Consolas, monospace;
@@ -240,10 +246,33 @@ a:hover {
   overscroll-behavior: contain;
   padding: 0 0 80px;
 }
+/* The column fills the content grid cell and follows the window width (fluid
+   side gutters, no 1200px cap), so on wide desktop it stretches instead of
+   leaving dead margins; inside it, prose is capped to a readable measure. */
 .content-inner {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 32px 40px 0;
+  max-width: none;
+  margin: 0;
+  padding: 32px var(--content-gutter) 0;
+}
+/* Uncapped prose gets a comfortable measure so it stops stretching
+   edge-to-edge on wide desktop. Elements that already carry a tighter cap
+   (`.page-desc`, `.hero p`), the bordered `.hero` card, and code blocks
+   (`.pre`, horizontal-scroll by design) keep their own width, so the column
+   still feels adaptive at any size. */
+.content-inner .doc-body p,
+.content-inner .doc-body ul,
+.content-inner .doc-body ol,
+.content-inner .doc-body blockquote {
+  max-width: var(--measure);
+}
+/* Images scale down to the column instead of forcing the page wider; a
+   landscape screenshot (e.g. the desktop-console capture) must never create
+   horizontal scroll on a narrow viewport. */
+.content-inner .doc-body img {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
 }
 
 .crumb {
@@ -954,7 +983,10 @@ a:hover {
 /* ===== Responsive ===== */
 @media (max-width: 1080px) {
   .doc-layout {
-    grid-template-columns: 1fr;
+    /* minmax(0,1fr) (not 1fr): a plain 1fr track grows to the widest table
+       / code block's natural width, which inflated .doc-body past the viewport
+       on mobile. 0 lets the column shrink to fit the track. */
+    grid-template-columns: minmax(0, 1fr);
   }
   .doc-toc {
     display: none;
@@ -962,7 +994,10 @@ a:hover {
 }
 @media (max-width: 860px) {
   .shell {
-    grid-template-columns: 1fr;
+    /* minmax(0,1fr) keeps the single mobile track strictly bounded to the
+       viewport; a plain 1fr would let wide media (e.g. screenshots) inflate
+       the column and force the whole page into horizontal scroll. */
+    grid-template-columns: minmax(0, 1fr);
     /* Mobile falls back to normal document flow: the page scrolls as a whole
        and the sidebar is a stacked block above the content. */
     grid-template-rows: auto;
