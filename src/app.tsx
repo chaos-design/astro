@@ -29,6 +29,7 @@ import {
   Sparkles,
   TerminalSquare,
   Trash2,
+  X,
 } from "lucide-react";
 import {
   memo,
@@ -237,6 +238,12 @@ function scrollRowWithinContainer(
     (container.clientHeight - rowBounds.height) / 2;
 }
 
+/**
+ * Id shared by the mobile nav toggle and the header actions it discloses. The
+ * same element is the horizontal desktop nav, so it is never aria-hidden.
+ */
+const headerNavMenuId = "studio-header-nav-menu";
+
 // Reused Intl formatters: constructing one per call is expensive, and these
 // run for every log/trajectory row on every render.
 const clockFormatter = new Intl.DateTimeFormat(undefined, {
@@ -407,6 +414,68 @@ function findTransitionEdges(
         .filter((edge) => edge.target === toId || edge.source === toId)
         .map((edge) => edge.id),
     )
+  );
+}
+
+/**
+ * Subscribes to a CSS media query so the header can drop its mobile-only
+ * disclosure state as soon as the viewport grows past the breakpoint.
+ */
+function useMediaQuery(query: string) {
+  const [matches, setMatches] = useState(() => window.matchMedia(query).matches);
+
+  useEffect(() => {
+    const media = window.matchMedia(query);
+    const sync = () => setMatches(media.matches);
+    sync();
+    media.addEventListener("change", sync);
+    return () => media.removeEventListener("change", sync);
+  }, [query]);
+
+  return matches;
+}
+
+/**
+ * One trace-level action (import / export / clear). The desktop brand menu and
+ * the collapsed mobile header menu share the same list so both stay in step.
+ */
+type HeaderNavAction = {
+  id: string;
+  label: string;
+  icon: typeof Menu;
+  disabled?: boolean;
+  danger?: boolean;
+  run: () => void;
+};
+
+function HeaderNavActions({
+  actions,
+  onSelect,
+}: {
+  actions: ReadonlyArray<HeaderNavAction>;
+  onSelect: () => void;
+}) {
+  return (
+    <>
+      {actions.map(({ id, label, icon: Icon, disabled, danger, run }) => (
+        <button
+          key={id}
+          type="button"
+          className={cn(
+            "nav-menu__action",
+            danger ? "action-menu__danger is-danger" : "",
+          )}
+          disabled={disabled}
+          onClick={() => {
+            run();
+            onSelect();
+          }}
+        >
+          <Icon />
+          {label}
+        </button>
+      ))}
+    </>
   );
 }
 
@@ -2293,6 +2362,9 @@ export default function App() {
   const [guideOpen, setGuideOpen] = useState<boolean>(appDefaults.guideOpen);
   const [historySearchOpen, setHistorySearchOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState<boolean>(appDefaults.menuOpen);
+  // Mobile-only: the header nav collapses into a disclosure below the same
+  // breakpoint the stylesheet uses, so this state is meaningless on desktop.
+  const [navMenuOpen, setNavMenuOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(
     () =>
       readStorageBoolean(
@@ -2373,6 +2445,59 @@ export default function App() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const preserveAtomSelectionRef = useRef(false);
   const previousAtomRef = useRef("");
+  const navMenuRef = useRef<HTMLDivElement | null>(null);
+  const navToggleRef = useRef<HTMLButtonElement | null>(null);
+  const headerNavCollapsed = useMediaQuery(
+    `(max-width: ${appLayout.headerNavCollapseMaxWidth}px)`,
+  );
+
+  const closeNavMenu = useCallback((restoreFocus = false) => {
+    setNavMenuOpen(false);
+    if (restoreFocus) {
+      navToggleRef.current?.focus();
+    }
+  }, []);
+
+  // A viewport that grows past the breakpoint restores the horizontal nav, so
+  // the disclosure state must not survive the resize.
+  useEffect(() => {
+    if (!headerNavCollapsed) {
+      setNavMenuOpen(false);
+    }
+  }, [headerNavCollapsed]);
+
+  useEffect(() => {
+    if (!navMenuOpen) {
+      return undefined;
+    }
+    // Move focus into the panel so keyboard users land on the first control.
+    navMenuRef.current
+      ?.querySelector<HTMLElement>("button:not([disabled]), [role='combobox']")
+      ?.focus();
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (
+        !target ||
+        navMenuRef.current?.contains(target) ||
+        navToggleRef.current?.contains(target)
+      ) {
+        return;
+      }
+      closeNavMenu();
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") {
+        return;
+      }
+      closeNavMenu(true);
+    };
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [closeNavMenu, navMenuOpen]);
 
   useEffect(() => {
     writeStorageValue(window.localStorage, storageKeys.inspectorTab, inspectorTab);
@@ -3128,6 +3253,31 @@ export default function App() {
     }, 320);
   }, [filteredSessions, now]);
 
+  const headerNavActions: ReadonlyArray<HeaderNavAction> = [
+    {
+      id: "import",
+      label: "Import run",
+      icon: FileInput,
+      run: () => fileInputRef.current?.click(),
+    },
+    {
+      id: "export",
+      label: "Export run",
+      icon: Download,
+      disabled: !activeSession,
+      run: exportTrace,
+    },
+    {
+      id: "clear",
+      label: "Clear local events",
+      icon: Trash2,
+      danger: true,
+      run: () => {
+        void clearEvents();
+      },
+    },
+  ];
+
   return (
     <main className="studio-shell">
       <header className="studio-header">
@@ -3153,38 +3303,10 @@ export default function App() {
             </IconAction>
             {menuOpen ? (
               <div className="action-menu">
-                <button
-                  type="button"
-                  onClick={() => {
-                    fileInputRef.current?.click();
-                    setMenuOpen(false);
-                  }}
-                >
-                  <FileInput />
-                  Import run
-                </button>
-                <button
-                  type="button"
-                  disabled={!activeSession}
-                  onClick={() => {
-                    exportTrace();
-                    setMenuOpen(false);
-                  }}
-                >
-                  <Download />
-                  Export run
-                </button>
-                <button
-                  type="button"
-                  className="action-menu__danger"
-                  onClick={() => {
-                    clearEvents();
-                    setMenuOpen(false);
-                  }}
-                >
-                  <Trash2 />
-                  Clear local events
-                </button>
+                <HeaderNavActions
+                  actions={headerNavActions}
+                  onSelect={() => setMenuOpen(false)}
+                />
               </div>
             ) : null}
           </div>
@@ -3208,7 +3330,12 @@ export default function App() {
             </strong>
           </div>
         </div>
-        <div className="studio-header__actions">
+        <div
+          className="studio-header__actions"
+          id={headerNavMenuId}
+          ref={navMenuRef}
+          data-open={navMenuOpen}
+        >
           <Button
             type="button"
             variant="outline"
@@ -3220,7 +3347,10 @@ export default function App() {
               "history-search-trigger",
               historySearchOpen && "is-active",
             )}
-            onClick={() => setHistorySearchOpen(true)}
+            onClick={() => {
+              setHistorySearchOpen(true);
+              setNavMenuOpen(false);
+            }}
           >
             <Search data-icon="inline-start" />
             <span>Search history</span>
@@ -3236,7 +3366,25 @@ export default function App() {
             {connected ? "accepted" : isDemo ? "demo" : "offline"}
           </span>
           <ThemeSwitcher theme={theme} onChange={setTheme} />
+          <div className="nav-menu__group">
+            <HeaderNavActions
+              actions={headerNavActions}
+              onSelect={() => setNavMenuOpen(false)}
+            />
+          </div>
         </div>
+        <IconAction
+          ref={navToggleRef}
+          label={navMenuOpen ? "关闭导航菜单" : "打开导航菜单"}
+          className={cn("studio-header__nav-toggle", navMenuOpen && "is-active")}
+          aria-expanded={navMenuOpen}
+          aria-controls={headerNavMenuId}
+          onClick={() =>
+            navMenuOpen ? closeNavMenu(true) : setNavMenuOpen(true)
+          }
+        >
+          {navMenuOpen ? <X /> : <Menu />}
+        </IconAction>
       </header>
 
       <section

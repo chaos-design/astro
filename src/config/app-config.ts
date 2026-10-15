@@ -60,11 +60,19 @@ export const appTimings = {
 } as const;
 
 /**
- * Stable layout constraints for dense, nested history content.
+ * Stable layout constraints for dense, nested history content and the
+ * responsive studio header.
  */
 export const appLayout = {
   historyPromptListMaxHeight: 270,
   historyPromptRowEstimate: 116,
+  /**
+   * Viewport width (px) at and below which the studio header collapses its
+   * horizontal nav into the mobile disclosure menu. Must stay in step with the
+   * `@media (max-width: 900px)` header rules in src/styles.css; the assertion
+   * in tests/app-config.test.ts keeps the two from drifting apart.
+   */
+  headerNavCollapseMaxWidth: 900,
 } as const;
 
 /**
