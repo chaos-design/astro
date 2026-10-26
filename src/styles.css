@@ -4,6 +4,45 @@
 @import "@fontsource-variable/geist";
 @import "@fontsource-variable/geist-mono";
 
+/*
+ * shadcn token bridge: the ui/ components style themselves with semantic
+ * Tailwind utilities (bg-popover, text-muted-foreground, border-input, ...)
+ * which Tailwind only generates when these --color-* theme tokens exist.
+ * They forward to the app palette below, so light/dark themes keep working.
+ */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--secondary);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
 @custom-variant dark (&:is(.dark *));
 
 :root,
@@ -500,6 +539,44 @@ pre,
   align-items: center;
   justify-self: end;
   gap: 10px;
+}
+
+/* Mobile-only affordances. The nav toggle and the trace-action group live in
+ * the same markup as the horizontal nav; the collapsed-width block in the
+ * media query below is what activates them. */
+.studio-header__nav-toggle {
+  display: none;
+}
+
+.nav-menu__group {
+  display: none;
+}
+
+.nav-menu__action {
+  display: flex;
+  min-height: 32px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px;
+  border-radius: 5px;
+  color: var(--muted-soft);
+  text-align: left;
+  background: transparent;
+  font-size: 10px;
+}
+
+.nav-menu__action:hover {
+  color: var(--text);
+  background: var(--panel-hover);
+}
+
+.nav-menu__action svg {
+  width: 14px;
+  height: 14px;
+}
+
+.nav-menu__action.is-danger {
+  color: var(--red);
 }
 
 .history-search-trigger {
@@ -1487,8 +1564,7 @@ pre,
 .run-history__tooltip {
   display: flex;
   width: min(320px, calc(100vw - 24px));
-  max-height: min(420px, calc(100vh - 24px));
-  overflow: auto;
+  padding: 6px 12px;
   flex-direction: column;
   gap: 5px;
 }
@@ -1499,11 +1575,138 @@ pre,
   overflow-wrap: anywhere;
 }
 
+/* Long run titles clamp at six lines; clicking the title toggles the rest. */
+.run-history__title {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 6;
+}
+
+.run-history__title.is-expanded {
+  display: block;
+  overflow: visible;
+}
+
+.run-history__title.is-toggleable {
+  cursor: pointer;
+}
+
+.run-history__title.is-toggleable:hover {
+  color: var(--text-strong);
+}
+
 .run-history__tooltip span {
   color: var(--muted-soft);
   font-family: var(--font-mono);
   font-size: 9px;
   overflow-wrap: anywhere;
+}
+
+/* Field labels inside the card carry the theme accent so they read as tags
+ * distinct from their muted values; both sides stay theme-driven. */
+.run-history__tooltip .run-history__tooltip-label {
+  color: color-mix(in srgb, var(--cyan) 78%, var(--muted-soft));
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.08em;
+}
+
+/*
+ * The run's working directory. Only the last segment is rendered; it is plain
+ * text now — the row's hover card carries the full path, so the chip itself
+ * has no separate hover affordance.
+ */
+.run-history__path {
+  display: inline-flex;
+  max-width: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted-soft);
+  font-family: var(--font-mono);
+  font-size: 9px;
+}
+
+.run-history__path > svg {
+  width: 11px;
+  height: 11px;
+  flex: none;
+  color: var(--muted);
+}
+
+.run-history__path-name {
+  overflow: hidden;
+  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Branch badge next to the workspace label. Long branch names ellipsize; the
+ * full name is one hover away via the native title. */
+.run-history__branch {
+  overflow: hidden;
+  min-width: 0;
+  max-width: 88px;
+  padding: 0 5px;
+  border: 1px solid color-mix(in srgb, var(--teal) 38%, transparent);
+  border-radius: 4px;
+  color: var(--teal);
+  background: color-mix(in srgb, var(--teal) 12%, transparent);
+  font-size: 8px;
+  line-height: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.run-history__path.is-unknown,
+.run-history__path.is-unknown > svg {
+  color: var(--status-failed);
+}
+
+.run-history__row.is-selected .run-history__path,
+.run-history__row.is-selected .run-history__path > svg {
+  color: var(--selection-muted);
+}
+
+/*
+ * One hover card per list. Positioned imperatively so following a row while the
+ * list scrolls never re-renders anything. It accepts pointer events on purpose:
+ * the pointer has to be able to move onto it, which is what keeps it open while
+ * long content is read or scrolled inside its capped height.
+ */
+.run-history__hovercard {
+  position: fixed;
+  z-index: 60;
+  top: 0;
+  left: 0;
+  visibility: hidden;
+  animation: run-history-hovercard-in 120ms ease-out;
+}
+
+/*
+ * The scrolling surface is the card itself, so its scrollbar hugs the bubble's
+ * right edge; the inner tooltip only carries the horizontal padding.
+ */
+.run-history__card {
+  max-height: min(300px, calc(100vh - 24px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--line-bright);
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--panel-raised);
+  box-shadow: 0 10px 28px rgb(0 0 0 / 38%);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+@keyframes run-history-hovercard-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .canvas-column {
@@ -4787,6 +4990,9 @@ pre,
   }
 }
 
+/* Collapsed header nav: the horizontal action row becomes the panel disclosed
+ * by the toggle in the `nav` area. Keep the breakpoint in step with
+ * appLayout.headerNavCollapseMaxWidth in src/config/app-config.ts. */
 @media (max-width: 900px) {
   .studio-shell {
     grid-template-rows: auto minmax(0, 1fr);
@@ -4794,10 +5000,13 @@ pre,
 
   .studio-header {
     grid-template-areas:
-      "brand actions"
+      "brand nav"
       "observer observer";
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 7px 10px;
+    /* Above the fixed side panels (z-index 40) so the disclosed menu is not
+     * covered by an expanded history or log column. */
+    z-index: 50;
     min-height: 94px;
     padding: 8px 10px;
   }
@@ -4812,8 +5021,61 @@ pre,
     padding: 0 4px;
   }
 
+  /* The trace-action menu is folded into the nav panel below, so the brand
+   * keeps a single control instead of two competing menus. */
+  .menu-control {
+    display: none;
+  }
+
+  .studio-header__nav-toggle {
+    display: inline-flex;
+    grid-area: nav;
+    justify-self: end;
+  }
+
   .studio-header__actions {
-    grid-area: actions;
+    position: absolute;
+    z-index: 60;
+    top: calc(100% + 6px);
+    right: 10px;
+    display: none;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    width: max-content;
+    min-width: 184px;
+    max-width: calc(100vw - 20px);
+    max-height: calc(100dvh - 110px);
+    padding: 7px;
+    overflow-y: auto;
+    border: 1px solid var(--line-bright);
+    border-radius: 8px;
+    background: var(--panel-raised);
+    box-shadow: 0 18px 40px rgb(0 0 0 / 38%);
+  }
+
+  .studio-header__actions[data-open="true"] {
+    display: flex;
+  }
+
+  .studio-header__actions .history-search-trigger {
+    width: 100%;
+  }
+
+  .studio-header__actions .run-status {
+    min-width: 0;
+    font-size: var(--text-meta);
+  }
+
+  .studio-header__actions .theme-select {
+    width: 100%;
+  }
+
+  .nav-menu__group {
+    display: grid;
+    gap: 3px;
+    padding-top: 6px;
+    border-top: 1px solid var(--line);
   }
 
   .studio-workspace,

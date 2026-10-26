@@ -35,6 +35,9 @@ export const ROUTES = {
   deck: (slug: string) => `#/deck/${slug}`,
 } as const;
 
+/** External repository link (surfaced in the sidebar footer and bottom bar). */
+export const GITHUB_REPO = "https://github.com/chaos-design/astro";
+
 export function navigate(route: string): void {
   window.location.hash = route;
 }

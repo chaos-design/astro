@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   isFollowingLive,
+  isLiveFollowingLatest,
   isPromptExecuting,
   resolveLocateAtomId,
   resolveSelectedAtomId,
@@ -84,4 +85,23 @@ test("locates a manual atom before the executing or mapped atom", () => {
     "harness-output-commit",
   );
   assert.equal(resolveLocateAtomId(undefined, "", ""), "");
+});
+
+test("Live tracking follows the newest executed atom", () => {
+  // An absent selection follows automatically.
+  assert.equal(isLiveFollowingLatest(undefined, "harness-tool-call"), true);
+  // Selecting the newest executed atom keeps Live on it.
+  assert.equal(isLiveFollowingLatest("harness-tool-call", "harness-tool-call"), true);
+  // Selecting an older atom has left Live mode.
+  assert.equal(isLiveFollowingLatest("harness-model-invoke", "harness-tool-call"), false);
+  // An empty or cleared selection is not following either.
+  assert.equal(isLiveFollowingLatest(null, "harness-tool-call"), false);
+  assert.equal(isLiveFollowingLatest("", "harness-tool-call"), false);
+});
+
+test("Live tracking exits when newer events leave a pinned atom behind", () => {
+  // The user pinned what was the newest atom; a newer event maps elsewhere.
+  assert.equal(isLiveFollowingLatest("harness-tool-call", "harness-output-commit"), false);
+  // The pulse rides forward with the newest event while still following.
+  assert.equal(isLiveFollowingLatest(undefined, "harness-output-commit"), true);
 });

@@ -74,11 +74,13 @@ const sectionBySlug: Record<string, string> = {
   index: "top",
   "user-manual-zh": "zh",
   "event-protocol-zh": "zh",
+  "data-definitions-zh": "zh",
   "architecture-zh": "zh",
   "operations-zh": "zh",
   "implementation-details-zh": "zh",
   "user-manual-en": "en",
   "event-protocol-en": "en",
+  "data-definitions-en": "en",
   "architecture-en": "en",
   "operations-en": "en",
   "implementation-details-en": "en",
@@ -90,6 +92,7 @@ const readingOrder: Record<string, string[]> = {
   zh: [
     "user-manual-zh",
     "event-protocol-zh",
+    "data-definitions-zh",
     "architecture-zh",
     "operations-zh",
     "implementation-details-zh",
@@ -97,6 +100,7 @@ const readingOrder: Record<string, string[]> = {
   en: [
     "user-manual-en",
     "event-protocol-en",
+    "data-definitions-en",
     "architecture-en",
     "operations-en",
     "implementation-details-en",
@@ -134,7 +138,7 @@ for (const section of sections) {
   }
 }
 
-export const docCatalog = catalog;
+export const docCatalog: DocCatalog = catalog;
 
 /** Resolve a hash route "#/doc/<slug>" to its raw markdown. */
 export function getDoc(slug: string): { raw: string; item: DocItem } | null {
@@ -147,16 +151,56 @@ export function sectionOf(slug: string): DocSection | null {
   return catalog.sections.find((s) => s.items.some((i) => i.slug === slug)) ?? null;
 }
 
-/** Flatten slugs in reading order (section order, not alphabetical). */
-export function orderedDocSlugs(): string[] {
-  return catalog.sections.flatMap((s) => s.items.map((i) => i.slug));
-}
-
 /** Language of a doc slug ("-zh" / "-en" suffix), or null for language-neutral docs. */
 export function docLang(slug: string): "zh" | "en" | null {
   if (slug.endsWith("-zh")) return "zh";
   if (slug.endsWith("-en")) return "en";
   return null;
+}
+
+export type Lang = "zh" | "en";
+export const LANGS: Lang[] = ["zh", "en"];
+
+/** Localized section titles, keyed by section id. */
+const SECTION_TITLES: Record<string, Record<Lang, string>> = {
+  top: { zh: "总览", en: "Overview" },
+  zh: { zh: "文档", en: "Documentation" },
+  en: { zh: "文档", en: "Documentation" },
+  common: { zh: "通用", en: "Common" },
+};
+
+const catalogCache: Partial<Record<Lang, DocCatalog>> = {};
+
+/**
+ * Catalog filtered to one language: paired docs only appear in the language
+ * currently selected, language-neutral docs (index, plugin-installation) stay
+ * in both, and empty sections are dropped with localized titles.
+ */
+export function catalogFor(lang: Lang): DocCatalog {
+  const cached = catalogCache[lang];
+  if (cached) return cached;
+  const filtered: DocSection[] = [];
+  for (const section of catalog.sections) {
+    const items = section.items.filter((item) => {
+      const itemLang = docLang(item.slug);
+      return itemLang === null || itemLang === lang;
+    });
+    if (items.length === 0) continue;
+    filtered.push({
+      id: section.id,
+      title: SECTION_TITLES[section.id]?.[lang] ?? section.title,
+      blurb: section.blurb,
+      items,
+    });
+  }
+  const built: DocCatalog = { sections: filtered, index: catalog.index };
+  catalogCache[lang] = built;
+  return built;
+}
+
+/** Flatten slugs of a language-filtered catalog in reading order. */
+export function orderedDocSlugs(lang: Lang): string[] {
+  return catalogFor(lang).sections.flatMap((s) => s.items.map((i) => i.slug));
 }
 
 /**
