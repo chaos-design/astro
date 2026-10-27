@@ -1,6 +1,6 @@
 {
   "name": "astro",
-  "version": "0.0.3-alpha.3",
+  "version": "0.0.3-alpha.4",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@11.21.0",
