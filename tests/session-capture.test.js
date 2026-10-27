@@ -188,7 +188,7 @@ test("sends a complete snapshot on first connection and after a missed followup 
   const url = await startServer(t, environment);
   const first = await readHandshake(url);
   assert.deepEqual(first.map((message) => message.name), ["reset", "ready"]);
-  assert.deepEqual(first[0].data.map((event) => event.id).sort(), firstTurn.map((event) => event.id).sort());
+  assert.deepEqual(first[0].data.events.map((event) => event.id).sort(), firstTurn.map((event) => event.id).sort());
 
   const nextTurn = ["UserPromptSubmit", "Stop"].map((eventName) =>
     recorder.appendTraceEvent({
@@ -204,7 +204,7 @@ test("sends a complete snapshot on first connection and after a missed followup 
   assert.deepEqual(second.map((message) => message.name), ["reset", "ready"]);
   assert.equal(second[1].data.eventCount, 4);
   assert.deepEqual(
-    second[0].data.map((event) => event.id).sort(),
+    second[0].data.events.map((event) => event.id).sort(),
     [...firstTurn, ...nextTurn].map((event) => event.id).sort(),
   );
   const traceFile = recorder.resolveTraceFile(firstTurn[0], environment, { source: "trae" });
