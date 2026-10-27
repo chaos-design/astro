@@ -137,6 +137,19 @@ Guide 的观测列表保留语义化 `ul` / `li`，使用原生 `disc` 标记。
 提高到 12 px，说明从 8 px 提高到 10 px；只改善缩放后的阅读，不改变领域几何、
 节点位置或正交路由。
 
+### 运行历史中的活动消息
+
+正在执行的消息在三处同时标识，使定位不依赖滚动：
+
+- 面板标题常驻 `N LIVE` 芯片，点击即把首条活动消息滚动到列表中部；
+- 活动行使用 `inset 2px` 的状态色左缘，`active` 为紫色、`waiting` 为琥珀色；
+- 标签行额外渲染带脉冲圆点的 `RUNNING` / `WAITING` 胶囊，与 `STATUS` 标签并列。
+
+活动状态由 `isLiveRunStatus` 判定，覆盖 `active` 与 `waiting`。选中态优先于活动色，
+因此被选中的活动行仍保留选择边框。已完成的消息（`complete` / `failed` /
+`terminated`）不再自动定位到最后一个原子：`getPromptAtomSelection` 对非活动状态返回
+`null`，拓扑保持未选中，只有人工点击原子才会定位。
+
 ## 7. 共享运行时配置
 
 > **状态：已实现。** 配置加载、入口接入、安装保留、原生插件打包与回归验证均已完成。
@@ -183,6 +196,7 @@ git diff --check
 | 责任 | 代码 | 测试 |
 | --- | --- | --- |
 | 状态、Prompt 与超时 | `src/lib/trace-model.ts`、`src/lib/run-history-state.ts` | `tests/trace-model.test.ts`、`tests/run-history-state.test.ts` |
+| 运行历史活动标记 | `src/lib/run-history-state.ts`、`src/app.tsx`、`src/styles.css` | `tests/run-history-state.test.ts`、`tests/run-history-live-contract.test.ts` |
 | 搜索与定位 | `src/lib/history-search.ts`、`src/app.tsx` | `tests/history-search.test.ts`、`tests/atom-selection.test.ts` |
 | 用户问题投影 | `src/lib/trace-event-kind.ts`、`src/lib/atomic-projection.ts` | `tests/user-question-projection.test.ts` |
 | 存储路径迁移 | `plugin/storage-paths.cjs`、`scripts/migrate-data.mjs` | `tests/storage-paths.test.cjs`、`tests/migrate-data.test.js` |

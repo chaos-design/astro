@@ -6,6 +6,7 @@ import {
   getRunHistoryDisplayState,
   getRunHistoryDisplayStatus,
   getRunHistoryDuration,
+  isLiveRunStatus,
   toggleExpandedRun,
 } from "../src/lib/run-history-state.ts";
 
@@ -182,14 +183,26 @@ test("ensures only the active run changes its automatic expansion", () => {
   assert.deepEqual([...current], ["run-a", "run-b"]);
 });
 
-test("only an active Prompt starts in automatic atom-following mode", () => {
-  assert.equal(
-    getPromptAtomSelection("active", "harness-tool-call"),
-    undefined,
-  );
-  assert.equal(
-    getPromptAtomSelection("complete", "harness-output-commit"),
-    "harness-output-commit",
-  );
-  assert.equal(getPromptAtomSelection("failed", ""), null);
+test("only a live Prompt starts in automatic atom-following mode", () => {
+  assert.equal(getPromptAtomSelection("active"), undefined);
+  assert.equal(getPromptAtomSelection("waiting"), undefined);
+});
+
+test("a finished Prompt leaves the topology unlocated", () => {
+  for (const status of ["complete", "failed", "terminated", undefined]) {
+    assert.equal(
+      getPromptAtomSelection(status),
+      null,
+      `${status} must not locate the last atom`,
+    );
+  }
+});
+
+test("treats executing and waiting runs as live", () => {
+  for (const status of ["active", "waiting"]) {
+    assert.equal(isLiveRunStatus(status), true, status);
+  }
+  for (const status of ["complete", "failed", "terminated", "demo", undefined]) {
+    assert.equal(isLiveRunStatus(status), false, String(status));
+  }
 });

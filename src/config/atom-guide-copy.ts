@@ -268,12 +268,14 @@ export const guideHistoryStatusItems: Array<GuideCopy & { id: string }> = [
   {
     id: "active",
     label: "紫色 · Active",
-    description: "最后一条 Prompt 正在执行，父行时长持续更新，默认最多 24 小时。",
+    description:
+      "最后一条 Prompt 正在执行，父行时长持续更新，默认最多 24 小时；行内以 RUNNING 胶囊和紫色左缘标识。",
   },
   {
     id: "waiting",
     label: "琥珀色 · Waiting",
-    description: "最后一条 Prompt 正在等待，父行时长停止更新。",
+    description:
+      "最后一条 Prompt 正在等待，父行时长停止更新；行内以 WAITING 胶囊和琥珀色左缘标识。",
   },
   {
     id: "complete",
@@ -293,7 +295,7 @@ export const guideHistoryStatusItems: Array<GuideCopy & { id: string }> = [
 ];
 
 export const guideHistoryStatusDescription =
-  "父行图标和状态取最后一条 Prompt；没有 Prompt 时回退 Session 状态。";
+  "父行图标和状态取最后一条 Prompt；没有 Prompt 时回退 Session 状态。已完成的消息不会自动定位到最后一个原子。";
 
 export const guideHighlightItems: Array<GuideCopy & { id: string }> = [
   {

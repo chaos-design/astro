@@ -157,6 +157,24 @@ The Guide observability list keeps semantic `ul` / `li` markup and native
 from 8 px to 10 px. These changes improve fitted-canvas readability without
 changing domain geometry, node positions, or orthogonal routes.
 
+### Live messages in Run History
+
+The executing message is marked in three places so locating it never depends on
+scrolling:
+
+- the panel header keeps an `N LIVE` chip that scrolls the first live message
+  to the middle of the list;
+- a live row draws an `inset 2px` status accent, purple for `active` and amber
+  for `waiting`;
+- the tag row gains a pulsing `RUNNING` / `WAITING` capsule next to `STATUS`.
+
+`isLiveRunStatus` owns the live definition (`active` and `waiting`). Selection
+wins over the accent, so a selected live row keeps its selection border.
+Finished messages (`complete` / `failed` / `terminated`) no longer locate the
+last atom automatically: `getPromptAtomSelection` returns `null` for every
+non-live status, leaving the topology unselected until an atom is picked by
+hand.
+
 ## 7. Runtime Configuration
 
 The installer creates two user-owned files under
@@ -205,6 +223,7 @@ conflicting copies of behavior in README files, components, and presentations.
 | Responsibility | Code | Tests |
 | --- | --- | --- |
 | State, Prompt, and timeout | `src/lib/trace-model.ts`, `src/lib/run-history-state.ts` | `tests/trace-model.test.ts`, `tests/run-history-state.test.ts` |
+| Live run markers | `src/lib/run-history-state.ts`, `src/app.tsx`, `src/styles.css` | `tests/run-history-state.test.ts`, `tests/run-history-live-contract.test.ts` |
 | Search and location | `src/lib/history-search.ts`, `src/app.tsx` | `tests/history-search.test.ts`, `tests/atom-selection.test.ts` |
 | User-question projection | `src/lib/trace-event-kind.ts`, `src/lib/atomic-projection.ts` | `tests/user-question-projection.test.ts` |
 | Storage migration | `plugin/storage-paths.cjs`, `scripts/migrate-data.mjs` | `tests/storage-paths.test.cjs`, `tests/migrate-data.test.js` |

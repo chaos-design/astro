@@ -85,12 +85,20 @@ export function ensureExpandedRun(
   return next;
 }
 
+/**
+ * `active` and `waiting` are the two live states: the run is still the one the
+ * user is watching, so the topology keeps following the executing atom.
+ * A finished run (complete/failed/terminated) has no atom to follow: the last
+ * atom is a historical position, not "where execution is", so selecting the
+ * run must not auto-locate it. Only an explicit atom pick does that.
+ */
 export function getPromptAtomSelection(
   status: string | undefined,
-  mappedAtomId: string,
 ): string | null | undefined {
-  if (status === "active") {
-    return undefined;
-  }
-  return mappedAtomId || null;
+  return isLiveRunStatus(status) ? undefined : null;
+}
+
+/** Whether a run status still counts as the currently executing message. */
+export function isLiveRunStatus(status: string | undefined): boolean {
+  return status === "active" || status === "waiting";
 }

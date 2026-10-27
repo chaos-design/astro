@@ -53,6 +53,20 @@ use Node.js ES modules or CommonJS according to their existing file extension.
 - Expired selected runs must not keep live topology animation or running log
   markers active.
 
+## Run History Live Markers
+
+- `isLiveRunStatus` is the single definition of a live run (`active` and
+  `waiting`). RUN HISTORY must not invent extra live states.
+- A live message is marked on the row (status accent plus a `RUNNING` /
+  `WAITING` capsule) and in the panel header (`N LIVE` chip that scrolls the
+  first live row into view), so the executing message is findable without
+  scrolling.
+- Selection styling outranks the live accent; a selected live row keeps its
+  selection border.
+- Finished messages (`complete` / `failed` / `terminated`) do not auto-locate
+  the last atom: `getPromptAtomSelection` returns `null` for every non-live
+  status, and only an explicit atom pick locates the topology.
+
 ## Event Labels
 
 - User-question lifecycle events use the `user.question` / `user.answer`
