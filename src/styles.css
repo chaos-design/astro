@@ -5103,6 +5103,11 @@ pre,
 @media (max-width: 900px) {
   .studio-shell {
     grid-template-rows: auto minmax(0, 1fr);
+    /* Overlay chrome (nav sheet, side panels) anchors here instead of
+     * repeating the header height in several rules, so a taller header — a
+     * wrapped observer banner, a wider safe area — cannot leave the panels
+     * drifting underneath it. */
+    --mobile-header-h: 94px;
   }
 
   .studio-header {
@@ -5114,8 +5119,9 @@ pre,
     /* Above the fixed side panels (z-index 40) so the disclosed menu is not
      * covered by an expanded history or log column. */
     z-index: 50;
-    min-height: 94px;
-    padding: 8px 10px;
+    min-height: var(--mobile-header-h);
+    padding: 8px max(10px, env(safe-area-inset-right)) 8px
+      max(10px, env(safe-area-inset-left));
   }
 
   .studio-brand {
@@ -5196,7 +5202,7 @@ pre,
   .studio-workspace:not(.is-right-collapsed) .log-column {
     position: fixed;
     z-index: 40;
-    top: 94px;
+    top: var(--mobile-header-h);
     bottom: 0;
     width: min(320px, calc(100vw - 42px));
     box-shadow: 18px 0 48px rgb(0 0 0 / 42%);
@@ -5209,6 +5215,13 @@ pre,
   .studio-workspace:not(.is-right-collapsed) .log-column {
     right: 0;
     box-shadow: -18px 0 48px rgb(0 0 0 / 42%);
+  }
+
+  /* An overlay panel only gets the space under the header — a landscape phone
+   * leaves ~300px — so the log and inspector shrink and scroll on their own
+   * instead of pushing the column past the viewport. */
+  .studio-workspace:not(.is-right-collapsed) .log-column {
+    grid-template-rows: minmax(0, 0.9fr) minmax(0, 1.1fr);
   }
 
   .platform-select {
@@ -5394,18 +5407,114 @@ pre,
   .atom-guide__levels {
     grid-template-columns: minmax(0, 1fr);
   }
-}
 
-@media (max-width: 390px) {
-  .studio-header {
-    min-height: 88px;
-    padding: 7px 8px;
+  /* Phone: the disclosed nav and both side panels become full-width sheets
+   * pinned under the header, the same drawer model the docs site uses. A
+   * floating card on a 390px viewport wasted the width it needs most. */
+  .studio-header__actions {
+    position: fixed;
+    top: var(--mobile-header-h);
+    right: 0;
+    left: 0;
+    width: auto;
+    min-width: 0;
+    max-width: none;
+    max-height: calc(100dvh - var(--mobile-header-h));
+    /* The base rule anchors the desktop popover to the grid's end edge, which
+     * also shrink-wraps an out-of-flow grid child; stretch lets the fixed
+     * sheet use the full viewport width. */
+    justify-self: stretch;
+    gap: 8px;
+    padding: 10px max(10px, env(safe-area-inset-right))
+      calc(10px + env(safe-area-inset-bottom))
+      max(10px, env(safe-area-inset-left));
+    border-width: 0 0 1px;
+    border-radius: 0;
+    box-shadow: 0 24px 60px rgb(0 0 0 / 46%);
+  }
+
+  /* Touch-sized rows: the desktop 28px controls are hard to hit with a
+   * thumb, and the sheet has the room to grow. */
+  .studio-header__actions .history-search-trigger,
+  .studio-header__actions .theme-select,
+  .studio-header__actions [data-size="console"],
+  .nav-menu__group [data-size="console"] {
+    height: 40px;
+  }
+
+  .studio-header__nav-toggle[data-size="console-icon"] {
+    width: 34px;
+    height: 34px;
+  }
+
+  /* A keyboard hint is noise on a touch keyboard-less device, and the
+   * icon-only theme trigger needs a label once it sits in a full-width row. */
+  .studio-header__actions kbd {
+    display: none;
+  }
+
+  .studio-header__actions .theme-select {
+    justify-content: flex-start;
+    gap: 8px;
+    padding-inline: 10px;
+  }
+
+  .studio-header__actions .theme-select::after {
+    content: "THEME";
+    color: var(--muted);
+    font-family: var(--font-mono);
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+  }
+
+  .nav-menu__action {
+    min-height: 40px;
   }
 
   .studio-workspace:not(.is-left-collapsed) .history-column,
   .studio-workspace:not(.is-right-collapsed) .log-column {
-    top: 88px;
-    width: calc(100vw - 28px);
+    top: var(--mobile-header-h);
+    left: 0;
+    right: 0;
+    width: auto;
+    max-width: none;
+    padding-bottom: env(safe-area-inset-bottom);
+    box-shadow: 0 18px 48px rgb(0 0 0 / 42%);
+  }
+
+  .studio-workspace:not(.is-left-collapsed) .history-column {
+    border-right: 0;
+  }
+
+  .studio-workspace:not(.is-right-collapsed) .log-column {
+    border-left: 0;
+  }
+
+  /* The collapsed rail is a chevron on a phone; the rotated label only ate
+   * canvas width. */
+  .panel-rail-label {
+    display: none;
+  }
+
+  .studio-shell {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+@media (max-width: 390px) {
+  .studio-shell {
+    --mobile-header-h: 88px;
+  }
+
+  .studio-header {
+    padding: 7px max(8px, env(safe-area-inset-right)) 7px
+      max(8px, env(safe-area-inset-left));
+  }
+
+  .studio-workspace:not(.is-left-collapsed) .history-column,
+  .studio-workspace:not(.is-right-collapsed) .log-column {
+    top: var(--mobile-header-h);
   }
 
   .studio-brand {
