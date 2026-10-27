@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   ensureExpandedRun,
+  filterSessionsByLiveKeys,
   getPromptAtomSelection,
   getRunHistoryDisplayState,
   getRunHistoryDisplayStatus,
@@ -205,4 +206,25 @@ test("treats executing and waiting runs as live", () => {
   for (const status of ["complete", "failed", "terminated", "demo", undefined]) {
     assert.equal(isLiveRunStatus(status), false, String(status));
   }
+});
+
+test("filters sessions down to the live ones without reordering", () => {
+  const sessions = [
+    { key: "run-a" },
+    { key: "run-b" },
+    { key: "run-c" },
+    { key: "run-d" },
+  ];
+
+  // Preserves list order, keeps each session at most once even when the
+  // live list is duplicated, and drops sessions the filter does not know.
+  assert.deepEqual(
+    filterSessionsByLiveKeys(sessions, ["run-c", "run-a", "run-a"]),
+    [sessions[0], sessions[2]],
+  );
+
+  // An empty live set leaves the list empty rather than falling back to
+  // "show everything" — the panel distinguishes that from no history.
+  assert.deepEqual(filterSessionsByLiveKeys(sessions, []), []);
+  assert.deepEqual(filterSessionsByLiveKeys([], ["run-a"]), []);
 });

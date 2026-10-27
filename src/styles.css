@@ -1466,6 +1466,14 @@ pre,
   background: color-mix(in srgb, var(--status-running) 22%, transparent);
 }
 
+/* The chip doubles as the live-row filter; while filtering it reads as the
+ * armed toggle so switching it back off is obvious at a glance. */
+.run-history__live-jump.is-filtering {
+  border-color: var(--status-running);
+  background: color-mix(in srgb, var(--status-running) 34%, transparent);
+  color: var(--text);
+}
+
 .run-history__live-jump:focus-visible {
   outline: 1px solid var(--status-running);
   outline-offset: 1px;

@@ -65,3 +65,14 @@ test("offers a header chip that jumps to the executing run", () => {
     /animation:\s*active-status-icon-breathe/,
   );
 });
+
+test("marks the armed live filter on the same chip", () => {
+  const filtering = cssRule(".run-history__live-jump.is-filtering");
+
+  // The armed toggle must read clearly different from the resting chip:
+  // a solid status border instead of the translucent one.
+  assert.match(
+    filtering,
+    /border-color:\s*var\(--status-running\)/,
+  );
+});

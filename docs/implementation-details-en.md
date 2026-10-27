@@ -162,8 +162,13 @@ changing domain geometry, node positions, or orthogonal routes.
 The executing message is marked in three places so locating it never depends on
 scrolling:
 
-- the panel header keeps an `N LIVE` chip that scrolls the first live message
-  to the middle of the list;
+- the panel header keeps an `N LIVE` chip: clicking it scrolls the first live
+  message to the middle of the list **and filters the loaded list down to the
+  live runs**; clicking again clears the filter. The armed state reads as a
+  solid status border (`.is-filtering`). The filter only ever narrows the
+  *loaded* sessions — it never loads more history. The live set is derived
+  from the currently loaded sessions via `filterSessionsByLiveKeys`, so when
+  every live run settles the chip hides and the filter drops by itself;
 - a live row draws an `inset 2px` status accent, purple for `active` and amber
   for `waiting`;
 - the tag row gains a pulsing `RUNNING` / `WAITING` capsule next to `STATUS`.

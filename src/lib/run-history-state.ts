@@ -102,3 +102,17 @@ export function getPromptAtomSelection(
 export function isLiveRunStatus(status: string | undefined): boolean {
   return status === "active" || status === "waiting";
 }
+
+/**
+ * Keep only the loaded sessions whose key appears at least once in the live
+ * list, preserving the list's original order. The live list is derived from
+ * the *currently loaded* sessions, so filtering can never reach for more
+ * history than the panel already has.
+ */
+export function filterSessionsByLiveKeys<T extends { key: string }>(
+  sessions: readonly T[],
+  liveKeys: readonly string[],
+): T[] {
+  const live = new Set(liveKeys);
+  return sessions.filter(({ key }) => live.has(key));
+}

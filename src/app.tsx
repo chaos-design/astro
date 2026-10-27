@@ -192,6 +192,7 @@ import {
 } from "./lib/atom-selection";
 import {
   ensureExpandedRun,
+  filterSessionsByLiveKeys,
   getPromptAtomSelection,
   getRunHistoryDisplayState,
   isLiveRunStatus,
@@ -1175,6 +1176,7 @@ const RunHistory = memo(function RunHistory({
   const hoverAnchorRef = useRef<HTMLElement | null>(null);
   const liveItemRef = useRef<HTMLElement | null>(null);
   const [liveJumpRequest, setLiveJumpRequest] = useState(0);
+  const [liveFilter, setLiveFilter] = useState(false);
   const activePromptCount =
     promptRunsBySession.get(activeKey)?.length ?? 0;
 
@@ -1183,10 +1185,11 @@ const RunHistory = memo(function RunHistory({
   // second pass while leaving the row memo boundary intact.
   const liveSummary = useMemo(() => {
     if (isDemo) {
-      return { count: 0, firstLiveKey: "" };
+      return { count: 0, firstLiveKey: "", liveKeys: [] as string[] };
     }
     let count = 0;
     let firstLiveKey = "";
+    const liveKeys: string[] = [];
     for (const session of sessions) {
       const promptRuns = promptRunsBySession.get(session.key) ?? [];
       const { status } = getRunHistoryDisplayState(
@@ -1199,12 +1202,24 @@ const RunHistory = memo(function RunHistory({
         continue;
       }
       count += 1;
+      liveKeys.push(session.key);
       if (!firstLiveKey) {
         firstLiveKey = session.key;
       }
     }
-    return { count, firstLiveKey };
+    return { count, firstLiveKey, liveKeys };
   }, [isDemo, now, promptRunsBySession, sessions]);
+
+  // Filtering only ever narrows the *loaded* list, so switching the filter
+  // off or loading more days can never lose a live row.
+  const liveFiltering = liveFilter && liveSummary.count > 0;
+  const displayedSessions = useMemo(
+    () =>
+      liveFiltering
+        ? filterSessionsByLiveKeys(sessions, liveSummary.liveKeys)
+        : sessions,
+    [liveFiltering, liveSummary.liveKeys, sessions],
+  );
 
   useEffect(() => {
     if (liveJumpRequest === 0) {
@@ -1224,6 +1239,25 @@ const RunHistory = memo(function RunHistory({
     );
     setLiveJumpRequest((current) => current + 1);
   }, [liveSummary.firstLiveKey]);
+
+  const toggleLiveFilter = useCallback(() => {
+    if (liveFilter) {
+      setLiveFilter(false);
+      return;
+    }
+    // Entering the filter doubles as the jump: the first live row is the
+    // natural anchor when the list suddenly gets much shorter.
+    setLiveFilter(true);
+    jumpToLiveRun();
+  }, [liveFilter, jumpToLiveRun]);
+
+  // The live set is derived from the currently loaded sessions; once every
+  // live run has settled the filter would hold up nothing but an empty list.
+  useEffect(() => {
+    if (liveFilter && liveSummary.count === 0) {
+      setLiveFilter(false);
+    }
+  }, [liveFilter, liveSummary.count]);
 
   useEffect(() => {
     if (!activeKey) {
@@ -1274,10 +1308,11 @@ const RunHistory = memo(function RunHistory({
   }, []);
 
   // Anything that changes which rows exist — another agent, another day,
-  // another prompt, a collapsed thread — invalidates a card anchored to one of
-  // them. The list is re-derived on every clock tick with a fresh array
-  // identity, so the effect keys off the row signature instead of the array.
-  const rowSignature = sessions
+  // another prompt, a collapsed thread, a switched live filter — invalidates
+  // a card anchored to one of them. The list is re-derived on every clock
+  // tick with a fresh array identity, so the effect keys off the row
+  // signature instead of the array.
+  const rowSignature = displayedSessions
     .map(
       (session) =>
         `${session.key}:${promptRunsBySession.get(session.key)?.length ?? 0}`,
@@ -1355,16 +1390,24 @@ const RunHistory = memo(function RunHistory({
             <TooltipTrigger asChild>
               <button
                 type="button"
-                className="run-history__live-jump"
-                aria-label={`定位正在执行的消息（${liveSummary.count} 条）`}
-                onClick={jumpToLiveRun}
+                className={cn(
+                  "run-history__live-jump",
+                  liveFiltering && "is-filtering",
+                )}
+                aria-pressed={liveFiltering}
+                aria-label={
+                  liveFiltering
+                    ? `取消筛选活动消息（${liveSummary.count} 条）`
+                    : `只看正在执行的消息（${liveSummary.count} 条）`
+                }
+                onClick={toggleLiveFilter}
               >
                 <Radio aria-hidden="true" />
                 <span>{liveSummary.count} LIVE</span>
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
-              定位正在执行的消息
+              {liveFiltering ? "取消筛选活动消息" : "只看正在执行的消息"}
             </TooltipContent>
           </Tooltip>
         ) : null}
@@ -1388,7 +1431,7 @@ const RunHistory = memo(function RunHistory({
           onToggleRun={toggleRun}
           gitInfo={gitInfo}
           promptRunsBySession={promptRunsBySession}
-          sessions={sessions}
+          sessions={displayedSessions}
         />
         {initialLoading ? (
           <div className="run-history__loading" aria-busy="true">
@@ -1397,6 +1440,10 @@ const RunHistory = memo(function RunHistory({
           </div>
         ) : sessions.length === 0 ? (
           <output className="run-history__empty">No runs in this window</output>
+        ) : displayedSessions.length === 0 ? (
+          <output className="run-history__empty">
+            没有正在执行的消息
+          </output>
         ) : null}
         {canLoadMore ? (
           <div
