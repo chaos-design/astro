@@ -1,6 +1,6 @@
 {
   "name": "astro-pi-plugin",
-  "version": "0.0.3-alpha.2",
+  "version": "0.0.3-alpha.3",
   "private": true,
   "type": "module",
   "main": "index.ts"

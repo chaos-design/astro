@@ -46,7 +46,7 @@ export const appDefaults: AppDefaults = {
  * Release string shown in the application header. Kept in sync with the
  * root package.json version and asserted by tests/app-config.test.ts.
  */
-export const appVersion = "0.0.3-alpha.2";
+export const appVersion = "0.0.3-alpha.3";
 
 /**
  * Timing values shared by live UI effects.

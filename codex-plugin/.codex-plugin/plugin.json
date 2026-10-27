@@ -1,6 +1,6 @@
 {
   "name": "astro",
-  "version": "0.0.3-alpha.2",
+  "version": "0.0.3-alpha.3",
   "description": "ASTRO captures Codex lifecycle events locally for search, inspection, and replay.",
   "author": {
     "name": "ASTRO Contributors"
