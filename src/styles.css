@@ -1470,8 +1470,17 @@ pre,
  * armed toggle so switching it back off is obvious at a glance. */
 .run-history__live-jump.is-filtering {
   border-color: var(--status-running);
-  background: color-mix(in srgb, var(--status-running) 34%, transparent);
-  color: var(--text);
+  background: var(--status-running);
+  color: var(--bg);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--status-running) 55%, transparent);
+}
+
+.run-history__live-jump.is-filtering > svg {
+  color: var(--bg);
+}
+
+.run-history__live-jump.is-filtering > span {
+  color: var(--bg);
 }
 
 .run-history__live-jump:focus-visible {
