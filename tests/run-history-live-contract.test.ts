@@ -70,9 +70,11 @@ test("marks the armed live filter on the same chip", () => {
   const filtering = cssRule(".run-history__live-jump.is-filtering");
 
   // The armed toggle must read clearly different from the resting chip:
-  // a solid status border instead of the translucent one.
+  // a solid status fill (not translucent) plus a glowing ring, so the
+  // on/off state is obvious at a glance on a dark panel.
+  assert.match(filtering, /background:\s*var\(--status-running\)/);
   assert.match(
     filtering,
-    /border-color:\s*var\(--status-running\)/,
+    /box-shadow:[\s\S]*color-mix\(in srgb, var\(--status-running\)/,
   );
 });

@@ -1447,10 +1447,10 @@ pre,
   gap: 4px;
   height: 20px;
   padding: 0 7px;
-  border: 1px solid color-mix(in srgb, var(--status-running) 46%, transparent);
+  border: 1px solid color-mix(in srgb, var(--status-running) 32%, transparent);
   border-radius: 999px;
-  color: color-mix(in srgb, var(--status-running) 88%, var(--text));
-  background: color-mix(in srgb, var(--status-running) 14%, transparent);
+  color: color-mix(in srgb, var(--status-running) 74%, var(--text));
+  background: color-mix(in srgb, var(--status-running) 8%, transparent);
   cursor: pointer;
   font-family: var(--font-mono);
   font-size: 8px;
@@ -1469,10 +1469,12 @@ pre,
 /* The chip doubles as the live-row filter; while filtering it reads as the
  * armed toggle so switching it back off is obvious at a glance. */
 .run-history__live-jump.is-filtering {
-  border-color: var(--status-running);
+  border-color: var(--bg);
   background: var(--status-running);
   color: var(--bg);
-  box-shadow: 0 0 12px color-mix(in srgb, var(--status-running) 55%, transparent);
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--status-running) 42%, transparent),
+    0 0 16px 2px color-mix(in srgb, var(--status-running) 70%, transparent);
 }
 
 .run-history__live-jump.is-filtering > svg {
