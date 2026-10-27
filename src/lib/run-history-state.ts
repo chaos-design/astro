@@ -7,6 +7,19 @@ type RunDurationSource = {
   status: TraceRunStatus;
 };
 
+/**
+ * Clock granularity for rows whose run already finished: their status and
+ * duration never depend on `now` (the 24h timeout boundary excepted), so a
+ * coarse bucket keeps the 1s duration tick from re-rendering history rows
+ * that cannot change.
+ */
+export const RUN_HISTORY_COARSE_REFRESH_MS = 30_000;
+
+/** Snap a timestamp down to the start of its {@link bucketMs} bucket. */
+export function quantizeTimestamp(now: number, bucketMs: number): number {
+  return Math.floor(now / bucketMs) * bucketMs;
+}
+
 export function getRunHistoryDisplayStatus(
   sessionStatus: TraceRunStatus,
   promptRuns: readonly Pick<TracePromptRun, "status">[],

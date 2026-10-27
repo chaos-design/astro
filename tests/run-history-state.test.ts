@@ -8,6 +8,8 @@ import {
   getRunHistoryDisplayStatus,
   getRunHistoryDuration,
   isLiveRunStatus,
+  quantizeTimestamp,
+  RUN_HISTORY_COARSE_REFRESH_MS,
   toggleExpandedRun,
 } from "../src/lib/run-history-state.ts";
 
@@ -227,4 +229,13 @@ test("filters sessions down to the live ones without reordering", () => {
   // "show everything" — the panel distinguishes that from no history.
   assert.deepEqual(filterSessionsByLiveKeys(sessions, []), []);
   assert.deepEqual(filterSessionsByLiveKeys([], ["run-a"]), []);
+});
+
+test("quantizes timestamps down to the start of their bucket", () => {
+  assert.equal(quantizeTimestamp(1_000, 1_000), 1_000);
+  assert.equal(quantizeTimestamp(1_999, 1_000), 1_000);
+  assert.equal(quantizeTimestamp(59_999, 30_000), 30_000);
+  assert.equal(quantizeTimestamp(0, 30_000), 0);
+  // The coarse refresh bucket matches the documented 30s granularity.
+  assert.equal(RUN_HISTORY_COARSE_REFRESH_MS, 30_000);
 });

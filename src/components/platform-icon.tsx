@@ -71,6 +71,8 @@ export function PlatformIcon({
         alt=""
         aria-hidden="true"
         className={iconClassName}
+        decoding="async"
+        loading="lazy"
         src="/icons/deepseek.svg"
         {...props}
       />

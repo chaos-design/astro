@@ -1340,6 +1340,12 @@ pre,
 .run-history__item {
   position: relative;
   min-width: 0;
+  /* Skip layout and paint for offscreen run rows: with a large day window the
+     list can hold hundreds of rows, and only the ones near the viewport need
+     rendering. `contain-intrinsic-size` keeps the scrollbar honest until each
+     row renders once (the browser then remembers the real height). */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 72px;
 }
 
 .run-history__row {

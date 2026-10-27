@@ -124,6 +124,7 @@ export function PromptContent({ payload }: { payload: TracePayload }) {
             <img
               alt={expandedImage.name}
               className="prompt-image-sheet__image"
+              decoding="async"
               referrerPolicy="no-referrer"
               src={expandedImage.src}
             />

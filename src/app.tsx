@@ -196,8 +196,15 @@ import {
   getPromptAtomSelection,
   getRunHistoryDisplayState,
   isLiveRunStatus,
+  RUN_HISTORY_COARSE_REFRESH_MS,
+  quantizeTimestamp,
   toggleExpandedRun,
 } from "./lib/run-history-state";
+import {
+  attachScrollFpsTracker,
+  markAppReady,
+  recordListRender,
+} from "./lib/perf-metrics";
 import {
   getTraceEventKey,
   isUserQuestionEvent,
@@ -211,6 +218,7 @@ import type {
   TraceEvent,
   TraceNode as TraceNodeType,
   TracePromptRun,
+  TraceRunStatus,
   TraceSession,
 } from "@/types/trace";
 
@@ -923,9 +931,224 @@ const RunHistoryHoverCardLayer = memo(function RunHistoryHoverCardLayer({
 });
 
 /**
+ * One RUN HISTORY group: the session row plus its expandable prompt thread.
+ * Memoized on primitives and stable references so the 1s duration tick only
+ * reaches rows that can actually change: a live row receives the exact clock
+ * (its duration advances every second), a finished row a 30s-quantized one —
+ * its status and duration never depend on `now`. The parent pass derives
+ * status/duration once and hands them over as primitives, so a tick that
+ * changes nothing about a row skips that row's render entirely.
+ */
+const RunHistoryItem = memo(function RunHistoryItem({
+  activeKey,
+  activePromptRunKey,
+  activePromptRunRef,
+  duration,
+  expanded,
+  gitInfo,
+  isDemo,
+  isLiveAnchor,
+  liveItemRef,
+  now,
+  onHoverRow,
+  onSelect,
+  onToggleRun,
+  promptRuns,
+  session,
+  status,
+}: {
+  activeKey: string;
+  activePromptRunKey: string;
+  activePromptRunRef: RefObject<HTMLDivElement | null>;
+  duration: number;
+  expanded: boolean;
+  gitInfo: Record<string, { repo: string; branch: string } | null>;
+  isDemo: boolean;
+  /** Session row of the first live run: the `N LIVE` jump target. */
+  isLiveAnchor: boolean;
+  liveItemRef: RefObject<HTMLElement | null>;
+  now: number;
+  onHoverRow: (
+    event: ReactPointerEvent<HTMLDivElement>,
+    rowKey: string,
+    details: RunHistoryRowDetails,
+  ) => void;
+  onSelect: (sessionKey: string, promptRunKey?: string) => void;
+  onToggleRun: (key: string) => void;
+  promptRuns: TracePromptRun[];
+  session: TraceSession;
+  status: TraceRunStatus;
+}) {
+  // Newest prompt on top: the thread renders in reverse chronological
+  // order while selection, live marking, and labels keep using the
+  // original index order.
+  const displayPromptRuns = [...promptRuns].reverse();
+  const firstPromptRun = promptRuns[0];
+  const hasPromptThread = promptRuns.length > 1;
+  const parentSelected = session.key === activeKey && !hasPromptThread;
+  const activeGroup = session.key === activeKey && hasPromptThread;
+  const live = !isDemo && isLiveRunStatus(status);
+  const liveStatus = live ? status : undefined;
+  const promptListId = `run-prompts-${session.key.replace(
+    /[^a-zA-Z0-9_-]+/g,
+    "-",
+  )}`;
+  const git = session.cwd ? gitInfo[session.cwd] ?? null : null;
+  const parentDetails: RunHistoryRowDetails = {
+    code: getShortId(session.id),
+    cwd: session.cwd,
+    duration,
+    extraLabel: "PROMPTS",
+    extraValue: promptRuns.length,
+    fullCode: session.id,
+    git,
+    live,
+    source: session.source,
+    start: firstPromptRun?.start ?? session.start,
+    status: isDemo ? "demo" : status,
+    title: session.title,
+  };
+
+  return (
+    <article
+      className={cn(
+        "run-history__item",
+        activeGroup && "is-active-group",
+        live && "is-live",
+      )}
+      data-live-status={liveStatus}
+      ref={isLiveAnchor ? liveItemRef : undefined}
+    >
+      <div
+        role="button"
+        tabIndex={0}
+        aria-pressed={parentSelected}
+        data-live-status={liveStatus}
+        className={cn(
+          "run-history__row",
+          hasPromptThread && "has-prompt-thread",
+          parentSelected && "is-selected",
+          live && "is-live",
+        )}
+        onClick={() => onSelect(session.key, promptRuns.at(-1)?.key)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onSelect(session.key, promptRuns.at(-1)?.key);
+          }
+        }}
+        onPointerOver={(event) =>
+          onHoverRow(event, session.key, parentDetails)
+        }
+      >
+        <RunHistoryRowContent {...parentDetails} />
+      </div>
+      {hasPromptThread ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          aria-controls={promptListId}
+          aria-expanded={expanded}
+          aria-label={`${expanded ? "收起" : "展开"} Prompt 层级`}
+          className="run-history__expand"
+          onClick={() => onToggleRun(session.key)}
+        >
+          <ChevronRight />
+        </Button>
+      ) : null}
+      {expanded ? (
+        <ScrollArea
+          id={promptListId}
+          className="run-history__prompt-scroll"
+          style={{
+            height: Math.min(
+              appLayout.historyPromptListMaxHeight,
+              promptRuns.length * appLayout.historyPromptRowEstimate + 8,
+            ),
+          }}
+        >
+          <ol className="run-history__prompts">
+            {displayPromptRuns.map((promptRun) => {
+              const promptSelected = promptRun.key === activePromptRunKey;
+              const promptDisplayState = getSessionDisplayState(
+                promptRun,
+                now,
+                appTimings.activeRunTimeoutMs,
+              );
+              const roleLabel =
+                promptRun.role === "initial"
+                  ? "INITIAL"
+                  : `FOLLOW-UP ${String(promptRun.index).padStart(2, "0")}`;
+              const promptCode = `${roleLabel} · ${promptRun.prompt.id}`;
+              const promptLive =
+                !isDemo && isLiveRunStatus(promptDisplayState.status);
+              const promptLiveStatus = promptLive
+                ? promptDisplayState.status
+                : undefined;
+              const promptDetails: RunHistoryRowDetails = {
+                code: promptCode,
+                cwd: promptRun.cwd,
+                duration: promptDisplayState.duration,
+                extraLabel: "EVENTS",
+                extraValue: promptRun.events.length,
+                fullCode: promptCode,
+                git: promptRun.cwd
+                  ? gitInfo[promptRun.cwd] ?? null
+                  : null,
+                live: promptLive,
+                source: promptRun.source,
+                start: promptRun.start,
+                status: isDemo ? "demo" : promptDisplayState.status,
+                title: promptRun.title,
+              };
+              return (
+                <li key={promptRun.key}>
+                  <div
+                    ref={promptSelected ? activePromptRunRef : undefined}
+                    role="button"
+                    tabIndex={0}
+                    aria-pressed={promptSelected}
+                    data-live-status={promptLiveStatus}
+                    className={cn(
+                      "run-history__row",
+                      "run-history__prompt-run",
+                      promptSelected && "is-selected",
+                      promptLive && "is-live",
+                    )}
+                    onClick={() => onSelect(session.key, promptRun.key)}
+                    onKeyDown={(event) => {
+                      if (
+                        event.key === "Enter" ||
+                        event.key === " "
+                      ) {
+                        event.preventDefault();
+                        onSelect(session.key, promptRun.key);
+                      }
+                    }}
+                    onPointerOver={(event) =>
+                      onHoverRow(event, promptRun.key, promptDetails)
+                    }
+                  >
+                    <RunHistoryRowContent {...promptDetails} />
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
+        </ScrollArea>
+      ) : null}
+    </article>
+  );
+});
+
+/**
  * The rows themselves. Memoized apart from the hover card so moving the pointer
- * across the list only re-renders the card layer instead of every row; only the
- * clock tick that refreshes run durations reaches the rows.
+ * across the list only re-renders the card layer instead of every row. The 1s
+ * duration tick still reaches this thin map — it hands live rows the fresh
+ * clock and derives each row's status/duration once — while
+ * {@link RunHistoryItem} memoization keeps every row that cannot have changed
+ * from re-rendering at all.
  */
 const RunHistoryRows = memo(function RunHistoryRows({
   activeKey,
@@ -963,179 +1186,38 @@ const RunHistoryRows = memo(function RunHistoryRows({
   promptRunsBySession: ReadonlyMap<string, TracePromptRun[]>;
   sessions: TraceSession[];
 }) {
+  // Finished rows re-render from a coarse clock; only live rows get the 1s one.
+  const coarseNow = quantizeTimestamp(now, RUN_HISTORY_COARSE_REFRESH_MS);
   return (
     <>
       {sessions.map((session) => {
         const promptRuns = promptRunsBySession.get(session.key) ?? [];
-        // Newest prompt on top: the thread renders in reverse chronological
-        // order while selection, live marking, and labels keep using the
-        // original index order.
-        const displayPromptRuns = [...promptRuns].reverse();
-        const firstPromptRun = promptRuns[0];
-        const displayState = getRunHistoryDisplayState(
+        const { duration, status } = getRunHistoryDisplayState(
           session,
           promptRuns,
           now,
           appTimings.activeRunTimeoutMs,
         );
-        const displayStatus = displayState.status;
-        const displayDuration = displayState.duration;
-        const hasPromptThread = promptRuns.length > 1;
-        const expanded = hasPromptThread && expandedRuns.has(session.key);
-        const parentSelected = session.key === activeKey && !hasPromptThread;
-        const activeGroup = session.key === activeKey && hasPromptThread;
-        const live = !isDemo && isLiveRunStatus(displayStatus);
-        const liveStatus = live ? displayStatus : undefined;
-        const promptListId = `run-prompts-${session.key.replace(
-          /[^a-zA-Z0-9_-]+/g,
-          "-",
-        )}`;
-        const parentDetails: RunHistoryRowDetails = {
-          code: getShortId(session.id),
-          cwd: session.cwd,
-          duration: displayDuration,
-          extraLabel: "PROMPTS",
-          extraValue: promptRuns.length,
-          fullCode: session.id,
-          git: session.cwd ? gitInfo[session.cwd] ?? null : null,
-          live,
-          source: session.source,
-          start: firstPromptRun?.start ?? session.start,
-          status: isDemo ? "demo" : displayStatus,
-          title: session.title,
-        };
-
         return (
-          <article
-            className={cn(
-              "run-history__item",
-              activeGroup && "is-active-group",
-              live && "is-live",
-            )}
-            data-live-status={liveStatus}
+          <RunHistoryItem
+            activeKey={activeKey}
+            activePromptRunKey={activePromptRunKey}
+            activePromptRunRef={activePromptRunRef}
+            duration={duration}
+            expanded={expandedRuns.has(session.key)}
+            gitInfo={gitInfo}
+            isDemo={isDemo}
+            isLiveAnchor={session.key === firstLiveKey}
             key={session.key}
-            ref={session.key === firstLiveKey ? liveItemRef : undefined}
-          >
-            <div
-              role="button"
-              tabIndex={0}
-              aria-pressed={parentSelected}
-              data-live-status={liveStatus}
-              className={cn(
-                "run-history__row",
-                hasPromptThread && "has-prompt-thread",
-                parentSelected && "is-selected",
-                live && "is-live",
-              )}
-              onClick={() => onSelect(session.key, promptRuns.at(-1)?.key)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  onSelect(session.key, promptRuns.at(-1)?.key);
-                }
-              }}
-              onPointerOver={(event) =>
-                onHoverRow(event, session.key, parentDetails)
-              }
-            >
-              <RunHistoryRowContent {...parentDetails} />
-            </div>
-            {hasPromptThread ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-xs"
-                aria-controls={promptListId}
-                aria-expanded={expanded}
-                aria-label={`${expanded ? "收起" : "展开"} Prompt 层级`}
-                className="run-history__expand"
-                onClick={() => onToggleRun(session.key)}
-              >
-                <ChevronRight />
-              </Button>
-            ) : null}
-            {expanded ? (
-              <ScrollArea
-                id={promptListId}
-                className="run-history__prompt-scroll"
-                style={{
-                  height: Math.min(
-                    appLayout.historyPromptListMaxHeight,
-                    promptRuns.length * appLayout.historyPromptRowEstimate + 8,
-                  ),
-                }}
-              >
-                <ol className="run-history__prompts">
-                  {displayPromptRuns.map((promptRun) => {
-                    const promptSelected = promptRun.key === activePromptRunKey;
-                    const promptDisplayState = getSessionDisplayState(
-                      promptRun,
-                      now,
-                      appTimings.activeRunTimeoutMs,
-                    );
-                    const roleLabel =
-                      promptRun.role === "initial"
-                        ? "INITIAL"
-                        : `FOLLOW-UP ${String(promptRun.index).padStart(2, "0")}`;
-                    const promptCode = `${roleLabel} · ${promptRun.prompt.id}`;
-                    const promptLive =
-                      !isDemo && isLiveRunStatus(promptDisplayState.status);
-                    const promptLiveStatus = promptLive
-                      ? promptDisplayState.status
-                      : undefined;
-                    const promptDetails: RunHistoryRowDetails = {
-                      code: promptCode,
-                      cwd: promptRun.cwd,
-                      duration: promptDisplayState.duration,
-                      extraLabel: "EVENTS",
-                      extraValue: promptRun.events.length,
-                      fullCode: promptCode,
-                      git: promptRun.cwd
-                        ? gitInfo[promptRun.cwd] ?? null
-                        : null,
-                      live: promptLive,
-                      source: promptRun.source,
-                      start: promptRun.start,
-                      status: isDemo ? "demo" : promptDisplayState.status,
-                      title: promptRun.title,
-                    };
-                    return (
-                      <li key={promptRun.key}>
-                        <div
-                          ref={promptSelected ? activePromptRunRef : undefined}
-                          role="button"
-                          tabIndex={0}
-                          aria-pressed={promptSelected}
-                          data-live-status={promptLiveStatus}
-                          className={cn(
-                            "run-history__row",
-                            "run-history__prompt-run",
-                            promptSelected && "is-selected",
-                            promptLive && "is-live",
-                          )}
-                          onClick={() => onSelect(session.key, promptRun.key)}
-                          onKeyDown={(event) => {
-                            if (
-                              event.key === "Enter" ||
-                              event.key === " "
-                            ) {
-                              event.preventDefault();
-                              onSelect(session.key, promptRun.key);
-                            }
-                          }}
-                          onPointerOver={(event) =>
-                            onHoverRow(event, promptRun.key, promptDetails)
-                          }
-                        >
-                          <RunHistoryRowContent {...promptDetails} />
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ol>
-              </ScrollArea>
-            ) : null}
-          </article>
+            liveItemRef={liveItemRef}
+            now={!isDemo && isLiveRunStatus(status) ? now : coarseNow}
+            onHoverRow={onHoverRow}
+            onSelect={onSelect}
+            onToggleRun={onToggleRun}
+            promptRuns={promptRuns}
+            session={session}
+            status={status}
+          />
         );
       })}
     </>
@@ -1179,6 +1261,14 @@ const RunHistory = memo(function RunHistory({
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const hoverAnchorRef = useRef<HTMLElement | null>(null);
   const liveItemRef = useRef<HTMLElement | null>(null);
+  // `onSelect` comes from the app shell and changes identity whenever the
+  // selected events move; dispatching through a latest ref keeps the row
+  // callback stable so RunHistoryItem memoization survives live batches.
+  const onSelectRef = useRef(onSelect);
+  onSelectRef.current = onSelect;
+  const handleRunSelect = useCallback((key: string, promptRunKey?: string) => {
+    onSelectRef.current(key, promptRunKey);
+  }, []);
   const [liveJumpRequest, setLiveJumpRequest] = useState(0);
   const [liveFilter, setLiveFilter] = useState(false);
   const activePromptCount =
@@ -1302,9 +1392,9 @@ const RunHistory = memo(function RunHistory({
     return () => observer.disconnect();
   }, [canLoadMore, onLoadMore, sessions.length]);
 
-  const toggleRun = (key: string) => {
+  const toggleRun = useCallback((key: string) => {
     setExpandedRuns((current) => toggleExpandedRun(current, key));
-  };
+  }, []);
 
   const closeHoverCard = useCallback(() => {
     hoverAnchorRef.current = null;
@@ -1431,7 +1521,7 @@ const RunHistory = memo(function RunHistory({
           liveItemRef={liveItemRef}
           now={now}
           onHoverRow={handleRowHover}
-          onSelect={onSelect}
+          onSelect={handleRunSelect}
           onToggleRun={toggleRun}
           gitInfo={gitInfo}
           promptRunsBySession={promptRunsBySession}
@@ -1474,6 +1564,83 @@ const RunHistory = memo(function RunHistory({
 });
 
 /**
+ * One virtualized log row. Memoized on (event, index, selected, running): a
+ * streaming batch, a selection change, or a running-marker move then only
+ * re-renders the rows whose own state moved instead of re-reconciling every
+ * visible row. The `onSelect` dispatch reaches the row through a latest ref
+ * so the memo comparator can ignore its identity, and the derived strings
+ * (event key, action, summary, formatted time) are computed once per mount —
+ * `getEventSummary` additionally caches per event across re-mounts.
+ */
+const AtomicLogRow = memo(function AtomicLogRow({
+  event,
+  index,
+  onSelect,
+  running,
+  selected,
+}: {
+  event: TraceEvent;
+  index: number;
+  onSelect: (eventId: string) => void;
+  running: boolean;
+  selected: boolean;
+}) {
+  const onSelectRef = useRef(onSelect);
+  onSelectRef.current = onSelect;
+  const meta = eventMeta[event.eventName] || eventMeta.Unknown;
+  const dateLabel = useMemo(
+    () => formatDate(event.capturedAt),
+    [event.capturedAt],
+  );
+  const clockLabel = useMemo(
+    () => formatClock(event.capturedAt),
+    [event.capturedAt],
+  );
+  return (
+    <div
+      data-event-id={event.id}
+      role="button"
+      tabIndex={0}
+      aria-pressed={selected}
+      className={cn(
+        "atomic-log__row",
+        `tone-${meta.tone}`,
+        running && "is-running",
+        selected && !running && "is-selected",
+      )}
+      onClick={() => onSelectRef.current(event.id)}
+      onKeyDown={(keyEvent) => {
+        if (keyEvent.key === "Enter" || keyEvent.key === " ") {
+          keyEvent.preventDefault();
+          onSelectRef.current(event.id);
+        }
+      }}
+    >
+      <span className="log-sequence">
+        #{String(index + 1).padStart(3, "0")}
+      </span>
+      <i className="phase-dot" />
+      <strong>{getTraceEventKey(event)}</strong>
+      <time dateTime={event.capturedAt} title={event.capturedAt}>
+        <span>{dateLabel}</span>
+        {clockLabel}
+      </time>
+      <small>
+        <span>{getEventAction(event)}</span>
+        <span className="atomic-log__summary">
+          {getEventSummary(event)}
+        </span>
+      </small>
+    </div>
+  );
+}, (before, after) =>
+  before.event === after.event &&
+  before.index === after.index &&
+  before.running === after.running &&
+  before.selected === after.selected,
+);
+
+/**
  * The event log mounts only the rows intersecting the viewport, so a session
  * with tens of thousands of events stays responsive while streaming.
  */
@@ -1503,6 +1670,12 @@ const AtomicLog = memo(function AtomicLog({
   const listRef = useRef<HTMLDivElement | null>(null);
   const locateRequestRef = useRef(locateRequest);
   const scrollFrameRef = useRef(0);
+  // Render-cost instrumentation: the body stamps its start time, and the
+  // no-deps layout effect below closes the measurement after commit. The
+  // samples feed `window.__astroPerf` (and the ?perf=1 HUD) so list render
+  // cost is comparable before and after a change.
+  const renderStartRef = useRef(0);
+  renderStartRef.current = performance.now();
   const [metrics, setMetrics] = useState<LogRowMetrics>({
     gap: LOG_ROW_GAP,
     row: LOG_ROW_ESTIMATE,
@@ -1553,6 +1726,10 @@ const AtomicLog = memo(function AtomicLog({
     });
   }, []);
 
+  useLayoutEffect(() => {
+    recordListRender(performance.now() - renderStartRef.current, slice.length);
+  });
+
   // Track the viewport before paint so the first visible slice mounts without
   // an empty frame.
   useLayoutEffect(() => {
@@ -1564,12 +1741,17 @@ const AtomicLog = memo(function AtomicLog({
       setViewport({ height: list.clientHeight, top: list.scrollTop });
     };
     syncViewport();
+    // Scroll FPS sampling: runs only while the list actually scrolls.
+    const disconnectFps = attachScrollFpsTracker(list);
     if (typeof ResizeObserver === "undefined") {
-      return undefined;
+      return disconnectFps;
     }
     const observer = new ResizeObserver(syncViewport);
     observer.observe(list);
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      disconnectFps();
+    };
   }, []);
 
   // Measure the real row and separator heights once they are in the DOM.
@@ -1727,46 +1909,15 @@ const AtomicLog = memo(function AtomicLog({
                     );
                   }
                   const { event, index } = visibleEntries[item.index];
-                  const selected = event.id === selectedEventId;
-                  const running = event.id === runningEventId;
-                  const meta = eventMeta[event.eventName] || eventMeta.Unknown;
                   return (
-                    <div
-                      data-event-id={event.id}
-                      role="button"
-                      tabIndex={0}
-                      aria-pressed={selected}
-                      className={cn(
-                        "atomic-log__row",
-                        `tone-${meta.tone}`,
-                        running && "is-running",
-                        selected && !running && "is-selected",
-                      )}
+                    <AtomicLogRow
+                      event={event}
+                      index={index}
                       key={event.id}
-                      onClick={() => onSelect(event.id)}
-                      onKeyDown={(keyEvent) => {
-                        if (keyEvent.key === "Enter" || keyEvent.key === " ") {
-                          keyEvent.preventDefault();
-                          onSelect(event.id);
-                        }
-                      }}
-                    >
-                      <span className="log-sequence">
-                        #{String(index + 1).padStart(3, "0")}
-                      </span>
-                      <i className="phase-dot" />
-                      <strong>{getTraceEventKey(event)}</strong>
-                      <time dateTime={event.capturedAt} title={event.capturedAt}>
-                        <span>{formatDate(event.capturedAt)}</span>
-                        {formatClock(event.capturedAt)}
-                      </time>
-                      <small>
-                        <span>{getEventAction(event)}</span>
-                        <span className="atomic-log__summary">
-                          {getEventSummary(event)}
-                        </span>
-                      </small>
-                    </div>
+                      onSelect={onSelect}
+                      running={event.id === runningEventId}
+                      selected={event.id === selectedEventId}
+                    />
                   );
                 })}
               </div>
@@ -3062,6 +3213,12 @@ export default function App() {
       consoleOpen,
     );
   }, [consoleOpen]);
+
+  // First committed app frame: navigation start → here, exposed through
+  // window.__astroPerf as the first-screen metric.
+  useEffect(() => {
+    markAppReady();
+  }, []);
 
   useEffect(() => {
     const source = new EventSource("/api/stream");

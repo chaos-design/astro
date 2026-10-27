@@ -389,8 +389,21 @@ function extractText(value: unknown): string {
   return value == null ? "" : String(value);
 }
 
+/**
+ * Event summaries are pure functions of the (immutable) event, and they are
+ * requested repeatedly — per rendered log row, per projection rebuild, per
+ * search pass. The WeakMap ties the cache to the event's lifetime, mirroring
+ * the search-haystack cache in `event-search.ts`.
+ */
+const eventSummaries = new WeakMap<TraceEvent, string>();
+
 export function getEventSummary(event: TraceEvent): string {
-  return extractText(getSummaryValue(event));
+  if (eventSummaries.has(event)) {
+    return eventSummaries.get(event) as string;
+  }
+  const summary = extractText(getSummaryValue(event));
+  eventSummaries.set(event, summary);
+  return summary;
 }
 
 function getSummaryValue(event: TraceEvent): unknown {
