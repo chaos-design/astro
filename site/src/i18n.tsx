@@ -28,6 +28,14 @@ const STRINGS = {
     pagerHome: "首页",
     pagerGallery: "演示与题库",
     pagerDocsTitle: "ASTRO 文档",
+    // Lightbox
+    lbFit: "适应",
+    lbZoomIn: "放大",
+    lbZoomOut: "缩小",
+    lbReset: "100%",
+    lbClose: "关闭",
+    lbHint: "滚轮缩放 · 拖拽平移 · Esc 关闭",
+    lbDefaultTitle: "图片",
   },
   en: {
     brandSub: "Docs & Decks",
@@ -50,6 +58,14 @@ const STRINGS = {
     pagerHome: "Home",
     pagerGallery: "Docs & Decks",
     pagerDocsTitle: "ASTRO Docs",
+    // Lightbox
+    lbFit: "Fit",
+    lbZoomIn: "Zoom in",
+    lbZoomOut: "Zoom out",
+    lbReset: "100%",
+    lbClose: "Close",
+    lbHint: "Scroll to zoom · Drag to pan · Esc to close",
+    lbDefaultTitle: "Image",
   },
 } as const;
 

@@ -11,6 +11,7 @@ export function DocView({ slug }: { slug: string }) {
   const catalog = catalogFor(lang);
   const [doc, setDoc] = useState<RenderedDoc | null>(null);
   const [zoomSvg, setZoomSvg] = useState<string | null>(null);
+  const [zoomImage, setZoomImage] = useState<string | null>(null);
   const [zoomTitle, setZoomTitle] = useState<string>("");
   const bodyRef = useRef<HTMLDivElement | null>(null);
 
@@ -51,17 +52,13 @@ export function DocView({ slug }: { slug: string }) {
     return () => document.removeEventListener("click", onAnchorClick, true);
   }, [doc]);
 
-  // Click a mermaid diagram to open it in a zoomable lightbox.
+  // Click a mermaid diagram or a wrapped document image to open it in a
+  // zoomable lightbox.
   useEffect(() => {
     if (!doc) return;
     const body = bodyRef.current;
     if (!body) return;
-    const onDiagramClick = (e: MouseEvent) => {
-      const target = (e.target as HTMLElement).closest?.(".mermaid-diagram");
-      if (!target || !body.contains(target)) return;
-      const svg = target.querySelector("svg");
-      if (!svg) return;
-      setZoomSvg(svg.outerHTML);
+    const nearestHeading = (target: Element): string => {
       const headings = Array.from(body.querySelectorAll("h1, h2, h3"));
       let title = "";
       for (const h of headings) {
@@ -70,13 +67,38 @@ export function DocView({ slug }: { slug: string }) {
           title = h.textContent ?? "";
         }
       }
-      setZoomTitle(title || getDoc(slug)?.item.title || "图表");
+      return title;
+    };
+    const onDiagramClick = (e: MouseEvent) => {
+      // A wrapped markdown image opens as a zoomable picture.
+      const img = (e.target as HTMLElement).closest?.(".zoomable-image");
+      if (img && body.contains(img)) {
+        setZoomImage(img.getAttribute("data-zoom-img") ?? "");
+        setZoomSvg(null);
+        setZoomTitle(
+          (img.getAttribute("data-zoom-alt") || "").trim() ||
+            nearestHeading(img) ||
+            getDoc(slug)?.item.title ||
+            t.lbDefaultTitle,
+        );
+        return;
+      }
+      const target = (e.target as HTMLElement).closest?.(".mermaid-diagram");
+      if (!target || !body.contains(target)) return;
+      const svg = target.querySelector("svg");
+      if (!svg) return;
+      setZoomSvg(svg.outerHTML);
+      setZoomImage(null);
+      setZoomTitle(nearestHeading(target) || getDoc(slug)?.item.title || t.lbDefaultTitle);
     };
     body.addEventListener("click", onDiagramClick);
     return () => body.removeEventListener("click", onDiagramClick);
-  }, [doc, slug]);
+  }, [doc, slug, t]);
 
-  const closeZoom = useCallback(() => setZoomSvg(null), []);
+  const closeZoom = useCallback(() => {
+    setZoomSvg(null);
+    setZoomImage(null);
+  }, []);
 
   if (!result) {
     return (
@@ -178,7 +200,14 @@ export function DocView({ slug }: { slug: string }) {
         ) : null}
       </div>
 
-      {zoomSvg ? <Lightbox svgHtml={zoomSvg} title={zoomTitle} onClose={closeZoom} /> : null}
+      {zoomSvg || zoomImage ? (
+        <Lightbox
+          svgHtml={zoomSvg ?? undefined}
+          imageSrc={zoomImage ?? undefined}
+          title={zoomTitle}
+          onClose={closeZoom}
+        />
+      ) : null}
     </div>
   );
 }
