@@ -967,6 +967,10 @@ const RunHistoryRows = memo(function RunHistoryRows({
     <>
       {sessions.map((session) => {
         const promptRuns = promptRunsBySession.get(session.key) ?? [];
+        // Newest prompt on top: the thread renders in reverse chronological
+        // order while selection, live marking, and labels keep using the
+        // original index order.
+        const displayPromptRuns = [...promptRuns].reverse();
         const firstPromptRun = promptRuns[0];
         const displayState = getRunHistoryDisplayState(
           session,
@@ -1062,7 +1066,7 @@ const RunHistoryRows = memo(function RunHistoryRows({
                 }}
               >
                 <ol className="run-history__prompts">
-                  {promptRuns.map((promptRun) => {
+                  {displayPromptRuns.map((promptRun) => {
                     const promptSelected = promptRun.key === activePromptRunKey;
                     const promptDisplayState = getSessionDisplayState(
                       promptRun,
