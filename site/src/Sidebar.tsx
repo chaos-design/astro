@@ -1,3 +1,4 @@
+import { forwardRef } from "react";
 import { deckPages } from "./decks";
 import { counterpartSlug, catalogFor } from "./docs";
 import { nextLang, useLang } from "./i18n";
@@ -19,7 +20,17 @@ interface SidebarProps {
   onNavigate?: () => void;
 }
 
-export function Sidebar({ route, id, navOpen = false, onNavigate }: SidebarProps) {
+/**
+ * Desktop navigation column. On mobile the same element doubles as the panel the
+ * header toggle expands (hence `id` + `aria-controls` on the toggle, and a
+ * forwardRef `tabIndex=-1` target so the panel can receive programmatic focus
+ * when it opens). Its brand row and footer live in the mobile header there, so
+ * both are hidden inside the mobile breakpoint.
+ */
+export const Sidebar = forwardRef<HTMLElement, SidebarProps>(function Sidebar(
+  { route, id, navOpen = false, onNavigate },
+  ref,
+) {
   const { lang, setLang, t } = useLang();
   const catalog = catalogFor(lang);
   const activeKind = route.kind;
@@ -39,10 +50,7 @@ export function Sidebar({ route, id, navOpen = false, onNavigate }: SidebarProps
   };
 
   return (
-    <aside
-      id={id}
-      className={navOpen ? "sidebar nav-open" : "sidebar"}
-    >
+    <aside id={id} ref={ref} tabIndex={-1} className={navOpen ? "sidebar nav-open" : "sidebar"} aria-label={t.navigate}>
       <div className="sidebar-head">
         <div className="brand">
           <div className="brand-mark">A</div>
@@ -109,7 +117,8 @@ export function Sidebar({ route, id, navOpen = false, onNavigate }: SidebarProps
       </div>
 
       {/* Pinned footer: the GitHub entry and the language button form a matched
-          pair of equal cells; neither scrolls with the menu. */}
+          pair of equal cells; neither scrolls with the menu. On mobile these two
+          live in the top header instead (see App.tsx + the mobile breakpoint). */}
       <div className="sidebar-github">
         <a
           href={GITHUB_REPO}
@@ -118,7 +127,7 @@ export function Sidebar({ route, id, navOpen = false, onNavigate }: SidebarProps
           onClick={handleNav}
         >
           {githubIcon}
-          <span>GitHub</span>
+          <span>{t.github}</span>
           <span className="ext-arrow">↗</span>
         </a>
         <button
@@ -133,4 +142,4 @@ export function Sidebar({ route, id, navOpen = false, onNavigate }: SidebarProps
       </div>
     </aside>
   );
-}
+});

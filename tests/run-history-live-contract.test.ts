@@ -60,10 +60,15 @@ test("offers a header chip that jumps to the executing run", () => {
 
   assert.match(chip, /display:\s*inline-flex/);
   assert.match(chip, /cursor:\s*pointer/);
+  // The chip's Radio icon "breathes" via a dedicated keyframe that keeps the
+  // running colour solid (and adds a glow), so the affordance stays clearly
+  // visible — unlike the shared active-status-icon-breathe, which blends the
+  // hue back to muted at the trough and nearly hides the icon.
   assert.match(
     cssRule(".run-history__live-jump > svg"),
-    /animation:\s*active-status-icon-breathe/,
+    /animation:\s*run-history-live-breathe/,
   );
+  assert.match(styles, /@keyframes run-history-live-breathe \{/);
 });
 
 test("marks the armed live filter on the same chip", () => {

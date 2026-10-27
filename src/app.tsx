@@ -4105,7 +4105,7 @@ export default function App() {
           <ReplayFooter
             events={activeEvents}
             cursor={replayCursor}
-            live={liveActive}
+            live={executingLive}
             playing={playing}
             speed={replaySpeed}
             onSeek={handleReplaySeek}

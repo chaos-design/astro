@@ -1491,9 +1491,18 @@ pre,
 }
 
 .run-history__live-jump > svg {
-  width: 11px;
-  height: 11px;
-  animation: active-status-icon-breathe 1.45s ease-in-out infinite;
+  width: 13px;
+  height: 13px;
+  /* Solid running colour so the icon reads clearly against the translucent
+     chip; the dedicated keyframe only pulses opacity/scale/glow (via
+     currentColor) and never dims the hue back to muted. */
+  color: var(--status-running);
+  animation: run-history-live-breathe 1.45s ease-in-out infinite;
+}
+/* Selected (armed filter) state: the chip is filled with the running colour,
+   so the icon cuts through as the page background and its glow follows. */
+.run-history__live-jump.is-filtering > svg {
+  color: var(--bg);
 }
 
 .run-history__row > svg {
@@ -4995,6 +5004,25 @@ pre,
   50% {
     opacity: 1;
     transform: scale(1.15);
+  }
+}
+
+/* Breathing treatment for the N LIVE chip's Radio icon. Unlike the shared
+   active-status-icon-breathe (which blends the hue back to --muted at the
+   trough, so the icon nearly vanishes), this keyframe keeps the colour solid
+   (currentColor) and only modulates opacity, scale and a soft glow — so the
+   icon is always clearly visible while still visibly "breathing". */
+@keyframes run-history-live-breathe {
+  0%,
+  100% {
+    opacity: 0.78;
+    transform: scale(0.92);
+    filter: drop-shadow(0 0 1px color-mix(in srgb, currentColor 45%, transparent));
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.18);
+    filter: drop-shadow(0 0 6px color-mix(in srgb, currentColor 78%, transparent));
   }
 }
 

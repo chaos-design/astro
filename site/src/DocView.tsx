@@ -106,16 +106,8 @@ export function DocView({ slug }: { slug: string }) {
         <div className="crumb">{t.docCrumb}</div>
         <h1 className="page-title">{t.docNotFound}</h1>
         <p className="page-desc">
-          {lang === "en" ? (
-            <>
-              No doc with slug <code>{slug}</code>. <a href={ROUTES.home}>{t.backHome}</a>.
-            </>
-          ) : (
-            <>
-              没有 slug 为 <code>{slug}</code> 的文档。
-              <a href={ROUTES.home}>{t.backHome}</a>。
-            </>
-          )}
+          {t.docNotFoundLead} <code>{slug}</code> {t.docNotFoundTrail}{" "}
+          <a href={ROUTES.home}>{t.backHome}</a>.
         </p>
       </div>
     );

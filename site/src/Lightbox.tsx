@@ -43,12 +43,16 @@ export function Lightbox({
 
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
+  const stageRef = useRef<HTMLDivElement | null>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
 
   // Pointers currently on the viewport: one pans, two pinch.
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   const pinchDist = useRef(0);
   const lastTap = useRef(0);
+  // Set once the user takes control (zoom/pan); until then we re-fit on
+  // media load / window resize so a wide picture still opens well-framed.
+  const interacted = useRef(false);
 
   // Always-current view state for native (non-React) listeners to read.
   const view = useRef({ scale: 1, tx: 0, ty: 0 });
@@ -64,6 +68,7 @@ export function Lightbox({
   // Zoom anchored so the point at (ax, ay) — viewport-relative — stays put.
   const zoomAt = useCallback(
     (ax: number, ay: number, factor: number) => {
+      interacted.current = true;
       const v = view.current;
       const next = clamp(v.scale * factor, MIN_SCALE, MAX_SCALE);
       const k = next / v.scale;
@@ -73,6 +78,26 @@ export function Lightbox({
   );
 
   const reset = useCallback(() => commit({ scale: 1, tx: 0, ty: 0 }), [commit]);
+
+  // Fit the media into the viewport without ever upscaling beyond 100%: a wide
+  // desktop screenshot shrinks to frame itself, a small diagram stays native.
+  // offsetWidth/Height are the layout box at scale 1 (ancestor transforms do
+  // not affect them), so the fit scale is simply availableSize / naturalSize.
+  const fit = useCallback(() => {
+    const vp = viewportRef.current;
+    const media = stageRef.current?.firstElementChild as HTMLElement | null;
+    if (!vp || !media) return;
+    const naturalW = media.offsetWidth;
+    const naturalH = media.offsetHeight;
+    if (naturalW <= 0 || naturalH <= 0) return;
+    const pad = 24;
+    const scale = Math.min(
+      1,
+      (vp.clientWidth - pad * 2) / naturalW,
+      (vp.clientHeight - pad * 2) / naturalH,
+    );
+    commit({ scale: clamp(scale, MIN_SCALE, MAX_SCALE), tx: 0, ty: 0 });
+  }, [commit]);
 
   // Native, non-passive wheel listener: React's onWheel is passive in some
   // browsers so preventDefault would not stop the underlying page scroll.
@@ -108,6 +133,27 @@ export function Lightbox({
       triggerRef.current = null;
     };
   }, []);
+
+  // Fit the media into the viewport on open (after the media box is laid out)
+  // and on window resize / image load — but only while the user has not yet
+  // manually zoomed/panned, so their framing is never fought with.
+  useLayoutEffect(() => {
+    if (!interacted.current) fit();
+    const media = stageRef.current?.firstElementChild;
+    const img = media?.tagName === "IMG" ? (media as HTMLImageElement) : media?.querySelector("img");
+    const onLoad = () => {
+      if (!interacted.current) fit();
+    };
+    img?.addEventListener("load", onLoad);
+    const onResize = () => {
+      if (!interacted.current) fit();
+    };
+    window.addEventListener("resize", onResize);
+    return () => {
+      img?.removeEventListener("load", onLoad);
+      window.removeEventListener("resize", onResize);
+    };
+  }, [fit]);
 
   // Close on Escape.
   useEffect(() => {
@@ -148,6 +194,7 @@ export function Lightbox({
     if (!prev) return;
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pointers.current.size === 2) {
+      interacted.current = true;
       const [a, b] = [...pointers.current.values()];
       const dist = Math.hypot(a.x - b.x, a.y - b.y);
       if (pinchDist.current > 0) {
@@ -159,6 +206,7 @@ export function Lightbox({
       }
       pinchDist.current = dist;
     } else if (pointers.current.size === 1) {
+      interacted.current = true;
       commit({
         scale: view.current.scale,
         tx: view.current.tx + (e.clientX - prev.x),
@@ -250,6 +298,7 @@ export function Lightbox({
           onPointerCancel={onPointerEnd}
         >
           <div
+            ref={stageRef}
             className="lightbox-stage"
             style={{
               transform: `translate(${tx}px, ${ty}px) scale(${scale})`,
