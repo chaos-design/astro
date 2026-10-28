@@ -336,7 +336,7 @@ const fields = [
     path: ["server", "port"],
     environment: "ASTRO_PORT",
     legacy: ["AGENT_TRACE_PORT", "TRAE_TRACE_PORT"],
-    defaultValue: 4318,
+    defaultValue: 5678,
     normalize: integerValue(1, 65_535),
   },
   {

@@ -720,7 +720,7 @@ function launchDashboardForEvents(
   }
 
   const astroHome = resolveAstroHome(environment);
-  const requestedPort = Number(environment.ASTRO_PORT || 4318);
+  const requestedPort = Number(environment.ASTRO_PORT || 5678);
   const pidFile = path.join(astroHome, `dashboard-${requestedPort}.pid`);
   const processRunning = dependencies.isProcessRunning || isProcessRunning;
   const existing = readDashboardPid(pidFile);

@@ -24,6 +24,7 @@ import {
   Pause,
   Play,
   Radio,
+  RefreshCw,
   RotateCcw,
   Search,
   SkipBack,
@@ -1369,11 +1370,14 @@ const RunHistory = memo(function RunHistory({
   }, [activePromptRunKey]);
 
   // On-demand loading: reveal one more day of history when the sentinel near
-  // the bottom of the list scrolls into view.
+  // the bottom of the list scrolls into view. While the `N LIVE` filter is
+  // armed the list is narrowed to the (usually short) live rows, so the
+  // bottom sentinel sits in view and would otherwise auto-load day after day;
+  // loading more history is deliberately off until the filter clears.
   useEffect(() => {
     const sentinel = sentinelRef.current;
     const list = listRef.current;
-    if (!canLoadMore || !sentinel || !list) {
+    if (!canLoadMore || liveFiltering || !sentinel || !list) {
       return undefined;
     }
     if (typeof IntersectionObserver === "undefined") {
@@ -1390,7 +1394,7 @@ const RunHistory = memo(function RunHistory({
     );
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [canLoadMore, onLoadMore, sessions.length]);
+  }, [canLoadMore, liveFiltering, onLoadMore, sessions.length]);
 
   const toggleRun = useCallback((key: string) => {
     setExpandedRuns((current) => toggleExpandedRun(current, key));
@@ -3812,6 +3816,33 @@ export default function App() {
     }
   };
 
+  // Restart the local dashboard service in place. The server spawns a
+  // successor that re-binds the same port, then exits; the SSE stream below
+  // drops during the hand-off and auto-reconnects, so the UI only shows a
+  // brief reconnect and the running port is preserved.
+  const restartDashboard = async () => {
+    if (isDemo) {
+      return;
+    }
+    if (
+      !window.confirm(
+        "Restart the local ASTRO service on its current port? The running port is preserved; the live connection reconnects automatically.",
+      )
+    ) {
+      return;
+    }
+    try {
+      const response = await fetch("/api/restart", { method: "POST" });
+      if (!response.ok) {
+        throw new Error(`Server returned ${response.status}`);
+      }
+    } catch (error) {
+      window.alert(
+        `Restart failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  };
+
   const focusAtom = useCallback(
     (atomId: string) => {
       const node = harnessFlow.nodes.find((item) => item.id === atomId);
@@ -3992,6 +4023,14 @@ export default function App() {
       danger: true,
       run: () => {
         void clearEvents();
+      },
+    },
+    {
+      id: "restart",
+      label: "Restart service",
+      icon: RefreshCw,
+      run: () => {
+        void restartDashboard();
       },
     },
   ];

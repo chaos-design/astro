@@ -739,7 +739,7 @@ Notes:
 
 Environment:
   ASTRO_HOME   Bootstrap runtime and trace root (default ~/.astrox)
-  ASTRO_PORT   Dashboard port (default 4318)
+  ASTRO_PORT   Dashboard port (default 5678)
   ASTRO_HOST   Dashboard host (default 127.0.0.1)`);
 }
 

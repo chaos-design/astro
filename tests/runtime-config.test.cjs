@@ -178,7 +178,7 @@ test("ignores invalid values and reports names without secret values", (t) => {
   });
   const diagnostics = JSON.stringify(result.diagnostics);
 
-  assert.equal(result.config.server.port, 4318);
+  assert.equal(result.config.server.port, 5678);
   assert.equal(result.paths.astroHome, astroHome);
   assert.match(diagnostics, /CONFIG_KEY_UNKNOWN/);
   assert.match(diagnostics, /CONFIG_VALUE_INVALID/);
@@ -201,7 +201,7 @@ test("falls back safely when YAML is malformed", (t) => {
     environment: { ASTRO_HOME: astroHome },
   });
 
-  assert.equal(result.config.server.port, 4318);
+  assert.equal(result.config.server.port, 5678);
   assert.equal(result.files.config.valid, false);
   assert.ok(
     result.diagnostics.some(

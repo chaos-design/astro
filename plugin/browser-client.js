@@ -1,4 +1,4 @@
-const defaultEndpoint = "http://127.0.0.1:4318/api/events";
+const defaultEndpoint = "http://127.0.0.1:5678/api/events";
 
 function createId(prefix) {
   const value =

@@ -18,6 +18,7 @@ import storagePaths from "../plugin/storage-paths.cjs";
 import { TraceRepository } from "./trace-repository.mjs";
 
 const serverDir = dirname(fileURLToPath(import.meta.url));
+const serverFile = fileURLToPath(import.meta.url);
 const projectDir = resolve(serverDir, "..");
 const publicDir = join(projectDir, "dist");
 const runtimeConfig = runtimeConfigLoader.loadRuntimeConfig({
@@ -37,7 +38,7 @@ const requestedPort = Number(
   environment.ASTRO_PORT ||
     environment.AGENT_TRACE_PORT ||
     environment.TRAE_TRACE_PORT ||
-    4318,
+    5678,
 );
 const maxBodyBytes = Number(
   environment.ASTRO_MAX_BODY_BYTES ||
@@ -46,6 +47,7 @@ const maxBodyBytes = Number(
 );
 const clients = new Set();
 let dashboardUrl = "";
+let boundPort = requestedPort;
 const store = new TraceRepository(environment);
 const { createTraceEvent } = recorder;
 const { resolveAstroHome, resolveTraceDirectory } = storagePaths;
@@ -61,6 +63,10 @@ const pidFile =
 const shouldOpenBrowser = !["", "0", "false", "no", "off"].includes(
   String(environment.ASTRO_OPEN_BROWSER || "").trim().toLowerCase(),
 );
+// When set, an EADDRINUSE on the requested port is retried on the SAME port
+// instead of walking to the next one. A self-restart successor needs this so
+// it can take over the port the current process is about to release.
+const restartTakeover = String(environment.ASTRO_TAKEOVER || "").trim() === "1";
 
 const mimeTypes = {
   ".css": "text/css; charset=utf-8",
@@ -485,6 +491,53 @@ async function handleRequest(request, response) {
     return;
   }
 
+  // Restart the dashboard in place: spawn a successor that re-binds the SAME
+  // port (takeover mode), respond, then hand the port over by exiting. Open
+  // SSE clients and the browser tab reconnect to the successor automatically,
+  // so the running port is preserved instead of drifting to a new one.
+  if (
+    request.method === "POST" &&
+    requestUrl.pathname === "/api/restart"
+  ) {
+    let child;
+    try {
+      child = spawn(process.execPath, [serverFile], {
+        detached: true,
+        stdio: "ignore",
+        env: {
+          ...process.env,
+          ASTRO_PORT: String(boundPort),
+          ASTRO_TAKEOVER: "1",
+          ASTRO_OPEN_BROWSER: "0",
+        },
+      });
+      child.on("error", () => {});
+      child.unref();
+    } catch {
+      sendJson(response, 500, {
+        error: "Failed to start the restart process.",
+      });
+      return;
+    }
+    sendJson(response, 202, {
+      status: "restarting",
+      pid: child.pid,
+      url: dashboardUrl,
+    });
+    // Flush the response, then release the port so the successor can take it.
+    setTimeout(() => {
+      console.log(
+        `[restart] successor pid ${child.pid} spawned; handing off port ${boundPort}`,
+      );
+      shutdown();
+      // Safety: SSE clients may reconnect during the hand-off and keep the
+      // server from closing. The successor owns the port now, so force-exit
+      // the outgoing process if it has not released in time.
+      setTimeout(() => process.exit(0), 3_000).unref();
+    }, 120);
+    return;
+  }
+
   if (request.method === "GET") {
     serveStatic(requestUrl.pathname, response);
     return;
@@ -507,37 +560,54 @@ const server = createServer((request, response) => {
   });
 });
 
-function listen(port) {
-  const handleListening = () => {
-    const url = `http://${host}:${port}`;
-    dashboardUrl = url;
-    mkdirSync(dirname(pidFile), { recursive: true });
-    writeFileSync(
-      pidFile,
-      `${JSON.stringify({
-        pid: process.pid,
-        server: fileURLToPath(import.meta.url),
-        url,
-      })}\n`,
-      "utf8",
-    );
-    console.log(`ASTRO: ${url}`);
-    console.log(`Trace data root: ${dataRoot}`);
-    if (shouldOpenBrowser) {
-      openDashboard(createDashboardUrl(url));
-    }
-  };
+function handleListening(port) {
+  const url = `http://${host}:${port}`;
+  dashboardUrl = url;
+  boundPort = port;
+  mkdirSync(dirname(pidFile), { recursive: true });
+  writeFileSync(
+    pidFile,
+    `${JSON.stringify({
+      pid: process.pid,
+      server: serverFile,
+      url,
+    })}\n`,
+    "utf8",
+  );
+  console.log(`ASTRO: ${url}`);
+  console.log(`Trace data root: ${dataRoot}`);
+  if (shouldOpenBrowser) {
+    openDashboard(createDashboardUrl(url));
+  }
+}
 
-  server.once("listening", handleListening);
-  server.once("error", (error) => {
-    server.off("listening", handleListening);
-    if (error.code === "EADDRINUSE" && port < requestedPort + 20) {
-      listen(port + 1);
-      return;
+function listen(port, takeoverRetries = 0) {
+  const onListening = () => {
+    server.off("error", onError);
+    handleListening(port);
+  };
+  const onError = (error) => {
+    if (error.code === "EADDRINUSE") {
+      // A restart successor retries the SAME port so a single shared port
+      // never drifts to a new one; give the outgoing process a moment to
+      // release the socket before re-binding it. Cap the retries so a port
+      // held by a foreign process surfaces an error instead of spinning.
+      if (restartTakeover) {
+        if (takeoverRetries >= 20) {
+          throw error;
+        }
+        setTimeout(() => listen(port, takeoverRetries + 1), 250);
+        return;
+      }
+      if (port < requestedPort + 20) {
+        listen(port + 1, 0);
+        return;
+      }
     }
     throw error;
-  });
-
+  };
+  server.once("listening", onListening);
+  server.once("error", onError);
   server.listen(port, host);
 }
 
