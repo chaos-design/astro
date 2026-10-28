@@ -391,6 +391,35 @@ Use `--no-deepseek` to skip refreshing the DeepSeek plugin runtime, and
 is a no-op-safe content refresh: it re-copies the runtime into the existing
 `<ASTRO_HOME>/plugins/astro` and rewrites `plugin.json` with the current version.
 
+### 11.1 Installed bundle out of sync with the checkout
+
+The dashboard serves the **copy** under `<ASTRO_HOME>/plugins/astro`, not the
+repository. `git pull` plus `pnpm build` without refreshing that copy keeps the
+old `dist` on screen — a shipped feature looks missing even though the source
+and the build output both contain it.
+
+Check in this order:
+
+```bash
+astrox status          # plugin build line reports STALE v<old> ≠ CLI v<new>
+astrox update          # rewrite the bundle, keeping hooks, .env and trace data
+astrox restart         # reload the daemon so the new server and dist apply
+```
+
+- `astrox status` compares the bundle's stamped `plugin.json` version with the
+  CLI version and reports `STALE` with the fix; the `dashboard` line also shows
+  the running instance's version and source path, and `other` lists further
+  instances of the same `ASTRO_HOME` on different ports.
+- `astrox start` refreshes a lagging bundle before launching (leaving the
+  DeepSeek plugin alone) and binds the configured port; if that port already
+  runs an older bundle it points at `astrox restart` instead of pretending
+  everything is current.
+- `astrox start/stop/restart` only act on the instance of the configured port
+  (`server.port`, overridable with `--port`), so a daemon belonging to another
+  checkout can neither block a start nor be killed by mistake.
+- Several instances may share one `ASTRO_HOME`; each serves its own copy, and
+  `astrox status` reports the non-configured ones as `other`.
+
 Before and after upgrade, confirm the data root is unchanged, native recorder copies are synchronized, old sessions remain readable, new follow-up turns append, production empty state contains no Demo, and local UI preferences migrate.
 
 ## 12. Browser-local State

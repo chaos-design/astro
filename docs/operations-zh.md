@@ -382,6 +382,23 @@ astro-trace update
 
 `--no-deepseek` 可跳过刷新 DeepSeek 插件运行时；`--astro-home /path/to/.astrox` 可覆盖默认数据根。该命令是一次「内容刷新」：把新的运行时文件重新复制到现有 `<ASTRO_HOME>/plugins/astro`，并按当前版本重写 `plugin.json`；若该路径从未安装过则直接报错而不是静默创建。
 
+### 11.1 已安装副本与当前构建不一致
+
+仪表盘跑的是 `<ASTRO_HOME>/plugins/astro` 里的**副本**，不是仓库本身。只 `git pull` + `pnpm build` 而不刷新副本，面板会继续使用旧 `dist`——表现为「界面上某个已发布功能不见了」，但源码和构建产物都在。
+
+排查顺序：
+
+```bash
+astrox status          # plugin build 行给出 STALE v<旧> ≠ CLI v<新>
+astrox update          # 重写副本内容（保留 Hook、.env 与已捕获数据）
+astrox restart         # 重启守护进程，加载新 server 与 dist
+```
+
+- `astrox status` 的 `plugin build` 行比对副本 `plugin.json` 的版本与 CLI 版本，不一致即标记 `STALE` 并给出修复命令；`dashboard` 行同时显示运行中实例的版本与来源路径，`other` 行列出同 `ASTRO_HOME` 下其他端口上的实例。
+- `astrox start` 检测到副本落后时，会在启动前自动刷新副本（不动 DeepSeek 插件），并按配置端口启动；若该端口已有旧副本在跑，会提示改用 `astrox restart`。
+- `astrox start/stop/restart` 只作用于配置端口（`server.port`，可用 `--port` 覆盖）对应的实例，不会因为其他端口上存在同 `ASTRO_HOME` 的实例而误判「已在运行」或误杀。
+- 同一 `ASTRO_HOME` 下允许并存多个实例（例如另一个 checkout 或插件缓存），它们各自服务自己的副本，`astrox status` 会把非配置端口的实例单列为 `other`。
+
 升级前后检查：
 
 1. `/api/health.dataRoot` 未意外改变；
