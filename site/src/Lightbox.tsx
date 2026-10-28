@@ -261,6 +261,32 @@ export function Lightbox({
             </button>
             <button
               type="button"
+              className="lightbox-tool lightbox-pct"
+              onClick={reset}
+              title={t.lbReset}
+              aria-label={`${pct}% · ${t.lbReset}`}
+            >
+              <svg
+                className="lightbox-fit"
+                viewBox="0 0 16 16"
+                width="13"
+                height="13"
+                aria-hidden="true"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M5 3H4a1 1 0 0 0-1 1v1" />
+                <path d="M11 3h1a1 1 0 0 1 1 1v1" />
+                <path d="M13 11v1a1 1 0 0 1-1 1h-1" />
+                <path d="M3 11v1a1 1 0 0 0 1 1h1" />
+              </svg>
+              {pct}%
+            </button>
+            <button
+              type="button"
               className="lightbox-tool"
               onClick={() => {
                 const c = center(window.innerWidth / 2, window.innerHeight / 2);
@@ -269,15 +295,6 @@ export function Lightbox({
               aria-label={t.lbZoomIn}
             >
               +
-            </button>
-            <button
-              type="button"
-              className="lightbox-tool lightbox-pct"
-              onClick={reset}
-              title={t.lbReset}
-              aria-label={`${pct}% · ${t.lbReset}`}
-            >
-              {pct}%
             </button>
             <button
               type="button"
