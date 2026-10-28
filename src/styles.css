@@ -648,6 +648,157 @@ pre,
   background: var(--red);
 }
 
+/*
+ * Local service chip: uptime in the header, details plus the restart control
+ * in a popover. The chip is the only place the studio exposes process-level
+ * facts (pid, startup cost, data root), so it has to stay compact.
+ */
+.service-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--line-bright);
+  border-radius: 999px;
+  color: var(--muted-soft);
+  background: var(--panel-raised);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+  transition:
+    border-color 140ms ease,
+    color 140ms ease,
+    background 140ms ease;
+}
+
+.service-status:hover,
+.service-status[data-state="open"] {
+  border-color: var(--selection-border);
+  color: var(--text);
+  background: var(--panel-hover);
+}
+
+.service-status > i {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 6px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.service-status[data-health="online"] > i {
+  background: var(--status-completed);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--status-completed) 60%, transparent);
+}
+
+.service-status[data-health="degraded"] > i {
+  background: var(--status-waiting);
+}
+
+.service-status[data-health="error"] > i {
+  background: var(--status-failed);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--status-failed) 60%, transparent);
+}
+
+.service-status[data-health="pending"] > i {
+  background: var(--muted);
+  animation: run-history-live-pulse 1.6s ease-in-out infinite;
+}
+
+.service-status > svg {
+  width: 12px;
+  height: 12px;
+  color: var(--muted);
+}
+
+.service-card {
+  width: min(340px, calc(100vw - 24px));
+  gap: 10px;
+  border: 1px solid var(--line-bright);
+  border-radius: 8px;
+  color: var(--text);
+  /* Opaque: the card floats over the canvas, and a translucent panel left the
+     small mono labels unreadable. */
+  background: var(--panel);
+  box-shadow: 0 18px 40px rgb(0 0 0 / 42%);
+}
+
+.service-card > header {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.service-card > header strong {
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.service-card dl {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.service-card dl > div {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+}
+
+.service-card dt {
+  color: var(--muted-soft);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.service-card dd {
+  min-width: 0;
+  margin: 0;
+  /* Wrap instead of truncating: the session summary and the data root are the
+     two values a reader actually needs in full. */
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.service-card__hint {
+  margin: 0;
+  color: var(--muted-soft);
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.service-card__error {
+  margin: 0;
+  color: var(--status-failed);
+  font-family: var(--font-mono);
+  font-size: 9px;
+}
+
+.service-card__restart {
+  justify-content: center;
+  border-color: var(--line-bright);
+  color: var(--muted-soft);
+  background: var(--panel);
+  font-size: 10px;
+}
+
+.service-card__restart:hover:not(:disabled) {
+  border-color: var(--selection-border);
+  color: var(--selection-text);
+  background: var(--selection-bg);
+}
+
 .theme-select {
   width: 28px;
   min-width: 28px;
@@ -1491,6 +1642,120 @@ pre,
   color: var(--bg);
 }
 
+/* Header meta: the LIVE chip and the stream-freshness clock share one column
+   so a long uptime string never pushes the chip out of the header. */
+.run-history__header-meta {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+}
+
+/*
+ * Freshness of the list itself: the capture time of the newest event the
+ * stream delivered. A stopped stream otherwise looks exactly like an idle
+ * agent, which is what made "did this finish?" unanswerable.
+ */
+.run-history__sync {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted-soft);
+  font-family: var(--font-mono);
+  font-size: 7px;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.run-history__sync i {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.run-history__sync.is-connected {
+  color: color-mix(in srgb, var(--status-completed) 82%, var(--muted));
+}
+
+.run-history__sync.is-connected i {
+  background: var(--status-completed);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--status-completed) 70%, transparent);
+}
+
+.run-history__sync.is-offline {
+  color: var(--status-failed);
+}
+
+.run-history__sync.is-offline i {
+  background: var(--status-failed);
+}
+
+/*
+ * An executing run that stopped producing events. The status stays `active`
+ * (only the recorder knows for sure) but the row says the stream went silent,
+ * which is the difference between "still thinking" and "probably died".
+ */
+.run-history__stale-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 5px;
+  border: 1px solid color-mix(in srgb, var(--status-waiting) 52%, transparent);
+  border-radius: 999px;
+  color: color-mix(in srgb, var(--status-waiting) 90%, var(--text));
+  background: color-mix(in srgb, var(--status-waiting) 14%, transparent);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.run-history__stale-tag > svg {
+  width: 10px;
+  height: 10px;
+}
+
+.run-history__row.is-live[data-stale="true"]:not(.is-selected) {
+  border-color: color-mix(in srgb, var(--status-waiting) 42%, transparent);
+  background: color-mix(in srgb, var(--status-waiting) 7%, transparent);
+  box-shadow: inset 2px 0 var(--status-waiting);
+}
+
+/* The recorded end cause, next to the status word. */
+.run-history__reason {
+  color: color-mix(in srgb, var(--status-failed) 72%, var(--muted));
+  font-style: normal;
+}
+
+.run-history__row.is-selected .run-history__reason {
+  color: var(--selection-text);
+}
+
+/* Explicit "load one more day" control: a short list never auto-loads, so the
+   affordance has to be visible rather than hidden in a sentinel. */
+.run-history__load-earlier {
+  margin: 4px 2px 2px;
+  padding: 6px 8px;
+  border: 1px dashed var(--line-bright);
+  border-radius: 6px;
+  color: var(--muted-soft);
+  background: transparent;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 8px;
+  letter-spacing: 0.08em;
+  transition:
+    border-color 140ms ease,
+    color 140ms ease,
+    background 140ms ease;
+}
+
+.run-history__load-earlier:hover {
+  border-color: var(--selection-border);
+  color: var(--selection-text);
+  background: var(--selection-bg);
+}
+
 .run-history__live-jump:focus-visible {
   outline: 1px solid var(--status-running);
   outline-offset: 1px;
@@ -2139,9 +2404,22 @@ pre,
   overflow: visible;
   opacity: 1;
   filter: saturate(1);
+  /* The canvas is committed as soon as the layout resolves, so it fades in
+     instead of waiting out a fixed skeleton delay. Opacity only: the element
+     carries an inline translate() for the live pan. */
+  animation: runtime-canvas-enter 190ms ease-out;
   transition:
     opacity 210ms ease,
     filter 210ms ease;
+}
+
+@keyframes runtime-canvas-enter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .runtime-canvas-fit.is-reflowing {
@@ -2979,7 +3257,40 @@ pre,
 }
 
 .trajectory-map__track-content {
+  position: relative;
   width: 100%;
+}
+
+/*
+ * Where the reader currently is in the run: one vertical guide through every
+ * lane at the selected (or executing) slot, labelled with its position. The
+ * slot minimum width makes long runs scroll instead of compressing, and this
+ * cursor keeps the "which part of the flow" question answerable while it does.
+ */
+.trajectory-map__cursor {
+  position: absolute;
+  z-index: 4;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: color-mix(in srgb, var(--selection-border) 62%, transparent);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--selection-glow) 55%, transparent);
+  pointer-events: none;
+}
+
+.trajectory-map__cursor-label {
+  position: absolute;
+  top: -2px;
+  left: 50%;
+  padding: 1px 4px;
+  border-radius: 3px;
+  color: var(--bg);
+  background: var(--selection-border);
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  transform: translateX(-50%);
+  white-space: nowrap;
 }
 
 .trajectory-map__track-content i {
@@ -3046,6 +3357,23 @@ pre,
   outline-offset: 1px;
   background: color-mix(in srgb, var(--segment-tone) 72%, white);
   animation: trajectory-segment-pulse 1.05s ease-in-out infinite;
+}
+
+/* Aggregated slots stand for a node range: a hatched fill hints at "several
+   events in one mark" without needing a second dimension. */
+.trajectory-map b.is-aggregate {
+  background:
+    repeating-linear-gradient(
+      115deg,
+      color-mix(in srgb, var(--segment-tone) 92%, transparent) 0 1px,
+      color-mix(in srgb, var(--segment-tone) 62%, transparent) 1px 3px
+    );
+}
+
+.trajectory-map b.is-failed {
+  box-shadow:
+    0 0 10px color-mix(in srgb, var(--red) 70%, transparent),
+    inset 0 0 5px color-mix(in srgb, white 14%, transparent);
 }
 
 .tone-bg-prompt {
@@ -5231,6 +5559,12 @@ pre,
   .studio-header__actions .run-status {
     min-width: 0;
     font-size: var(--text-meta);
+  }
+
+  /* The uptime chip needs room the collapsed header does not have; the same
+   * facts stay reachable through the nav panel's "Restart service" action. */
+  .studio-header__actions .service-status {
+    display: none;
   }
 
   .studio-header__actions .theme-select {

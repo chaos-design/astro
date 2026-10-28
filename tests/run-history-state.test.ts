@@ -4,12 +4,16 @@ import {
   ensureExpandedRun,
   filterSessionsByLiveKeys,
   getPromptAtomSelection,
+  getRunFreshness,
   getRunHistoryDisplayState,
   getRunHistoryDisplayStatus,
   getRunHistoryDuration,
+  getRunHistoryTerminalInfo,
   isLiveRunStatus,
   quantizeTimestamp,
   RUN_HISTORY_COARSE_REFRESH_MS,
+  RUN_HISTORY_STALE_AFTER_MS,
+  RUN_HISTORY_WAITING_STALE_AFTER_MS,
   toggleExpandedRun,
 } from "../src/lib/run-history-state.ts";
 
@@ -238,4 +242,80 @@ test("quantizes timestamps down to the start of their bucket", () => {
   assert.equal(quantizeTimestamp(0, 30_000), 0);
   // The coarse refresh bucket matches the documented 30s granularity.
   assert.equal(RUN_HISTORY_COARSE_REFRESH_MS, 30_000);
+});
+
+test("marks an executing run as stale once its stream has been silent", () => {
+  const lastEventAt = 1_000_000;
+
+  // Inside the threshold the run still reads as executing.
+  assert.deepEqual(
+    getRunFreshness("active", lastEventAt, lastEventAt + 30_000),
+    { idleFor: 30_000, stale: false },
+  );
+  assert.deepEqual(
+    getRunFreshness(
+      "active",
+      lastEventAt,
+      lastEventAt + RUN_HISTORY_STALE_AFTER_MS,
+    ),
+    { idleFor: RUN_HISTORY_STALE_AFTER_MS, stale: true },
+  );
+  // A waiting run gets a longer rope, but not an infinite one: a quarter of
+  // an hour without a single event is reported as idle.
+  assert.equal(
+    getRunFreshness("waiting", lastEventAt, lastEventAt + 300_000).stale,
+    false,
+  );
+  assert.deepEqual(
+    getRunFreshness(
+      "waiting",
+      lastEventAt,
+      lastEventAt + RUN_HISTORY_WAITING_STALE_AFTER_MS,
+    ),
+    { idleFor: RUN_HISTORY_WAITING_STALE_AFTER_MS, stale: true },
+  );
+  // Finished runs are silent by definition.
+  for (const status of ["complete", "failed", "terminated", undefined]) {
+    assert.equal(
+      getRunFreshness(status, lastEventAt, lastEventAt + 900_000).stale,
+      false,
+    );
+  }
+});
+
+test("reports why a run ended, including the display-timeout case", () => {
+  const session = {
+    duration: 4_000,
+    start: 1_000,
+    status: "terminated" as const,
+    statusDetail: "user abort",
+    terminalReason: "interrupted" as const,
+  };
+
+  assert.deepEqual(
+    getRunHistoryTerminalInfo(session, [{ status: "terminated" }], 10_000),
+    { detail: "user abort", reason: "interrupted" },
+  );
+
+  // A live run that only looks terminated because the display timeout elapsed
+  // must say `timeout`, not reuse a stale recorded reason.
+  const timeout = 60_000;
+  const live = {
+    duration: 1_000,
+    start: 1_000,
+    status: "active" as const,
+  };
+  assert.deepEqual(
+    getRunHistoryTerminalInfo(
+      live,
+      [{ status: "active" }],
+      live.start + timeout + 1,
+      timeout,
+    ),
+    { detail: null, reason: "timeout" },
+  );
+  assert.deepEqual(
+    getRunHistoryTerminalInfo(live, [{ status: "active" }], live.start + 10, timeout),
+    { detail: null, reason: null },
+  );
 });

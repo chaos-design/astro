@@ -216,13 +216,42 @@ curl -s http://127.0.0.1:4318/api/health
 | --- | --- |
 | `status` | 正常时为 `ok`。 |
 | `pid` | 当前本地服务进程。 |
-| `url` | 服务最终监听 URL。 |
+| `url` / `host` / `port` | 服务最终监听地址（重启会保留同一端口）。 |
+| `startedAt` | 当前进程的启动时间。 |
+| `uptimeMs` | 已运行时长。 |
+| `bootMs` | 启动耗时：进程启动到开始监听，包含读取全部 JSONL 的时间。 |
+| `restartCount` / `restartedAt` | 通过页内重启按钮接手的次数与最近一次时间。 |
+| `eventCount` | Repository 当前聚合事件数（O(1)，可直接轮询）。 |
+| `sessionCounts` | 服务端按会话推导的状态计数：`active` / `waiting` / `complete` / `failed` / `terminated`。 |
 | `clientCount` | 当前 SSE 客户端数量。 |
-| `eventCount` | Repository 当前聚合事件数。 |
 | `dataRoot` | 服务实际扫描的数据根目录。 |
 | `traceFiles` | 当前已发现的所有 JSONL 文件。 |
+| `build` / `node` | 正在运行的版本与 Node 运行时，用于和页面版本对照。 |
 
-`dataRoot` 和 `traceFiles` 是判断路径是否一致的权威依据。
+`dataRoot` 和 `traceFiles` 是判断路径是否一致的权威依据。页面右上角的运行时长胶囊
+读取的就是本接口；展开后可看到上表全部字段，并提供“重启本地服务”按钮。
+
+### 7.1.1 会话状态
+
+```bash
+curl -s http://127.0.0.1:4318/api/sessions
+```
+
+返回服务端维护的会话摘要，字段包括 `state`、`reason`（`completed` / `interrupted` /
+`session-end` / 失败原因）、`eventCount`、`lastEventAt` 与 `lastEventName`。
+
+页面本身仍然从原始事件派生展示状态（UI 不写回事件）；该接口的价值在于**不打开页面也能
+确认某个会话是真的结束、异常还是仍在执行**，并让“静默中的 active 会话”有对照依据。
+
+### 7.1.2 就地重启
+
+```bash
+curl -s -X POST http://127.0.0.1:4318/api/restart
+```
+
+服务会派生出继承同一端口的后继进程，然后退出；SSE 客户端随后自动重连并重新拉取
+`reset` 快照。`ASTRO_RESTART_COUNT` / `ASTRO_RESTARTED_AT` 会传递给后继进程，因此
+`/api/health` 能给出重启次数与上次重启时间。
 
 ### 7.2 事件与流
 

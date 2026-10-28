@@ -31,6 +31,7 @@ import {
   SkipForward,
   Sparkles,
   TerminalSquare,
+  Timer,
   Trash2,
   TriangleAlert,
   X,
@@ -38,6 +39,7 @@ import {
 import {
   memo,
   useCallback,
+  useDeferredValue,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -72,6 +74,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Sheet,
@@ -133,8 +140,8 @@ import {
   buildSessionPromptRuns,
   buildFlow,
   buildHarnessFlow,
-  buildSessions,
   createDemoEvents,
+  createSessionProjection,
   eventMeta,
   formatDuration,
   getEventSummary,
@@ -153,7 +160,10 @@ import {
   buildHistorySearchIndex,
   type HistorySearchEntry,
 } from "./lib/history-search";
-import { getEventSearchText, matchesEventQuery } from "./lib/event-search";
+import {
+  matchesEventQuery,
+  warmEventSearchCache,
+} from "./lib/event-search";
 import {
   type LogRowMetrics,
   LOG_ROW_ESTIMATE,
@@ -177,6 +187,7 @@ import {
 import { atomLevel, projectTraceEvents } from "./lib/atomic-projection";
 import {
   buildTraceTurnIndex,
+  buildTrajectoryMapSlots,
   buildTrajectoryModel,
   getTrajectorySegmentPosition,
   type TrajectoryAtom,
@@ -195,9 +206,12 @@ import {
   ensureExpandedRun,
   filterSessionsByLiveKeys,
   getPromptAtomSelection,
+  getRunFreshness,
   getRunHistoryDisplayState,
+  getRunHistoryTerminalInfo,
   isLiveRunStatus,
   RUN_HISTORY_COARSE_REFRESH_MS,
+  runTerminalReasonLabels,
   quantizeTimestamp,
   toggleExpandedRun,
 } from "./lib/run-history-state";
@@ -215,6 +229,7 @@ import type {
   HarnessNode,
   HarnessNodeData,
   PlatformId,
+  RunTerminalReason,
   SignalEdge,
   TraceEvent,
   TraceNode as TraceNodeType,
@@ -231,6 +246,18 @@ type InspectorTab = "input" | "output" | "raw";
  */
 const EMPTY_EVENTS: TraceEvent[] = [];
 const EMPTY_HISTORY_ENTRIES: HistorySearchEntry[] = [];
+/**
+ * Minimum horizontal slot per node in the trajectory lane overview. Below
+ * roughly this width the segments stop being distinguishable (and clickable),
+ * so the track scrolls instead of compressing further.
+ */
+const TRAJECTORY_MIN_SLOT_PX = 16;
+/**
+ * Upper bound on lane-overview marks per lane. A 10k-node run otherwise draws
+ * 10k segments, which is both unreadable and expensive to paint; slots
+ * aggregate consecutive nodes so the map stays a bounded timeline.
+ */
+const TRAJECTORY_MAP_MAX_SLOTS = 96;
 type ActiveTransition = {
   fromId: string;
   toId: string;
@@ -622,6 +649,191 @@ function ThemeSwitcher({
   );
 }
 
+/**
+ * Snapshot of `/api/health`: process identity, startup cost, uptime and the
+ * capture-side session summary. Everything here is O(1) on the server, so the
+ * card can poll while the studio is open.
+ */
+type ServiceHealth = {
+  pid: number;
+  url: string;
+  host: string;
+  port: number;
+  startedAt: string;
+  restartedAt: string | null;
+  restartCount: number;
+  /** Process start → listening. Grows with the amount of stored history. */
+  bootMs: number;
+  uptimeMs: number;
+  node: string;
+  clientCount: number;
+  eventCount: number;
+  sessionCounts: Record<string, number>;
+  dataRoot: string;
+  traceFiles: string[];
+  build: string;
+  /** Client-side receipt time, used to advance the uptime locally. */
+  fetchedAt: number;
+};
+
+function formatBootDuration(milliseconds: number) {
+  if (!Number.isFinite(milliseconds) || milliseconds <= 0) {
+    return "--";
+  }
+  return milliseconds < 1_000
+    ? `${Math.round(milliseconds)}ms`
+    : formatDuration(milliseconds);
+}
+
+/**
+ * Local service card: uptime, startup cost, process details, and the restart
+ * control. The uptime advances locally between polls so it reads as a clock
+ * instead of a value that jumps every few seconds.
+ */
+function ServiceStatus({
+  connected,
+  error,
+  onRestart,
+  restarting,
+  service,
+}: {
+  connected: boolean;
+  error: string;
+  onRestart: () => void;
+  restarting: boolean;
+  service: ServiceHealth | null;
+}) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const uptime = service
+    ? Math.max(0, service.uptimeMs + (now - service.fetchedAt))
+    : 0;
+  const health = error
+    ? "error"
+    : !service
+      ? "pending"
+      : connected
+        ? "online"
+        : "degraded";
+  const counts = service?.sessionCounts ?? {};
+  const liveCount = (counts.active ?? 0) + (counts.waiting ?? 0);
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="service-status"
+          data-health={health}
+          aria-label="本地服务状态与运行时长"
+          title={
+            service
+              ? `本地服务 PID ${service.pid} · 已运行 ${formatDuration(uptime)}`
+              : "本地服务状态"
+          }
+        >
+          <i aria-hidden="true" />
+          <Timer aria-hidden="true" />
+          <span>
+            {restarting
+              ? "RESTARTING"
+              : service
+                ? formatDuration(uptime)
+                : error
+                  ? "OFFLINE"
+                  : "…"}
+          </span>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="service-card">
+        <header>
+          <span className="eyebrow">LOCAL SERVICE</span>
+          <strong>
+            {error
+              ? "服务不可达"
+              : connected
+                ? "运行中 · 流已连接"
+                : "运行中 · 流未连接"}
+          </strong>
+        </header>
+        <dl>
+          <div>
+            <dt>已运行</dt>
+            <dd>{service ? formatDuration(uptime) : "--"}</dd>
+          </div>
+          <div>
+            <dt>启动耗时</dt>
+            <dd>{service ? formatBootDuration(service.bootMs) : "--"}</dd>
+          </div>
+          <div>
+            <dt>启动于</dt>
+            <dd>{service ? formatRunDate(service.startedAt) : "--"}</dd>
+          </div>
+          <div>
+            <dt>PID · 端口</dt>
+            <dd>
+              {service ? `${service.pid} · ${service.port}` : "--"}
+            </dd>
+          </div>
+          <div>
+            <dt>版本</dt>
+            <dd>
+              {service ? `${service.build} · node ${service.node}` : "--"}
+            </dd>
+          </div>
+          <div>
+            <dt>重启次数</dt>
+            <dd>{service ? service.restartCount : 0}</dd>
+          </div>
+          <div>
+            <dt>事件</dt>
+            <dd>
+              {service ? service.eventCount.toLocaleString() : "--"} ·{" "}
+              {service ? service.traceFiles.length : 0} files
+            </dd>
+          </div>
+          <div>
+            <dt>会话</dt>
+            <dd>
+              {service
+                ? `${liveCount} live · ${counts.complete ?? 0} complete · ${
+                    counts.failed ?? 0
+                  } failed · ${counts.terminated ?? 0} terminated`
+                : "--"}
+            </dd>
+          </div>
+          <div>
+            <dt>数据目录</dt>
+            <dd title={service?.dataRoot}>{service?.dataRoot || "--"}</dd>
+          </div>
+        </dl>
+        {error ? <p className="service-card__error">{error}</p> : null}
+        <p className="service-card__hint">
+          重启会保留当前端口，页面与事件流会自动重连。
+        </p>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="service-card__restart"
+          disabled={restarting}
+          onClick={onRestart}
+        >
+          <RefreshCw
+            data-icon="inline-start"
+            className={restarting ? "animate-spin" : ""}
+          />
+          {restarting ? "正在重启…" : "重启本地服务"}
+        </Button>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 type RunHistoryRowDetails = {
   code: string;
   duration: number;
@@ -634,6 +846,10 @@ type RunHistoryRowDetails = {
   git: { repo: string; branch: string } | null;
   /** Executing or waiting: the row carries the live affordances. */
   live?: boolean;
+  /** Recorded cause of a terminal state (`interrupted`, `error`, …). */
+  reason?: string | null;
+  /** Milliseconds of silence for an executing run, when it looks dead. */
+  staleFor?: number;
   source: string;
   start: number;
   status: "demo" | TraceSession["status"];
@@ -657,6 +873,36 @@ function RunHistoryLiveTag({
     <span className="run-history__live-tag" data-live-status={status}>
       <span className="run-history__live-pulse" aria-hidden="true" />
       {status === "waiting" ? "WAITING" : "RUNNING"}
+    </span>
+  );
+}
+
+/**
+ * An `active` row whose stream went silent keeps its live status but says so
+ * out loud: the status alone would otherwise read as "still working" long
+ * after the agent died. A `waiting` row uses the same affordance with a much
+ * longer threshold and its own wording — an unanswered permission prompt is
+ * "idle", not "stale".
+ */
+function RunHistoryStaleTag({
+  staleFor,
+  waiting = false,
+}: {
+  staleFor: number;
+  waiting?: boolean;
+}) {
+  return (
+    <span
+      className="run-history__stale-tag"
+      data-kind={waiting ? "waiting" : "active"}
+      title={
+        waiting
+          ? `已 ${formatDuration(staleFor)} 没有新事件，等待可能已无人处理`
+          : `已 ${formatDuration(staleFor)} 没有新事件，可能已中断或进程已退出`
+      }
+    >
+      <TriangleAlert aria-hidden="true" />
+      {waiting ? "IDLE" : "STALE"} {formatDuration(staleFor)}
     </span>
   );
 }
@@ -708,6 +954,8 @@ function RunHistoryRowContent({
   extraValue,
   git,
   live = false,
+  reason,
+  staleFor,
   source,
   start,
   status,
@@ -721,12 +969,22 @@ function RunHistoryRowContent({
         <RunHistoryPath cwd={cwd} git={git} />
         <small>{formatRunDate(start)}</small>
         <span className="run-history__tags">
-          {live ? <RunHistoryLiveTag status={status} /> : null}
+          {live ? (
+            staleFor ? (
+              <RunHistoryStaleTag
+                staleFor={staleFor}
+                waiting={status === "waiting"}
+              />
+            ) : (
+              <RunHistoryLiveTag status={status} />
+            )
+          ) : null}
           <span>
             AGENT <b>{source}</b>
           </span>
           <span>
             STATUS <b>{status}</b>
+            {reason ? <em className="run-history__reason"> · {reason}</em> : null}
           </span>
           <span>
             DURATION <b>{formatDuration(duration)}</b>
@@ -748,7 +1006,9 @@ function RunHistoryDetailsCard({
   extraValue,
   fullCode,
   git,
+  reason,
   source,
+  staleFor,
   start,
   status,
   title,
@@ -769,11 +1029,17 @@ function RunHistoryDetailsCard({
   const toggleable = titleOverflows || titleExpanded;
   const lines: Array<[string, string]> = [
     ["AGENT", source],
-    ["STATUS", status],
+    ["STATUS", reason ? `${status} · ${reason}` : status],
     ["DURATION", formatDuration(duration)],
     [extraLabel, String(extraValue)],
     ["WORKING DIR", path.full || "not recorded"],
   ];
+  if (staleFor) {
+    lines.splice(2, 0, [
+      "SILENT FOR",
+      `${formatDuration(staleFor)} · 无新事件`,
+    ]);
+  }
   if (git?.branch) {
     lines.splice(4, 0, ["BRANCH", git.branch]);
   }
@@ -940,6 +1206,28 @@ const RunHistoryHoverCardLayer = memo(function RunHistoryHoverCardLayer({
  * status/duration once and hands them over as primitives, so a tick that
  * changes nothing about a row skips that row's render entirely.
  */
+/**
+ * The suffix shown next to `STATUS`: a finished run states *why* it ended
+ * (`interrupted`, `timeout`, the recorded error text), a live one shows
+ * nothing. This is what keeps `terminated` from being a dead end.
+ */
+function describeRunReason(
+  status: TraceRunStatus,
+  terminalReason: RunTerminalReason | null | undefined,
+  detail: string | null | undefined,
+): string | null {
+  if (isLiveRunStatus(status)) {
+    return null;
+  }
+  if (status === "terminated") {
+    return terminalReason ? runTerminalReasonLabels[terminalReason] : "terminated";
+  }
+  if (status === "failed") {
+    return detail || (terminalReason ? runTerminalReasonLabels[terminalReason] : "error");
+  }
+  return null;
+}
+
 const RunHistoryItem = memo(function RunHistoryItem({
   activeKey,
   activePromptRunKey,
@@ -995,6 +1283,20 @@ const RunHistoryItem = memo(function RunHistoryItem({
     "-",
   )}`;
   const git = session.cwd ? gitInfo[session.cwd] ?? null : null;
+  // Silence and end cause are derived from the same numbers the parent pass
+  // already computed, so this stays O(1) per row.
+  const lastPromptRun = promptRuns.at(-1);
+  const parentFreshness = getRunFreshness(
+    isDemo ? undefined : status,
+    lastPromptRun?.end ?? session.end,
+    now,
+  );
+  const parentTerminal = getRunHistoryTerminalInfo(
+    session,
+    promptRuns,
+    now,
+    appTimings.activeRunTimeoutMs,
+  );
   const parentDetails: RunHistoryRowDetails = {
     code: getShortId(session.id),
     cwd: session.cwd,
@@ -1004,6 +1306,12 @@ const RunHistoryItem = memo(function RunHistoryItem({
     fullCode: session.id,
     git,
     live,
+    reason: describeRunReason(
+      status,
+      parentTerminal.reason,
+      parentTerminal.detail,
+    ),
+    staleFor: parentFreshness.stale ? parentFreshness.idleFor : undefined,
     source: session.source,
     start: firstPromptRun?.start ?? session.start,
     status: isDemo ? "demo" : status,
@@ -1025,6 +1333,7 @@ const RunHistoryItem = memo(function RunHistoryItem({
         tabIndex={0}
         aria-pressed={parentSelected}
         data-live-status={liveStatus}
+        data-stale={parentDetails.staleFor ? "true" : undefined}
         className={cn(
           "run-history__row",
           hasPromptThread && "has-prompt-thread",
@@ -1087,6 +1396,17 @@ const RunHistoryItem = memo(function RunHistoryItem({
               const promptLiveStatus = promptLive
                 ? promptDisplayState.status
                 : undefined;
+              const promptFreshness = getRunFreshness(
+                isDemo ? undefined : promptDisplayState.status,
+                promptRun.end,
+                now,
+              );
+              const promptTerminal = getRunHistoryTerminalInfo(
+                promptRun,
+                [promptRun],
+                now,
+                appTimings.activeRunTimeoutMs,
+              );
               const promptDetails: RunHistoryRowDetails = {
                 code: promptCode,
                 cwd: promptRun.cwd,
@@ -1098,6 +1418,14 @@ const RunHistoryItem = memo(function RunHistoryItem({
                   ? gitInfo[promptRun.cwd] ?? null
                   : null,
                 live: promptLive,
+                reason: describeRunReason(
+                  promptDisplayState.status,
+                  promptTerminal.reason,
+                  promptTerminal.detail,
+                ),
+                staleFor: promptFreshness.stale
+                  ? promptFreshness.idleFor
+                  : undefined,
                 source: promptRun.source,
                 start: promptRun.start,
                 status: isDemo ? "demo" : promptDisplayState.status,
@@ -1111,6 +1439,7 @@ const RunHistoryItem = memo(function RunHistoryItem({
                     tabIndex={0}
                     aria-pressed={promptSelected}
                     data-live-status={promptLiveStatus}
+                    data-stale={promptDetails.staleFor ? "true" : undefined}
                     className={cn(
                       "run-history__row",
                       "run-history__prompt-run",
@@ -1233,7 +1562,8 @@ const RunHistory = memo(function RunHistory({
   gitInfo,
   initialLoading,
   isDemo,
-  loadingMore,
+  lastEventAt,
+  connected,
   now,
   promptRunsBySession,
   onLoadMore,
@@ -1248,7 +1578,10 @@ const RunHistory = memo(function RunHistory({
   canLoadMore: boolean;
   gitInfo: Record<string, { repo: string; branch: string } | null>;
   initialLoading: boolean;
-  loadingMore: boolean;
+  /** Capture time of the newest event the stream delivered, if any. */
+  lastEventAt: number;
+  /** Whether the SSE stream is currently connected. */
+  connected: boolean;
   onLoadMore: () => void;
   onSelect: (sessionKey: string, promptRunKey?: string) => void;
 }) {
@@ -1262,6 +1595,12 @@ const RunHistory = memo(function RunHistory({
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const hoverAnchorRef = useRef<HTMLElement | null>(null);
   const liveItemRef = useRef<HTMLElement | null>(null);
+  // Loading one more day is only ever armed by a real scroll gesture. A list
+  // that does not fill the panel keeps its bottom sentinel in view forever,
+  // and an always-on observer would then load day after day without the user
+  // asking for it. The explicit footer button covers the same need.
+  const loadArmedRef = useRef(false);
+  const [loadArmed, setLoadArmed] = useState(false);
   // `onSelect` comes from the app shell and changes identity whenever the
   // selected events move; dispatching through a latest ref keeps the row
   // callback stable so RunHistoryItem memoization survives live batches.
@@ -1370,31 +1709,56 @@ const RunHistory = memo(function RunHistory({
   }, [activePromptRunKey]);
 
   // On-demand loading: reveal one more day of history when the sentinel near
-  // the bottom of the list scrolls into view. While the `N LIVE` filter is
-  // armed the list is narrowed to the (usually short) live rows, so the
-  // bottom sentinel sits in view and would otherwise auto-load day after day;
-  // loading more history is deliberately off until the filter clears.
+  // the bottom of the list scrolls into view — but only after the user has
+  // actually scrolled this list. Two guards keep a short list from loading on
+  // its own: the sentinel is always visible when the content does not
+  // overflow, and the observer re-arms only on the next scroll gesture.
+  // While the `N LIVE` filter is armed the list is narrowed to the live rows,
+  // so loading more history stays off until the filter clears.
   useEffect(() => {
     const sentinel = sentinelRef.current;
     const list = listRef.current;
-    if (!canLoadMore || liveFiltering || !sentinel || !list) {
+    if (!canLoadMore || !loadArmed || liveFiltering || !sentinel || !list) {
       return undefined;
     }
     if (typeof IntersectionObserver === "undefined") {
-      onLoadMore();
       return undefined;
     }
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (entry?.isIntersecting) {
-          onLoadMore();
+        if (!entry?.isIntersecting || !loadArmedRef.current) {
+          return;
         }
+        // One day per gesture: the sentinel stays in view right after the
+        // load, so a still-armed observer would immediately load the next.
+        loadArmedRef.current = false;
+        setLoadArmed(false);
+        onLoadMore();
       },
-      { root: list, rootMargin: "160px" },
+      { root: list, rootMargin: "120px" },
     );
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [canLoadMore, liveFiltering, onLoadMore, sessions.length]);
+  }, [canLoadMore, liveFiltering, loadArmed, onLoadMore, sessions.length]);
+
+  const handleListScroll = useCallback(() => {
+    const list = listRef.current;
+    if (!list || loadArmedRef.current) {
+      return;
+    }
+    // A real scroll gesture (not the programmatic scroll of a live jump).
+    if (list.scrollTop <= 0) {
+      return;
+    }
+    loadArmedRef.current = true;
+    setLoadArmed(true);
+  }, []);
+
+  const requestMore = useCallback(() => {
+    loadArmedRef.current = false;
+    setLoadArmed(false);
+    onLoadMore();
+  }, [onLoadMore]);
 
   const toggleRun = useCallback((key: string) => {
     setExpandedRuns((current) => toggleExpandedRun(current, key));
@@ -1404,6 +1768,48 @@ const RunHistory = memo(function RunHistory({
     hoverAnchorRef.current = null;
     setHoverCard((current) => (current === null ? current : null));
   }, []);
+
+  /*
+   * The card must disappear as soon as the pointer is no longer on its row or
+   * on the card itself. Relying on `pointerleave` alone misses the cases where
+   * the pointer leaves through a gap, the row scrolls away under it, or the
+   * window loses focus — the card then stayed on screen until another row was
+   * hovered ("needs a second trigger to hide"). A capture-phase pointermove
+   * watchdog answers the question directly: is the pointer over either
+   * element right now?
+   */
+  const hasHoverCard = hoverCard !== null;
+  useEffect(() => {
+    if (!hasHoverCard) {
+      return undefined;
+    }
+    const handlePointerMove = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) {
+        return;
+      }
+      if (
+        hoverCardRef.current?.contains(target) ||
+        hoverAnchorRef.current?.contains(target)
+      ) {
+        return;
+      }
+      closeHoverCard();
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        closeHoverCard();
+      }
+    };
+    window.addEventListener("pointermove", handlePointerMove, true);
+    window.addEventListener("blur", closeHoverCard);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove, true);
+      window.removeEventListener("blur", closeHoverCard);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [closeHoverCard, hasHoverCard]);
 
   // Anything that changes which rows exist — another agent, another day,
   // another prompt, a collapsed thread, a switched live filter — invalidates
@@ -1483,37 +1889,64 @@ const RunHistory = memo(function RunHistory({
           <span className="eyebrow">RUN HISTORY</span>
           <strong>{sessions.length} runs</strong>
         </div>
-        {liveSummary.count > 0 ? (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                className={cn(
-                  "run-history__live-jump",
-                  liveFiltering && "is-filtering",
-                )}
-                aria-pressed={liveFiltering}
-                aria-label={
-                  liveFiltering
-                    ? `取消筛选活动消息（${liveSummary.count} 条）`
-                    : `只看正在执行的消息（${liveSummary.count} 条）`
-                }
-                onClick={toggleLiveFilter}
-              >
-                <Radio aria-hidden="true" />
-                <span>{liveSummary.count} LIVE</span>
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              {liveFiltering ? "取消筛选活动消息" : "只看正在执行的消息"}
-            </TooltipContent>
-          </Tooltip>
-        ) : null}
+        <div className="run-history__header-meta">
+          {liveSummary.count > 0 ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  className={cn(
+                    "run-history__live-jump",
+                    liveFiltering && "is-filtering",
+                  )}
+                  aria-pressed={liveFiltering}
+                  aria-label={
+                    liveFiltering
+                      ? `取消筛选活动消息（${liveSummary.count} 条）`
+                      : `只看正在执行的消息（${liveSummary.count} 条）`
+                  }
+                  onClick={toggleLiveFilter}
+                >
+                  <Radio aria-hidden="true" />
+                  <span>{liveSummary.count} LIVE</span>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                {liveFiltering ? "取消筛选活动消息" : "只看正在执行的消息"}
+              </TooltipContent>
+            </Tooltip>
+          ) : null}
+          {/* Freshness: whether the list already holds the newest capture.
+              Without it a stopped stream looks exactly like an idle agent. */}
+          <span
+            className={cn(
+              "run-history__sync",
+              connected ? "is-connected" : "is-offline",
+            )}
+            title={
+              connected
+                ? `已同步到最新事件：${
+                    lastEventAt ? formatRunDate(lastEventAt) : "尚无事件"
+                  }`
+                : "与本地服务的连接已断开，列表可能不是最新的"
+            }
+          >
+            <i aria-hidden="true" />
+            {isDemo
+              ? "demo"
+              : connected
+                ? lastEventAt
+                  ? formatClock(lastEventAt).slice(0, 8)
+                  : "syncing"
+                : "offline"}
+          </span>
+        </div>
       </header>
       <div
         className="run-history__list min-h-0 overflow-auto p-1.5"
         ref={listRef}
         onPointerLeave={handleListPointerLeave}
+        onScroll={handleListScroll}
       >
         <RunHistoryRows
           activeKey={activeKey}
@@ -1544,17 +1977,23 @@ const RunHistory = memo(function RunHistory({
           </output>
         ) : null}
         {canLoadMore ? (
-          <div
-            aria-hidden="true"
-            className="run-history__more"
-            ref={sentinelRef}
-          />
-        ) : null}
-        {loadingMore ? (
-          <div className="run-history__loading run-history__loading--more" aria-busy="true">
-            <Loader2 className="size-4 animate-spin" />
-            <span>LOADING MORE…</span>
-          </div>
+          <>
+            <div
+              aria-hidden="true"
+              className="run-history__more"
+              ref={sentinelRef}
+            />
+            {/* Explicit control so a list that does not fill the panel never
+                loads history on its own. Auto-load stays scroll-armed. */}
+            <button
+              type="button"
+              className="run-history__load-earlier"
+              onClick={requestMore}
+              title="滚动到底部或点击可加载更早的运行记录"
+            >
+              LOAD EARLIER DAYS
+            </button>
+          </>
         ) : null}
       </div>
       <RunHistoryHoverCardLayer
@@ -1690,6 +2129,15 @@ const AtomicLog = memo(function AtomicLog({
     canScrollDown: false,
     canScrollUp: false,
   });
+  // Mirror of `scrollPosition` used by the scroll handler: the up chevron
+  // only appears once the reader has actually scrolled into older events, and
+  // it stays until they are back near the newest ones. The gap between the
+  // two thresholds is the hysteresis that stops it from flickering at the
+  // boundary.
+  const scrollStateRef = useRef({
+    canScrollDown: false,
+    canScrollUp: false,
+  });
   // Filtering scans the cached haystacks, so repeated keystrokes stay cheap;
   // the cache itself is warmed below, outside the keystroke path.
   const visibleEntries = useMemo(() => {
@@ -1701,13 +2149,10 @@ const AtomicLog = memo(function AtomicLog({
     return [...matched].reverse();
   }, [events, query]);
 
-  // Serialize every event once, right after commit, so the first keystroke
-  // filters against ready-made haystacks instead of stringifying 10k payloads.
-  useEffect(() => {
-    for (const { event } of visibleEntries) {
-      getEventSearchText(event);
-    }
-  }, [visibleEntries]);
+  // Warm the search haystacks in idle slices: the first keystroke stays fast
+  // without making the selection of a long run pay for serializing every
+  // event up front.
+  useEffect(() => warmEventSearchCache(events), [events]);
   const layout = useMemo(
     () => buildLogLayout(visibleEntries, metrics),
     [metrics, visibleEntries],
@@ -1724,10 +2169,19 @@ const AtomicLog = memo(function AtomicLog({
       return;
     }
     const remaining = list.scrollHeight - list.clientHeight - list.scrollTop;
-    setScrollPosition({
-      canScrollDown: remaining > 2,
-      canScrollUp: list.scrollTop > 2,
-    });
+    const current = scrollStateRef.current;
+    const canScrollDown = remaining > 2;
+    const canScrollUp = current.canScrollUp
+      ? list.scrollTop > 24
+      : list.scrollTop > 96;
+    if (
+      canScrollDown === current.canScrollDown &&
+      canScrollUp === current.canScrollUp
+    ) {
+      return;
+    }
+    scrollStateRef.current = { canScrollDown, canScrollUp };
+    setScrollPosition(scrollStateRef.current);
   }, []);
 
   useLayoutEffect(() => {
@@ -1932,11 +2386,12 @@ const AtomicLog = memo(function AtomicLog({
             </output>
           )}
         </div>
-        {/* While Live the log rides the stream, so the floating up chevron
-            would only flicker over the newest rows — render it on demand only. */}
-        {scrollPosition.canScrollUp && !live ? (
+        {/* The up chevron appears once the reader has scrolled into older
+            events (it jumps back to the newest ones) — while Live it doubles
+            as "return to the stream", so it must not be suppressed. */}
+        {scrollPosition.canScrollUp ? (
           <IconAction
-            label="滚动到顶部"
+            label={live ? "回到最新事件" : "滚动到顶部"}
             side="left"
             className="atomic-log__scroll-button atomic-log__scroll-button--top"
             onClick={() => scrollToEdge("top")}
@@ -2417,14 +2872,72 @@ const TrajectoryView = memo(function TrajectoryView({
       return next;
     });
   };
-  const mapMinWidth = Math.max(360, nodes.length * 18);
+  /*
+   * The lane overview is a timeline. A long run produces thousands of flow
+   * nodes; drawing one <b> per node mounted thousands of elements and made
+   * every selection re-paint the whole map. Slots aggregate consecutive nodes
+   * of a lane, so the map keeps a bounded number of marks (and stays a
+   * timeline) no matter how long the run is.
+   */
+  const mapSlots = useMemo(
+    () => buildTrajectoryMapSlots(nodes, TRAJECTORY_MAP_MAX_SLOTS),
+    [nodes],
+  );
+  // Width comes from the *busiest* lane: every slot then has room for at least
+  // TRAJECTORY_MIN_SLOT_PX and the track scrolls instead of compressing.
+  const maxLaneSlotCount = useMemo(() => {
+    const counts = new Map<number, number>();
+    for (const slot of mapSlots) {
+      counts.set(slot.lane, (counts.get(slot.lane) ?? 0) + 1);
+    }
+    return Math.max(1, ...counts.values());
+  }, [mapSlots]);
+  const mapMinWidth = Math.max(320, maxLaneSlotCount * TRAJECTORY_MIN_SLOT_PX);
+  const selectedIndex = nodes.findIndex((node) => node.id === selectedNodeId);
+  const activeIndex = nodes.findIndex((node) => node.data.status === "active");
+  const cursorIndex = selectedIndex >= 0 ? selectedIndex : activeIndex;
+  const cursorNode = cursorIndex >= 0 ? nodes[cursorIndex] : null;
+  const tracksRef = useRef<HTMLDivElement | null>(null);
+
+  // Keep the cursor slot inside the visible slice of the track as the
+  // selection or the executing atom moves.
+  useEffect(() => {
+    const tracks = tracksRef.current;
+    if (!tracks || !cursorNode) {
+      return;
+    }
+    const segment = tracks.querySelector<HTMLElement>(
+      '[data-cursor="true"]',
+    );
+    if (!segment) {
+      return;
+    }
+    const bounds = tracks.getBoundingClientRect();
+    const box = segment.getBoundingClientRect();
+    const margin = 24;
+    if (box.left >= bounds.left + margin && box.right <= bounds.right - margin) {
+      return;
+    }
+    tracks.scrollTo({
+      behavior: "smooth",
+      left:
+        tracks.scrollLeft +
+        (box.left - bounds.left) -
+        bounds.width / 2 +
+        box.width / 2,
+    });
+  }, [cursorIndex, cursorNode, mapMinWidth]);
 
   return (
     <section className="trajectory-view">
       <header className="trajectory-header">
         <hgroup>
           <span className="eyebrow">RUN TRAJECTORY</span>
-          <strong>Loop-aware atomic execution</strong>
+          <strong>
+            {cursorNode
+              ? `ATOM ${cursorIndex + 1}/${nodes.length} · ${cursorNode.data.label}`
+              : "Loop-aware atomic execution"}
+          </strong>
         </hgroup>
         <IconAction
           label="定位选中或正在执行的原子"
@@ -2449,36 +2962,66 @@ const TrajectoryView = memo(function TrajectoryView({
             </span>
           ))}
         </div>
-        <div className="trajectory-map__tracks">
+        <div className="trajectory-map__tracks" ref={tracksRef}>
           <div
             className="trajectory-map__track-content"
             style={{ minWidth: mapMinWidth }}
           >
+            {cursorNode ? (
+              <span
+                aria-hidden="true"
+                className="trajectory-map__cursor"
+                style={{
+                  left: `${
+                    ((cursorIndex + 0.5) / Math.max(1, nodes.length)) * 100
+                  }%`,
+                }}
+              >
+                <span className="trajectory-map__cursor-label">
+                  {cursorIndex + 1}/{nodes.length}
+                </span>
+              </span>
+            ) : null}
             {trajectoryLanes.map(({ id, label, lane }) => (
               <i className={`trajectory-map__lane trajectory-map__lane--${id}`} key={label}>
-                {nodes.map((node) => {
-                  if (node.data.meta.lane !== lane) {
+                {mapSlots.map((slot) => {
+                  if (slot.lane !== lane) {
                     return null;
                   }
-                  const segment = getTrajectorySegmentPosition(
-                    node.data.index,
-                    nodes.length,
+                  const total = Math.max(1, nodes.length);
+                  const position = getTrajectorySegmentPosition(
+                    slot.start,
+                    total,
                   );
+                  const width =
+                    ((slot.end - slot.start + 1) / total) * 100;
+                  const isCursor =
+                    cursorIndex >= slot.start && cursorIndex <= slot.end;
+                  // The slot stands for a node range; selecting it picks the
+                  // newest node in that range.
+                  const target = nodes[slot.end];
+                  if (!target) {
+                    return null;
+                  }
                   return (
                     <b
-                      key={node.id}
+                      key={slot.key}
                       role="button"
                       tabIndex={0}
-                      aria-label={`选择 ${node.data.label}`}
-                      aria-pressed={node.id === selectedNodeId}
+                      data-cursor={isCursor ? "true" : undefined}
+                      aria-label={`选择第 ${slot.start + 1}-${slot.end + 1} 个原子（${slot.count} 个事件）`}
+                      aria-pressed={isCursor}
+                      title={`#${slot.start + 1}-${slot.end + 1} · ${slot.count} 个事件 · ${target.data.label}`}
                       className={cn(
-                        `tone-bg-${node.data.meta.tone}`,
-                        node.id === selectedNodeId && "is-selected",
-                        node.data.status === "active" && "is-running",
+                        `tone-bg-${slot.tone}`,
+                        isCursor && "is-selected",
+                        slot.status === "active" && "is-running",
+                        slot.status === "failed" && "is-failed",
+                        slot.count > 1 && "is-aggregate",
                       )}
                       onClick={() =>
                         onSelect(
-                          (node.data.endEvent || node.data.startEvent).id,
+                          (target.data.endEvent || target.data.startEvent).id,
                         )
                       }
                       onKeyDown={(keyEvent) => {
@@ -2488,14 +3031,14 @@ const TrajectoryView = memo(function TrajectoryView({
                         ) {
                           keyEvent.preventDefault();
                           onSelect(
-                            (node.data.endEvent || node.data.startEvent).id,
+                            (target.data.endEvent || target.data.startEvent).id,
                           );
                         }
                       }}
                       style={
                         {
-                          "--segment-left": `${segment.left}%`,
-                          "--segment-width": `${segment.width}%`,
+                          "--segment-left": `${position.left}%`,
+                          "--segment-width": `${width}%`,
                         } as CSSProperties
                       }
                     />
@@ -3011,6 +3554,14 @@ export default function App() {
   const [eventsLoaded, setEventsLoaded] = useState(false);
   const [importedEvents, setImportedEvents] = useState<TraceEvent[]>([]);
   const [connected, setConnected] = useState(false);
+  // Capture time of the newest event the stream has delivered. Drives the
+  // "are we already up to date?" indicator in RUN HISTORY.
+  const [lastEventAt, setLastEventAt] = useState(0);
+  // Bumped after an in-place service restart to re-subscribe the SSE stream.
+  const [streamEpoch, setStreamEpoch] = useState(0);
+  const [service, setService] = useState<ServiceHealth | null>(null);
+  const [serviceError, setServiceError] = useState("");
+  const [restarting, setRestarting] = useState(false);
   const [query, setQuery] = useState("");
   const [now, setNow] = useState(() => Date.now());
   const [activeSessionKey, setActiveSessionKey] = useState("");
@@ -3020,6 +3571,12 @@ export default function App() {
     useState<AtomSelection>(undefined);
   const [activeView, setActiveView] = useState<ActiveView>(
     appDefaults.activeView,
+  );
+  // The trajectory view builds its turn model from every event and atom. That
+  // is real work for a long run, so the view is mounted on first use instead
+  // of on every session selection while the topology is what is on screen.
+  const [trajectoryMounted, setTrajectoryMounted] = useState(
+    appDefaults.activeView === "trajectory",
   );
   const [deepView, setDeepView] = useState<boolean>(appDefaults.deepView);
   const [guideOpen, setGuideOpen] = useState<boolean>(appDefaults.guideOpen);
@@ -3070,8 +3627,6 @@ export default function App() {
   const [runHistoryDays, setRunHistoryDays] = useState(
     DEFAULT_RUN_HISTORY_DAYS,
   );
-  const [runHistoryLoadingMore, setRunHistoryLoadingMore] = useState(false);
-  const runHistoryLoadingMoreRef = useRef(false);
   const [theme, setTheme] = useState<Theme>(
     () =>
       readStorageValue(
@@ -3239,9 +3794,17 @@ export default function App() {
       flushTimer = null;
       const batch = pending;
       pending = [];
-      if (batch.length) {
-        setLiveEvents((current) => [...current, ...batch]);
+      if (!batch.length) {
+        return;
       }
+      const newest = batch.at(-1)?.capturedAt;
+      if (newest) {
+        setLastEventAt((current) => Math.max(current, Date.parse(newest) || 0));
+      }
+      // A burst must not block typing or scrolling: the derived sessions,
+      // runs, and flows are recomputed in a transition, so React can keep
+      // the current frame interactive and drop superseded batches.
+      startTransition(() => setLiveEvents((current) => [...current, ...batch]));
     };
     source.addEventListener("ready", () => setConnected(true));
     // New working directories arrive with their git presentation before the
@@ -3267,7 +3830,7 @@ export default function App() {
       }
       seenIds.add(event.id);
       pending.push(event);
-      flushTimer ??= window.setTimeout(flush, 80);
+      flushTimer ??= window.setTimeout(flush, 120);
     });
     source.addEventListener("reset", (message: MessageEvent<string>) => {
       const payload = JSON.parse(message.data) as {
@@ -3285,9 +3848,16 @@ export default function App() {
         flushTimer = null;
       }
       pending = [];
-      setLiveEvents(events);
-      setGitInfo(payload.git ?? {});
-      setEventsLoaded(true);
+      const newest = events.at(-1)?.capturedAt;
+      setLastEventAt(newest ? Date.parse(newest) || 0 : 0);
+      // First paint stays immediate: the snapshot render is a transition, so
+      // the shell (header, panels, empty states) paints before the derived
+      // topology/trajectory work for a large history lands.
+      startTransition(() => {
+        setLiveEvents(events);
+        setGitInfo(payload.git ?? {});
+        setEventsLoaded(true);
+      });
     });
     source.onerror = () => setConnected(false);
     source.onopen = () => setConnected(true);
@@ -3297,15 +3867,32 @@ export default function App() {
       }
       source.close();
     };
-  }, []);
+  }, [streamEpoch]);
 
   const allEvents = useMemo(
-    () => [...new Map([...importedEvents, ...liveEvents].map((event) => [event.id, event])).values()],
+    () =>
+      importedEvents.length
+        ? [
+            ...new Map(
+              [...importedEvents, ...liveEvents].map((event) => [
+                event.id,
+                event,
+              ]),
+            ).values(),
+          ]
+        : liveEvents,
     [liveEvents, importedEvents],
   );
   const isDemo = shouldShowDemo(allEvents.length, import.meta.env);
   const visibleEvents = isDemo ? demoEvents : allEvents;
-  const sessions = useMemo(() => buildSessions(visibleEvents), [visibleEvents]);
+  // Session objects are rebuilt incrementally: a streaming batch only touches
+  // the sessions it actually extended, so every other RUN HISTORY row keeps
+  // its identity (and its cached Prompt runs) instead of re-rendering.
+  const sessionProjection = useMemo(() => createSessionProjection(), []);
+  const sessions = useMemo(
+    () => sessionProjection(visibleEvents),
+    [sessionProjection, visibleEvents],
+  );
   const sessionsByKey = useMemo(
     () => new Map(sessions.map((session) => [session.key, session])),
     [sessions],
@@ -3514,13 +4101,13 @@ export default function App() {
     }
     return null;
   }, [activeEvents]);
-  const pendingEventOnLatestNode =
-    pendingEvent !== null &&
-    getAtomIdForEvent(pendingEvent, platformId) === latestExecutionAtomId;
-  const liveActive =
-    executingLive &&
-    followingLatestExecutionAtom &&
-    pendingEventOnLatestNode;
+  // One definition of "the studio is following the executing atom": the run is
+  // executing and the selection has not been moved onto an older atom. The
+  // canvas pulse, the animated edges, the log live marker and the Live button
+  // all read this value, so the button can never claim a state the canvas is
+  // not in. Whether a tool call is still pending only decides the log's
+  // RUNNING row, not whether Live is on.
+  const liveActive = executingLive && followingLatestExecutionAtom;
 
   useEffect(() => {
     if (!activeSession || initialLocation !== null) {
@@ -3621,14 +4208,19 @@ export default function App() {
   const displayedEvents = replayMode
     ? activeEvents.slice(0, replayCursor + 1)
     : activeEvents;
-  const flow = useMemo(() => buildFlow(displayedEvents), [displayedEvents]);
+  // The canvas projections (flow, harness topology, atomic fold) are the
+  // expensive part of a streaming batch. Deferring them lets React coalesce
+  // several bursts into one canvas render while the log and the run list stay
+  // on the newest events.
+  const canvasEvents = useDeferredValue(displayedEvents);
+  const flow = useMemo(() => buildFlow(canvasEvents), [canvasEvents]);
   const harnessFlow = useMemo(
-    () => buildHarnessFlow(displayedEvents, platformId),
-    [displayedEvents, platformId],
+    () => buildHarnessFlow(canvasEvents, platformId),
+    [canvasEvents, platformId],
   );
   const atomicProjection = useMemo(
-    () => projectTraceEvents(displayedEvents, platformId),
-    [displayedEvents, platformId],
+    () => projectTraceEvents(canvasEvents, platformId),
+    [canvasEvents, platformId],
   );
   const inspectionFlow = flow;
   const selectedEvent =
@@ -3664,14 +4256,6 @@ export default function App() {
         locateAtomNode?.data.event;
   const animatingFlow = Boolean(activeExecutionAtomId);
   const selectedNodeId = getFlowNodeIdForEvent(selectedEvent, inspectionFlow.nodes);
-  const trajectoryNodes = useMemo<TraceNodeType[]>(
-    () =>
-      flow.nodes.map((node) => ({
-        ...node,
-        selected: node.id === selectedNodeId,
-      })),
-    [flow.nodes, selectedNodeId],
-  );
   const activeTransitionEdges = useMemo(
     () =>
       animatingFlow && activeExecutionAtomId && activeTransition
@@ -3816,30 +4400,98 @@ export default function App() {
     }
   };
 
+  /*
+   * Service health: polled, not streamed. Uptime, startup cost, pid and the
+   * capture-side session summary all come from `/api/health`, which is O(1)
+   * on the server, so a 5s poll is cheap even with a large history.
+   */
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      try {
+        const response = await fetch("/api/health", { cache: "no-store" });
+        if (!response.ok) {
+          throw new Error(`Server returned ${response.status}`);
+        }
+        const payload = (await response.json()) as Omit<ServiceHealth, "fetchedAt">;
+        if (!active) {
+          return;
+        }
+        setService({ ...payload, fetchedAt: Date.now() });
+        setServiceError("");
+      } catch (error) {
+        if (!active) {
+          return;
+        }
+        setServiceError(
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+    };
+    void load();
+    const timer = window.setInterval(() => {
+      if (!document.hidden) {
+        void load();
+      }
+    }, 5_000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, []);
+
   // Restart the local dashboard service in place. The server spawns a
-  // successor that re-binds the same port, then exits; the SSE stream below
-  // drops during the hand-off and auto-reconnects, so the UI only shows a
-  // brief reconnect and the running port is preserved.
+  // successor that re-binds the same port and then exits; this poll waits for
+  // a different pid to answer before re-subscribing the event stream, so the
+  // UI never keeps consuming the dying process's stream.
   const restartDashboard = async () => {
     if (isDemo) {
       return;
     }
     if (
       !window.confirm(
-        "Restart the local ASTRO service on its current port? The running port is preserved; the live connection reconnects automatically.",
+        "重启本地 ASTRO 服务？端口保持不变，完成后事件流会自动重连并重新加载。",
       )
     ) {
       return;
     }
+    const previousPid = service?.pid ?? 0;
+    setRestarting(true);
     try {
       const response = await fetch("/api/restart", { method: "POST" });
       if (!response.ok) {
         throw new Error(`Server returned ${response.status}`);
       }
+      const deadline = Date.now() + 20_000;
+      for (;;) {
+        await new Promise((resolve) => setTimeout(resolve, 400));
+        try {
+          const health = await fetch("/api/health", { cache: "no-store" });
+          const payload = (await health.json()) as Omit<
+            ServiceHealth,
+            "fetchedAt"
+          >;
+          if (payload?.pid && payload.pid !== previousPid) {
+            setService({ ...payload, fetchedAt: Date.now() });
+            setServiceError("");
+            break;
+          }
+        } catch {
+          // The outgoing process is still holding the port; keep waiting.
+        }
+        if (Date.now() > deadline) {
+          throw new Error("重启超时，请检查本地服务进程");
+        }
+      }
+      // New process, new stream: drop the old connection explicitly instead
+      // of trusting EventSource to reconnect at the right moment.
+      setStreamEpoch((current) => current + 1);
     } catch (error) {
       window.alert(
         `Restart failed: ${error instanceof Error ? error.message : String(error)}`,
       );
+    } finally {
+      setRestarting(false);
     }
   };
 
@@ -3967,39 +4619,47 @@ export default function App() {
     });
   }, [activeEvents.length, replayCursor, replayMode]);
 
+  /*
+   * "Live" means "follow the execution I am looking at". When the open run is
+   * itself executing, resuming must stay on it (and jump to its newest
+   * event); only a finished selection falls back to the newest session.
+   * Either way the atom selection is cleared, which is what puts the canvas
+   * pulse back on the executing atom.
+   */
   const handleReplayExit = useCallback(() => {
     startTransition(() => {
-      const latestSession = sessions[0];
-      const latestPromptRuns =
-        promptRunsBySession.get(latestSession?.key || "") ?? [];
-      const latestPromptRun = latestPromptRuns.at(-1);
-      const latestEvents =
-        latestPromptRun?.events ?? latestSession?.events ?? activeEvents;
-      if (latestSession && latestSession.key !== activeSession?.key) {
-        setActiveSessionKey(latestSession.key);
+      const targetSession =
+        activeSession && promptExecuting ? activeSession : sessions[0];
+      const targetPromptRuns =
+        promptRunsBySession.get(targetSession?.key || "") ?? [];
+      const targetPromptRun = targetPromptRuns.at(-1);
+      const targetEvents =
+        targetPromptRun?.events ?? targetSession?.events ?? activeEvents;
+      if (targetSession && targetSession.key !== activeSession?.key) {
+        setActiveSessionKey(targetSession.key);
       }
-      setActivePromptRunKey(latestPromptRun?.key || "");
-      setSelectedEventId(latestEvents.at(-1)?.id || "");
+      setActivePromptRunKey(targetPromptRun?.key || "");
+      setSelectedEventId(targetEvents.at(-1)?.id || "");
       setSelectedAtomId(undefined);
       setPlaying(false);
       setReplayMode(false);
-      setReplayCursor(Math.max(0, latestEvents.length - 1));
+      setReplayCursor(Math.max(0, targetEvents.length - 1));
     });
-  }, [activeEvents, activeSession?.key, promptRunsBySession, sessions]);
+  }, [
+    activeEvents,
+    activeSession,
+    promptExecuting,
+    promptRunsBySession,
+    sessions,
+  ]);
 
+  // Loading one more day is pure filtering over already-loaded sessions, so it
+  // is synchronous: the previous implementation faked a 320ms "loading" state
+  // on top of instantaneous work, which made the list feel slower than it is.
   const handleLoadMoreRunHistory = useCallback(() => {
-    if (runHistoryLoadingMoreRef.current) {
-      return;
-    }
-    runHistoryLoadingMoreRef.current = true;
-    setRunHistoryLoadingMore(true);
     setRunHistoryDays((current) =>
       nextRunHistoryVisibleDays(filteredSessions, now, current),
     );
-    window.setTimeout(() => {
-      runHistoryLoadingMoreRef.current = false;
-      setRunHistoryLoadingMore(false);
-    }, 320);
   }, [filteredSessions, now]);
 
   const headerNavActions: ReadonlyArray<HeaderNavAction> = [
@@ -4118,10 +4778,37 @@ export default function App() {
               "run-status",
               connected ? "status-complete" : "status-offline",
             )}
+            title={
+              connected
+                ? `事件流已连接 · 最新事件 ${
+                    lastEventAt ? formatRunDate(lastEventAt) : "尚无"
+                  }`
+                : "事件流已断开，列表可能不是最新的"
+            }
           >
             <i />
-            {connected ? "accepted" : isDemo ? "demo" : "offline"}
+            {connected
+              ? lastEventAt
+                ? `synced ${formatClock(lastEventAt).slice(0, 8)}`
+                : "accepted"
+              : isDemo
+                ? "demo"
+                : "offline"}
           </span>
+          {/* Not rendered — not just hidden — below the header breakpoint: a
+              CSS-hidden trigger would leave its open popover orphaned on a
+              resize. The nav panel keeps the restart action. */}
+          {headerNavCollapsed ? null : (
+            <ServiceStatus
+              service={service}
+              connected={connected}
+              error={serviceError}
+              restarting={restarting}
+              onRestart={() => {
+                void restartDashboard();
+              }}
+            />
+          )}
           <ThemeSwitcher theme={theme} onChange={setTheme} />
           <div className="nav-menu__group">
             <HeaderNavActions
@@ -4169,11 +4856,12 @@ export default function App() {
               activePromptRunKey={activePromptRun?.key || ""}
               gitInfo={gitInfo}
               isDemo={isDemo}
+              connected={connected}
+              lastEventAt={lastEventAt}
               now={now}
               promptRunsBySession={promptRunsBySession}
               canLoadMore={canLoadMoreRunHistory}
               initialLoading={!eventsLoaded && !isDemo}
-              loadingMore={runHistoryLoadingMore}
               onLoadMore={handleLoadMoreRunHistory}
               onSelect={selectSession}
             />
@@ -4229,7 +4917,10 @@ export default function App() {
                   label="轨迹视图"
                   className={activeView === "trajectory" ? "is-active" : ""}
                   aria-pressed={activeView === "trajectory"}
-                  onClick={() => setActiveView("trajectory")}
+                  onClick={() => {
+                    setActiveView("trajectory");
+                    setTrajectoryMounted(true);
+                  }}
                 >
                   <ListTree />
                 </IconAction>
@@ -4282,26 +4973,28 @@ export default function App() {
                   "is-active pointer-events-auto visible",
               )}
             >
-              <TrajectoryView
-                atomNodes={harnessFlow.nodes}
-                atomicEvents={atomicProjection.events}
-                nodes={trajectoryNodes}
-                events={displayedEvents}
-                locateRequest={trajectoryLocateRequest}
-                selectedAtomId={currentAtomId}
-                selectedEventId={selectedEventId || ""}
-                selectedNodeId={selectedNodeId}
-                canLocateSelection={Boolean(locateAtomId && locateAtomEvent)}
-                onLocateSelection={locateTrajectorySelection}
-                onSelect={handleTrajectorySelect}
-              />
+              {trajectoryMounted ? (
+                <TrajectoryView
+                  atomNodes={harnessFlow.nodes}
+                  atomicEvents={atomicProjection.events}
+                  nodes={flow.nodes}
+                  events={displayedEvents}
+                  locateRequest={trajectoryLocateRequest}
+                  selectedAtomId={currentAtomId}
+                  selectedEventId={selectedEventId || ""}
+                  selectedNodeId={selectedNodeId}
+                  canLocateSelection={Boolean(locateAtomId && locateAtomEvent)}
+                  onLocateSelection={locateTrajectorySelection}
+                  onSelect={handleTrajectorySelect}
+                />
+              ) : null}
             </div>
           </div>
 
           <ReplayFooter
             events={activeEvents}
             cursor={replayCursor}
-            live={executingLive}
+            live={liveActive}
             playing={playing}
             speed={replaySpeed}
             onSeek={handleReplaySeek}

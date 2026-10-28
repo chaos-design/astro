@@ -7,7 +7,7 @@ import {
   atomLevel,
   projectTraceEvents,
 } from "../src/lib/atomic-projection.ts";
-import { createFlowLayout } from "../src/lib/flow-layout.ts";
+import { createFlowLayout, FLOW_ROUTER_OPTIONS } from "../src/lib/flow-layout.ts";
 import { buildHarnessFlow, createDemoEvents } from "../src/lib/trace-model.ts";
 
 test("projects trace events into a strictly ordered atomic flow", () => {
@@ -298,4 +298,13 @@ test("classifies topology paths with the shared route semantics", () => {
     "persistence",
   );
   assert.equal(edge("model-invoke", "usage")?.data?.routeKind, "data");
+});
+
+test("keeps the router budget inside the responsive bounds", () => {
+  // The canvas renders as a skeleton until routing resolves, so the search
+  // budget is a user-visible latency contract, not an implementation detail.
+  // Raising either bound must come with a measured reason (and the
+  // `routes-tool-results…` overlap contract above still has to pass).
+  assert.ok(FLOW_ROUTER_OPTIONS.maxCoordinatesPerAxis <= 32);
+  assert.ok(FLOW_ROUTER_OPTIONS.maxOptimizationPasses <= 8);
 });

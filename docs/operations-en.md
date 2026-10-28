@@ -218,13 +218,45 @@ curl -s http://127.0.0.1:4318/api/health
 | --- | --- |
 | `status` | `ok` for a healthy service. |
 | `pid` | Service process ID. |
-| `url` | Selected listening URL. |
+| `url` / `host` / `port` | Selected listening address (a restart keeps the same port). |
+| `startedAt` | When this process started. |
+| `uptimeMs` | How long this process has been serving. |
+| `bootMs` | Startup cost: process start → listening, including reading every JSONL file. |
+| `restartCount` / `restartedAt` | In-place restarts taken over by this process. |
+| `eventCount` | Aggregated repository event count (O(1), safe to poll). |
+| `sessionCounts` | Server-side session states: `active` / `waiting` / `complete` / `failed` / `terminated`. |
 | `clientCount` | Connected SSE clients. |
-| `eventCount` | Aggregated repository event count. |
 | `dataRoot` | Actual scanned root. |
 | `traceFiles` | Every currently discovered JSONL file. |
+| `build` / `node` | Running release and Node runtime, for comparison with the UI. |
 
-Treat `dataRoot` and `traceFiles` as authoritative when diagnosing path mismatches.
+Treat `dataRoot` and `traceFiles` as authoritative when diagnosing path mismatches. The
+uptime chip in the header reads this endpoint; expanding it shows every field above and a
+"restart local service" action.
+
+### 7.1.1 Session states
+
+```bash
+curl -s http://127.0.0.1:4318/api/sessions
+```
+
+Returns the server-maintained per-session summary: `state`, `reason` (`completed` /
+`interrupted` / `session-end` / the recorded failure cause), `eventCount`, `lastEventAt`,
+and `lastEventName`.
+
+The UI still derives its display state from the raw events (it never writes state back);
+this endpoint is what makes a run's outcome answerable *without* the page open, and gives
+a second opinion on a silent `active` session.
+
+### 7.1.2 In-place restart
+
+```bash
+curl -s -X POST http://127.0.0.1:4318/api/restart
+```
+
+The service spawns a successor that re-binds the same port, then exits; SSE clients
+reconnect and pull a fresh `reset` snapshot. `ASTRO_RESTART_COUNT` / `ASTRO_RESTARTED_AT`
+are handed to the successor, so `/api/health` can report the restart count and time.
 
 ### 7.2 Events and stream
 

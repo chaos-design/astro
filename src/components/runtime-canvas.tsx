@@ -45,7 +45,14 @@ import type {
 
 const CANVAS_INSET = 12;
 const MAX_CANVAS_SCALE = 1.08;
-const MIN_INITIAL_LAYOUT_MS = 1_500;
+/**
+ * The first layout used to be held back for 1.5s so the skeleton animation
+ * could finish. The worker routinely resolves in tens of milliseconds, so that
+ * was pure added latency on every open; the canvas now paints as soon as the
+ * layout exists and fades in, and the skeleton only shows while routing is
+ * genuinely slow.
+ */
+const MIN_INITIAL_LAYOUT_MS = 0;
 const FLOW_SIGNAL_MIN_DURATION = 1.8;
 const FLOW_SIGNAL_MAX_DURATION = 4;
 const FLOW_SIGNAL_SPEED = 160;

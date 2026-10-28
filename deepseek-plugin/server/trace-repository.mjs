@@ -7,6 +7,11 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import storagePaths from "../plugin/storage-paths.cjs";
+import {
+  applySessionEvent,
+  createSessionRecord,
+  serializeSessionRecord,
+} from "./session-state.mjs";
 import { TraceStore } from "./trace-store.mjs";
 
 const {
@@ -59,6 +64,54 @@ export class TraceRepository extends EventEmitter {
     this.initializing = new Map();
     this.discoveryTimer = null;
     this.running = false;
+    // Derived views. `getEvents()` merges and sorts every store, which costs
+    // O(n log n) per call — health checks and every SSE connect used to pay
+    // for that on each request. The merged list is now cached until an event
+    // or a reset invalidates it.
+    this.mergedEvents = null;
+    this.knownEventIds = new Set();
+    this.unidentifiedEventCount = 0;
+    this.sessionRecords = new Map();
+  }
+
+  invalidateDerived() {
+    this.mergedEvents = null;
+  }
+
+  /** Fold one event into the per-session state summary. */
+  indexEvent(event) {
+    if (!event || typeof event !== "object") {
+      return;
+    }
+    const id = event.id ? String(event.id) : "";
+    if (id) {
+      if (this.knownEventIds.has(id)) {
+        return;
+      }
+      this.knownEventIds.add(id);
+    } else {
+      this.unidentifiedEventCount += 1;
+    }
+    const key = `${event.source || "generic"}::${
+      event.sessionId || "unknown-session"
+    }`;
+    let record = this.sessionRecords.get(key);
+    if (!record) {
+      record = createSessionRecord(key, event);
+      this.sessionRecords.set(key, record);
+    }
+    applySessionEvent(record, event);
+  }
+
+  /** Rebuild every derived view from the current store contents. */
+  rebuildDerived() {
+    this.knownEventIds.clear();
+    this.unidentifiedEventCount = 0;
+    this.sessionRecords.clear();
+    this.mergedEvents = null;
+    for (const event of this.getEvents()) {
+      this.indexEvent(event);
+    }
   }
 
   discoverTraceFiles() {
@@ -85,8 +138,20 @@ export class TraceRepository extends EventEmitter {
     const initialization = (async () => {
       const store = new TraceStore(traceFile, this.pollInterval);
       await store.initialize();
-      store.on("event", (event) => this.emit("event", event));
-      store.on("reset", () => this.emit("reset", this.getEvents()));
+      // Store contents read at startup were recorded before this listener
+      // existed, so fold them into the derived views here.
+      for (const event of store.getEvents()) {
+        this.indexEvent(event);
+      }
+      store.on("event", (event) => {
+        this.indexEvent(event);
+        this.invalidateDerived();
+        this.emit("event", event);
+      });
+      store.on("reset", () => {
+        this.rebuildDerived();
+        this.emit("reset", this.getEvents());
+      });
       store.on("error", (error) => this.emit("error", error));
       this.stores.set(traceFile, store);
       if (this.running) {
@@ -140,8 +205,11 @@ export class TraceRepository extends EventEmitter {
   }
 
   getEvents() {
+    if (this.mergedEvents) {
+      return this.mergedEvents;
+    }
     const knownIds = new Set();
-    return [...this.stores.values()]
+    this.mergedEvents = [...this.stores.values()]
       .flatMap((store) => store.getEvents())
       .filter((event) => {
         if (!event.id) return true;
@@ -150,6 +218,40 @@ export class TraceRepository extends EventEmitter {
         return true;
       })
       .sort(compareEvents);
+    return this.mergedEvents;
+  }
+
+  /** O(1): the derived views keep a running count. */
+  getEventCount() {
+    return this.knownEventIds.size + this.unidentifiedEventCount;
+  }
+
+  /**
+   * Per-session capture state (`active` / `waiting` / `complete` / `failed` /
+   * `terminated` plus an explicit terminal reason), newest first.
+   */
+  getSessionSummaries() {
+    return [...this.sessionRecords.values()]
+      .map(serializeSessionRecord)
+      .sort(
+        (left, right) =>
+          Date.parse(right.lastEventAt || 0) - Date.parse(left.lastEventAt || 0),
+      );
+  }
+
+  /** `{ active, waiting, complete, failed, terminated }` counts. */
+  getSessionStateCounts() {
+    const counts = {
+      active: 0,
+      waiting: 0,
+      complete: 0,
+      failed: 0,
+      terminated: 0,
+    };
+    for (const record of this.sessionRecords.values()) {
+      counts[record.state] = (counts[record.state] || 0) + 1;
+    }
+    return counts;
   }
 
   getEvent(eventId) {
@@ -167,24 +269,20 @@ export class TraceRepository extends EventEmitter {
   }
 
   async append(inputEvents) {
-    // Build known ids directly from each store: sorting the full merged event
-    // list (as getEvents does) costs O(n log n) per POST for no benefit here.
-    const knownIds = new Set();
-    for (const store of this.stores.values()) {
-      for (const event of store.getEvents()) {
-        if (event.id) {
-          knownIds.add(event.id);
-        }
-      }
-    }
+    // Known ids live in one set maintained by the derived views: scanning
+    // every store's event list per POST was O(n) for no benefit.
+    const knownIds = this.knownEventIds;
     const eventsByFile = new Map();
     const traceFileBySession = new Map();
 
     for (const event of inputEvents) {
-      if (knownIds.has(event.id)) {
+      const id = event.id ? String(event.id) : "";
+      if (id && knownIds.has(id)) {
         continue;
       }
-      knownIds.add(event.id);
+      if (id) {
+        knownIds.add(id);
+      }
       const sessionKey = `${event.source || "generic"}::${
         event.sessionId || "unknown-session"
       }`;

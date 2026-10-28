@@ -21,6 +21,16 @@ const serverDir = dirname(fileURLToPath(import.meta.url));
 const serverFile = fileURLToPath(import.meta.url);
 const projectDir = resolve(serverDir, "..");
 const publicDir = join(projectDir, "dist");
+// Reported by /api/health so the UI can compare the running service with the
+// bundle it was built from.
+const appBuild = (() => {
+  try {
+    return JSON.parse(readFileSync(join(projectDir, "package.json"), "utf8"))
+      .version || "unknown";
+  } catch {
+    return "unknown";
+  }
+})();
 const runtimeConfig = runtimeConfigLoader.loadRuntimeConfig({
   environment: process.env,
   initialize: true,
@@ -67,6 +77,13 @@ const shouldOpenBrowser = !["", "0", "false", "no", "off"].includes(
 // instead of walking to the next one. A self-restart successor needs this so
 // it can take over the port the current process is about to release.
 const restartTakeover = String(environment.ASTRO_TAKEOVER || "").trim() === "1";
+// Process start (not module load): the health payload reports both the
+// startup cost and the time this instance has been serving.
+const processStartedAtMs = Date.now() - Math.round(process.uptime() * 1000);
+const restartCount = Number(environment.ASTRO_RESTART_COUNT || 0) || 0;
+const restartedAt = environment.ASTRO_RESTARTED_AT || null;
+let listenStartedAtMs = 0;
+let bootMs = 0;
 
 const mimeTypes = {
   ".css": "text/css; charset=utf-8",
@@ -366,14 +383,37 @@ async function handleRequest(request, response) {
   }
 
   if (request.method === "GET" && requestUrl.pathname === "/api/health") {
+    // Every field here is O(1): the repository caches the merged event list
+    // and keeps a running session index, so this endpoint can be polled.
     sendJson(response, 200, {
       status: "ok",
       pid: process.pid,
       url: dashboardUrl,
+      host,
+      port: boundPort || requestedPort,
+      startedAt: new Date(processStartedAtMs).toISOString(),
+      restartedAt,
+      restartCount,
+      bootMs,
+      uptimeMs: Date.now() - processStartedAtMs,
+      node: process.version,
       clientCount: clients.size,
-      eventCount: store.getEvents().length,
+      eventCount: store.getEventCount(),
+      sessionCounts: store.getSessionStateCounts(),
       dataRoot,
       traceFiles: store.getTraceFiles(),
+      build: appBuild,
+    });
+    return;
+  }
+
+  if (request.method === "GET" && requestUrl.pathname === "/api/sessions") {
+    const sessions = store.getSessionSummaries();
+    sendJson(response, 200, {
+      generatedAt: new Date().toISOString(),
+      eventCount: store.getEventCount(),
+      counts: store.getSessionStateCounts(),
+      sessions,
     });
     return;
   }
@@ -467,10 +507,10 @@ async function handleRequest(request, response) {
     clients.add(response);
     // Keep the snapshot and later events on one ordered connection, including reconnects.
     const events = store.getEvents();
-    sendSse(response, "reset", {
-      events,
-      git: gitMapForEvents(events),
-    });
+    // One merged snapshot serves both messages: building the git map used to
+    // re-copy the whole event list a second time.
+    const git = gitMapForEvents(events);
+    sendSse(response, "reset", { events, git });
     sendSse(response, "ready", {
       eventCount: events.length,
       connectedAt: new Date().toISOString(),
@@ -509,6 +549,8 @@ async function handleRequest(request, response) {
           ASTRO_PORT: String(boundPort),
           ASTRO_TAKEOVER: "1",
           ASTRO_OPEN_BROWSER: "0",
+          ASTRO_RESTART_COUNT: String(restartCount + 1),
+          ASTRO_RESTARTED_AT: new Date().toISOString(),
         },
       });
       child.on("error", () => {});
@@ -522,7 +564,9 @@ async function handleRequest(request, response) {
     sendJson(response, 202, {
       status: "restarting",
       pid: child.pid,
+      previousPid: process.pid,
       url: dashboardUrl,
+      startedAt: new Date().toISOString(),
     });
     // Flush the response, then release the port so the successor can take it.
     setTimeout(() => {
@@ -564,6 +608,11 @@ function handleListening(port) {
   const url = `http://${host}:${port}`;
   dashboardUrl = url;
   boundPort = port;
+  listenStartedAtMs = Date.now();
+  // Startup cost = process start → the moment this instance accepted the
+  // port. It includes reading every trace file, which is the part that
+  // actually grows with the data set.
+  bootMs = listenStartedAtMs - processStartedAtMs;
   mkdirSync(dirname(pidFile), { recursive: true });
   writeFileSync(
     pidFile,

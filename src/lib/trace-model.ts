@@ -5,6 +5,7 @@ import type {
   EventMeta,
   FlowEntry,
   MessageCategory,
+  RunTerminalReason,
   TraceEvent,
   TraceEventInput,
   TraceFlow,
@@ -194,12 +195,40 @@ export function getSessionKey(event: TraceEvent) {
   return [event.source, event.workspaceId, event.sessionId].join("::");
 }
 
+/**
+ * A canonical event built by {@link normalizeTraceEvent} (or by the recorder
+ * on the server). Streaming paths re-derive projections from lists of these
+ * on every batch, so re-normalizing them would allocate a full copy of the
+ * session per frame; the shape check short-circuits that.
+ */
+function isCanonicalTraceEvent(
+  value: TraceEventInput | TraceEvent,
+): value is TraceEvent {
+  const candidate = value as Partial<TraceEvent>;
+  return (
+    typeof candidate.id === "string" &&
+    typeof candidate.capturedAt === "string" &&
+    typeof candidate.source === "string" &&
+    typeof candidate.sessionId === "string" &&
+    typeof candidate.workspaceId === "string" &&
+    typeof candidate.eventName === "string" &&
+    typeof candidate.nativeEventName === "string" &&
+    typeof candidate.locator === "string" &&
+    typeof candidate.payload === "object" &&
+    candidate.payload !== null &&
+    !Array.isArray(candidate.payload)
+  );
+}
+
 export function normalizeTraceEvent(
   value: TraceEventInput,
   index = 0,
 ): TraceEvent {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new TypeError("Trace event must be a JSON object.");
+  }
+  if (isCanonicalTraceEvent(value)) {
+    return value;
   }
   if (value.payload != null &&
       (typeof value.payload !== "object" || Array.isArray(value.payload))) {
@@ -523,11 +552,17 @@ export function getSessionTitle(events: TraceEvent[]) {
   return events[0]?.cwd?.split("/").filter(Boolean).at(-1) || "Untitled trace";
 }
 
-function getTraceRunStatus(
+function getTraceRunState(
   events: readonly TraceEvent[],
   waitingEvents?: readonly string[],
-): TraceRunStatus {
+): {
+  status: TraceRunStatus;
+  reason: RunTerminalReason | null;
+  detail: string | null;
+} {
   let status: TraceRunStatus = "active";
+  let reason: RunTerminalReason | null = null;
+  let detail: string | null = null;
   let runEnded = false;
   for (const event of events) {
     if (
@@ -535,19 +570,29 @@ function getTraceRunStatus(
       event.eventName === "UserPromptSubmit"
     ) {
       status = "active";
+      reason = null;
+      detail = null;
       runEnded = false;
     } else if (isTerminationEvent(event)) {
       status = "terminated";
+      reason = getTerminationReason(event);
+      detail = readStatusDetail(event);
       runEnded = true;
     } else if (isWaitingTraceEvent(event, waitingEvents)) {
       status = "waiting";
+      reason = null;
+      detail = readStatusDetail(event);
     } else if (isFailureEvent(event)) {
       status = "failed";
+      reason = "error";
+      detail = readStatusDetail(event);
       // A stop-level failure ends the run: later progress noise must not
       // resurrect it to "active" in the run history.
       runEnded = event.eventName === "StopFailure";
     } else if (event.eventName === "Stop") {
       status = "complete";
+      reason = "completed";
+      detail = null;
       runEnded = true;
     } else if (
       !runEnded &&
@@ -555,19 +600,67 @@ function getTraceRunStatus(
       isExecutionProgressEvent(event)
     ) {
       status = "active";
+      reason = null;
+      detail = null;
     }
   }
-  return status;
+  return { status, reason, detail };
 }
+
+function getTerminationReason(event: TraceEvent): RunTerminalReason {
+  if (event.eventName === "SessionEnd") {
+    return "session-end";
+  }
+  const status = String(event.status || event.payload?.status || "")
+    .toLowerCase();
+  return ["aborted", "cancelled", "canceled"].includes(status)
+    ? "aborted"
+    : "interrupted";
+}
+
+/** Short human-readable cause (payload reason / error / status token). */
+function readStatusDetail(event: TraceEvent) {
+  const candidates = [
+    event.payload?.reason,
+    event.payload?.error,
+    event.payload?.message,
+    event.status,
+  ];
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim()) {
+      return candidate.trim().slice(0, 120);
+    }
+  }
+  return null;
+}
+
+function getTraceRunStatus(
+  events: readonly TraceEvent[],
+  waitingEvents?: readonly string[],
+): TraceRunStatus {
+  return getTraceRunState(events, waitingEvents).status;
+}
+
+/**
+ * Prompt runs are a pure function of the session object. Sessions that a
+ * streaming batch did not touch keep their identity (see
+ * {@link createSessionProjection}), so this cache lets every untouched row in
+ * RUN HISTORY keep the exact same props — and skip re-rendering entirely.
+ */
+const promptRunsBySession = new WeakMap<TraceSession, TracePromptRun[]>();
 
 export function buildSessionPromptRuns(
   session: TraceSession,
 ): TracePromptRun[] {
+  const cached = promptRunsBySession.get(session);
+  if (cached) {
+    return cached;
+  }
   const promptIndexes = session.events.flatMap((event, index) =>
     event.eventName === "UserPromptSubmit" ? [index] : [],
   );
 
-  return promptIndexes.map((startIndex, index) => {
+  const runs = promptIndexes.map((startIndex, index): TracePromptRun => {
     const endIndex = promptIndexes[index + 1] ?? session.events.length;
     const promptWindow = session.events.slice(startIndex, endIndex);
     const terminalIndex = promptWindow.findIndex((event) =>
@@ -585,16 +678,19 @@ export function buildSessionPromptRuns(
     }
     const start = getEventTimestamp(prompt);
     const end = getEventTimestamp(events.at(-1) || prompt);
-    const observedStatus = getTraceRunStatus(
+    const observed = getTraceRunState(
       events,
       getWaitingEventsForSource(session.source),
     );
-    const status =
-      observedStatus === "active"
-        ? index < promptIndexes.length - 1
-          ? "complete"
-          : session.status
-        : observedStatus;
+    // A Prompt that is followed by another Prompt ended when the next one
+    // began, even though it reported no terminal event of its own.
+    const superseded =
+      observed.status === "active" && index < promptIndexes.length - 1;
+    const status: TraceRunStatus = superseded
+      ? "complete"
+      : observed.status === "active"
+        ? session.status
+        : observed.status;
 
     return {
       key: `${session.key}::prompt::${prompt.id}`,
@@ -609,17 +705,71 @@ export function buildSessionPromptRuns(
         getPromptInput(prompt) ||
         getEventSummary(prompt).replace(/\s+/g, " ").trim(),
       index,
-      role: index === 0 ? "initial" : "follow-up",
+      role: index === 0 ? "initial" : ("follow-up" as const),
       start,
       end,
       duration: Math.max(0, end - start),
       status,
+      terminalReason: superseded
+        ? "completed"
+        : status === "active" || status === "waiting"
+          ? null
+          : observed.reason,
+      statusDetail: superseded ? null : observed.detail,
       toolCount: events.filter(
         (event) => event.eventName === "PreToolUse",
       ).length,
     };
   });
+  promptRunsBySession.set(session, runs);
+  return runs;
 }
+
+function compareSessionEvents(left: TraceEvent, right: TraceEvent) {
+  const timeDifference = getEventTimestamp(left) - getEventTimestamp(right);
+  if (timeDifference !== 0) {
+    return timeDifference;
+  }
+  return (left.sequence ?? 0) - (right.sequence ?? 0);
+}
+
+/** Build one session from its (already grouped, sortable) events. */
+function createSession(key: string, events: TraceEvent[]): TraceSession {
+  // Session-local sort: the caller owns `events` (a fresh group or a fresh
+  // merge), so sorting in place never touches a shared array.
+  events.sort(compareSessionEvents);
+  const first = events[0];
+  if (!first) {
+    throw new Error(`Session ${key} has no events.`);
+  }
+  const start = getEventTimestamp(first);
+  const end = getEventTimestamp(events.at(-1) || first);
+  const state = getTraceRunState(
+    events,
+    getWaitingEventsForSource(first.source),
+  );
+
+  return {
+    key,
+    id: first.sessionId,
+    source: first.source,
+    workspaceId: first.workspaceId,
+    cwd: first.cwd,
+    events,
+    title: getSessionTitle(events),
+    start,
+    end,
+    duration: Math.max(0, end - start),
+    status: state.status,
+    terminalReason: state.reason,
+    statusDetail: state.detail,
+    toolCount: events.filter((event) => event.eventName === "PreToolUse")
+      .length,
+  };
+}
+
+const bySessionStartDesc = (left: TraceSession, right: TraceSession) =>
+  right.start - left.start;
 
 export function buildSessions(
   inputEvents: Array<TraceEvent | TraceEventInput>,
@@ -635,47 +785,130 @@ export function buildSessions(
     grouped.set(key, events);
   });
 
-  const sessions = [...grouped.entries()]
-    .map(([key, events]) => {
-      events.sort((left, right) => {
-        const timeDifference =
-          getEventTimestamp(left) - getEventTimestamp(right);
-        if (timeDifference !== 0) {
-          return timeDifference;
-        }
-        return (left.sequence ?? 0) - (right.sequence ?? 0);
-      });
-      const first = events[0];
-      if (!first) {
-        throw new Error(`Session ${key} has no events.`);
+  return [...grouped.entries()]
+    .map(([key, events]) => createSession(key, events))
+    .sort(bySessionStartDesc);
+}
+
+type SessionProjectionCache = {
+  count: number;
+  firstId: string;
+  lastId: string;
+  midId: string;
+  sessions: TraceSession[];
+  byKey: Map<string, TraceSession>;
+};
+
+/**
+ * Streaming-aware session projection.
+ *
+ * Live capture appends to the event list every few hundred milliseconds.
+ * Rebuilding every session from scratch on each batch re-sorts all events and
+ * hands every RUN HISTORY row a brand-new object, which defeats the row
+ * memoization and makes long sessions feel heavy. This projection keeps the
+ * previous session objects and rebuilds only the sessions the appended slice
+ * actually touched, so untouched rows keep their identity (and their cached
+ * Prompt runs) across batches.
+ *
+ * The cache is validated against the event list's boundaries — first, middle,
+ * and last ids plus the length — and falls back to a full rebuild whenever the
+ * list is replaced instead of appended to (an import, a reset, a clear).
+ */
+export function createSessionProjection(): (
+  events: TraceEvent[],
+) => TraceSession[] {
+  let cache: SessionProjectionCache | null = null;
+
+  const snapshot = (
+    events: TraceEvent[],
+    sessions: TraceSession[],
+    byKey: Map<string, TraceSession>,
+  ): TraceSession[] => {
+    cache = {
+      count: events.length,
+      firstId: events[0]?.id || "",
+      lastId: events.at(-1)?.id || "",
+      midId: events[events.length >> 1]?.id || "",
+      sessions,
+      byKey,
+    };
+    return sessions;
+  };
+
+  const fullBuild = (events: TraceEvent[]) => {
+    const grouped = new Map<string, TraceEvent[]>();
+    const knownIds = new Set<string>();
+    for (const event of events) {
+      if (knownIds.has(event.id)) {
+        continue;
       }
-      const start = getEventTimestamp(first);
-      const end = getEventTimestamp(events.at(-1) || first);
-      const status = getTraceRunStatus(
-        events,
-        getWaitingEventsForSource(first.source),
-      );
+      knownIds.add(event.id);
+      const key = getSessionKey(event);
+      const bucket = grouped.get(key);
+      if (bucket) {
+        bucket.push(event);
+      } else {
+        grouped.set(key, [event]);
+      }
+    }
+    const byKey = new Map<string, TraceSession>();
+    for (const [key, sessionEvents] of grouped) {
+      byKey.set(key, createSession(key, sessionEvents));
+    }
+    return snapshot(
+      events,
+      [...byKey.values()].sort(bySessionStartDesc),
+      byKey,
+    );
+  };
 
-      return {
+  return (events) => {
+    if (cache === null) {
+      return fullBuild(events);
+    }
+    const current = cache;
+    if (events.length === current.count) {
+      const unchanged =
+        (events[0]?.id || "") === current.firstId &&
+        (events.at(-1)?.id || "") === current.lastId &&
+        (events[events.length >> 1]?.id || "") === current.midId;
+      return unchanged ? current.sessions : fullBuild(events);
+    }
+    const appendedOnly =
+      events.length > current.count &&
+      (events[0]?.id || "") === current.firstId &&
+      (events[current.count - 1]?.id || "") === current.lastId;
+    if (!appendedOnly) {
+      return fullBuild(events);
+    }
+
+    const touched = new Map<string, TraceEvent[]>();
+    for (let index = current.count; index < events.length; index += 1) {
+      const event = events[index];
+      const key = getSessionKey(event);
+      const bucket = touched.get(key);
+      if (bucket) {
+        bucket.push(event);
+      } else {
+        touched.set(key, [event]);
+      }
+    }
+    for (const [key, appended] of touched) {
+      const previous = current.byKey.get(key);
+      current.byKey.set(
         key,
-        id: first.sessionId,
-        source: first.source,
-        workspaceId: first.workspaceId,
-        cwd: first.cwd,
-        events,
-        title: getSessionTitle(events),
-        start,
-        end,
-        duration: Math.max(0, end - start),
-        status,
-        toolCount: events.filter(
-          (event) => event.eventName === "PreToolUse",
-        ).length,
-      };
-    })
-    .sort((left, right) => right.start - left.start);
-
-  return sessions;
+        createSession(
+          key,
+          previous ? [...previous.events, ...appended] : appended,
+        ),
+      );
+    }
+    return snapshot(
+      events,
+      [...current.byKey.values()].sort(bySessionStartDesc),
+      current.byKey,
+    );
+  };
 }
 
 function isFailureEvent(event: TraceEvent) {
