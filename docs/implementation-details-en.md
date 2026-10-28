@@ -157,6 +157,51 @@ The Guide observability list keeps semantic `ul` / `li` markup and native
 from 8 px to 10 px. These changes improve fitted-canvas readability without
 changing domain geometry, node positions, or orthogonal routes.
 
+### Live messages in Run History
+
+The executing message is marked in three places so locating it never depends on
+scrolling:
+
+- the panel header keeps an `N LIVE` chip: clicking it scrolls the first live
+  message to the middle of the list **and filters the loaded list down to the
+  live runs**; clicking again clears the filter. The armed state reads as a
+  solid status border (`.is-filtering`). The filter only ever narrows the
+  *loaded* sessions — it never loads more history. The live set is derived
+  from the currently loaded sessions via `filterSessionsByLiveKeys`, so when
+  every live run settles the chip hides and the filter drops by itself;
+- a live row draws an `inset 2px` status accent, purple for `active` and amber
+  for `waiting`;
+- the tag row gains a pulsing `RUNNING` / `WAITING` capsule next to `STATUS`.
+
+`isLiveRunStatus` owns the live definition (`active` and `waiting`). Selection
+wins over the accent, so a selected live row keeps its selection border.
+Finished messages (`complete` / `failed` / `terminated`) no longer locate the
+last atom automatically: `getPromptAtomSelection` returns `null` for every
+non-live status, leaving the topology unselected until an atom is picked by
+hand.
+
+### Mobile layout
+
+Breakpoints and what each one owns:
+
+- `≤1180px`: narrower side panels, the brand tagline is dropped;
+- `≤900px`: the header collapses into the disclosure menu and both side panels
+  become fixed overlays;
+- `≤620px`: the nav and both panels turn into full-width sheets pinned under
+  the header;
+- `≤390px`: tighter header and inline padding.
+
+Overlay chrome positions itself with `--mobile-header-h` (declared on
+`.studio-shell`) instead of repeating `94px` / `88px`, so a taller header never
+leaves the panels underneath it. The phone sheet overrides the desktop
+popover's `justify-self: end` with `justify-self: stretch`; without it an
+out-of-flow grid child shrink-wraps to `max-content`. Panels drop their inner
+border, the collapsed rail keeps only the chevron (the rotated label only ate
+width), and the bottom edge reserves `env(safe-area-inset-bottom)`. Inside the
+overlay, the log column switches to `minmax(0, …)` rows: a landscape phone
+(844×390) leaves roughly 300px, so the log and inspector scroll instead of
+being clipped.
+
 ## 7. Runtime Configuration
 
 The installer creates two user-owned files under
@@ -205,6 +250,8 @@ conflicting copies of behavior in README files, components, and presentations.
 | Responsibility | Code | Tests |
 | --- | --- | --- |
 | State, Prompt, and timeout | `src/lib/trace-model.ts`, `src/lib/run-history-state.ts` | `tests/trace-model.test.ts`, `tests/run-history-state.test.ts` |
+| Live run markers | `src/lib/run-history-state.ts`, `src/app.tsx`, `src/styles.css` | `tests/run-history-state.test.ts`, `tests/run-history-live-contract.test.ts` |
+| Mobile layout | `src/styles.css`, `src/config/app-config.ts` | `tests/app-mobile-layout.test.ts`, `tests/app-config.test.ts` |
 | Search and location | `src/lib/history-search.ts`, `src/app.tsx` | `tests/history-search.test.ts`, `tests/atom-selection.test.ts` |
 | User-question projection | `src/lib/trace-event-kind.ts`, `src/lib/atomic-projection.ts` | `tests/user-question-projection.test.ts` |
 | Storage migration | `plugin/storage-paths.cjs`, `scripts/migrate-data.mjs` | `tests/storage-paths.test.cjs`, `tests/migrate-data.test.js` |

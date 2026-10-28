@@ -85,12 +85,34 @@ export function ensureExpandedRun(
   return next;
 }
 
+/**
+ * `active` and `waiting` are the two live states: the run is still the one the
+ * user is watching, so the topology keeps following the executing atom.
+ * A finished run (complete/failed/terminated) has no atom to follow: the last
+ * atom is a historical position, not "where execution is", so selecting the
+ * run must not auto-locate it. Only an explicit atom pick does that.
+ */
 export function getPromptAtomSelection(
   status: string | undefined,
-  mappedAtomId: string,
 ): string | null | undefined {
-  if (status === "active") {
-    return undefined;
-  }
-  return mappedAtomId || null;
+  return isLiveRunStatus(status) ? undefined : null;
+}
+
+/** Whether a run status still counts as the currently executing message. */
+export function isLiveRunStatus(status: string | undefined): boolean {
+  return status === "active" || status === "waiting";
+}
+
+/**
+ * Keep only the loaded sessions whose key appears at least once in the live
+ * list, preserving the list's original order. The live list is derived from
+ * the *currently loaded* sessions, so filtering can never reach for more
+ * history than the panel already has.
+ */
+export function filterSessionsByLiveKeys<T extends { key: string }>(
+  sessions: readonly T[],
+  liveKeys: readonly string[],
+): T[] {
+  const live = new Set(liveKeys);
+  return sessions.filter(({ key }) => live.has(key));
 }

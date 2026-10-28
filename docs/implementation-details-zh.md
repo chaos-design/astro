@@ -137,6 +137,40 @@ Guide 的观测列表保留语义化 `ul` / `li`，使用原生 `disc` 标记。
 提高到 12 px，说明从 8 px 提高到 10 px；只改善缩放后的阅读，不改变领域几何、
 节点位置或正交路由。
 
+### 运行历史中的活动消息
+
+正在执行的消息在三处同时标识，使定位不依赖滚动：
+
+- 面板标题常驻 `N LIVE` 芯片：点击把首条活动消息滚动到列表中部，并**同时筛选**
+  当前已加载列表，只保留活动消息；再次点击取消筛选。芯片筛选时呈武装态
+  （`.is-filtering` 实心状态边框）；筛选范围仅限当前加载的消息，绝不触发加载
+  更早历史。筛选集合由 `filterSessionsByLiveKeys` 从已加载会话推导，一旦活动
+  消息全部结束，芯片隐藏且筛选自动解除；
+- 活动行使用 `inset 2px` 的状态色左缘，`active` 为紫色、`waiting` 为琥珀色；
+- 标签行额外渲染带脉冲圆点的 `RUNNING` / `WAITING` 胶囊，与 `STATUS` 标签并列。
+
+活动状态由 `isLiveRunStatus` 判定，覆盖 `active` 与 `waiting`。选中态优先于活动色，
+因此被选中的活动行仍保留选择边框。已完成的消息（`complete` / `failed` /
+`terminated`）不再自动定位到最后一个原子：`getPromptAtomSelection` 对非活动状态返回
+`null`，拓扑保持未选中，只有人工点击原子才会定位。
+
+### 移动端布局
+
+断点与职责：
+
+- `≤1180px`：收窄两侧面板，隐藏品牌标语；
+- `≤900px`：header 折叠为汉堡菜单，两侧面板改为固定浮层；
+- `≤620px`：导航与两侧面板改为贴 header 下沿的全宽 sheet；
+- `≤390px`：header 与内边距进一步压缩。
+
+overlay 的定位统一使用 `--mobile-header-h`（定义在 `.studio-shell` 上），不再把
+`94px` / `88px` 抄进多条规则，header 变高时面板不会钻到 header 底下。手机端
+sheet 用 `justify-self: stretch` 覆盖桌面弹出层的 `justify-self: end`，否则
+out-of-flow 的 grid 子项会被收缩成 `max-content`；面板去掉内侧边框，折叠栏只留箭头
+（竖排标签在手机上只占宽度）。底部统一留 `env(safe-area-inset-bottom)`。
+浮层里的日志列改用 `minmax(0, …)` 行高，横屏手机（如 844×390）只剩约 300px 时
+日志与 inspector 各自滚动，而不是被裁掉。
+
 ## 7. 共享运行时配置
 
 > **状态：已实现。** 配置加载、入口接入、安装保留、原生插件打包与回归验证均已完成。
@@ -183,6 +217,8 @@ git diff --check
 | 责任 | 代码 | 测试 |
 | --- | --- | --- |
 | 状态、Prompt 与超时 | `src/lib/trace-model.ts`、`src/lib/run-history-state.ts` | `tests/trace-model.test.ts`、`tests/run-history-state.test.ts` |
+| 运行历史活动标记 | `src/lib/run-history-state.ts`、`src/app.tsx`、`src/styles.css` | `tests/run-history-state.test.ts`、`tests/run-history-live-contract.test.ts` |
+| 移动端布局 | `src/styles.css`、`src/config/app-config.ts` | `tests/app-mobile-layout.test.ts`、`tests/app-config.test.ts` |
 | 搜索与定位 | `src/lib/history-search.ts`、`src/app.tsx` | `tests/history-search.test.ts`、`tests/atom-selection.test.ts` |
 | 用户问题投影 | `src/lib/trace-event-kind.ts`、`src/lib/atomic-projection.ts` | `tests/user-question-projection.test.ts` |
 | 存储路径迁移 | `plugin/storage-paths.cjs`、`scripts/migrate-data.mjs` | `tests/storage-paths.test.cjs`、`tests/migrate-data.test.js` |

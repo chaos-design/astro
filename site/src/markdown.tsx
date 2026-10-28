@@ -57,6 +57,7 @@ function stripInlineMarkdown(text: string): string {
 type CoderToken = { text?: string; code?: string; lang?: string };
 type HeadingToken = { depth?: number; text?: string };
 type LinkToken = { href?: string; text?: string; title?: string | null };
+type ImageToken = { href?: string; text?: string; title?: string | null };
 
 /**
  * Rewrite a relative .md link to a doc hash route ("#/doc/user-manual-zh") and
@@ -185,6 +186,17 @@ export async function renderMarkdown(markdown: string, fromSlug: string): Promis
         const inner = marked.parseInline(token.text ?? "");
         const title = token.title ? ` title="${escapeHtml(token.title)}"` : "";
         return `<a href="${next}"${title}${target}>${inner}</a>`;
+      },
+      image(tokenOrStr: string | ImageToken, rawHref?: string, rawText?: string) {
+        const token: ImageToken =
+          typeof tokenOrStr === "string"
+            ? { href: rawHref ?? "", text: rawText ?? "" }
+            : tokenOrStr;
+        const alt = escapeHtml(token.text ?? "");
+        const src = token.href ?? "";
+        // Wrap every doc image in a click-to-zoom trigger so it opens in the
+        // shared lightbox (wheel zoom, pinch, double-tap, Esc to close).
+        return `<span class="zoomable-image" data-zoom-img="${escapeHtml(src)}" data-zoom-alt="${alt}"><img src="${escapeHtml(src)}" alt="${alt}" loading="lazy" /></span>`;
       },
     },
   });

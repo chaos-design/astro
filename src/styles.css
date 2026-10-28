@@ -1382,6 +1382,129 @@ pre,
   outline-offset: -2px;
 }
 
+/*
+ * Live runs stay greppable without scrolling: the panel header keeps a LIVE
+ * chip that jumps to the executing row, and the row itself carries an accent
+ * edge plus a RUNNING / WAITING capsule in its tag row.
+ */
+.run-history__row.is-live:not(.is-selected) {
+  border-color: color-mix(in srgb, var(--status-running) 40%, transparent);
+  color: var(--text);
+  background: color-mix(in srgb, var(--status-running) 8%, transparent);
+  box-shadow: inset 2px 0 var(--status-running);
+}
+
+.run-history__row.is-live:not(.is-selected):hover {
+  border-color: color-mix(in srgb, var(--status-running) 60%, transparent);
+  background: color-mix(in srgb, var(--status-running) 13%, transparent);
+}
+
+.run-history__row.is-live[data-live-status="waiting"]:not(.is-selected) {
+  border-color: color-mix(in srgb, var(--status-waiting) 40%, transparent);
+  background: color-mix(in srgb, var(--status-waiting) 8%, transparent);
+  box-shadow: inset 2px 0 var(--status-waiting);
+}
+
+.run-history__row.is-live[data-live-status="waiting"]:not(.is-selected):hover {
+  border-color: color-mix(in srgb, var(--status-waiting) 60%, transparent);
+  background: color-mix(in srgb, var(--status-waiting) 13%, transparent);
+}
+
+.run-history__tags > .run-history__live-tag {
+  gap: 4px;
+  padding: 2px 5px;
+  border-color: color-mix(in srgb, var(--status-running) 52%, transparent);
+  color: color-mix(in srgb, var(--status-running) 88%, var(--text));
+  background: color-mix(in srgb, var(--status-running) 16%, transparent);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.run-history__row.is-selected .run-history__tags > .run-history__live-tag {
+  color: var(--selection-text);
+  border-color: var(--selection-border);
+  background: color-mix(in srgb, var(--selection-border) 22%, transparent);
+}
+
+.run-history__tags > .run-history__live-tag[data-live-status="waiting"] {
+  border-color: color-mix(in srgb, var(--status-waiting) 52%, transparent);
+  color: color-mix(in srgb, var(--status-waiting) 92%, var(--text));
+  background: color-mix(in srgb, var(--status-waiting) 16%, transparent);
+}
+
+.run-history__live-pulse {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: run-history-live-pulse 1.6s ease-in-out infinite;
+}
+
+.run-history__live-jump {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  height: 20px;
+  padding: 0 7px;
+  border: 1px solid color-mix(in srgb, var(--status-running) 32%, transparent);
+  border-radius: 999px;
+  color: color-mix(in srgb, var(--status-running) 74%, var(--text));
+  background: color-mix(in srgb, var(--status-running) 8%, transparent);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease;
+}
+
+.run-history__live-jump:hover {
+  border-color: color-mix(in srgb, var(--status-running) 70%, transparent);
+  background: color-mix(in srgb, var(--status-running) 22%, transparent);
+}
+
+/* The chip doubles as the live-row filter; while filtering it reads as the
+ * armed toggle so switching it back off is obvious at a glance. */
+.run-history__live-jump.is-filtering {
+  border-color: var(--bg);
+  background: var(--status-running);
+  color: var(--bg);
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--status-running) 42%, transparent),
+    0 0 16px 2px color-mix(in srgb, var(--status-running) 70%, transparent);
+}
+
+.run-history__live-jump.is-filtering > svg {
+  color: var(--bg);
+}
+
+.run-history__live-jump.is-filtering > span {
+  color: var(--bg);
+}
+
+.run-history__live-jump:focus-visible {
+  outline: 1px solid var(--status-running);
+  outline-offset: 1px;
+}
+
+.run-history__live-jump > svg {
+  width: 13px;
+  height: 13px;
+  /* Solid running colour so the icon reads clearly against the translucent
+     chip; the dedicated keyframe only pulses opacity/scale/glow (via
+     currentColor) and never dims the hue back to muted. */
+  color: var(--status-running);
+  animation: run-history-live-breathe 1.45s ease-in-out infinite;
+}
+/* Selected (armed filter) state: the chip is filled with the running colour,
+   so the icon cuts through as the page background and its glow follows. */
+.run-history__live-jump.is-filtering > svg {
+  color: var(--bg);
+}
+
 .run-history__row > svg {
   width: 14px;
   height: 14px;
@@ -4872,6 +4995,37 @@ pre,
   }
 }
 
+@keyframes run-history-live-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(0.82);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+}
+
+/* Breathing treatment for the N LIVE chip's Radio icon. Unlike the shared
+   active-status-icon-breathe (which blends the hue back to --muted at the
+   trough, so the icon nearly vanishes), this keyframe keeps the colour solid
+   (currentColor) and only modulates opacity, scale and a soft glow — so the
+   icon is always clearly visible while still visibly "breathing". */
+@keyframes run-history-live-breathe {
+  0%,
+  100% {
+    opacity: 0.78;
+    transform: scale(0.92);
+    filter: drop-shadow(0 0 1px color-mix(in srgb, currentColor 45%, transparent));
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.18);
+    filter: drop-shadow(0 0 6px color-mix(in srgb, currentColor 78%, transparent));
+  }
+}
+
 @keyframes loader-spin {
   to {
     transform: rotate(360deg);
@@ -4996,6 +5150,11 @@ pre,
 @media (max-width: 900px) {
   .studio-shell {
     grid-template-rows: auto minmax(0, 1fr);
+    /* Overlay chrome (nav sheet, side panels) anchors here instead of
+     * repeating the header height in several rules, so a taller header — a
+     * wrapped observer banner, a wider safe area — cannot leave the panels
+     * drifting underneath it. */
+    --mobile-header-h: 94px;
   }
 
   .studio-header {
@@ -5007,8 +5166,9 @@ pre,
     /* Above the fixed side panels (z-index 40) so the disclosed menu is not
      * covered by an expanded history or log column. */
     z-index: 50;
-    min-height: 94px;
-    padding: 8px 10px;
+    min-height: var(--mobile-header-h);
+    padding: 8px max(10px, env(safe-area-inset-right)) 8px
+      max(10px, env(safe-area-inset-left));
   }
 
   .studio-brand {
@@ -5089,7 +5249,7 @@ pre,
   .studio-workspace:not(.is-right-collapsed) .log-column {
     position: fixed;
     z-index: 40;
-    top: 94px;
+    top: var(--mobile-header-h);
     bottom: 0;
     width: min(320px, calc(100vw - 42px));
     box-shadow: 18px 0 48px rgb(0 0 0 / 42%);
@@ -5102,6 +5262,13 @@ pre,
   .studio-workspace:not(.is-right-collapsed) .log-column {
     right: 0;
     box-shadow: -18px 0 48px rgb(0 0 0 / 42%);
+  }
+
+  /* An overlay panel only gets the space under the header — a landscape phone
+   * leaves ~300px — so the log and inspector shrink and scroll on their own
+   * instead of pushing the column past the viewport. */
+  .studio-workspace:not(.is-right-collapsed) .log-column {
+    grid-template-rows: minmax(0, 0.9fr) minmax(0, 1.1fr);
   }
 
   .platform-select {
@@ -5287,18 +5454,114 @@ pre,
   .atom-guide__levels {
     grid-template-columns: minmax(0, 1fr);
   }
-}
 
-@media (max-width: 390px) {
-  .studio-header {
-    min-height: 88px;
-    padding: 7px 8px;
+  /* Phone: the disclosed nav and both side panels become full-width sheets
+   * pinned under the header, the same drawer model the docs site uses. A
+   * floating card on a 390px viewport wasted the width it needs most. */
+  .studio-header__actions {
+    position: fixed;
+    top: var(--mobile-header-h);
+    right: 0;
+    left: 0;
+    width: auto;
+    min-width: 0;
+    max-width: none;
+    max-height: calc(100dvh - var(--mobile-header-h));
+    /* The base rule anchors the desktop popover to the grid's end edge, which
+     * also shrink-wraps an out-of-flow grid child; stretch lets the fixed
+     * sheet use the full viewport width. */
+    justify-self: stretch;
+    gap: 8px;
+    padding: 10px max(10px, env(safe-area-inset-right))
+      calc(10px + env(safe-area-inset-bottom))
+      max(10px, env(safe-area-inset-left));
+    border-width: 0 0 1px;
+    border-radius: 0;
+    box-shadow: 0 24px 60px rgb(0 0 0 / 46%);
+  }
+
+  /* Touch-sized rows: the desktop 28px controls are hard to hit with a
+   * thumb, and the sheet has the room to grow. */
+  .studio-header__actions .history-search-trigger,
+  .studio-header__actions .theme-select,
+  .studio-header__actions [data-size="console"],
+  .nav-menu__group [data-size="console"] {
+    height: 40px;
+  }
+
+  .studio-header__nav-toggle[data-size="console-icon"] {
+    width: 34px;
+    height: 34px;
+  }
+
+  /* A keyboard hint is noise on a touch keyboard-less device, and the
+   * icon-only theme trigger needs a label once it sits in a full-width row. */
+  .studio-header__actions kbd {
+    display: none;
+  }
+
+  .studio-header__actions .theme-select {
+    justify-content: flex-start;
+    gap: 8px;
+    padding-inline: 10px;
+  }
+
+  .studio-header__actions .theme-select::after {
+    content: "THEME";
+    color: var(--muted);
+    font-family: var(--font-mono);
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+  }
+
+  .nav-menu__action {
+    min-height: 40px;
   }
 
   .studio-workspace:not(.is-left-collapsed) .history-column,
   .studio-workspace:not(.is-right-collapsed) .log-column {
-    top: 88px;
-    width: calc(100vw - 28px);
+    top: var(--mobile-header-h);
+    left: 0;
+    right: 0;
+    width: auto;
+    max-width: none;
+    padding-bottom: env(safe-area-inset-bottom);
+    box-shadow: 0 18px 48px rgb(0 0 0 / 42%);
+  }
+
+  .studio-workspace:not(.is-left-collapsed) .history-column {
+    border-right: 0;
+  }
+
+  .studio-workspace:not(.is-right-collapsed) .log-column {
+    border-left: 0;
+  }
+
+  /* The collapsed rail is a chevron on a phone; the rotated label only ate
+   * canvas width. */
+  .panel-rail-label {
+    display: none;
+  }
+
+  .studio-shell {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+@media (max-width: 390px) {
+  .studio-shell {
+    --mobile-header-h: 88px;
+  }
+
+  .studio-header {
+    padding: 7px max(8px, env(safe-area-inset-right)) 7px
+      max(8px, env(safe-area-inset-left));
+  }
+
+  .studio-workspace:not(.is-left-collapsed) .history-column,
+  .studio-workspace:not(.is-right-collapsed) .log-column {
+    top: var(--mobile-header-h);
   }
 
   .studio-brand {

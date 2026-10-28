@@ -27,21 +27,41 @@ import {
 import { homedir, platform } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import runtimeConfigLoader from "../plugin/runtime-config.cjs";
-import storagePaths from "../plugin/storage-paths.cjs";
-import {
-  getTraceStats,
-  hasDeepseekPlugin,
-  hasInstalledHook,
-} from "../plugin/client-status.mjs";
-import {
-  getInstalledRuntimePaths,
-  updateInstalledPlugins,
-} from "../scripts/install-plugins.mjs";
-
-const { expandHome, resolveAstroHome } = storagePaths;
-const { formatRuntimeConfigDiagnostic, loadRuntimeConfig } =
-  runtimeConfigLoader;
+/**
+ * The plugin runtime modules are heavyweight (config loader, installed-plugin
+ * inspector, recorder installer). They are loaded lazily so `help`, the
+ * delegation commands (doctor/install/migrate), and any direct import of this
+ * module's pure helpers (e.g. `registerGlobalCli` in tests) stay fast. Only
+ * commands that actually touch runtime config or the installed plugin pay the
+ * import cost — and the result is cached after the first load.
+ */
+let loadedDependencies = null;
+async function loadDependencies() {
+  if (!loadedDependencies) {
+    const [runtimeConfig, storagePaths, clientStatus, installPlugins] =
+      await Promise.all([
+        import("../plugin/runtime-config.cjs"),
+        import("../plugin/storage-paths.cjs"),
+        import("../plugin/client-status.mjs"),
+        import("../scripts/install-plugins.mjs"),
+      ]);
+    const runtimeConfigLoader = runtimeConfig.default;
+    const storagePathsModule = storagePaths.default;
+    loadedDependencies = {
+      expandHome: storagePathsModule.expandHome,
+      formatRuntimeConfigDiagnostic:
+        runtimeConfigLoader.formatRuntimeConfigDiagnostic,
+      getInstalledRuntimePaths: installPlugins.getInstalledRuntimePaths,
+      getTraceStats: clientStatus.getTraceStats,
+      hasDeepseekPlugin: clientStatus.hasDeepseekPlugin,
+      hasInstalledHook: clientStatus.hasInstalledHook,
+      loadRuntimeConfig: runtimeConfigLoader.loadRuntimeConfig,
+      resolveAstroHome: storagePathsModule.resolveAstroHome,
+      updateInstalledPlugins: installPlugins.updateInstalledPlugins,
+    };
+  }
+  return loadedDependencies;
+}
 
 const CLI_NAME = "astrox";
 const ENTRY_FILE = fileURLToPath(import.meta.url);
@@ -89,7 +109,9 @@ function getPackageVersion() {
   }
 }
 
-function loadConfig({ initialize = false } = {}) {
+async function loadConfig({ initialize = false } = {}) {
+  const { loadRuntimeConfig, formatRuntimeConfigDiagnostic } =
+    await loadDependencies();
   const astroHome =
     getOption("astro-home") || getOption("aot-home") || undefined;
   const config = loadRuntimeConfig({
@@ -305,9 +327,10 @@ function buildStartEnvironment(environment, astroHome) {
 }
 
 async function startCommand() {
-  const { environment } = loadConfig();
-  const astroHome = resolveAstroHome(environment);
-  const runtime = getInstalledRuntimePaths(astroHome);
+  const deps = await loadDependencies();
+  const { environment } = await loadConfig();
+  const astroHome = deps.resolveAstroHome(environment);
+  const runtime = deps.getInstalledRuntimePaths(astroHome);
   if (!existsSync(runtime.dashboardFile)) {
     throw new Error(
       `No installed ASTRO plugin found under ${runtime.pluginDir}. Run "astrox install" first.`,
@@ -316,7 +339,7 @@ async function startCommand() {
 
   if (!hasFlag("no-global")) {
     const registered = registerGlobalCli({
-      binDirs: getBinDirOption() ?? getGlobalBinDirs(),
+      binDirs: (await getBinDirOption()) ?? getGlobalBinDirs(),
     });
     printGlobalCli(registered);
   }
@@ -355,9 +378,13 @@ async function startCommand() {
   }
 }
 
-function getBinDirOption() {
+async function getBinDirOption() {
   const binDir = getOption("bin-dir");
-  return binDir ? [resolve(expandHome(binDir))] : null;
+  if (!binDir) {
+    return null;
+  }
+  const deps = await loadDependencies();
+  return [resolve(deps.expandHome(binDir))];
 }
 
 function printGlobalCli(registered) {
@@ -374,8 +401,9 @@ function printGlobalCli(registered) {
 }
 
 async function stopCommand() {
-  const { environment } = loadConfig();
-  const astroHome = resolveAstroHome(environment);
+  const deps = await loadDependencies();
+  const { environment } = await loadConfig();
+  const astroHome = deps.resolveAstroHome(environment);
   const state = readDashboardState(astroHome);
   if (!state) {
     console.log("Dashboard is not running.");
@@ -413,53 +441,54 @@ async function restartCommand() {
   await startCommand();
 }
 
-function statusCommand() {
-  const config = loadConfig();
+async function statusCommand() {
+  const deps = await loadDependencies();
+  const config = await loadConfig();
   const environment = config.environment;
-  const astroHome = resolveAstroHome(environment);
-  const runtime = getInstalledRuntimePaths(astroHome);
+  const astroHome = deps.resolveAstroHome(environment);
+  const runtime = deps.getInstalledRuntimePaths(astroHome);
   const globalCli = findGlobalCli({
-    binDirs: getBinDirOption() ?? getGlobalBinDirs(),
+    binDirs: (await getBinDirOption()) ?? getGlobalBinDirs(),
   });
   const dashboard = readDashboardState(astroHome);
   const codexHome = resolve(
-    expandHome(
+    deps.expandHome(
       getOption("codex-home") || environment.CODEX_HOME || join(homedir(), ".codex"),
     ),
   );
   const claudeHome = resolve(
-    expandHome(
+    deps.expandHome(
       getOption("claude-home") ||
         environment.CLAUDE_HOME ||
         join(homedir(), ".claude"),
     ),
   );
   const workbuddyHome = resolve(
-    expandHome(
+    deps.expandHome(
       getOption("workbuddy-home") ||
         environment.CODEBUDDY_HOME ||
         join(homedir(), ".codebuddy"),
     ),
   );
   const dshHome = resolve(
-    expandHome(
+    deps.expandHome(
       getOption("dsh-home") || environment.DSH_HOME || join(homedir(), ".dsh"),
     ),
   );
   const integrations = [
-    ["codex", hasInstalledHook(join(codexHome, "hooks.json"), "codex")],
+    ["codex", deps.hasInstalledHook(join(codexHome, "hooks.json"), "codex")],
     [
       "claude",
-      hasInstalledHook(join(claudeHome, "settings.json"), "claude"),
+      deps.hasInstalledHook(join(claudeHome, "settings.json"), "claude"),
     ],
     [
       "workbuddy",
-      hasInstalledHook(join(workbuddyHome, "settings.json"), "workbuddy"),
+      deps.hasInstalledHook(join(workbuddyHome, "settings.json"), "workbuddy"),
     ],
-    ["trae", hasInstalledHook(join(process.cwd(), ".trae", "hooks.json"), "trae")],
+    ["trae", deps.hasInstalledHook(join(process.cwd(), ".trae", "hooks.json"), "trae")],
     [
       "deepseek",
-      hasDeepseekPlugin(dshHome, getOption("deepseek-profile") || "web")
+      deps.hasDeepseekPlugin(dshHome, getOption("deepseek-profile") || "web")
         .installed,
     ],
   ];
@@ -536,11 +565,12 @@ function statusCommand() {
   );
 }
 
-function infoCommand() {
-  const config = loadConfig();
+async function infoCommand() {
+  const deps = await loadDependencies();
+  const config = await loadConfig();
   const environment = config.environment;
-  const astroHome = resolveAstroHome(environment);
-  const runtime = getInstalledRuntimePaths(astroHome);
+  const astroHome = deps.resolveAstroHome(environment);
+  const runtime = deps.getInstalledRuntimePaths(astroHome);
   const dashboard = readDashboardState(astroHome);
   const traceRoot =
     environment.ASTRO_TRACE_DIR ||
@@ -548,7 +578,7 @@ function infoCommand() {
     environment.TRAE_TRACE_DIR ||
     astroHome;
   const sources = TRACE_SOURCES.map((source) => {
-    const stats = getTraceStats(astroHome, source);
+    const stats = deps.getTraceStats(astroHome, source);
     return {
       bytes: stats.bytes,
       files: stats.files.length,
@@ -569,7 +599,7 @@ function infoCommand() {
     dashboardUrl: dashboard?.running ? dashboard.url || "" : "",
     envPath: config.files.env.path,
     globalCli: findGlobalCli({
-      binDirs: getBinDirOption() ?? getGlobalBinDirs(),
+      binDirs: (await getBinDirOption()) ?? getGlobalBinDirs(),
     })?.path || "",
     pluginDir: runtime.pluginDir,
     sources,
@@ -604,13 +634,14 @@ function infoCommand() {
   console.log(`  total          ${totals.files} files ${totals.bytes} bytes`);
 }
 
-function updateCommand() {
+async function updateCommand() {
+  const deps = await loadDependencies();
   const astroHome =
     getOption("astro-home") ||
     getOption("aot-home") ||
     process.env.ASTRO_HOME ||
     process.env.AOT_HOME;
-  const runtime = updateInstalledPlugins({
+  const runtime = deps.updateInstalledPlugins({
     astroHome,
     environment: process.env,
     refreshDeepseek: !hasFlag("no-deepseek"),
@@ -641,9 +672,10 @@ function delegateCommand(command) {
   }
 }
 
-function openCommand() {
-  const { environment } = loadConfig();
-  const astroHome = resolveAstroHome(environment);
+async function openCommand() {
+  const deps = await loadDependencies();
+  const { environment } = await loadConfig();
+  const astroHome = deps.resolveAstroHome(environment);
   const state = readDashboardState(astroHome);
   if (!state?.running) {
     console.log('Dashboard is not running. Start it with "astrox start".');
@@ -657,9 +689,10 @@ function openCommand() {
   console.log(`Opened ${url}`);
 }
 
-function logsCommand() {
-  const { environment } = loadConfig();
-  const astroHome = resolveAstroHome(environment);
+async function logsCommand() {
+  const deps = await loadDependencies();
+  const { environment } = await loadConfig();
+  const astroHome = deps.resolveAstroHome(environment);
   const logFile = getOption("log-file") || join(astroHome, "dashboard.log");
   if (!existsSync(logFile)) {
     console.log(`No dashboard log at ${logFile}.`);
@@ -672,10 +705,11 @@ function logsCommand() {
   }
 }
 
-function pathCommand() {
-  const { environment } = loadConfig();
-  const astroHome = resolveAstroHome(environment);
-  const runtime = getInstalledRuntimePaths(astroHome);
+async function pathCommand() {
+  const deps = await loadDependencies();
+  const { environment } = await loadConfig();
+  const astroHome = deps.resolveAstroHome(environment);
+  const runtime = deps.getInstalledRuntimePaths(astroHome);
   console.log(astroHome);
   console.log(runtime.pluginDir);
   console.log(ENTRY_FILE);

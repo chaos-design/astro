@@ -53,6 +53,32 @@ use Node.js ES modules or CommonJS according to their existing file extension.
 - Expired selected runs must not keep live topology animation or running log
   markers active.
 
+## Run History Live Markers
+
+- `isLiveRunStatus` is the single definition of a live run (`active` and
+  `waiting`). RUN HISTORY must not invent extra live states.
+- A live message is marked on the row (status accent plus a `RUNNING` /
+  `WAITING` capsule) and in the panel header (`N LIVE` chip that scrolls the
+  first live row into view), so the executing message is findable without
+  scrolling.
+- Selection styling outranks the live accent; a selected live row keeps its
+  selection border.
+- Finished messages (`complete` / `failed` / `terminated`) do not auto-locate
+  the last atom: `getPromptAtomSelection` returns `null` for every non-live
+  status, and only an explicit atom pick locates the topology.
+
+## Responsive App Layout
+
+- Overlay chrome (nav sheet, side panels) anchors to `--mobile-header-h`,
+  declared once on `.studio-shell` per breakpoint. Do not hardcode the header
+  height in panel rules.
+- The phone breakpoint (`≤620px`) turns the nav and both side panels into
+  full-width sheets. An out-of-flow grid child needs `justify-self: stretch`,
+  because the base popover rule's `justify-self: end` shrink-wraps it.
+- Overlay panels reserve `env(safe-area-inset-*)` and let their inner sections
+  shrink (`minmax(0, …)`) so short landscape viewports scroll instead of
+  clipping.
+
 ## Event Labels
 
 - User-question lifecycle events use the `user.question` / `user.answer`

@@ -192,8 +192,10 @@ import {
 } from "./lib/atom-selection";
 import {
   ensureExpandedRun,
+  filterSessionsByLiveKeys,
   getPromptAtomSelection,
   getRunHistoryDisplayState,
+  isLiveRunStatus,
   toggleExpandedRun,
 } from "./lib/run-history-state";
 import {
@@ -621,11 +623,34 @@ type RunHistoryRowDetails = {
   fullCode: string;
   /** Git presentation of the working directory, when one was resolved. */
   git: { repo: string; branch: string } | null;
+  /** Executing or waiting: the row carries the live affordances. */
+  live?: boolean;
   source: string;
   start: number;
   status: "demo" | TraceSession["status"];
   title: string;
 };
+
+/**
+ * A live run keeps a `RUNNING` / `WAITING` capsule in its tag row so the
+ * executing message is identifiable from the list itself, without opening it
+ * or hunting for the breathing status icon.
+ */
+function RunHistoryLiveTag({
+  status,
+}: {
+  status: "demo" | TraceSession["status"];
+}) {
+  if (status !== "active" && status !== "waiting") {
+    return null;
+  }
+  return (
+    <span className="run-history__live-tag" data-live-status={status}>
+      <span className="run-history__live-pulse" aria-hidden="true" />
+      {status === "waiting" ? "WAITING" : "RUNNING"}
+    </span>
+  );
+}
 
 const workspacePathIcons = {
   directory: Folder,
@@ -673,6 +698,7 @@ function RunHistoryRowContent({
   extraLabel,
   extraValue,
   git,
+  live = false,
   source,
   start,
   status,
@@ -686,6 +712,7 @@ function RunHistoryRowContent({
         <RunHistoryPath cwd={cwd} git={git} />
         <small>{formatRunDate(start)}</small>
         <span className="run-history__tags">
+          {live ? <RunHistoryLiveTag status={status} /> : null}
           <span>
             AGENT <b>{source}</b>
           </span>
@@ -905,8 +932,10 @@ const RunHistoryRows = memo(function RunHistoryRows({
   activePromptRunKey,
   activePromptRunRef,
   expandedRuns,
+  firstLiveKey,
   gitInfo,
   isDemo,
+  liveItemRef,
   now,
   onHoverRow,
   onSelect,
@@ -918,8 +947,11 @@ const RunHistoryRows = memo(function RunHistoryRows({
   activePromptRunKey: string;
   activePromptRunRef: RefObject<HTMLDivElement | null>;
   expandedRuns: ReadonlySet<string>;
+  /** Session key of the first live row: the `N LIVE` jump target. */
+  firstLiveKey: string;
   gitInfo: Record<string, { repo: string; branch: string } | null>;
   isDemo: boolean;
+  liveItemRef: RefObject<HTMLElement | null>;
   now: number;
   onHoverRow: (
     event: ReactPointerEvent<HTMLDivElement>,
@@ -935,6 +967,10 @@ const RunHistoryRows = memo(function RunHistoryRows({
     <>
       {sessions.map((session) => {
         const promptRuns = promptRunsBySession.get(session.key) ?? [];
+        // Newest prompt on top: the thread renders in reverse chronological
+        // order while selection, live marking, and labels keep using the
+        // original index order.
+        const displayPromptRuns = [...promptRuns].reverse();
         const firstPromptRun = promptRuns[0];
         const displayState = getRunHistoryDisplayState(
           session,
@@ -948,6 +984,8 @@ const RunHistoryRows = memo(function RunHistoryRows({
         const expanded = hasPromptThread && expandedRuns.has(session.key);
         const parentSelected = session.key === activeKey && !hasPromptThread;
         const activeGroup = session.key === activeKey && hasPromptThread;
+        const live = !isDemo && isLiveRunStatus(displayStatus);
+        const liveStatus = live ? displayStatus : undefined;
         const promptListId = `run-prompts-${session.key.replace(
           /[^a-zA-Z0-9_-]+/g,
           "-",
@@ -960,6 +998,7 @@ const RunHistoryRows = memo(function RunHistoryRows({
           extraValue: promptRuns.length,
           fullCode: session.id,
           git: session.cwd ? gitInfo[session.cwd] ?? null : null,
+          live,
           source: session.source,
           start: firstPromptRun?.start ?? session.start,
           status: isDemo ? "demo" : displayStatus,
@@ -968,17 +1007,25 @@ const RunHistoryRows = memo(function RunHistoryRows({
 
         return (
           <article
-            className={cn("run-history__item", activeGroup && "is-active-group")}
+            className={cn(
+              "run-history__item",
+              activeGroup && "is-active-group",
+              live && "is-live",
+            )}
+            data-live-status={liveStatus}
             key={session.key}
+            ref={session.key === firstLiveKey ? liveItemRef : undefined}
           >
             <div
               role="button"
               tabIndex={0}
               aria-pressed={parentSelected}
+              data-live-status={liveStatus}
               className={cn(
                 "run-history__row",
                 hasPromptThread && "has-prompt-thread",
                 parentSelected && "is-selected",
+                live && "is-live",
               )}
               onClick={() => onSelect(session.key, promptRuns.at(-1)?.key)}
               onKeyDown={(event) => {
@@ -1019,7 +1066,7 @@ const RunHistoryRows = memo(function RunHistoryRows({
                 }}
               >
                 <ol className="run-history__prompts">
-                  {promptRuns.map((promptRun) => {
+                  {displayPromptRuns.map((promptRun) => {
                     const promptSelected = promptRun.key === activePromptRunKey;
                     const promptDisplayState = getSessionDisplayState(
                       promptRun,
@@ -1031,6 +1078,11 @@ const RunHistoryRows = memo(function RunHistoryRows({
                         ? "INITIAL"
                         : `FOLLOW-UP ${String(promptRun.index).padStart(2, "0")}`;
                     const promptCode = `${roleLabel} · ${promptRun.prompt.id}`;
+                    const promptLive =
+                      !isDemo && isLiveRunStatus(promptDisplayState.status);
+                    const promptLiveStatus = promptLive
+                      ? promptDisplayState.status
+                      : undefined;
                     const promptDetails: RunHistoryRowDetails = {
                       code: promptCode,
                       cwd: promptRun.cwd,
@@ -1041,6 +1093,7 @@ const RunHistoryRows = memo(function RunHistoryRows({
                       git: promptRun.cwd
                         ? gitInfo[promptRun.cwd] ?? null
                         : null,
+                      live: promptLive,
                       source: promptRun.source,
                       start: promptRun.start,
                       status: isDemo ? "demo" : promptDisplayState.status,
@@ -1053,10 +1106,12 @@ const RunHistoryRows = memo(function RunHistoryRows({
                           role="button"
                           tabIndex={0}
                           aria-pressed={promptSelected}
+                          data-live-status={promptLiveStatus}
                           className={cn(
                             "run-history__row",
                             "run-history__prompt-run",
                             promptSelected && "is-selected",
+                            promptLive && "is-live",
                           )}
                           onClick={() => onSelect(session.key, promptRun.key)}
                           onKeyDown={(event) => {
@@ -1123,8 +1178,90 @@ const RunHistory = memo(function RunHistory({
   const listRef = useRef<HTMLDivElement | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const hoverAnchorRef = useRef<HTMLElement | null>(null);
+  const liveItemRef = useRef<HTMLElement | null>(null);
+  const [liveJumpRequest, setLiveJumpRequest] = useState(0);
+  const [liveFilter, setLiveFilter] = useState(false);
   const activePromptCount =
     promptRunsBySession.get(activeKey)?.length ?? 0;
+
+  // Live summary for the header chip. Parent display states are cheap
+  // arithmetic, and deriving them here keeps `RunHistoryRows` free of a
+  // second pass while leaving the row memo boundary intact.
+  const liveSummary = useMemo(() => {
+    if (isDemo) {
+      return { count: 0, firstLiveKey: "", liveKeys: [] as string[] };
+    }
+    let count = 0;
+    let firstLiveKey = "";
+    const liveKeys: string[] = [];
+    for (const session of sessions) {
+      const promptRuns = promptRunsBySession.get(session.key) ?? [];
+      const { status } = getRunHistoryDisplayState(
+        session,
+        promptRuns,
+        now,
+        appTimings.activeRunTimeoutMs,
+      );
+      if (!isLiveRunStatus(status)) {
+        continue;
+      }
+      count += 1;
+      liveKeys.push(session.key);
+      if (!firstLiveKey) {
+        firstLiveKey = session.key;
+      }
+    }
+    return { count, firstLiveKey, liveKeys };
+  }, [isDemo, now, promptRunsBySession, sessions]);
+
+  // Filtering only ever narrows the *loaded* list, so switching the filter
+  // off or loading more days can never lose a live row.
+  const liveFiltering = liveFilter && liveSummary.count > 0;
+  const displayedSessions = useMemo(
+    () =>
+      liveFiltering
+        ? filterSessionsByLiveKeys(sessions, liveSummary.liveKeys)
+        : sessions,
+    [liveFiltering, liveSummary.liveKeys, sessions],
+  );
+
+  useEffect(() => {
+    if (liveJumpRequest === 0) {
+      return;
+    }
+    scrollRowWithinContainer(listRef.current, liveItemRef.current, true);
+  }, [liveJumpRequest]);
+
+  const jumpToLiveRun = useCallback(() => {
+    if (!liveSummary.firstLiveKey) {
+      return;
+    }
+    // A live Prompt inside a collapsed thread would otherwise jump to a row
+    // that is still hidden, so the target group is expanded first.
+    setExpandedRuns((current) =>
+      ensureExpandedRun(current, liveSummary.firstLiveKey, true),
+    );
+    setLiveJumpRequest((current) => current + 1);
+  }, [liveSummary.firstLiveKey]);
+
+  const toggleLiveFilter = useCallback(() => {
+    if (liveFilter) {
+      setLiveFilter(false);
+      return;
+    }
+    // Entering the filter doubles as the jump: the first live row is the
+    // natural anchor when the list suddenly gets much shorter.
+    setLiveFilter(true);
+    jumpToLiveRun();
+  }, [liveFilter, jumpToLiveRun]);
+
+  // The live set is derived from the currently loaded sessions; once every
+  // live run has settled the filter would hold up nothing but an empty list.
+  useEffect(() => {
+    if (liveFilter && liveSummary.count === 0) {
+      setLiveFilter(false);
+    }
+  }, [liveFilter, liveSummary.count]);
 
   useEffect(() => {
     if (!activeKey) {
@@ -1175,10 +1312,11 @@ const RunHistory = memo(function RunHistory({
   }, []);
 
   // Anything that changes which rows exist — another agent, another day,
-  // another prompt, a collapsed thread — invalidates a card anchored to one of
-  // them. The list is re-derived on every clock tick with a fresh array
-  // identity, so the effect keys off the row signature instead of the array.
-  const rowSignature = sessions
+  // another prompt, a collapsed thread, a switched live filter — invalidates
+  // a card anchored to one of them. The list is re-derived on every clock
+  // tick with a fresh array identity, so the effect keys off the row
+  // signature instead of the array.
+  const rowSignature = displayedSessions
     .map(
       (session) =>
         `${session.key}:${promptRunsBySession.get(session.key)?.length ?? 0}`,
@@ -1251,6 +1389,32 @@ const RunHistory = memo(function RunHistory({
           <span className="eyebrow">RUN HISTORY</span>
           <strong>{sessions.length} runs</strong>
         </div>
+        {liveSummary.count > 0 ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                className={cn(
+                  "run-history__live-jump",
+                  liveFiltering && "is-filtering",
+                )}
+                aria-pressed={liveFiltering}
+                aria-label={
+                  liveFiltering
+                    ? `取消筛选活动消息（${liveSummary.count} 条）`
+                    : `只看正在执行的消息（${liveSummary.count} 条）`
+                }
+                onClick={toggleLiveFilter}
+              >
+                <Radio aria-hidden="true" />
+                <span>{liveSummary.count} LIVE</span>
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              {liveFiltering ? "取消筛选活动消息" : "只看正在执行的消息"}
+            </TooltipContent>
+          </Tooltip>
+        ) : null}
       </header>
       <div
         className="run-history__list min-h-0 overflow-auto p-1.5"
@@ -1262,14 +1426,16 @@ const RunHistory = memo(function RunHistory({
           activePromptRunKey={activePromptRunKey}
           activePromptRunRef={activePromptRunRef}
           expandedRuns={expandedRuns}
+          firstLiveKey={liveSummary.firstLiveKey}
           isDemo={isDemo}
+          liveItemRef={liveItemRef}
           now={now}
           onHoverRow={handleRowHover}
           onSelect={onSelect}
           onToggleRun={toggleRun}
           gitInfo={gitInfo}
           promptRunsBySession={promptRunsBySession}
-          sessions={sessions}
+          sessions={displayedSessions}
         />
         {initialLoading ? (
           <div className="run-history__loading" aria-busy="true">
@@ -1278,6 +1444,10 @@ const RunHistory = memo(function RunHistory({
           </div>
         ) : sessions.length === 0 ? (
           <output className="run-history__empty">No runs in this window</output>
+        ) : displayedSessions.length === 0 ? (
+          <output className="run-history__empty">
+            没有正在执行的消息
+          </output>
         ) : null}
         {canLoadMore ? (
           <div
@@ -3394,16 +3564,18 @@ export default function App() {
         promptRuns.at(-1);
       const event = promptRun?.events.at(-1) || session?.events.at(-1);
       const status = promptRun?.status ?? session?.status;
+      // A running message follows the atom it is executing (no explicit
+      // selection); a finished one lands nowhere, so it must not locate the
+      // last atom either.
+      const atomSelection = getPromptAtomSelection(status);
       setActiveSessionKey(key);
       setActivePromptRunKey(promptRun?.key || "");
       setSelectedEventId(event?.id || "");
-      setSelectedAtomId(
-        getPromptAtomSelection(status, getAtomIdForEvent(event || null, platformId)),
-      );
-      // An executing run opens Live (no explicit selection); a finished run
-      // lands on its last message and closes Live — flash that atom on the
-      // canvas so the landing point is obvious.
-      if (status !== "active") {
+      setSelectedAtomId(atomSelection);
+      // A waiting run still has a current atom to land on — flash it on the
+      // canvas so the blocked point is obvious. A finished run has no landing
+      // atom, so an explicit pick is the only thing that locates.
+      if (status !== "active" && atomSelection !== null) {
         setLocateRequest((current) => current + 1);
       }
       setConsoleOpen(true);
@@ -3411,7 +3583,7 @@ export default function App() {
       setReplayMode(false);
       setPlaying(false);
     },
-    [platformId, promptRunsBySession, sessionsByKey],
+    [promptRunsBySession, sessionsByKey],
   );
 
   const selectHistorySearchResult = (entry: HistorySearchEntry) => {
@@ -3933,7 +4105,7 @@ export default function App() {
           <ReplayFooter
             events={activeEvents}
             cursor={replayCursor}
-            live={liveActive}
+            live={executingLive}
             playing={playing}
             speed={replaySpeed}
             onSeek={handleReplaySeek}

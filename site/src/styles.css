@@ -15,9 +15,8 @@
   --purple: #b893ff;
   --radius: 8px;
   --sidebar-w: 300px;
-  --bottombar-h: 52px;
-  /* Pinned mobile top bar (brand + drawer toggle). Only shown at ≤860px. */
-  --topbar-h: 56px;
+  /* Pinned mobile header (brand + GitHub + language + drawer toggle). Only shown at ≤860px. */
+  --header-h: 56px;
   /* Comfortable reading measure; the column itself grows with the viewport
      while prose is capped so it never becomes an unreadable wall of text. */
   --measure: 72ch;
@@ -453,6 +452,14 @@ a:hover {
   font-size: 15px;
   line-height: 1.75;
   color: var(--ink);
+  /* Grid item default min-width:auto lets a wide table/code block push the
+     track past the viewport. min-width:0 keeps the body at the track width so
+     wide children scroll inside themselves instead. */
+  min-width: 0;
+  /* Safety net for long unbreakable tokens (URLs, identifiers) in prose: without
+     this a single long word inflates the column past the viewport on narrow
+     screens. break-word only kicks in when the word cannot fit a line. */
+  overflow-wrap: break-word;
 }
 .doc-body h1,
 .doc-body h2,
@@ -504,6 +511,11 @@ a:hover {
   padding: 2px 6px;
   border-radius: 5px;
   color: var(--cyan);
+  /* Inline code is often a single long identifier/path with no break
+     opportunity (e.g. `EmbeddingService(build_embedding_provider(cfg))`) and
+     `overflow-wrap: break-word` does not always apply to atomic inline boxes.
+     `anywhere` guarantees the token wraps instead of overflowing its column. */
+  overflow-wrap: anywhere;
 }
 .doc-body pre {
   background: var(--surface);
@@ -597,6 +609,48 @@ a:hover {
   color: var(--faint);
   font-size: 13px;
   font-family: var(--mono);
+}
+
+/* Markdown images wrap into a click-to-zoom trigger, mirroring the
+   mermaid-diagram affordance so "every picture" is zoomable. */
+.zoomable-image {
+  position: relative;
+  display: block;
+  max-width: 100%;
+  margin: 4px 0 20px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  cursor: zoom-in;
+  transition: border-color 0.15s;
+}
+.zoomable-image:hover {
+  border-color: var(--blue);
+}
+.zoomable-image img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+.zoomable-image::after {
+  content: "⛶ 点击放大";
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--faint);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 2px 7px;
+  opacity: 0;
+  transition: opacity 0.15s;
+  pointer-events: none;
+}
+.zoomable-image:hover::after {
+  opacity: 1;
 }
 
 /* Doc TOC */
@@ -871,7 +925,11 @@ a:hover {
 .lightbox-tools {
   margin-left: auto;
   display: flex;
-  gap: 6px;
+  gap: 0;
+  padding: 3px;
+  background: var(--surface-3);
+  border: 1px solid var(--line);
+  border-radius: 9px;
 }
 .lightbox-tool {
   min-width: 30px;
@@ -880,17 +938,20 @@ a:hover {
   font-family: var(--mono);
   font-size: 13px;
   color: var(--muted);
-  background: var(--surface-3);
-  border: 1px solid var(--line);
+  background: transparent;
+  border: 0;
   border-radius: 6px;
   cursor: pointer;
   transition:
-    border-color 0.14s,
-    color 0.14s;
+    color 0.14s,
+    background 0.14s;
+}
+.lightbox-tool + .lightbox-tool {
+  box-shadow: inset 1px 0 0 var(--line);
 }
 .lightbox-tool:hover {
-  border-color: var(--blue);
   color: var(--ink);
+  background: var(--surface-2);
 }
 .lightbox-close {
   color: var(--ink);
@@ -922,6 +983,23 @@ a:hover {
   width: 100%;
   height: auto;
   display: block;
+}
+.lightbox-stage img {
+  display: block;
+  max-width: 1600px;
+  height: auto;
+}
+.lightbox-pct {
+  min-width: 54px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  color: var(--faint);
+}
+.lightbox-fit {
+  flex: 0 0 auto;
+  opacity: 0.7;
 }
 
 /* ===== Bottom nav bar (吸底 GitHub 入口) =====
@@ -982,21 +1060,62 @@ a:hover {
   color: var(--cyan);
 }
 
-/* ===== Mobile top bar + drawer (≤860px only; hidden on desktop) =====
-   A pinned header carrying the brand and the drawer toggle. The sidebar
-   becomes an off-canvas panel that slides in from the left over a dim
-   scrim; only the content column scrolls. */
-.mobile-topbar {
+/* ===== Mobile header + full-viewport nav panel (≤860px only; hidden on
+   desktop, where the pinned sidebar carries the same brand / GitHub /
+   language entries). The mobile header is a fixed app-style bar; the sidebar
+   doubles as a full-height panel the hamburger expands over a tap-to-close
+   backdrop. */
+.site-header {
   display: none;
 }
-.topbar-brand {
+.nav-backdrop {
   display: none;
 }
-.topbar-toggle {
+.nav-toggle {
   display: none;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-3);
+  color: var(--ink);
+  cursor: pointer;
+  transition: border-color 0.15s ease;
 }
-.scrim {
-  display: none;
+.nav-toggle:hover,
+.nav-toggle.open {
+  border-color: var(--blue);
+}
+.nav-toggle:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+.nav-toggle-bars {
+  display: grid;
+  gap: 4px;
+  width: 16px;
+}
+.nav-toggle-bars i {
+  display: block;
+  height: 2px;
+  border-radius: 2px;
+  background: currentColor;
+  transition:
+    transform 0.15s ease,
+    opacity 0.15s ease;
+}
+/* Open state morphs the three bars into a close cross. */
+.nav-toggle.open .nav-toggle-bars i:nth-child(1) {
+  transform: translateY(6px) rotate(45deg);
+}
+.nav-toggle.open .nav-toggle-bars i:nth-child(2) {
+  opacity: 0;
+}
+.nav-toggle.open .nav-toggle-bars i:nth-child(3) {
+  transform: translateY(-6px) rotate(-45deg);
 }
 
 /* ===== Responsive ===== */
@@ -1012,125 +1131,132 @@ a:hover {
   }
 }
 @media (max-width: 860px) {
+  /* App-style layout: the viewport is a fixed-height column. The mobile header
+     is the first flex child, so it never scrolls; only the content pane scrolls
+     inside it. (A sticky header over a whole-page scroll would still let the
+     page body move; the requirement is that the header never scrolls away.) */
   html,
   body {
-    /* Only the content column scrolls; the rest is pinned chrome. */
     overflow: hidden;
   }
   .shell {
-    /* Lock the shell to the viewport so nothing but the content region can
-       scroll. The fixed children (top bar / drawer / bottom bar / scrim)
-       anchor to the viewport and .content is the sole scrollable box. */
-    position: fixed;
-    inset: 0;
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: none;
+    display: flex;
+    flex-direction: column;
+    position: static;
+    grid-template-columns: none;
+    height: 100vh;
     height: 100dvh;
     min-height: 0;
+    /* Only .content scrolls (below); no page-level scroll to leak under bars. */
     overflow: hidden;
   }
-  /* Pinned brand + drawer toggle. */
-  .mobile-topbar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: var(--topbar-h);
-    z-index: 80;
-    padding: env(safe-area-inset-top) 16px 0;
-    background: var(--surface);
-    border-bottom: 1px solid var(--line);
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
+  /* While the nav panel is open, freeze the content scroll so only the panel
+     (and its own scroll area) reacts behind the backdrop. */
+  .shell[data-nav-open="true"] .content {
+    overflow: hidden;
   }
-  .topbar-brand {
+
+  /* ===== Mobile header: brand + GitHub + language + nav toggle ===== */
+  .site-header {
     display: flex;
     align-items: center;
     gap: 10px;
+    flex: 0 0 auto;
+    height: var(--header-h);
+    padding: 0 14px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--line);
+    /* A flex item honours z-index even when static; keep the bar above the
+       panel (55) and its backdrop (54). */
+    position: relative;
+    z-index: 60;
   }
-  .topbar-brand .brand-mark {
+  .site-header-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    color: var(--ink);
+    text-decoration: none;
+  }
+  .site-header-brand:hover {
+    text-decoration: none;
+  }
+  .site-header-brand:hover .brand-mark {
+    filter: brightness(1.08);
+  }
+  .site-header-brand:focus-visible {
+    outline: 2px solid var(--blue);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+  .site-header-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .site-header-text .brand-name,
+  .site-header-text .brand-sub {
+    line-height: 1.2;
+  }
+  .site-header .brand-mark {
     width: 26px;
     height: 26px;
     font-size: 14px;
   }
-  .topbar-brand .brand-name {
+  .site-header .brand-name {
     font-size: 15px;
   }
-  .topbar-toggle {
-    display: inline-flex;
+  .site-header-actions {
+    display: flex;
     align-items: center;
-    justify-content: center;
-    width: 38px;
-    height: 38px;
+    gap: 8px;
+    margin-left: auto;
+  }
+  /* Square controls of equal size, so the actions row reads as one set. */
+  .site-header .header-lang,
+  .header-github,
+  .site-header .nav-toggle {
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
     padding: 0;
+    margin-left: 0;
     border: 1px solid var(--line);
     border-radius: 8px;
-    background: var(--surface-2);
+    background: var(--surface-3);
     color: var(--ink);
-    cursor: pointer;
-    transition: border-color 0.15s ease;
+    font-size: 13px;
+    font-weight: 700;
+    text-decoration: none;
   }
-  .topbar-toggle:hover {
+  .site-header .header-lang:hover,
+  .header-github:hover {
+    color: var(--ink);
     border-color: var(--blue);
+    text-decoration: none;
+  }
+  .header-github {
+    color: var(--cyan);
+    cursor: pointer;
+  }
+  .header-github svg {
+    width: 18px;
+    height: 18px;
   }
 
-  /* Off-canvas nav drawer sliding in from the left over a dim scrim. */
-  .sidebar {
-    position: fixed;
-    top: var(--topbar-h);
-    bottom: 0;
-    left: 0;
-    width: min(84vw, 320px);
-    height: auto;
-    max-height: none;
-    z-index: 70;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-    border-right: 1px solid var(--line);
-    background: var(--surface);
-    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.45);
-    transform: translateX(-100%);
-    visibility: hidden;
-    transition:
-      transform 0.24s ease,
-      visibility 0.24s ease;
-  }
-  .sidebar.nav-open {
-    transform: translateX(0);
-    visibility: visible;
-  }
-  .sidebar-scroll {
-    overflow-y: auto;
-    padding: 16px 16px 12px;
-  }
-  /* GitHub is reachable from the 吸底 bar instead; keep the footer row for
-     the language pill only. */
-  .sidebar-github {
-    justify-content: flex-end;
-  }
-  .sidebar-github a {
-    display: none;
-  }
-  .sidebar-github .lang-toggle {
-    flex: 0 0 auto;
-  }
-
-  /* Dim backdrop behind the open drawer; a tap closes it. */
-  .scrim {
+  /* Tap-anywhere-to-close target: covers the page below the header, leaving the
+     header (and therefore the toggle) clickable. */
+  .nav-backdrop {
     display: block;
     position: fixed;
-    top: var(--topbar-h);
-    left: 0;
-    right: 0;
-    bottom: 0;
-    z-index: 50;
-    background: rgba(0, 0, 0, 0.55);
-    animation: scrim-in 0.24s ease both;
+    inset: var(--header-h) 0 0 0;
+    z-index: 54;
+    background: rgba(0, 0, 0, 0.45);
+    animation: nav-backdrop-in 0.2s ease both;
   }
-  @keyframes scrim-in {
+  @keyframes nav-backdrop-in {
     from {
       opacity: 0;
     }
@@ -1138,42 +1264,149 @@ a:hover {
       opacity: 1;
     }
   }
+  /* Freeze the page behind the panel while it is open. */
+  body.nav-open {
+    overflow: hidden;
+  }
 
-  /* Content is the ONLY scroll region: a fixed box inset between the pinned
-     top bar and the pinned bottom bar. */
-  .content {
+  /* ===== Nav panel: full-width, from the header down to the viewport bottom,
+     with its own scroll area. Collapsed (display:none) until toggled, which
+     also keeps its links out of the tab order and the accessibility tree. ===== */
+  .sidebar {
     position: fixed;
-    top: var(--topbar-h);
-    left: 0;
-    right: 0;
-    bottom: calc(var(--bottombar-h) + env(safe-area-inset-bottom));
-    height: auto;
-    min-height: 0;
-    padding: 0;
-    overflow-y: auto;
-    overscroll-behavior: contain;
-  }
-  .content-inner {
-    padding: 20px 16px calc(var(--bottombar-h) + env(safe-area-inset-bottom));
-  }
-
-  /* Pinned 吸底 bars: the GitHub bar sits above the content's bottom edge,
-     and the pager stacks just above the GitHub bar. */
-  .bottombar {
-    display: flex;
+    top: var(--header-h);
     left: 0;
     right: 0;
     bottom: 0;
-    z-index: 60;
-    min-height: var(--bottombar-h);
+    z-index: 55;
+    /* Override the base column rules (100% height, align-self) — the
+       insets above define the panel box. */
+    height: auto;
+    max-height: none;
+    align-self: auto;
+    display: none;
+    flex-direction: column;
+    overflow: hidden;
+    border-right: none;
+    background: var(--surface);
   }
+  .sidebar.nav-open {
+    display: flex;
+    box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.45);
+    animation: nav-slide 0.18s ease;
+  }
+  /* Suppress the browser's default focus outline on the panel itself; keyboard
+     focus gets a themed ring instead, so a mouse-opened panel doesn't flash a
+     jarring box. */
+  .sidebar:focus {
+    outline: none;
+  }
+  .sidebar:focus-visible {
+    outline: 2px solid var(--blue);
+    outline-offset: -2px;
+  }
+  @keyframes nav-slide {
+    from {
+      opacity: 0;
+      transform: translateY(-12px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  .sidebar-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 12px 12px calc(12px + env(safe-area-inset-bottom));
+  }
+  .sidebar-scroll .nav-group:first-child {
+    margin-top: 0;
+  }
+  /* The brand header and the GitHub/language footer now live in the mobile
+     header; hide them inside the panel so they don't repeat. */
+  .sidebar-head,
+  .sidebar-github {
+    display: none;
+  }
+
+  /* The pager is the only 吸底 element left; it sits directly above the safe
+     area. */
   .pager {
     left: 0;
     right: 0;
-    bottom: calc(var(--bottombar-h) + env(safe-area-inset-bottom));
+    bottom: env(safe-area-inset-bottom);
     z-index: 60;
   }
-  .content-inner:has(.pager) {
-    padding-bottom: calc(var(--bottombar-h) + 84px + env(safe-area-inset-bottom));
+  /* Only this pane scrolls: it fills the space between the header and the
+     bottom of the viewport and carries its own overflow. Its bottom padding
+     reserves the band the fixed pager occupies so the last line of content is
+     never hidden. The reservation is measured at runtime (useBottomReserve
+     sets --bottom-reserve on <html>); the var() fallback covers first paint. */
+  .content {
+    flex: 1 1 auto;
+    position: static;
+    min-height: 0;
+    height: auto;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 0 0 var(--bottom-reserve, calc(env(safe-area-inset-bottom)));
+  }
+  /* Top/side gutters only — the pager clearance lives on .content. */
+  .content-inner {
+    padding: 24px 16px 0;
+  }
+}
+
+/* ===== Lightbox + zoom triggers on touch / small screens =====
+   No hover on a phone, so the "click to zoom" badge is always visible. The
+   lightbox goes edge-to-edge (respecting safe-area) and its tools grow to a
+   40px touch target. */
+@media (max-width: 860px) {
+  .mermaid-diagram::after,
+  .zoomable-image::after {
+    opacity: 1;
+  }
+  .lightbox {
+    padding: 0;
+    background: rgba(6, 7, 8, 0.9);
+  }
+  .lightbox-box {
+    border: none;
+    border-radius: 0;
+    width: 100%;
+    height: 100%;
+  }
+  .lightbox-head {
+    padding: calc(10px + env(safe-area-inset-top)) 12px 10px;
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+  .lightbox-title {
+    max-width: 46vw;
+  }
+  .lightbox-hint {
+    display: none;
+  }
+  .lightbox-tools {
+    width: auto;
+    margin-left: auto;
+  }
+  .lightbox-tool {
+    min-width: 40px;
+    height: 40px;
+    padding: 0 12px;
+    font-size: 15px;
+  }
+  .lightbox-pct {
+    min-width: 64px;
+  }
+  .lightbox-viewport {
+    padding: 0 env(safe-area-inset-right) calc(8px + env(safe-area-inset-bottom)) 0;
+  }
+  .lightbox-stage {
+    padding: 24px;
   }
 }
