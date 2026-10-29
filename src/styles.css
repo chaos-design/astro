@@ -1653,45 +1653,9 @@ pre,
 }
 
 /*
- * Freshness of the list itself: the capture time of the newest event the
- * stream delivered. A stopped stream otherwise looks exactly like an idle
- * agent, which is what made "did this finish?" unanswerable.
+ * Sync freshness lives only in the app header. RUN HISTORY used to repeat the
+ * same clock next to its own header, which read as a second, competing status.
  */
-.run-history__sync {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  color: var(--muted-soft);
-  font-family: var(--font-mono);
-  font-size: 7px;
-  letter-spacing: 0.06em;
-  white-space: nowrap;
-}
-
-.run-history__sync i {
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: currentColor;
-}
-
-.run-history__sync.is-connected {
-  color: color-mix(in srgb, var(--status-completed) 82%, var(--muted));
-}
-
-.run-history__sync.is-connected i {
-  background: var(--status-completed);
-  box-shadow: 0 0 6px color-mix(in srgb, var(--status-completed) 70%, transparent);
-}
-
-.run-history__sync.is-offline {
-  color: var(--status-failed);
-}
-
-.run-history__sync.is-offline i {
-  background: var(--status-failed);
-}
-
 /*
  * An executing run that stopped producing events. The status stays `active`
  * (only the recorder knows for sure) but the row says the stream went silent,
@@ -3129,7 +3093,10 @@ pre,
   width: 100%;
   height: 100%;
   min-height: 0;
-  grid-template-rows: 58px 78px minmax(0, 1fr);
+  /* Header, lane overview, atom list. The overview is deliberately tall: its
+   * marks are the primary way to scan a long run, and 8px blocks in 17px lanes
+   * were too small to hit or read. */
+  grid-template-rows: 58px 104px minmax(0, 1fr);
   overflow: hidden;
   background: var(--bg);
 }
@@ -3205,14 +3172,14 @@ pre,
   background: color-mix(in srgb, var(--panel) 44%, var(--bg));
   color: var(--muted);
   font-family: var(--font-mono);
-  font-size: 7px;
+  font-size: 8px;
   text-transform: uppercase;
 }
 
 .trajectory-map__labels,
 .trajectory-map__track-content {
   display: grid;
-  gap: 4px;
+  gap: 6px;
 }
 
 .trajectory-map__labels {
@@ -3221,7 +3188,7 @@ pre,
 
 .trajectory-map__labels span {
   display: flex;
-  height: 17px;
+  height: 24px;
   align-items: center;
   font-weight: var(--weight-strong);
 }
@@ -3297,7 +3264,7 @@ pre,
   --lane-tone: var(--blue);
 
   position: relative;
-  height: 17px;
+  height: 24px;
   overflow: hidden;
   border-block: 1px solid
     color-mix(in srgb, var(--lane-tone) 42%, var(--chrome-line));
@@ -3326,12 +3293,12 @@ pre,
   position: absolute;
   top: 50%;
   left: var(--segment-left);
-  width: max(6px, calc(var(--segment-width) - 3px));
-  min-width: 6px;
-  height: 8px;
+  width: max(9px, calc(var(--segment-width) - 4px));
+  min-width: 9px;
+  height: 15px;
   border: 1px solid
     color-mix(in srgb, var(--segment-tone) 84%, var(--chrome-line));
-  border-radius: 2px;
+  border-radius: 3px;
   background: color-mix(in srgb, var(--segment-tone) 92%, transparent);
   box-shadow:
     0 0 8px color-mix(in srgb, var(--segment-tone) 46%, transparent),
@@ -5752,7 +5719,7 @@ pre,
   }
 
   .trajectory-view {
-    grid-template-rows: 82px 78px minmax(0, 1fr);
+    grid-template-rows: 82px 104px minmax(0, 1fr);
   }
 
   .trajectory-header hgroup {

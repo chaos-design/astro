@@ -11,6 +11,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { format } from "date-fns";
 import {
+  startTransition,
   useDeferredValue,
   useEffect,
   useMemo,
@@ -48,9 +49,12 @@ import {
 } from "@/components/ui/popover";
 import { Separator } from "@/components/ui/separator";
 import {
+  buildHistorySearchIndex,
   filterHistorySearchEntries,
   getHistoryDateBounds,
+  getHistorySearchSnippet,
   type HistorySearchEntry,
+  type HistorySearchFilters,
   type HistorySearchMatch,
   type HistoryTimeRange,
 } from "@/lib/history-search";
@@ -64,7 +68,9 @@ import type {
   EventTone,
   MessageCategory,
   PlatformId,
+  TracePromptRun,
   TraceRunStatus,
+  TraceSession,
 } from "@/types/trace";
 
 const resultBatchSize = 60;
@@ -379,6 +385,9 @@ function SearchResult({
   onSelect: (entry: HistorySearchEntry) => void;
   query: string;
 }) {
+  // Only visible rows build a snippet: doing it inside the filter would run it
+  // for every match, including the tens of thousands that never render.
+  const snippet = getHistorySearchSnippet(match, query);
   return (
     <button
       type="button"
@@ -400,7 +409,7 @@ function SearchResult({
         <span className="history-search__result-snippet">
           <HighlightedText
             query={query}
-            text={truncateSnippet(match.snippet || match.summary)}
+            text={truncateSnippet(snippet || match.summary)}
           />
         </span>
         <span className="history-search__result-meta">
@@ -438,16 +447,21 @@ function SearchResult({
 }
 
 export function HistorySearch({
-  entries,
   onOpenChange,
   onSelect,
   open,
+  promptRunsBySession,
+  sessions,
 }: {
-  entries: readonly HistorySearchEntry[];
   onOpenChange: (open: boolean) => void;
   onSelect: (entry: HistorySearchEntry) => void;
   open: boolean;
+  promptRunsBySession: ReadonlyMap<string, readonly TracePromptRun[]>;
+  sessions: readonly TraceSession[];
 }) {
+  const [entries, setEntries] = useState<readonly HistorySearchEntry[]>([]);
+  const [indexing, setIndexing] = useState(false);
+  const hasIndexRef = useRef(false);
   const [query, setQuery] = useState("");
   const [timeRange, setTimeRange] =
     useState<HistoryTimeRange>(defaultTimeRange);
@@ -526,6 +540,53 @@ export function HistorySearch({
       ),
     [customRange, openedAt, timeRange],
   );
+  /*
+   * The index is built for the selected window only. Opening on the default
+   * "last 3 hours" should not pay for every event ever recorded, and the
+   * dialog can only show what is inside its own date filter anyway. The build
+   * runs off the click's critical path (the dialog paints first, the index
+   * lands in a transition) and is debounced so a recording run cannot rebuild
+   * it on every event flush.
+   */
+  useEffect(() => {
+    if (!open) {
+      hasIndexRef.current = false;
+      setEntries((current) => (current.length ? [] : current));
+      setIndexing(false);
+      return undefined;
+    }
+    if (!dateBounds.valid) {
+      return undefined;
+    }
+    const from = dateBounds.from;
+    const to = dateBounds.to;
+    let cancelled = false;
+    // Only the first index for this open announces itself; refreshes keep the
+    // previous results on screen until the new ones land.
+    setIndexing(!hasIndexRef.current);
+    const timer = window.setTimeout(
+      () => {
+        if (cancelled) {
+          return;
+        }
+        startTransition(() => {
+          setEntries(
+            buildHistorySearchIndex(sessions, promptRunsBySession, {
+              from,
+              to,
+            }),
+          );
+          hasIndexRef.current = true;
+          setIndexing(false);
+        });
+      },
+      hasIndexRef.current ? 600 : 0,
+    );
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [dateBounds, open, promptRunsBySession, sessions]);
   const filterInput = useMemo(
     () => ({
       categories,
@@ -539,10 +600,47 @@ export function HistorySearch({
     [categories, dateBounds, messageCategories, query, sources, statuses],
   );
   const deferredFilters = useDeferredValue(filterInput);
-  const matches = useMemo(
-    () => filterHistorySearchEntries(entries, deferredFilters),
-    [deferredFilters, entries],
-  );
+  /*
+   * Typing narrows. A query that only extends the previous one is guaranteed
+   * to match a subset of the previous matches (both substring and ordered
+   * subsequence matching are monotone under token extension), so the next
+   * keystroke can filter the previous result set instead of rescanning every
+   * loaded event. Deleting characters, changing a filter, or a new index falls
+   * back to the full set.
+   */
+  const narrowingRef = useRef<{
+    entries: readonly HistorySearchEntry[];
+    filters: HistorySearchFilters;
+    query: string;
+    source: readonly HistorySearchEntry[];
+  } | null>(null);
+  const matches = useMemo(() => {
+    const previous = narrowingRef.current;
+    const trimmedQuery = deferredFilters.query.trim();
+    const canNarrow =
+      previous !== null &&
+      previous.source === entries &&
+      previous.filters.categories === deferredFilters.categories &&
+      previous.filters.messageCategories ===
+        deferredFilters.messageCategories &&
+      previous.filters.sources === deferredFilters.sources &&
+      previous.filters.statuses === deferredFilters.statuses &&
+      previous.filters.from === deferredFilters.from &&
+      previous.filters.to === deferredFilters.to &&
+      trimmedQuery.length > previous.query.length &&
+      trimmedQuery.startsWith(previous.query);
+    const result = filterHistorySearchEntries(
+      canNarrow ? previous.entries : entries,
+      deferredFilters,
+    );
+    narrowingRef.current = {
+      entries: result,
+      filters: deferredFilters,
+      query: trimmedQuery,
+      source: entries,
+    };
+    return result;
+  }, [deferredFilters, entries]);
   const visibleMatches = useMemo(
     () => matches.slice(0, visibleCount),
     [matches, visibleCount],
@@ -701,11 +799,11 @@ export function HistorySearch({
           <output
             className={cn(
               "history-search__count",
-              filterInput !== deferredFilters && "is-pending",
+              (indexing || filterInput !== deferredFilters) && "is-pending",
             )}
             aria-live="polite"
           >
-            {matches.length} matches
+            {indexing && !entries.length ? "indexing…" : `${matches.length} matches`}
           </output>
         </div>
 
@@ -721,7 +819,9 @@ export function HistorySearch({
           {!matches.length ? (
             <output className="history-search__empty">
               {dateBounds.valid
-                ? "No matching history"
+                ? indexing
+                  ? "Indexing loaded history…"
+                  : "No matching history"
                 : "The selected date range is invalid"}
             </output>
           ) : null}

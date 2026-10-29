@@ -156,10 +156,7 @@ import {
   readStorageValue,
   writeStorageValue,
 } from "./lib/local-storage";
-import {
-  buildHistorySearchIndex,
-  type HistorySearchEntry,
-} from "./lib/history-search";
+import type { HistorySearchEntry } from "./lib/history-search";
 import {
   matchesEventQuery,
   warmEventSearchCache,
@@ -245,13 +242,13 @@ type InspectorTab = "input" | "output" | "raw";
  * re-rendering on every parent render when there is nothing to show.
  */
 const EMPTY_EVENTS: TraceEvent[] = [];
-const EMPTY_HISTORY_ENTRIES: HistorySearchEntry[] = [];
 /**
  * Minimum horizontal slot per node in the trajectory lane overview. Below
  * roughly this width the segments stop being distinguishable (and clickable),
- * so the track scrolls instead of compressing further.
+ * so the track scrolls instead of compressing further. Sized with the mark
+ * itself: a 9px minimum keeps the blocks from touching once they get tall.
  */
-const TRAJECTORY_MIN_SLOT_PX = 16;
+const TRAJECTORY_MIN_SLOT_PX = 18;
 /**
  * Upper bound on lane-overview marks per lane. A 10k-node run otherwise draws
  * 10k segments, which is both unreadable and expensive to paint; slots
@@ -1562,8 +1559,6 @@ const RunHistory = memo(function RunHistory({
   gitInfo,
   initialLoading,
   isDemo,
-  lastEventAt,
-  connected,
   now,
   promptRunsBySession,
   onLoadMore,
@@ -1578,10 +1573,6 @@ const RunHistory = memo(function RunHistory({
   canLoadMore: boolean;
   gitInfo: Record<string, { repo: string; branch: string } | null>;
   initialLoading: boolean;
-  /** Capture time of the newest event the stream delivered, if any. */
-  lastEventAt: number;
-  /** Whether the SSE stream is currently connected. */
-  connected: boolean;
   onLoadMore: () => void;
   onSelect: (sessionKey: string, promptRunKey?: string) => void;
 }) {
@@ -1916,30 +1907,6 @@ const RunHistory = memo(function RunHistory({
               </TooltipContent>
             </Tooltip>
           ) : null}
-          {/* Freshness: whether the list already holds the newest capture.
-              Without it a stopped stream looks exactly like an idle agent. */}
-          <span
-            className={cn(
-              "run-history__sync",
-              connected ? "is-connected" : "is-offline",
-            )}
-            title={
-              connected
-                ? `已同步到最新事件：${
-                    lastEventAt ? formatRunDate(lastEventAt) : "尚无事件"
-                  }`
-                : "与本地服务的连接已断开，列表可能不是最新的"
-            }
-          >
-            <i aria-hidden="true" />
-            {isDemo
-              ? "demo"
-              : connected
-                ? lastEventAt
-                  ? formatClock(lastEventAt).slice(0, 8)
-                  : "syncing"
-                : "offline"}
-          </span>
         </div>
       </header>
       <div
@@ -3952,16 +3919,6 @@ export default function App() {
       }),
     [isDemo, now, promptRunsBySession, sessions],
   );
-  // The search index covers every session, so it is built only while the
-  // dialog can actually use it.
-  const historySearchEntries = useMemo(
-    () =>
-      historySearchOpen
-        ? buildHistorySearchIndex(sessions, promptRunsBySession)
-        : EMPTY_HISTORY_ENTRIES,
-    [historySearchOpen, promptRunsBySession, sessions],
-  );
-
   useEffect(() => {
     if (!hasAdvancingRun) {
       return undefined;
@@ -4856,8 +4813,6 @@ export default function App() {
               activePromptRunKey={activePromptRun?.key || ""}
               gitInfo={gitInfo}
               isDemo={isDemo}
-              connected={connected}
-              lastEventAt={lastEventAt}
               now={now}
               promptRunsBySession={promptRunsBySession}
               canLoadMore={canLoadMoreRunHistory}
@@ -5049,10 +5004,11 @@ export default function App() {
         onLocate={focusAtom}
       />
       <HistorySearch
-        entries={historySearchEntries}
         open={historySearchOpen}
         onOpenChange={setHistorySearchOpen}
         onSelect={selectHistorySearchResult}
+        promptRunsBySession={promptRunsBySession}
+        sessions={sessions}
       />
     </main>
   );

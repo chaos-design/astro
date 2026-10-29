@@ -4,6 +4,7 @@ import {
   buildHistorySearchIndex,
   filterHistorySearchEntries,
   getHistoryDateBounds,
+  getHistorySearchSnippet,
 } from "../src/lib/history-search.ts";
 import {
   buildSessionPromptRuns,
@@ -37,7 +38,7 @@ function trace(
   } satisfies TraceEventInput);
 }
 
-function searchFixture() {
+function searchFixtureSources() {
   const events = [
     trace(
       "session-start-a",
@@ -91,6 +92,11 @@ function searchFixture() {
   const promptRuns = new Map(
     sessions.map((session) => [session.key, buildSessionPromptRuns(session)]),
   );
+  return { promptRuns, sessions };
+}
+
+function searchFixture() {
+  const { promptRuns, sessions } = searchFixtureSources();
   return buildHistorySearchIndex(sessions, promptRuns);
 }
 
@@ -304,5 +310,45 @@ test("builds inclusive preset and custom date bounds", () => {
   assert.equal(
     getHistoryDateBounds("custom", now, "invalid", "2026-09-10").valid,
     false,
+  );
+});
+
+test("indexes only the events inside the requested window", () => {
+  const { promptRuns, sessions } = searchFixtureSources();
+
+  const onlySeptemberTenth = buildHistorySearchIndex(
+    sessions,
+    promptRuns,
+    {
+      from: Date.parse("2026-09-10T00:00:00.000Z"),
+      to: Date.parse("2026-09-10T23:59:59.999Z"),
+    },
+  );
+  assert.deepEqual(
+    onlySeptemberTenth.map((entry) => entry.eventId).sort(),
+    ["prompt-a", "stop-a", "tool-a"],
+  );
+
+  const emptyWindow = buildHistorySearchIndex(sessions, promptRuns, {
+    from: Date.parse("2026-09-20T00:00:00.000Z"),
+    to: Date.parse("2026-09-21T00:00:00.000Z"),
+  });
+  assert.deepEqual(emptyWindow, []);
+});
+
+test("builds a snippet around the field that matched", () => {
+  const entries = searchFixture();
+  const toolEntry = entries.find((entry) => entry.eventId === "tool-a");
+  assert.ok(toolEntry);
+
+  // "src/app.tsx" lives in the tool payload, not in the summary.
+  assert.match(
+    getHistorySearchSnippet(toolEntry, "app.tsx"),
+    /src\/app\.tsx/,
+  );
+  // A query with no hit falls back to the summary.
+  assert.equal(
+    getHistorySearchSnippet(toolEntry, "zzzzz"),
+    toolEntry.summary,
   );
 });

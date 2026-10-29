@@ -26,10 +26,29 @@ export type HistorySearchEntry = {
   eventId: string;
   eventLabel: string;
   messageCategory: MessageCategory;
-  normalizedSearchFields: readonly string[];
+  /**
+   * Normalized payload text, capped at {@link HISTORY_SEARCH_PAYLOAD_BUDGET}
+   * characters. Kept apart from {@link normalizedText} so a fuzzy subsequence
+   * scan never walks a multi-kilobyte tool output.
+   */
+  normalizedPayload: string;
+  /**
+   * Normalized, newline-joined short fields (session/prompt titles, summary,
+   * label, names, path, status…). Scoring one string per token instead of one
+   * per field is what keeps a keystroke cheap on a 70k-entry index.
+   */
+  normalizedText: string;
+  /**
+   * Normalized head of the *semantic* fields only (session/prompt titles,
+   * summary, label) used for fuzzy subsequence matching. Ids, paths and status
+   * words are deliberately excluded: as subsequence haystacks they turn short
+   * queries into noise ("pnpm" matching "/users/…/project-3").
+   */
+  normalizedFuzzy: string;
   promptIndex: number | null;
   promptRunKey: string;
   promptTitle: string;
+  /** Raw short fields, used to build a snippet on demand (visible rows only). */
   searchFields: readonly string[];
   sessionId: string;
   sessionKey: string;
@@ -42,7 +61,6 @@ export type HistorySearchEntry = {
 
 export type HistorySearchMatch = HistorySearchEntry & {
   score: number;
-  snippet: string;
 };
 
 export type HistorySearchFilters = {
@@ -74,124 +92,244 @@ const rangeDurations: Readonly<
   "7d": 7 * 24 * 60 * 60 * 1_000,
 };
 
-function collectSearchValues(
-  value: unknown,
-  output: string[] = [],
-  seen = new WeakSet<object>(),
-): string[] {
-  if (value === null || value === undefined) {
-    return output;
+/**
+ * How much payload text per event is indexed. Real captures average ~4.6KB per
+ * event; indexing all of it multiplied a 70k-event history into hundreds of
+ * megabytes of strings. The head of the payload carries the tool name,
+ * command, path and the first lines of output — where people actually search.
+ */
+const HISTORY_SEARCH_PAYLOAD_BUDGET = 1_600;
+
+/**
+ * How much of the short-field block fuzzy matching looks at. Exact and
+ * payload matches still cover everything; fuzzy is a convenience for titles
+ * and summaries, which are at the front of the block.
+ */
+const HISTORY_SEARCH_FUZZY_BUDGET = 160;
+
+/**
+ * Payload text for the index. `JSON.stringify` is native and walks the whole
+ * object in one pass, which measured ~2x faster than accumulating keys and
+ * leaves with `+=`; the result is cut to the budget afterwards.
+ */
+function collectPayloadText(value: unknown): string {
+  if (!value) {
+    return "";
   }
-  if (typeof value === "object") {
-    if (seen.has(value)) {
-      return output;
-    }
-    seen.add(value);
-    if (Array.isArray(value)) {
-      value.forEach((child) => collectSearchValues(child, output, seen));
-    } else {
-      Object.entries(value).forEach(([key, child]) => {
-        output.push(key);
-        collectSearchValues(child, output, seen);
-      });
-    }
-    return output;
+  let text: string;
+  try {
+    text = JSON.stringify(value) ?? "";
+  } catch {
+    return "";
   }
-  output.push(String(value));
-  return output;
+  return text.length > HISTORY_SEARCH_PAYLOAD_BUDGET
+    ? text.slice(0, HISTORY_SEARCH_PAYLOAD_BUDGET)
+    : text;
 }
 
 function compactText(value: string) {
   return value.replace(/\s+/g, " ").trim();
 }
 
+const asciiOnlyPattern = /^[\u0000-\u007f]*$/;
+
+/**
+ * `normalize("NFKC")` costs ~20ns per character, and a 70k-event index pushes
+ * tens of megabytes through it. ASCII is already NFKC-normal, so only text
+ * containing other code points pays for it (full-width CJK input, ligatures).
+ */
 function normalizeSearchText(value: string) {
-  return value.normalize("NFKC").toLocaleLowerCase();
+  return asciiOnlyPattern.test(value)
+    ? value.toLowerCase()
+    : value.normalize("NFKC").toLowerCase();
 }
 
-function scoreToken(normalizedValue: string, token: string) {
-  const exactIndex = normalizedValue.indexOf(token);
-  if (exactIndex >= 0) {
-    return 1_000 - Math.min(300, exactIndex);
-  }
+function tokenizeSearchQuery(query: string) {
+  const normalized = normalizeSearchText(query);
+  return normalized.split(/\s+/).filter(Boolean);
+}
 
+/** Score an exact (case-insensitive, already normalized) substring hit. */
+function exactTokenScore(normalizedValue: string, token: string) {
+  const index = normalizedValue.indexOf(token);
+  return index >= 0 ? 1_000 - Math.min(300, index) : -1;
+}
+
+/**
+ * Score an ordered character subsequence ("bld" → "build"). Implemented as a
+ * chain of native `indexOf` calls: a JS character loop costs ~20x more per
+ * entry, and this runs for every entry that missed the exact substring.
+ */
+function fuzzyTokenScore(normalizedValue: string, token: string) {
+  let position = 0;
   let firstIndex = -1;
   let lastIndex = -1;
-  let tokenIndex = 0;
-  for (
-    let valueIndex = 0;
-    valueIndex < normalizedValue.length && tokenIndex < token.length;
-    valueIndex += 1
-  ) {
-    if (normalizedValue[valueIndex] !== token[tokenIndex]) {
-      continue;
+  for (let index = 0; index < token.length; index += 1) {
+    const found = normalizedValue.indexOf(token[index], position);
+    if (found < 0) {
+      return -1;
     }
     if (firstIndex < 0) {
-      firstIndex = valueIndex;
+      firstIndex = found;
     }
-    lastIndex = valueIndex;
-    tokenIndex += 1;
-  }
-  if (tokenIndex !== token.length) {
-    return -1;
+    lastIndex = found;
+    position = found + 1;
   }
   return 300 - Math.min(260, lastIndex - firstIndex);
 }
 
-function findEntryMatch(entry: HistorySearchEntry, query: string) {
-  const tokens = normalizeSearchText(query).split(/\s+/).filter(Boolean);
-  if (!tokens.length) {
-    return { score: 0, snippet: entry.summary };
-  }
-
+/**
+ * Score one entry against already-tokenized query tokens. Short fields win
+ * over payload text, and the payload is only checked for exact substrings so
+ * a fuzzy query never scans a long tool output.
+ */
+function scoreEntry(
+  entry: HistorySearchEntry,
+  tokens: readonly string[],
+): number {
   let score = 0;
-  let snippet = entry.summary;
   for (const token of tokens) {
-    let bestScore = -1;
-    let bestField = "";
-    for (const [index, field] of entry.normalizedSearchFields.entries()) {
-      const fieldScore = scoreToken(field, token);
-      if (fieldScore > bestScore) {
-        bestScore = fieldScore;
-        bestField = entry.searchFields[index] ?? field;
-      }
+    const exactScore = exactTokenScore(entry.normalizedText, token);
+    if (exactScore >= 0) {
+      score += exactScore;
+      continue;
     }
-    if (bestScore < 0) {
-      return null;
+    const fuzzyScore = fuzzyTokenScore(entry.normalizedFuzzy, token);
+    if (fuzzyScore >= 0) {
+      score += fuzzyScore;
+      continue;
     }
-    score += bestScore;
-    if (!snippet || bestScore >= 700) {
-      snippet = bestField;
+    const payloadIndex = entry.normalizedPayload.indexOf(token);
+    if (payloadIndex < 0) {
+      return -1;
     }
+    score += 400 - Math.min(300, payloadIndex);
   }
-  return { score, snippet: compactText(snippet) };
+  return score;
 }
 
-function promptRunForEvent(
-  promptRuns: readonly TracePromptRun[],
-  eventId: string,
-) {
-  return promptRuns.find((promptRun) =>
-    promptRun.events.some((event) => event.id === eventId),
-  );
+/**
+ * Payload matches come from stringified JSON, so the window around a hit is
+ * full of escapes and keys. One cheap pass makes it readable without turning
+ * the snippet builder into a JSON parser.
+ */
+function humanizeSnippet(value: string) {
+  return value
+    .replace(/\\[nrt]/g, " ")
+    .replace(/\\"/g, '"')
+    .replace(/\\\\/g, "\\");
 }
+
+/**
+ * A snippet is only rendered for the handful of visible rows, so it is built
+ * on demand instead of being stored for every match.
+ */
+export function getHistorySearchSnippet(
+  entry: HistorySearchEntry,
+  query: string,
+): string {
+  const tokens = tokenizeSearchQuery(query);
+  if (!tokens.length) {
+    return entry.summary;
+  }
+  const summary = entry.summary.toLocaleLowerCase();
+  if (tokens.some((token) => summary.includes(token))) {
+    return entry.summary;
+  }
+  for (const field of entry.searchFields) {
+    const normalized = field.toLocaleLowerCase();
+    for (const token of tokens) {
+      const index = normalized.indexOf(token);
+      if (index < 0) {
+        continue;
+      }
+      // Keep a little lead-in so the hit has context, but stay close to it:
+      // payload hits sit inside stringified JSON, and a long lead turns the
+      // snippet into keys and escapes.
+      const start = Math.max(0, index - 12);
+      const window = compactText(
+        humanizeSnippet(field.slice(start, start + 200)),
+      );
+      return start > 0 ? `…${window}` : window;
+    }
+  }
+  return entry.summary;
+}
+
+function promptRunsByEventId(promptRuns: readonly TracePromptRun[]) {
+  const byEventId = new Map<string, TracePromptRun>();
+  for (const promptRun of promptRuns) {
+    for (const event of promptRun.events) {
+      byEventId.set(event.id, promptRun);
+    }
+  }
+  return byEventId;
+}
+
+/**
+ * The window the dialog can display. The index is built for exactly this
+ * range: searching the last 3 hours should not pay for every event ever
+ * recorded, and widening the range is an explicit action that can afford a
+ * rebuild.
+ */
+export type HistorySearchRange = {
+  from: number | null;
+  to: number | null;
+};
 
 export function buildHistorySearchIndex(
   sessions: readonly TraceSession[],
   promptRunsBySession: ReadonlyMap<string, readonly TracePromptRun[]>,
+  range?: HistorySearchRange,
 ): HistorySearchEntry[] {
-  return sessions.flatMap((session) => {
+  const from = range?.from ?? null;
+  const to = range?.to ?? null;
+  const entries: HistorySearchEntry[] = [];
+  for (const session of sessions) {
+    // Session bounds are already on the object: skip whole runs before
+    // touching their events. A terminal run's recorded duration is exact, so
+    // only live runs need to fall through to the per-event check.
+    if (to !== null && session.start > to) {
+      continue;
+    }
+    if (
+      from !== null &&
+      session.status !== "active" &&
+      session.status !== "waiting" &&
+      session.start + (session.duration || 0) < from
+    ) {
+      continue;
+    }
     const promptRuns = promptRunsBySession.get(session.key) ?? [];
-    return session.events.flatMap((event) => {
-      const promptRun = promptRunForEvent(promptRuns, event.id);
+    let promptRunByEventId: Map<string, TracePromptRun> | null = null;
+    // One lookup table per session: scanning every prompt run for every event
+    // was quadratic and dominated the build on long sessions. Built lazily so
+    // sessions with nothing in the window never pay for it.
+    const promptRunFor = (eventId: string) => {
+      if (!promptRuns.length) {
+        return undefined;
+      }
+      promptRunByEventId ??= promptRunsByEventId(promptRuns);
+      return promptRunByEventId.get(eventId);
+    };
+    for (const event of session.events) {
+      const timestamp = Date.parse(event.capturedAt) || 0;
+      if (
+        (from !== null && timestamp < from) ||
+        (to !== null && timestamp > to)
+      ) {
+        continue;
+      }
+      const promptRun = promptRunFor(event.id);
       if (promptRuns.length > 0 && !promptRun) {
-        return [];
+        continue;
       }
       const summary = compactText(getEventSummary(event));
       const meta = eventMeta[event.eventName] ?? eventMeta.Unknown;
       const eventLabel = event.toolName || meta.label;
       const messageCategory = getMessageCategory(event);
       const status = promptRun?.status ?? session.status;
+      const payloadText = collectPayloadText(event.payload);
       const searchFields = [
         session.title,
         promptRun?.title ?? "",
@@ -207,29 +345,42 @@ export function buildHistorySearchIndex(
         status,
         meta.tone,
         messageCategory,
-        ...collectSearchValues(event.payload),
       ].filter(Boolean);
-      return [{
+      const normalizedText = normalizeSearchText(searchFields.join("\n"));
+      const fuzzyText = normalizeSearchText(
+        [session.title, promptRun?.title ?? "", summary, eventLabel]
+          .filter(Boolean)
+          .join("\n"),
+      );
+      entries.push({
         category: meta.tone,
         event,
         eventId: event.id,
         eventLabel,
         messageCategory,
-        normalizedSearchFields: searchFields.map(normalizeSearchText),
+        // One normalize pass per entry instead of one per field.
+        normalizedPayload: payloadText
+          ? normalizeSearchText(payloadText)
+          : "",
+        normalizedText: normalizedText,
+        normalizedFuzzy: fuzzyText.slice(0, HISTORY_SEARCH_FUZZY_BUDGET),
         promptIndex: promptRun?.index ?? null,
         promptRunKey: promptRun?.key ?? "",
         promptTitle: promptRun?.title ?? "",
-        searchFields,
+        searchFields: payloadText
+          ? [...searchFields, payloadText]
+          : searchFields,
         sessionId: session.id,
         sessionKey: session.key,
         sessionTitle: session.title,
         source: event.source,
         status,
         summary,
-        timestamp: Date.parse(event.capturedAt) || 0,
-      }];
-    });
-  }).sort((left, right) => right.timestamp - left.timestamp);
+        timestamp,
+      });
+    }
+  }
+  return entries.sort((left, right) => right.timestamp - left.timestamp);
 }
 
 export function filterHistorySearchEntries(
@@ -246,7 +397,9 @@ export function filterHistorySearchEntries(
     return [];
   }
 
-  const query = filters.query.trim();
+  // Tokenizing once here instead of once per entry is the difference between
+  // a keystroke costing a few milliseconds and a second on a full history.
+  const tokens = tokenizeSearchQuery(filters.query);
   const matches: HistorySearchMatch[] = [];
   for (const entry of entries) {
     if (
@@ -261,12 +414,18 @@ export function filterHistorySearchEntries(
     ) {
       continue;
     }
-    const match = findEntryMatch(entry, query);
-    if (match) {
-      matches.push({ ...entry, ...match });
+    if (!tokens.length) {
+      // Nothing to score: hand back the entries themselves rather than
+      // cloning tens of thousands of objects for a score nobody reads.
+      matches.push(entry as HistorySearchMatch);
+      continue;
+    }
+    const score = scoreEntry(entry, tokens);
+    if (score >= 0) {
+      matches.push({ ...entry, score });
     }
   }
-  return query
+  return tokens.length
     ? matches.sort(
         (left, right) =>
           right.score - left.score || right.timestamp - left.timestamp,
