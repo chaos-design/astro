@@ -398,22 +398,34 @@ live limit is preserved.
 
 ### 8.3 Terminal-state rules: failures and termination
 
-Run History rows must reflect the run's real outcome: once a failure occurs
-or the message stream terminates, the row status must settle into a terminal
-state (`failed` / `terminated` / `complete`) and never remain stuck at
-`active` / `waiting`.
+Run History rows must reflect the run's real outcome: once the run really
+ends, the row status must settle into a terminal state (`failed` /
+`terminated` / `complete`). Only recoverable evidence — tool failures and
+user rejections — may sit at `failed` until later progress supersedes it, and
+no row may stay stuck at `active` / `waiting`.
 
-Event-driven terminal rules (`getTraceRunStatus`):
+Event-driven terminal rules (the single classifier is
+`src/lib/exception-events.ts`; precedence is **termination > waiting >
+failure > stop > recovery**):
 
-| Event | Status | Notes |
-| --- | --- | --- |
-| `Stop` | `complete` | normal completion |
-| `StopFailure` | `failed` | stop-level failure ends the run; progress noise afterwards (e.g. `SubagentStop`) never resurrects the status to `active` |
-| `SessionEnd` / `Interrupt` | `terminated` | session ended or interrupted by the user |
-| event `status` failed, `PermissionDenied`, `PostToolUseFailure`, `tool_response.error`, non-zero `exitCode` | `failed` | mid-run failure; if execution progress follows, the run is considered recoverable and returns to `active` |
+| Scope | Event or condition | Status | Notes |
+| --- | --- | --- | --- |
+| Turn | `StopFailure` | `failed` | stop-level failure ends the run; progress noise afterwards (e.g. `SubagentStop`) never resurrects the status to `active` |
+| Turn | `Stop` + `status=failed` | `failed` | client folds the failure (Codex `turn.failed`); also terminal |
+| Tool | `PostToolUseFailure`, `PostToolUse` with `tool_response.error` / non-zero `exitCode` | `failed` | mid-run failure; if execution progress follows, the run is considered recoverable and returns to `active` |
+| Interaction | `PermissionDenied` | `failed` | user decision, recoverable; `waiting` when `payload.retry=true` |
+| Turn | `Stop` | `complete` | normal completion; a `failed` status takes precedence |
+| Session/Turn | `SessionEnd` / `Interrupt` / abort-style `status` | `terminated` | termination outranks failure and closes the run |
+| Turn | `StopFailure` carrying rate-limit, backoff, or `retry_after` evidence | `waiting` | throttling is not a failure |
 
 Additional rules:
 
+- Tool events (`PreToolUse`, `PostToolUse`, `PostToolUseFailure`, and anything
+  carrying `tool_response`) never imply termination: a tool error whose text
+  mentions "terminated" stays a tool failure.
+- Persisted `status` follows the producer; only when it is absent does the
+  recorder infer `failed` (`PostToolUseFailure`, `StopFailure`) or
+  `interrupted` (`Interrupt`) from the canonical event name.
 - The Prompt event window is truncated at the first stop-level event
   (`Stop`, `StopFailure`, `SessionEnd`, `Interrupt`); noise after that point
   does not participate in the run's status derivation.

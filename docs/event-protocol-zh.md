@@ -117,6 +117,61 @@ ASTRO 事件协议把不同编码智能体的生命周期、消息、工具和�
 同一原子；开始与完成事件分别打开和关闭一次等待交互。持久化的 `eventName` 与
 `nativeEventName` 保持不变，仍可在详情中检查。
 
+### 4.1 错误与异常事件
+
+异常不是单一事件，而是四种不同作用域的坏结果。同一份故障在不同客户端必须得到
+相同的落盘状态与派生状态，因此按"作用域 → 事件 → 触发条件 → 行为"固定下来。
+
+| 作用域 | 事件 | 触发条件 | 落盘 `status` | 派生状态 | 终态 |
+| --- | --- | --- | --- | --- | --- |
+| 工具 | `PostToolUseFailure` | 工具调用失败返回，`toolUseId` 与 `PreToolUse` 配对 | `failed` | `failed` | 否 |
+| 工具 | `PostToolUse` | 成功通道返回，但 `tool_response.error` 非空或 `exitCode > 0` | 客户端原值 | `failed` | 否 |
+| 轮次 | `StopFailure` | 模型或 API 故障导致本轮无法正常收尾 | `failed` | `failed`；带限流/退避证据时为 `waiting` | 是 |
+| 轮次 | `Stop` + `status=failed` | 客户端把失败折叠进停止事件（Codex `turn.failed`） | `failed` | `failed` | 是 |
+| 交互 | `PermissionDenied` | 自动模式分类器拒绝工具调用，或用户拒绝权限 | 客户端原值 | `failed`；`payload.retry=true` 时为 `waiting` | 否 |
+| 会话/轮次 | `Interrupt` | 用户中止、取消，或运行时被结束 | `interrupted` | `terminated` | 是 |
+| 会话 | `SessionEnd` | 会话终止，含异常退出 | 客户端原值 | `terminated` | 是 |
+
+判定顺序固定为 **终止 > 等待 > 失败 > 停止 > 恢复**。终止证据不会再被后续进度
+事件改写；`waiting` 与 `failed` 只有在尚未收到终态证据时，才会被执行进展重置为
+`active`。
+
+五条边界：
+
+1. **工具失败不升级为终态**。一次工具失败会把该步骤标为 `failed`，运行状态随之
+   记为 `failed`，但后续进展或 `Stop` 会覆盖它；只有轮次级失败才是终态。
+2. **限流不是失败**。`StopFailure` 或 `Notification` 携带 `rate_limit`、
+   `overloaded`、`retry_after`、`backoff`、`throttl` 等证据时派生为 `waiting`，
+   不显示为崩溃。
+3. **工具事件不参与中止语义推断**。`Interrupt`、`SessionEnd` 直接终止；其余事件
+   在 `status` 为 `aborted` / `cancelled` / `interrupted` / `terminated`，或原生名
+   与 `payload.reason` 含中止语义时终止。`PreToolUse`、`PostToolUse`、
+   `PostToolUseFailure` 以及任何带 `tool_response` 的事件被排除：工具失败文本里
+   出现"terminated"不会把运行判成终止；自定义来源用自己的事件名（如
+   `session.cancelled`）仍按中止处理。
+4. **`PermissionDenied` 是用户决定**，不是技术故障。它按可恢复失败参与状态派生，
+   持久化的 `eventName` 不变；`retry=true` 表示允许重试，派生为 `waiting`。
+5. **状态以客户端为准**。客户端显式上报的 `status` 不会被采集器覆盖；只有缺省
+   时，采集器才按规范事件名补 `failed`（`PostToolUseFailure`、`StopFailure`）或
+   `interrupted`（`Interrupt`），因此不投递载荷的客户端与投递载荷的客户端得到
+   相同结论。
+
+各客户端的异常采集入口（`—` 表示该客户端不产生，不是"暂未实现"）：
+
+| 异常场景 | Claude | Codex | WorkBuddy | Trae | ZCode | DeepSeek | OpenCode | Pi |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 工具调用失败 | `PostToolUseFailure` | 折叠为 `PostToolUse` + `failed` | `PostToolUseFailure` | 折叠为 `PostToolUse` | `PostToolUseFailure` | `tool/result` 的 `isError` | `session.tool.failed` | `tool_result` 的 `isError` |
+| 轮次/模型失败 | `StopFailure` | 折叠为 `Stop` + `failed` | `StopFailure` | `StopFailure` | — | `turn/end` 的 `failed` / `blocked` | 推导 `session.step.failed` 等 | `message_end.stopReason=error` |
+| 用户拒绝 | `PermissionDenied`（仅自动模式分类器拒绝） | — | `PermissionDenied` | `PermissionDenied` | — | — | `permission.replied` 且 `reply=reject` | — |
+| 中止/中断 | —（只出 `Stop` / `StopFailure`） | `Interrupt` | — | `Interrupt` | — | `turn/end` 的 `aborted` / `interrupted` | 推导 `session.execution.interrupted` 等 | `message_end.stopReason=aborted` |
+
+失败原因优先取 `payload.error_message`、`payload.denial_reason`、
+`payload.reason`、`payload.error`、`payload.message`，截断 120 字符后作为运行
+详情展示；`payload.error_type` 保留原始错误分类，用于区分限流与真实故障。
+
+异常 Hook 与其他 Hook 使用同一套执行约束：命令超时 5 秒，采集器始终以退出码 0
+结束，写盘或配置失败只在 stderr 报告并丢弃该条事件，**不得阻断智能体执行**。
+
 ## 5. Codex 原生事件映射
 
 Codex Hook 或 rollout 记录会按外层 `type` 和内层 `payload.type` 推断：

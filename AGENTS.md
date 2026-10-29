@@ -67,6 +67,27 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   the last atom: `getPromptAtomSelection` returns `null` for every non-live
   status, and only an explicit atom pick locates the topology.
 
+## Exception Events
+
+- `src/lib/exception-events.ts` is the single classifier for error and
+  exception events. `trace-model.ts` derives run and tool state from it and
+  must not grow its own failure or termination name lists.
+- Scope and terminality are fixed: tool failures (`PostToolUseFailure`, an
+  errored or non-zero `tool_response`) and `PermissionDenied` are recoverable
+  `failed` states; `StopFailure` and `Stop` + `status=failed` are terminal
+  turn failures; `Interrupt`, `SessionEnd`, and abort statuses are terminal
+  `terminated`.
+- Precedence is termination > waiting > failure > stop > recovery. Throttling
+  evidence on a failure event derives `waiting`, never `failed`.
+- Tool events never imply termination. A tool error whose text mentions
+  "terminated" stays a tool failure.
+- The recorder infers `status` from the canonical event name only when the
+  producer omits it (`PostToolUseFailure` / `StopFailure` → `failed`,
+  `Interrupt` → `interrupted`). Payload-less clients such as WorkBuddy must
+  persist the same status as payload-carrying clients.
+- Exception hooks keep the fail-open guarantee: 5 second timeout, exit code 0
+  on every path, diagnostics on stderr only.
+
 ## Responsive App Layout
 
 - Overlay chrome (nav sheet, side panels) anchors to `--mobile-header-h`,

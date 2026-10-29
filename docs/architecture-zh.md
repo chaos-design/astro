@@ -374,20 +374,29 @@ complete 记录即使超过当前实时阈值，也保留其原始时长。
 
 ### 8.3 终态判定：失败与终止
 
-Run History 行的状态必须与运行的真实结局一致：一旦出现失败或消息流终止，行状态
-必须落入终态（`failed` / `terminated` / `complete`），不得停留在 `active` / `waiting`。
+Run History 行的状态必须与运行的真实结局一致：运行一旦真正结束，行状态必须落入终态
+（`failed` / `terminated` / `complete`）；只有工具级失败与用户拒绝这类可恢复证据允许
+停留在 `failed` 等待后续进展覆盖，不得长期停在 `active` / `waiting`。
 
-事件驱动的终态规则（`getTraceRunStatus`）：
+事件驱动的终态规则（异常分类的唯一实现在 `src/lib/exception-events.ts`，判定顺序
+为 **终止 > 等待 > 失败 > 停止 > 恢复**）：
 
-| 事件 | 状态 | 说明 |
-| --- | --- | --- |
-| `Stop` | `complete` | 正常收尾 |
-| `StopFailure` | `failed` | stop 级失败，运行结束；其后到达的进度噪声（如 `SubagentStop`）不会把状态复活为 `active` |
-| `SessionEnd` / `Interrupt` | `terminated` | 会话结束或用户打断 |
-| 事件 `status` 为 failed、`PermissionDenied`、`PostToolUseFailure`、`tool_response.error`、非零 `exitCode` | `failed` | 运行中途失败；若随后仍有执行进度事件，则视为可恢复，状态回到 `active` |
+| 作用域 | 事件或条件 | 状态 | 说明 |
+| --- | --- | --- | --- |
+| 轮次 | `StopFailure` | `failed` | stop 级失败，运行结束；其后到达的进度噪声（如 `SubagentStop`）不会把状态复活为 `active` |
+| 轮次 | `Stop` + `status=failed` | `failed` | 客户端折叠失败（Codex `turn.failed`）；同样按终态处理 |
+| 工具 | `PostToolUseFailure`、`PostToolUse` 的 `tool_response.error` / 非零 `exitCode` | `failed` | 运行中途失败；若随后仍有执行进度事件，则视为可恢复，状态回到 `active` |
+| 交互 | `PermissionDenied` | `failed` | 用户决定，可恢复；`payload.retry=true` 时为 `waiting` |
+| 轮次 | `Stop` | `complete` | 正常收尾；带 `failed` 时按上行处理 |
+| 会话/轮次 | `SessionEnd` / `Interrupt` / 中止类 `status` | `terminated` | 终止优先于失败，出现即封口 |
+| 轮次 | `StopFailure` 带限流、退避、`retry_after` 证据 | `waiting` | 限流不是失败 |
 
 补充规则：
 
+- 工具事件（`PreToolUse`、`PostToolUse`、`PostToolUseFailure` 及带 `tool_response`
+  的事件）不参与中止语义推断：工具报错文本里的"terminated"不会把运行判成终止。
+- 落盘 `status` 以客户端上报为准；缺省时采集器按规范事件名补 `failed`
+  （`PostToolUseFailure`、`StopFailure`）或 `interrupted`（`Interrupt`）。
 - Prompt 事件窗口在首个 stop 级事件（`Stop`、`StopFailure`、`SessionEnd`、
   `Interrupt`）处截断，stop 级事件之后的噪声不参与该次运行的状态派生。
 - 消息流静默（未收到任何终态事件）时，`active` 与 `waiting` 都按

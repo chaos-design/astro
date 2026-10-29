@@ -21,6 +21,7 @@ const lifecycleOrder = [
   "UserPromptSubmit",
   "PreToolUse",
   "PermissionRequest",
+  "PermissionDenied",
   "Notification",
   "PostToolUse",
   "PostToolUseFailure",
@@ -82,6 +83,11 @@ function hookPayload(eventName, index) {
     payload.reason = "rate_limit";
     payload.error = "Too many requests; retry_after=1";
   }
+  if (eventName === "PermissionDenied") {
+    payload.tool_name = "Bash";
+    payload.tool_use_id = "claude-validation-permission";
+    payload.reason = "Auto mode denied: command targets a path outside the project";
+  }
   return payload;
 }
 
@@ -142,6 +148,10 @@ export function validateClaudeHooks({
     assert.ok(events.every((event) => event.source === "claude"));
     assert.equal(
       events.find((event) => event.eventName === "StopFailure")?.status,
+      "failed",
+    );
+    assert.equal(
+      events.find((event) => event.eventName === "PostToolUseFailure")?.status,
       "failed",
     );
     return { eventCount: events.length, traceFile };

@@ -38,7 +38,10 @@ export type TracePayload = {
   command?: string;
   content?: unknown;
   cwd?: string;
+  denial_reason?: string;
   error?: unknown;
+  error_message?: string;
+  error_type?: string;
   exitCode?: number;
   hook_event_name?: string;
   last_assistant_message?: string;

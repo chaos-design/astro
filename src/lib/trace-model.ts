@@ -1,4 +1,8 @@
 import { buildExecutionTopology } from "./execution-topology.ts";
+import {
+  getExceptionOutcome,
+  isToolFailureEvent,
+} from "./exception-events.ts";
 import { isWaitingTraceEvent } from "./trace-status.ts";
 import { getWaitingEventsForSource } from "../config/atom-platforms.ts";
 import type {
@@ -475,13 +479,28 @@ function getSummaryValue(event: TraceEvent): unknown {
       "Runtime signal"
     );
   }
-  if (["Stop", "StopFailure", "SessionEnd"].includes(event.eventName)) {
+  // A failure must not borrow the normal completion wording: payload-less
+  // clients (WorkBuddy) only deliver the event name, and "Response committed"
+  // on a StopFailure row reads as success.
+  if (event.eventName === "StopFailure") {
+    return (
+      payload.error_message ||
+      payload.last_assistant_message ||
+      payload.message ||
+      payload.reason ||
+      "Response failed"
+    );
+  }
+  if (event.eventName === "Stop") {
     return (
       payload.last_assistant_message ||
       payload.message ||
       payload.reason ||
       "Response committed"
     );
+  }
+  if (event.eventName === "SessionEnd") {
+    return payload.reason || payload.message || "Session ended";
   }
   return (
     payload.llm_tool_name ||
@@ -565,6 +584,7 @@ function getTraceRunState(
   let detail: string | null = null;
   let runEnded = false;
   for (const event of events) {
+    const exception = getExceptionOutcome(event, waitingEvents);
     if (
       event.eventName === "SessionStart" ||
       event.eventName === "UserPromptSubmit"
@@ -573,22 +593,18 @@ function getTraceRunState(
       reason = null;
       detail = null;
       runEnded = false;
-    } else if (isTerminationEvent(event)) {
-      status = "terminated";
-      reason = getTerminationReason(event);
+    } else if (exception) {
+      status = exception.status;
+      reason = exception.reason;
       detail = readStatusDetail(event);
-      runEnded = true;
+      // A terminal outcome (turn failure, interruption, session end) ends
+      // the run: later progress noise must not resurrect it to "active" in
+      // the run history.
+      runEnded = exception.terminal;
     } else if (isWaitingTraceEvent(event, waitingEvents)) {
       status = "waiting";
       reason = null;
       detail = readStatusDetail(event);
-    } else if (isFailureEvent(event)) {
-      status = "failed";
-      reason = "error";
-      detail = readStatusDetail(event);
-      // A stop-level failure ends the run: later progress noise must not
-      // resurrect it to "active" in the run history.
-      runEnded = event.eventName === "StopFailure";
     } else if (event.eventName === "Stop") {
       status = "complete";
       reason = "completed";
@@ -607,20 +623,14 @@ function getTraceRunState(
   return { status, reason, detail };
 }
 
-function getTerminationReason(event: TraceEvent): RunTerminalReason {
-  if (event.eventName === "SessionEnd") {
-    return "session-end";
-  }
-  const status = String(event.status || event.payload?.status || "")
-    .toLowerCase();
-  return ["aborted", "cancelled", "canceled"].includes(status)
-    ? "aborted"
-    : "interrupted";
-}
-
 /** Short human-readable cause (payload reason / error / status token). */
 function readStatusDetail(event: TraceEvent) {
   const candidates = [
+    // Clients report failure text under different keys: Claude sends
+    // `error_message` on StopFailure/PostToolUseFailure and `reason` on
+    // PermissionDenied, while derived clients reuse `reason` or `status`.
+    event.payload?.error_message,
+    event.payload?.denial_reason,
     event.payload?.reason,
     event.payload?.error,
     event.payload?.message,
@@ -911,18 +921,6 @@ export function createSessionProjection(): (
   };
 }
 
-function isFailureEvent(event: TraceEvent) {
-  const response = event.payload?.tool_response;
-  return (
-    event.status === "failed" ||
-    event.eventName === "PermissionDenied" ||
-    event.eventName === "PostToolUseFailure" ||
-    event.eventName === "StopFailure" ||
-    Boolean(response?.error) ||
-    Number(response?.exitCode) > 0
-  );
-}
-
 function isExecutionProgressEvent(event: TraceEvent) {
   return [
     "AgentMessage",
@@ -935,36 +933,11 @@ function isExecutionProgressEvent(event: TraceEvent) {
   ].includes(event.eventName);
 }
 
-function isTerminationEvent(event: TraceEvent) {
-  const status = String(event.status || event.payload?.status || "").toLowerCase();
-  const reason = String(event.payload?.reason || "").toLowerCase();
-  const nativeName = event.nativeEventName.toLowerCase();
-  return (
-    event.eventName === "SessionEnd" ||
-    event.eventName === "Interrupt" ||
-    ["aborted", "cancelled", "canceled", "interrupted", "terminated"].includes(
-      status,
-    ) ||
-    ["abort", "cancel", "interrupt", "terminate"].some(
-      (token) => nativeName.includes(token) || reason.includes(token),
-    )
-  );
-}
-
 function getToolStatus(postEvent: TraceEvent | null) {
   if (!postEvent) {
     return "running";
   }
-  const response = postEvent.payload?.tool_response;
-  if (
-    postEvent.status === "failed" ||
-    postEvent.eventName === "PostToolUseFailure" ||
-    response?.error ||
-    Number(response?.exitCode) > 0
-  ) {
-    return "failed";
-  }
-  return "complete";
+  return isToolFailureEvent(postEvent) ? "failed" : "complete";
 }
 
 function createFlowEntries(events: TraceEvent[]): FlowEntry[] {

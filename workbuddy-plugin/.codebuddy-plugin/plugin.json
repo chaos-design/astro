@@ -1,7 +1,7 @@
 {
   "name": "astro",
   "displayName": "ASTRO",
-  "version": "0.0.3-beta.6",
+  "version": "1.0.0",
   "description": "ASTRO captures WorkBuddy and CodeBuddy Code lifecycle events locally for search, inspection, and replay.",
   "author": {
     "name": "ASTRO Contributors"

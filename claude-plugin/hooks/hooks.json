@@ -82,6 +82,18 @@
         ]
       }
     ],
+    "PermissionDenied": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/plugin/trace-recorder.cjs\" --source=claude",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
     "Notification": [
       {
         "matcher": "*",
@@ -179,7 +191,6 @@
     ],
     "StopFailure": [
       {
-        "matcher": "*",
         "hooks": [
           {
             "type": "command",

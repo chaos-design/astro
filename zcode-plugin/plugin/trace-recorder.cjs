@@ -143,6 +143,30 @@ function canonicalizeEventName(name) {
   return canonicalEventNames.get(value.toLowerCase()) || value;
 }
 
+/**
+ * Exception events that report a failure by name, so a client that cannot
+ * deliver a payload still yields the same persisted status as one that can.
+ * WorkBuddy names its event with `--event=<Name>` and sends no stdin payload;
+ * keying this off the raw hook payload left its StopFailure rows at
+ * `status=null` while the frontend treated them as failed.
+ */
+const failedEventNames = new Set(["PostToolUseFailure", "StopFailure"]);
+
+function inferEventStatus(eventName, payload) {
+  if (failedEventNames.has(eventName)) {
+    return "failed";
+  }
+  if (eventName === "Interrupt") {
+    return "interrupted";
+  }
+  // Codex folds an aborted turn into Stop and reports the outcome on the
+  // outer record type instead of a hook event name.
+  if (eventName === "Stop" && payload.type === "turn.failed") {
+    return "failed";
+  }
+  return null;
+}
+
 function getCodexItem(payload) {
   return payload.item || payload.payload?.item || payload.payload || {};
 }
@@ -371,8 +395,9 @@ function createTraceEvent(payload, optionsOrCapturedAt = {}, legacyCapturedAt, e
       payload.event_name ||
       payload.sessionId);
   const rawPayload = isEventEnvelope ? payload.payload : payload;
-  const eventName =
-    options.eventName || payload.eventName || inferEventName(payload, source);
+  const eventName = canonicalizeEventName(
+    options.eventName || payload.eventName || inferEventName(payload, source),
+  );
   const item = getCodexItem(payload);
   const cwd = String(
     options.cwd ||
@@ -437,7 +462,7 @@ function createTraceEvent(payload, optionsOrCapturedAt = {}, legacyCapturedAt, e
       payload.agent_id ||
       payload.payload?.agent_id ||
       null,
-    eventName: canonicalizeEventName(eventName),
+    eventName,
     nativeEventName: String(
       payload.nativeEventName ||
         payload.hook_event_name ||
@@ -448,16 +473,7 @@ function createTraceEvent(payload, optionsOrCapturedAt = {}, legacyCapturedAt, e
     toolUseId: toolUseId ? String(toolUseId) : null,
     toolName: toolName ? String(toolName) : null,
     cwd: cwd ? redactString(cwd) : null,
-    status:
-      payload.status ||
-      item.status ||
-      (eventName === "PostToolUseFailure" ||
-      payload.type === "turn.failed" ||
-      ["StopFailure", "stop_failure"].includes(
-        payload.hook_event_name || payload.event_name,
-      )
-        ? "failed"
-        : null),
+    status: payload.status || item.status || inferEventStatus(eventName, payload),
     sequence: Number.isFinite(payload.sequence) ? payload.sequence : null,
     payload: redactValue(enrichPayload(rawPayload, eventName)),
   };
