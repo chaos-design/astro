@@ -3293,8 +3293,8 @@ pre,
   position: absolute;
   top: 50%;
   left: var(--segment-left);
-  width: max(9px, calc(var(--segment-width) - 4px));
-  min-width: 9px;
+  width: max(14px, calc(var(--segment-width) - 6px));
+  min-width: 14px;
   height: 15px;
   border: 1px solid
     color-mix(in srgb, var(--segment-tone) 84%, var(--chrome-line));

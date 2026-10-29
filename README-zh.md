@@ -117,7 +117,7 @@ Hook 支持范围取决于各运行时实际开放的事件能力。无法识别
 - 通过 Corepack 激活的 `pnpm`。
 - 仅在安装对应接入时需要 Codex、Claude Code、DeepSeek Harness、Trae 或 WorkBuddy。
 - 支持 ES Module、Web Worker、SSE、`ResizeObserver` 和现代 CSS 的浏览器。
-- 可用的本机回环端口。服务从 `4318` 开始，首选端口被占用时最多继续尝试后续
+- 可用的本机回环端口。服务从 `5678` 开始，首选端口被占用时最多继续尝试后续
   20 个端口。
 
 ### 安装并运行
@@ -134,7 +134,7 @@ pnpm build
 pnpm start
 ```
 
-打开 `http://127.0.0.1:4318`。如果服务选择了后续端口，终端会输出实际地址。
+打开 `http://127.0.0.1:5678`。如果服务选择了后续端口，终端会输出实际地址。
 
 在 `pnpm dev` 的 development 模式中，没有真实事件时会加载内置 Demo，可立即
 体验拓扑、轨迹、详情检查和回放控制。production 构建不会生成 Demo，空数据时保持
@@ -364,7 +364,7 @@ pnpm install-plugins -- \
 工作区，新建 Agent 会话并提交提示词。会话、提示词、工具、停止和通知事件会写入
 `~/.astrox/trae/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl`。
 沙箱必须允许写入该用户级目录。仓库内的 Hook 与开发 API 默认使用同一
-`~/.astrox` 和 `4318`；如覆盖 `ASTRO_PORT`，Vite 与 API 进程需使用相同值。
+`~/.astrox` 和 `5678`；如覆盖 `ASTRO_PORT`，Vite 与 API 进程需使用相同值。
 同一会话的每次继续提问和回答都会追加记录，`Stop` 不会关闭监听。
 
 #### 查看采集结果
@@ -375,7 +375,7 @@ pnpm install-plugins -- \
 1. 先把当前 Agent 事件写入对应的本地 JSONL；
 2. 检查当前首选端口对应的控制台 PID；
 3. 仅在服务未运行时后台启动已安装的 `plugins/astro/server/server.mjs`；
-4. 仅在首次启动服务时打开已选择当前来源和会话的实际 URL；若 `4318` 已占用，
+4. 仅在首次启动服务时打开已选择当前来源和会话的实际 URL；若 `5678` 已占用，
    会使用自动选择的后续端口。服务已运行时只提示当前会话地址，可切换到已有
    页面或刷新，不会因新任务重复打开标签页。
 
@@ -425,7 +425,7 @@ pnpm install-plugins -- --no-migrate
 ### 开发模式
 
 Vite 从 `ASTRO_HOST/ASTRO_PORT` 解析 `/api` 代理，默认目标为
-`http://127.0.0.1:4318`。分别启动 API 与前端：
+`http://127.0.0.1:5678`。分别启动 API 与前端：
 
 ```bash
 # 终端 1
@@ -905,7 +905,7 @@ await trace.agentMessage("Inspection finished");
 await trace.stop({ message: "Done" });
 ```
 
-SDK 默认发送到 `http://127.0.0.1:4318/api/events`。浏览器扩展需要声明回环地址的
+SDK 默认发送到 `http://127.0.0.1:5678/api/events`。浏览器扩展需要声明回环地址的
 主机权限。只有写入接口开放 CORS，读取、搜索和 SSE 接口仍要求同源。
 
 ### HTTP API
@@ -923,7 +923,7 @@ SDK 默认发送到 `http://127.0.0.1:4318/api/events`。浏览器扩展需要�
 写入单个事件：
 
 ```bash
-curl -X POST http://127.0.0.1:4318/api/events \
+curl -X POST http://127.0.0.1:5678/api/events \
   -H 'Content-Type: application/json' \
   -H 'X-Astro-Source: custom-agent' \
   -d '{
@@ -938,10 +938,10 @@ curl -X POST http://127.0.0.1:4318/api/events \
 读取与搜索：
 
 ```bash
-curl http://127.0.0.1:4318/api/health
-curl 'http://127.0.0.1:4318/api/events?source=codex&session=s1'
-curl 'http://127.0.0.1:4318/api/search?q=readFile&source=codex'
-curl -N http://127.0.0.1:4318/api/stream
+curl http://127.0.0.1:5678/api/health
+curl 'http://127.0.0.1:5678/api/events?source=codex&session=s1'
+curl 'http://127.0.0.1:5678/api/search?q=readFile&source=codex'
+curl -N http://127.0.0.1:5678/api/stream
 ```
 
 ## 控制台工作流
@@ -1053,7 +1053,7 @@ events.slice(0, n + 1)
 ```yaml
 server:
   host: 127.0.0.1
-  port: 4318
+  port: 5678
   maxBodyBytes: 5242880
 runtime:
   autoOpen: true
@@ -1251,8 +1251,8 @@ Demo 只应出现在 development/test 且真实事件数为 0 的场景。produc
 保持空状态；如果仍显示 Demo，检查是否打开了 Vite 开发页或旧构建：
 
 ```bash
-curl http://127.0.0.1:4318/api/health
-curl http://127.0.0.1:4318/api/events
+curl http://127.0.0.1:5678/api/health
+curl http://127.0.0.1:5678/api/events
 ```
 
 ### 智能体活动没有出现
@@ -1278,7 +1278,7 @@ curl http://127.0.0.1:4318/api/events
 ### 控制台显示 `offline`
 
 检查服务地址和 `/api/stream`。开发模式下 Vite 与 API 必须使用相同的
-`ASTRO_HOST/ASTRO_PORT`，默认端口为 `4318`。
+`ASTRO_HOST/ASTRO_PORT`，默认端口为 `5678`。
 
 ### 第一轮有记录，后续问答没有记录
 

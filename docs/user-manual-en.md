@@ -1,6 +1,6 @@
 # ASTRO User Manual
 
-> Default URL: `http://127.0.0.1:4318`
+> Default URL: `http://127.0.0.1:5678`
 >
 > Default data root: `~/.astrox` for all clients
 >
@@ -41,7 +41,7 @@ contains the complete legend.
 - A current Node.js LTS release with native ESM support;
 - `pnpm` activated through Corepack;
 - A browser with ES modules, Web Workers, SSE, ResizeObserver, and modern CSS;
-- An available loopback port, starting with `127.0.0.1:4318`.
+- An available loopback port, starting with `127.0.0.1:5678`.
 
 ## 3. Install and Start
 
@@ -55,14 +55,14 @@ pnpm build
 pnpm start
 ```
 
-The server prints its actual URL and data root. If port `4318` is occupied, it
+The server prints its actual URL and data root. If port `5678` is occupied, it
 automatically tries later ports, up to 20 additional values. This path runs the
 production build or supports manual service management. Direct hook installation
 starts and opens the dashboard immediately; `SessionStart` ensures it is open
 for each new Agent session.
 
 Development mode uses separate API and Vite processes. Vite reads the same
-`ASTRO_HOST/ASTRO_PORT` environment and defaults to `127.0.0.1:4318`:
+`ASTRO_HOST/ASTRO_PORT` environment and defaults to `127.0.0.1:5678`:
 
 ```bash
 # Terminal 1: API
@@ -197,7 +197,7 @@ in Trae, then start a new Agent conversation. Events are appended to
 By default, installation starts and opens the dashboard immediately. After a
 client reload or restart, `SessionStart` records the current Agent session,
 checks `<data-root>/dashboard-<port>.pid`, starts the service only when needed,
-and opens the selected session. If `4318` is occupied, the browser opens the
+and opens the selected session. If `5678` is occupied, the browser opens the
 selected later port.
 
 To manage the process manually, disable automatic startup and use either
@@ -587,7 +587,7 @@ astrox logs [--lines N]        tail the dashboard log
 astrox path                    print ASTRO home, plugin dir, and CLI entry
 ```
 
-- `start` launches the dashboard daemon (default `127.0.0.1:4318`). It also
+- `start` launches the dashboard daemon (default `127.0.0.1:5678`). It also
   registers this entry as the global `astrox` command: on Unix it symlinks into
   the first writable of `/usr/local/bin`, `~/.local/bin`, or `~/bin`; on Windows
   it writes `%USERPROFILE%\.astrox\bin\astrox.cmd`. An existing symlink already
@@ -618,13 +618,13 @@ astrox path                    print ASTRO home, plugin dir, and CLI entry
 ### 13.1 Health
 
 ```bash
-curl http://127.0.0.1:4318/api/health
+curl http://127.0.0.1:5678/api/health
 ```
 
 ### 13.2 Ingest One Event
 
 ```bash
-curl -X POST http://127.0.0.1:4318/api/events \
+curl -X POST http://127.0.0.1:5678/api/events \
   -H 'Content-Type: application/json' \
   -H 'X-Astro-Source: custom-agent' \
   -d '{
@@ -713,7 +713,7 @@ await trace.agentMessage("Inspection finished");
 await trace.stop({ message: "Done" });
 ```
 
-The default endpoint is `http://127.0.0.1:4318/api/events`. Browser extension background processes must declare loopback host permission.
+The default endpoint is `http://127.0.0.1:5678/api/events`. Browser extension background processes must declare loopback host permission.
 
 ## 15. Configuration
 
@@ -734,7 +734,7 @@ The existing environment names remain supported as overrides:
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `ASTRO_HOST` | `127.0.0.1` | Bind address |
-| `ASTRO_PORT` | `4318` | Preferred port |
+| `ASTRO_PORT` | `5678` | Preferred port |
 | `ASTRO_HOME` | `~/.astrox` | Runtime, plugins, and source-specific event files |
 | `ASTRO_TRACE_DIR` | unset | Optional relative or absolute shared trace directory |
 | `ASTRO_PROJECT_DIR` | current working directory | Base for a relative `ASTRO_TRACE_DIR` |
@@ -806,7 +806,7 @@ old imported data:
 
 ```bash
 find ~/.astrox -type f -name events.jsonl -print
-curl http://127.0.0.1:4318/api/health
+curl http://127.0.0.1:5678/api/health
 ```
 
 ## 16. Data Safety and Backup
@@ -830,8 +830,8 @@ A production empty state remains empty. Demo in production usually means the pag
 is using a Vite development server or a stale build.
 
 ```bash
-curl http://127.0.0.1:4318/api/health
-curl http://127.0.0.1:4318/api/events
+curl http://127.0.0.1:5678/api/health
+curl http://127.0.0.1:5678/api/events
 ```
 
 ### Connection State Is Offline

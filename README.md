@@ -131,7 +131,7 @@ event names are preserved instead of discarded.
 - Codex, Claude Code, DeepSeek Harness, Trae, or WorkBuddy only when installing that runtime integration.
 - A modern browser with ES modules, Web Workers, SSE, `ResizeObserver`, and
   modern CSS support.
-- An available loopback port. The server starts at `4318` and tries up to 20
+- An available loopback port. The server starts at `5678` and tries up to 20
   subsequent ports when the preferred port is occupied.
 
 ### Install and run
@@ -149,7 +149,7 @@ pnpm build
 pnpm start
 ```
 
-Open `http://127.0.0.1:4318`. The server prints the actual URL if it selects a
+Open `http://127.0.0.1:5678`. The server prints the actual URL if it selects a
 later port.
 
 In `pnpm dev` development mode, the console loads a built-in Demo when no real
@@ -404,7 +404,7 @@ in Trae, start a new Agent conversation, and submit a prompt. Session, prompt,
 tool, stop, and notification events are written to
 `~/.astrox/trae/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` by default.
 The sandbox must permit writes to that user-level root. The checked-in hooks and
-development API use the same `~/.astrox` root and port `4318` by default. If
+development API use the same `~/.astrox` root and port `5678` by default. If
 `ASTRO_PORT` is overridden, use the same value for Vite and the API process.
 Each follow-up prompt and response is recorded in the same session; `Stop`
 does not disable listening.
@@ -418,7 +418,7 @@ After reloading or restarting the client, `SessionStart` then:
 2. checks the dashboard PID for the preferred port;
 3. starts the installed `plugins/astro/server/server.mjs` only when needed;
 4. opens the actual URL only when starting the server, including a later port
-   when `4318` is occupied. If already running, it reports the current session's
+   when `5678` is occupied. If already running, it reports the current session's
    URL so you can switch to or refresh the existing tab without opening another.
 
 To manage the process manually, disable automatic startup and use either
@@ -469,7 +469,7 @@ pnpm install-plugins -- --no-migrate
 ### Development mode
 
 Vite resolves its `/api` proxy from `ASTRO_HOST/ASTRO_PORT`; the default is
-`http://127.0.0.1:4318`. Run the API and frontend separately:
+`http://127.0.0.1:5678`. Run the API and frontend separately:
 
 ```bash
 # Terminal 1
@@ -966,7 +966,7 @@ await trace.agentMessage("Inspection finished");
 await trace.stop({ message: "Done" });
 ```
 
-The SDK sends to `http://127.0.0.1:4318/api/events` by default. Browser
+The SDK sends to `http://127.0.0.1:5678/api/events` by default. Browser
 extensions must declare loopback host permission. Only ingestion enables CORS;
 read, search, and SSE endpoints remain same-origin.
 
@@ -985,7 +985,7 @@ read, search, and SSE endpoints remain same-origin.
 Ingest one event:
 
 ```bash
-curl -X POST http://127.0.0.1:4318/api/events \
+curl -X POST http://127.0.0.1:5678/api/events \
   -H 'Content-Type: application/json' \
   -H 'X-Astro-Source: custom-agent' \
   -d '{
@@ -1000,10 +1000,10 @@ curl -X POST http://127.0.0.1:4318/api/events \
 Read and search:
 
 ```bash
-curl http://127.0.0.1:4318/api/health
-curl 'http://127.0.0.1:4318/api/events?source=codex&session=s1'
-curl 'http://127.0.0.1:4318/api/search?q=readFile&source=codex'
-curl -N http://127.0.0.1:4318/api/stream
+curl http://127.0.0.1:5678/api/health
+curl 'http://127.0.0.1:5678/api/events?source=codex&session=s1'
+curl 'http://127.0.0.1:5678/api/search?q=readFile&source=codex'
+curl -N http://127.0.0.1:5678/api/stream
 ```
 
 ## Console Workflows
@@ -1130,7 +1130,7 @@ settings:
 ```yaml
 server:
   host: 127.0.0.1
-  port: 4318
+  port: 5678
   maxBodyBytes: 5242880
 runtime:
   autoOpen: true
@@ -1342,8 +1342,8 @@ Production should remain empty; if it shows Demo, check for a Vite development
 page or stale build:
 
 ```bash
-curl http://127.0.0.1:4318/api/health
-curl http://127.0.0.1:4318/api/events
+curl http://127.0.0.1:5678/api/health
+curl http://127.0.0.1:5678/api/events
 ```
 
 ### Agent activity does not appear
@@ -1369,7 +1369,7 @@ startup is intentionally disabled when `ASTRO_AUTO_OPEN=0`.
 ### The console reports `offline`
 
 Verify the service URL and `/api/stream`. In development, Vite and the API
-must share `ASTRO_HOST/ASTRO_PORT`; the default port is `4318`.
+must share `ASTRO_HOST/ASTRO_PORT`; the default port is `5678`.
 
 ### The first turn appears but follow-ups do not
 

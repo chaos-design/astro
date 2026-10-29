@@ -288,12 +288,19 @@ Each physical line must be one complete JSON object. The reader isolates a malfo
 
 Every `GET /api/stream` connection receives this ordered sequence:
 
-1. `reset`: complete current snapshot;
+1. `reset`: complete current snapshot, or `resume`: only the events after the
+   `since` cursor when the client names an event the server still holds;
 2. `ready`: `eventCount` and `connectedAt`;
 3. `trace`: one newly appended event at a time;
 4. later `reset`: file truncation, newly discovered trace files, or repository resynchronization.
 
-The server advertises `retry: 1000`. A reconnect receives another full snapshot before live increments, so follow-up turns missed during disconnection are repaired. Clients should still deduplicate `trace` events by ID.
+The server advertises `retry: 1000`. A plain reconnect receives another full
+snapshot before live increments, so follow-up turns missed during disconnection
+are repaired. A console that suspended a hidden tab reconnects with
+`?since=<eventId>` and receives a `resume` carrying just the missed tail, which
+keeps the refresh proportional to what was missed instead of to the whole
+history; an unknown cursor falls back to the full snapshot. Clients should
+still deduplicate `trace` events by ID.
 
 ## 14. Import, Export, and Compatibility
 

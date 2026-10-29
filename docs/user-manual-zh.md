@@ -1,6 +1,6 @@
 # ASTRO 使用手册
 
-> 默认地址：`http://127.0.0.1:4318`
+> 默认地址：`http://127.0.0.1:5678`
 >
 > 所有客户端的默认数据根目录：`~/.astrox`
 >
@@ -40,7 +40,7 @@ ASTRO 用于在本机采集、查看和回放编码智能体的运行事件。�
 - Node.js：支持当前依赖和原生 ESM 的当前 LTS 版本；
 - 包管理器：通过 Corepack 激活的 `pnpm`；
 - 浏览器：支持 ES Module、Web Worker、SSE、ResizeObserver 和现代 CSS；
-- 端口：默认使用 `127.0.0.1:4318`。
+- 端口：默认使用 `127.0.0.1:5678`。
 
 ## 3. 安装与启动
 
@@ -55,12 +55,12 @@ pnpm start
 ```
 
 启动成功后终端会输出实际访问地址和数据根目录。若默认端口被占用，服务会从
-`4318` 开始自动尝试后续端口，最多继续尝试 20 个端口。该流程用于运行生产构建
+`5678` 开始自动尝试后续端口，最多继续尝试 20 个端口。该流程用于运行生产构建
 或手动管理服务；直接安装 Hook 后会立即启动并打开控制台，后续新建 Agent
 会话时由 `SessionStart` 确保监听页已打开。
 
 开发模式需要同时运行 API 服务和 Vite。Vite 会读取同一组
-`ASTRO_HOST/ASTRO_PORT` 环境变量，默认代理到 `127.0.0.1:4318`：
+`ASTRO_HOST/ASTRO_PORT` 环境变量，默认代理到 `127.0.0.1:5678`：
 
 ```bash
 # 终端 1：API
@@ -188,7 +188,7 @@ pnpm install-plugins -- \
 默认情况下，安装器会立即启动并打开控制台。重载或重启客户端后，
 `SessionStart` 会先记录当前 Agent 会话，再检查
 `<data-root>/dashboard-<port>.pid`；仅在控制台未运行时后台启动服务，并打开已选中
-当前会话的实际地址。若 `4318` 已占用，浏览器会打开自动选择的后续端口。
+当前会话的实际地址。若 `5678` 已占用，浏览器会打开自动选择的后续端口。
 
 需要手动管理进程时，关闭自动启动并任选一种方式运行：
 
@@ -540,7 +540,7 @@ astrox logs [--lines N]        查看仪表盘日志尾部
 astrox path                   打印 ASTRO home、插件目录与 CLI 入口
 ```
 
-- `start` 启动仪表盘守护进程（默认 `127.0.0.1:4318`）。它会同时把当前入口注册为全局 `astrox` 命令——在 Unix 下软链到 `/usr/local/bin`、`~/.local/bin` 或 `~/bin` 中第一个可写目录，在 Windows 下写入 `%USERPROFILE%\.astrox\bin\astrox.cmd`。已存在的同名软链若指向本入口则复用，指向其他文件则保留不动。`--no-global` 跳过注册，`--bin-dir DIR` 指定候选目录，`--open` 在启动后自动打开浏览器。
+- `start` 启动仪表盘守护进程（默认 `127.0.0.1:5678`）。它会同时把当前入口注册为全局 `astrox` 命令——在 Unix 下软链到 `/usr/local/bin`、`~/.local/bin` 或 `~/bin` 中第一个可写目录，在 Windows 下写入 `%USERPROFILE%\.astrox\bin\astrox.cmd`。已存在的同名软链若指向本入口则复用，指向其他文件则保留不动。`--no-global` 跳过注册，`--bin-dir DIR` 指定候选目录，`--open` 在启动后自动打开浏览器。
 - 守护进程启动后写入 `<ASTRO_HOME>/dashboard-<port>.pid`（含 `pid` 与 `url`），运行日志落在 `<ASTRO_HOME>/dashboard.log`。`logs [--lines N]` 默认查看末尾 40 行。
 - `stop` 向守护进程发送 `SIGTERM`（必要时 `SIGKILL`）并结束进程，不触发额外清理；`restart` 等价于先 `stop` 再 `start`。
 - `status` 汇总插件配置（config.yaml / .env 的 OK、WARN、MISSING）、global cli 状态、仪表盘运行状态，以及各客户端 Hook 集成（codex、claude、workbuddy、trae、deepseek）。`--json` 输出机器可读报告。
@@ -554,13 +554,13 @@ astrox path                   打印 ASTRO home、插件目录与 CLI 入口
 ### 13.1 健康检查
 
 ```bash
-curl http://127.0.0.1:4318/api/health
+curl http://127.0.0.1:5678/api/health
 ```
 
 ### 13.2 写入单个事件
 
 ```bash
-curl -X POST http://127.0.0.1:4318/api/events \
+curl -X POST http://127.0.0.1:5678/api/events \
   -H 'Content-Type: application/json' \
   -H 'X-Astro-Source: custom-agent' \
   -d '{
@@ -646,7 +646,7 @@ await trace.agentMessage("Inspection finished");
 await trace.stop({ message: "Done" });
 ```
 
-默认写入端点是 `http://127.0.0.1:4318/api/events`。浏览器扩展后台进程需要在 Manifest 中声明对应的回环地址权限。
+默认写入端点是 `http://127.0.0.1:5678/api/events`。浏览器扩展后台进程需要在 Manifest 中声明对应的回环地址权限。
 
 ## 15. 配置
 
@@ -666,7 +666,7 @@ await trace.stop({ message: "Done" });
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
 | `ASTRO_HOST` | `127.0.0.1` | 服务监听地址 |
-| `ASTRO_PORT` | `4318` | 首选端口 |
+| `ASTRO_PORT` | `5678` | 首选端口 |
 | `ASTRO_HOME` | `~/.astrox` | 运行时、插件和按来源、时间及 session 拆分的事件文件 |
 | `ASTRO_TRACE_DIR` | 未设置 | 可选的相对或绝对共享 Trace 目录 |
 | `ASTRO_PROJECT_DIR` | 当前工作目录 | 相对 `ASTRO_TRACE_DIR` 的解析基准 |
@@ -729,7 +729,7 @@ node bin/astro.mjs migrate /path/to/events.jsonl
 
 ```bash
 find ~/.astrox -type f -name events.jsonl -print
-curl http://127.0.0.1:4318/api/health
+curl http://127.0.0.1:5678/api/health
 ```
 
 ## 16. 数据安全与备份
@@ -753,8 +753,8 @@ Demo 只应出现在 development/test 且真实事件数为 0 的场景。produc
 检查：
 
 ```bash
-curl http://127.0.0.1:4318/api/health
-curl http://127.0.0.1:4318/api/events
+curl http://127.0.0.1:5678/api/health
+curl http://127.0.0.1:5678/api/events
 ```
 
 ### 状态显示 offline

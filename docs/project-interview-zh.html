@@ -3450,7 +3450,7 @@
               <div class="fault-row"><b>CAPTURE</b><strong>Hook 有触发，目标文件无新增</strong><p>采集端与服务端解析到不同数据目录。</p><p>统一到 <code>~/.astrox</code>，健康接口暴露真实 dataRoot。</p></div>
               <div class="fault-row"><b>WRITE</b><strong>进程正常退出，但事件缺失</strong><p>写入异常被静默吞掉，主链路没有诊断信号。</p><p>保持 Hook 放行，同时把失败明确写入 stderr。</p></div>
               <div class="fault-row"><b>STREAM</b><strong>刷新后可见，持续连接不可见</strong><p>重连只继续增量，断线窗口内事件无法补偿。</p><p>每次连接先发完整 <code>reset</code>，再 <code>ready → trace</code>。</p></div>
-              <div class="fault-row"><b>PROXY</b><strong>服务有事件，开发页仍旧离线</strong><p>Vite 代理固定到 4320，采集服务实际运行在 4318。</p><p>代理统一读取 <code>ASTRO_HOST</code> 与 <code>ASTRO_PORT</code>。</p></div>
+              <div class="fault-row"><b>PROXY</b><strong>服务有事件，开发页仍旧离线</strong><p>Vite 代理固定到 4320，采集服务实际运行在 5678。</p><p>代理统一读取 <code>ASTRO_HOST</code> 与 <code>ASTRO_PORT</code>。</p></div>
             </div>
           </div>
         </section>
@@ -4774,7 +4774,7 @@
           lead: "采集器写入位置、Repository 扫描根目录、开发代理目标和页面连接地址属于同一配置链，任一环节硬编码都会让系统形成互不相见的两个世界。",
           answer: [
             ["路径漂移", "Hook 可能写项目内目录，而服务默认扫描用户目录；两边都成功且无异常，但 UI 永远看不到那份文件。统一默认 ~/.astrox 并在 health 返回真实 dataRoot。"],
-            ["端口漂移", "服务默认 4318 且冲突时会递增，开发 Vite 若固定代理到 4320 或另一个实例，页面会连接到错误事件库。"],
+            ["端口漂移", "服务默认 5678 且冲突时会递增，开发 Vite 若固定代理到 4320 或另一个实例，页面会连接到错误事件库。"],
             ["配置优先级", "新配置统一 ASTRO_*，旧 AOT_HOME、AGENT_TRACE_* 和 TRAE_TRACE_* 只作兼容回退；相对 Trace 目录还需明确 projectDir 解析基准。"],
             ["治理措施", "启动时打印实际 URL 和 dataRoot，PID 文件记录 server 与 url；doctor/health 校验 Hook 命令、运行时版本、目录可写性和端口对应关系。"],
           ],

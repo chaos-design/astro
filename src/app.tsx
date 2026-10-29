@@ -46,6 +46,7 @@ import {
   useRef,
   startTransition,
   useState,
+  useSyncExternalStore,
 } from "react";
 import type {
   ComponentProps,
@@ -191,6 +192,11 @@ import {
   type TrajectoryTurn,
 } from "./lib/trajectory-model";
 import {
+  getPageVisibilitySnapshot,
+  getServerPageVisibilitySnapshot,
+  subscribePageVisibility,
+} from "./lib/page-visibility";
+import {
   type AtomSelection,
   isFollowingLive,
   isLiveFollowingLatest,
@@ -246,9 +252,10 @@ const EMPTY_EVENTS: TraceEvent[] = [];
  * Minimum horizontal slot per node in the trajectory lane overview. Below
  * roughly this width the segments stop being distinguishable (and clickable),
  * so the track scrolls instead of compressing further. Sized with the mark
- * itself: a 9px minimum keeps the blocks from touching once they get tall.
+ * itself: a 14px minimum keeps the blocks apart once they get tall, and 28px
+ * per slot leaves every single-atom mark visibly wide.
  */
-const TRAJECTORY_MIN_SLOT_PX = 18;
+const TRAJECTORY_MIN_SLOT_PX = 28;
 /**
  * Upper bound on lane-overview marks per lane. A 10k-node run otherwise draws
  * 10k segments, which is both unreadable and expensive to paint; slots
@@ -683,6 +690,19 @@ function formatBootDuration(milliseconds: number) {
 }
 
 /**
+ * One subscription for the whole console. `suspended` turns on only after the
+ * tab has been hidden long enough to matter, so switching tabs for a moment
+ * never costs a reconnect.
+ */
+function usePageVisibility() {
+  return useSyncExternalStore(
+    subscribePageVisibility,
+    getPageVisibilitySnapshot,
+    getServerPageVisibilitySnapshot,
+  );
+}
+
+/**
  * Local service card: uptime, startup cost, process details, and the restart
  * control. The uptime advances locally between polls so it reads as a clock
  * instead of a value that jumps every few seconds.
@@ -701,10 +721,17 @@ function ServiceStatus({
   service: ServiceHealth | null;
 }) {
   const [now, setNow] = useState(() => Date.now());
+  // The uptime reads as a clock, but a suspended tab has nothing to advance:
+  // the value is recomputed from `fetchedAt` the moment the console resumes.
+  const { suspended } = usePageVisibility();
   useEffect(() => {
+    if (suspended) {
+      return undefined;
+    }
+    setNow(Date.now());
     const timer = window.setInterval(() => setNow(Date.now()), 1_000);
     return () => window.clearInterval(timer);
-  }, []);
+  }, [suspended]);
 
   const uptime = service
     ? Math.max(0, service.uptimeMs + (now - service.fetchedAt))
@@ -3501,6 +3528,12 @@ function getPlatformForSource(source: string | null | undefined) {
 }
 
 export default function App() {
+  // A hidden tab must not keep the SSE stream, the duration clock, or the
+  // health poll running. Suspension only starts after a long hidden period;
+  // becoming visible again re-runs the affected effects, which reconnect the
+  // stream from the last event we hold and reset the clock.
+  const pageVisibility = usePageVisibility();
+  const pageSuspended = pageVisibility.suspended;
   const demoEvents = useMemo(
     () =>
       shouldShowDemo(0, import.meta.env)
@@ -3526,6 +3559,9 @@ export default function App() {
   const [lastEventAt, setLastEventAt] = useState(0);
   // Bumped after an in-place service restart to re-subscribe the SSE stream.
   const [streamEpoch, setStreamEpoch] = useState(0);
+  // Last event the live stream delivered. A reconnect names it so the server
+  // replays only the missed tail instead of re-sending the whole history.
+  const resumeCursorRef = useRef("");
   const [service, setService] = useState<ServiceHealth | null>(null);
   const [serviceError, setServiceError] = useState("");
   const [restarting, setRestarting] = useState(false);
@@ -3747,7 +3783,20 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const source = new EventSource("/api/stream");
+    // A suspended tab drops the stream instead of buffering it: the server
+    // stops writing to a page nobody is reading. The reconnect on resume
+    // names the last event we hold, so the refresh replays only what was
+    // missed — a full snapshot is reserved for the first load and for a
+    // cursor the server no longer recognises.
+    if (pageSuspended) {
+      return undefined;
+    }
+    const resumeCursor = resumeCursorRef.current;
+    const source = new EventSource(
+      resumeCursor
+        ? `/api/stream?since=${encodeURIComponent(resumeCursor)}`
+        : "/api/stream",
+    );
     // Ids seen so far: an O(1) set keeps per-event dedup linear in total
     // events instead of rescanning the accumulated array on every message.
     const seenIds = new Set<string>();
@@ -3796,8 +3845,35 @@ export default function App() {
         return;
       }
       seenIds.add(event.id);
+      resumeCursorRef.current = event.id;
       pending.push(event);
       flushTimer ??= window.setTimeout(flush, 120);
+    });
+    // The tail the server replayed for our cursor. It appends like live
+    // events: everything older is already in `liveEvents`.
+    source.addEventListener("resume", (message: MessageEvent<string>) => {
+      const payload = JSON.parse(message.data) as {
+        events: TraceEvent[];
+        git?: Record<string, { repo: string; branch: string }>;
+      };
+      const events = payload.events.map(normalizeTraceEvent);
+      const fresh = events.filter((event) => !seenIds.has(event.id));
+      for (const event of fresh) {
+        seenIds.add(event.id);
+      }
+      resumeCursorRef.current = events.at(-1)?.id ?? resumeCursorRef.current;
+      const newest = events.at(-1)?.capturedAt;
+      if (newest) {
+        setLastEventAt((current) => Math.max(current, Date.parse(newest) || 0));
+      }
+      if (payload.git && Object.keys(payload.git).length) {
+        setGitInfo((current) => ({ ...current, ...payload.git }));
+      }
+      if (fresh.length) {
+        startTransition(() => {
+          setLiveEvents((current) => [...current, ...fresh]);
+        });
+      }
     });
     source.addEventListener("reset", (message: MessageEvent<string>) => {
       const payload = JSON.parse(message.data) as {
@@ -3808,6 +3884,7 @@ export default function App() {
       for (const event of events) {
         seenIds.add(event.id);
       }
+      resumeCursorRef.current = events.at(-1)?.id ?? "";
       // A snapshot replaces queued increments; replaying them afterwards
       // would reorder the event stream.
       if (flushTimer !== null) {
@@ -3833,8 +3910,9 @@ export default function App() {
         window.clearTimeout(flushTimer);
       }
       source.close();
+      setConnected(false);
     };
-  }, [streamEpoch]);
+  }, [pageSuspended, streamEpoch]);
 
   const allEvents = useMemo(
     () =>
@@ -3920,7 +3998,10 @@ export default function App() {
     [isDemo, now, promptRunsBySession, sessions],
   );
   useEffect(() => {
-    if (!hasAdvancingRun) {
+    // This is the console's clock: it advances every live duration. Nothing
+    // on screen can change while the tab is suspended, so the interval stops
+    // and a single `setNow` on resume catches every duration up at once.
+    if (!hasAdvancingRun || pageSuspended) {
       return undefined;
     }
 
@@ -3930,7 +4011,7 @@ export default function App() {
       appTimings.sessionDurationRefreshMs,
     );
     return () => window.clearInterval(timer);
-  }, [hasAdvancingRun]);
+  }, [hasAdvancingRun, pageSuspended]);
 
   useEffect(() => {
     const handleGlobalSearchShortcut = (event: KeyboardEvent) => {
@@ -4120,7 +4201,9 @@ export default function App() {
   }, [activeEvents, followingLive, replayMode, selectedEventId]);
 
   useEffect(() => {
-    if (!playing || !activeEvents.length) {
+    // Replay is a timer-driven animation: it pauses with the tab and resumes
+    // from the same cursor instead of racing through events unseen.
+    if (!playing || !activeEvents.length || pageSuspended) {
       return undefined;
     }
     const timer = window.setInterval(() => {
@@ -4133,7 +4216,7 @@ export default function App() {
       });
     }, appTimings.replayStepBaseMs / replaySpeed);
     return () => window.clearInterval(timer);
-  }, [activeEvents.length, playing, replaySpeed]);
+  }, [activeEvents.length, pageSuspended, playing, replaySpeed]);
 
   useEffect(() => {
     if (!replayMode || !activeEvents.length) {
@@ -4360,9 +4443,13 @@ export default function App() {
   /*
    * Service health: polled, not streamed. Uptime, startup cost, pid and the
    * capture-side session summary all come from `/api/health`, which is O(1)
-   * on the server, so a 5s poll is cheap even with a large history.
+   * on the server, so a 5s poll is cheap even with a large history — and it
+   * stops entirely while the tab is suspended, re-reading once on resume.
    */
   useEffect(() => {
+    if (pageSuspended) {
+      return undefined;
+    }
     let active = true;
     const load = async () => {
       try {
@@ -4395,7 +4482,7 @@ export default function App() {
       active = false;
       window.clearInterval(timer);
     };
-  }, []);
+  }, [pageSuspended]);
 
   // Restart the local dashboard service in place. The server spawns a
   // successor that re-binds the same port and then exits; this poll waits for

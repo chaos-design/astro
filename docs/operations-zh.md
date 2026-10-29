@@ -48,11 +48,11 @@ pnpm build
 pnpm start
 ```
 
-默认地址是 `http://127.0.0.1:4318`。如果端口被占用，服务最多尝试后续 20 个端口，并在终端输出最终 URL。
+默认地址是 `http://127.0.0.1:5678`。如果端口被占用，服务最多尝试后续 20 个端口，并在终端输出最终 URL。
 
 ### 3.3 开发模式
 
-Vite 从环境读取 `ASTRO_HOST` 和 `ASTRO_PORT`，默认代理到 `http://127.0.0.1:4318`：
+Vite 从环境读取 `ASTRO_HOST` 和 `ASTRO_PORT`，默认代理到 `http://127.0.0.1:5678`：
 
 ```bash
 # 终端 1
@@ -82,7 +82,7 @@ ASTRO_PORT=4320 pnpm dev
     dist/
     plugin/
     server/
-  dashboard-4318.pid
+  dashboard-5678.pid
   trae/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
   claude/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
   codex/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
@@ -123,7 +123,7 @@ find "$HOME/.astrox" -type f -name events.jsonl -print
 | 变量 | 默认值 | 用途 |
 | --- | --- | --- |
 | `ASTRO_HOST` | `127.0.0.1` | HTTP/SSE 监听地址和 Vite 代理主机。 |
-| `ASTRO_PORT` | `4318` | 首选服务端口和 PID 文件名中的端口。 |
+| `ASTRO_PORT` | `5678` | 首选服务端口和 PID 文件名中的端口。 |
 | `ASTRO_HOME` | `~/.astrox` | 运行时和按来源组织的数据根目录。 |
 | `ASTRO_TRACE_DIR` | 未设置 | 覆盖 Trace 目录；可为绝对或相对路径。 |
 | `ASTRO_PROJECT_DIR` | 当前目录 | 解析相对 `ASTRO_TRACE_DIR` 的基准。 |
@@ -135,6 +135,10 @@ find "$HOME/.astrox" -type f -name events.jsonl -print
 采集器、CLI、服务、安装器、DeepSeek 适配器和 Vite 代理统一读取这两个文件。
 
 新变量优先于兼容变量。`AOT_HOME`、`AGENT_TRACE_*` 和 `TRAE_TRACE_*` 只用于升级兼容。
+
+旧版本生成的配置仍带着已退役的默认端口 `4318`。服务初始化插件目录时只会把
+这一个值改写为 `5678`，同时报告 `CONFIG_PORT_MIGRATED`，其余设置原样保留。
+如需保留其他端口，请设置 `ASTRO_PORT`，或把 `server.port` 改成别的值。
 
 实时运行超时是前端构建时策略，不是进程环境变量。修改
 `src/config/app-config.ts` 中的 `appTimings.activeRunTimeoutMs` 可调整阈值，
@@ -207,7 +211,7 @@ PID 文件是避免重复启动的协调信息，不是 Trace 数据。进程异
 ### 7.1 HTTP 健康状态
 
 ```bash
-curl -s http://127.0.0.1:4318/api/health
+curl -s http://127.0.0.1:5678/api/health
 ```
 
 关键字段：
@@ -234,7 +238,7 @@ curl -s http://127.0.0.1:4318/api/health
 ### 7.1.1 会话状态
 
 ```bash
-curl -s http://127.0.0.1:4318/api/sessions
+curl -s http://127.0.0.1:5678/api/sessions
 ```
 
 返回服务端维护的会话摘要，字段包括 `state`、`reason`（`completed` / `interrupted` /
@@ -246,7 +250,7 @@ curl -s http://127.0.0.1:4318/api/sessions
 ### 7.1.2 就地重启
 
 ```bash
-curl -s -X POST http://127.0.0.1:4318/api/restart
+curl -s -X POST http://127.0.0.1:5678/api/restart
 ```
 
 服务会派生出继承同一端口的后继进程，然后退出；SSE 客户端随后自动重连并重新拉取
@@ -256,8 +260,8 @@ curl -s -X POST http://127.0.0.1:4318/api/restart
 ### 7.2 事件与流
 
 ```bash
-curl -s http://127.0.0.1:4318/api/events
-curl -N http://127.0.0.1:4318/api/stream
+curl -s http://127.0.0.1:5678/api/events
+curl -N http://127.0.0.1:5678/api/stream
 ```
 
 SSE 首先应出现 `reset`，随后是 `ready`。新事件产生后出现 `trace`。服务声明 1 秒重连间隔；重连时再次发送完整 `reset`，用于补齐断线期间遗漏事件。
@@ -440,7 +444,7 @@ astrox restart         # 重启守护进程，加载新 server 与 dist
 | Hook 报未记录 | `ASTRO_HOME` 权限和磁盘状态 | 修复写权限/空间后重新触发；历史来源可再导入。 |
 | 事件重复 | 是否同时安装原生插件和直接 Hook | 每个客户端只保留一种接入方式。 |
 | 清空后重新出现 | 运行中的 Hook 仍在追加 | 先停止 Agent，再执行清空。 |
-| 端口不是 4318 | 首选端口被占用 | 使用终端或 PID 中的实际 URL，或释放端口。 |
+| 端口不是 5678 | 首选端口被占用 | 使用终端或 PID 中的实际 URL，或释放端口。 |
 | active 时长不动 | 会话状态、超时阈值和页面 JS | 检查最新事件是否是新的提示词、页面 JS 是否运行；默认达到 24 小时并显示 `terminated` 属于预期行为。 |
 | 父行 waiting，但子行时长仍增加 | 最新 Prompt 是否是等待状态 | 属于预期：父行仅在 active 时增加，waiting 子行继续独立计时直到超时。 |
 | terminated 状态没有对应 JSONL 事件 | 显示时长是否等于超时阈值 | 属于派生状态；通过 Raw/导出排除显式 interrupt 或 cancel 证据。 |

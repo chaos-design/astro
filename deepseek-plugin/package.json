@@ -1,6 +1,6 @@
 {
   "name": "dsh-astro-plugin",
-  "version": "0.0.3-beta.5",
+  "version": "0.0.3-beta.6",
   "description": "ASTRO local trace capture for DeepSeek Harness sessions.",
   "type": "module",
   "main": "index.js",

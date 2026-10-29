@@ -296,7 +296,7 @@ process memory. New trace discovery and file truncation produce a complete
 | `POST` | `/api/events` | Single or batch ingestion |
 | `DELETE` | `/api/events` | Clear local server events |
 | `GET` | `/api/search?q=` | Nested-field search with optional filters |
-| `GET` | `/api/stream` | `ready`, `trace`, and `reset` SSE events |
+| `GET` | `/api/stream` | `ready`, `trace`, `reset`, and `resume` SSE events |
 
 Only ingestion exposes browser CORS preflight. Reads, search, and SSE remain same-origin. The default request body limit is `5 MiB`.
 
@@ -523,11 +523,18 @@ If Worker creation fails, `FlowLayoutClient` dynamically imports the same implem
 
 ## 11. UI State and Replay
 
-The UI connects directly to `/api/stream`. On every initial connection or
-reconnection, the server sends a complete `reset` on the same ordered
-connection, then `ready`, and only then individual `trace` increments. A
-reconnect therefore repairs follow-up turns missed while the browser was offline.
-The client still merges increments by event ID.
+The UI connects directly to `/api/stream`. A first connection receives a
+complete `reset` on the same ordered connection, then `ready`, and only then
+individual `trace` increments. A reconnect names the last event it holds with
+`?since=<eventId>` and receives a `resume` carrying only the missed tail; an
+unknown cursor falls back to a full `reset`. Either way the follow-up turns
+missed while the browser was offline are repaired, and the client still merges
+increments by event ID.
+
+A console whose tab stays hidden suspends itself: the SSE connection is closed,
+the duration clock, replay playback, and the health poll stop, and the first
+visible frame reconnects with the cursor above and recomputes the clock — so a
+background tab costs no frames, no parsing, and no server writes.
 
 Built-in Demo events are allowed only in Vite development or test mode when the
 real event count is zero. A production build preserves a truthful empty state and
@@ -570,7 +577,7 @@ Application defaults, timing values, storage keys, theme choices, trajectory
 labels, and shared panel classes are centralized in
 `src/config/app-config.ts`. Defensive storage access lives in
 `src/lib/local-storage.ts`. The Vite development proxy reads the same
-`ASTRO_HOST/ASTRO_PORT` environment and defaults to `127.0.0.1:4318`.
+`ASTRO_HOST/ASTRO_PORT` environment and defaults to `127.0.0.1:5678`.
 
 ## 12. Security and Privacy
 

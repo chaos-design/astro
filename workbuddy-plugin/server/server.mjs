@@ -507,10 +507,22 @@ async function handleRequest(request, response) {
     clients.add(response);
     // Keep the snapshot and later events on one ordered connection, including reconnects.
     const events = store.getEvents();
-    // One merged snapshot serves both messages: building the git map used to
-    // re-copy the whole event list a second time.
-    const git = gitMapForEvents(events);
-    sendSse(response, "reset", { events, git });
+    // A client that resumes after a suspension names the last event it has, so
+    // the refresh costs only what was missed instead of the whole history. An
+    // unknown cursor (cleared events, a different process) falls back to the
+    // full snapshot, which keeps reconnects correct rather than fast.
+    const resumeCursor = requestUrl.searchParams.get("since") || "";
+    const resumeIndex = resumeCursor
+      ? events.findIndex((event) => event.id === resumeCursor)
+      : -1;
+    if (resumeIndex >= 0) {
+      const missed = events.slice(resumeIndex + 1);
+      sendSse(response, "resume", { events: missed, git: gitMapForEvents(missed) });
+    } else {
+      // One merged snapshot serves both messages: building the git map used to
+      // re-copy the whole event list a second time.
+      sendSse(response, "reset", { events, git: gitMapForEvents(events) });
+    }
     sendSse(response, "ready", {
       eventCount: events.length,
       connectedAt: new Date().toISOString(),

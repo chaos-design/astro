@@ -286,7 +286,7 @@ Hook 命令使用 `${CODEBUDDY_PLUGIN_ROOT}`，并保留权限、Elicitation、�
 | `POST` | `/api/events` | 写入单个或批量事件 |
 | `DELETE` | `/api/events` | 清空服务端本地事件 |
 | `GET` | `/api/search?q=` | 跨嵌套字段搜索；支持来源和会话过滤 |
-| `GET` | `/api/stream` | `ready`、`trace`、`reset` SSE 事件流 |
+| `GET` | `/api/stream` | `ready`、`trace`、`reset`、`resume` SSE 事件流 |
 
 只有写入端点开放浏览器 CORS 预检；读取、搜索和 SSE 默认同源。请求体默认限制为 `5 MiB`。
 
@@ -486,9 +486,15 @@ Worker 不可用时，`FlowLayoutClient` 会动态导入同一布局实现并在
 
 ## 11. 界面状态与回放
 
-前端启动后直接连接 `/api/stream`。每次初连或重连时，服务先在同一有序连接上发送
-完整 `reset`，再发送 `ready`，之后才发送单条 `trace` 增量。这样即使浏览器在
-断线期间错过后续问答，重连快照也会补齐完整会话。客户端按事件 ID 合并增量，避免重复。
+前端启动后直接连接 `/api/stream`。首次连接时，服务在同一有序连接上发送完整
+`reset`，再发送 `ready`，之后才发送单条 `trace` 增量。重连时前端用
+`?since=<eventId>` 带上已持有的最后一条事件，服务只回发遗漏的尾部（`resume`）；
+游标无法定位时回退为完整 `reset`。两种方式都能补齐浏览器离线期间错过的后续
+问答，客户端仍按事件 ID 合并增量。
+
+标签页长时间不可视时控制台会自行挂起：关闭 SSE 连接，停止时长计时、回放播放与
+健康轮询；页面重新可见的第一帧用上述游标重连并重算时钟。因此后台标签页不产生
+渲染、不解析事件，服务端也不再向它写入。
 
 内置 Demo 只允许在 Vite development 或 test 环境、且真实事件数为 0 时使用。
 production 构建空数据时保持真实空状态，不生成测试会话。
@@ -523,7 +529,7 @@ localStorage 不可用时回退默认值，Trace 数据和当前页面操作不�
 业务默认值、计时参数、Storage Key、主题选项、轨迹标签和共享样式常量集中在
 `src/config/app-config.ts`；安全的 Storage 读写封装位于
 `src/lib/local-storage.ts`。Vite 的开发代理从同一 `ASTRO_HOST/ASTRO_PORT`
-环境读取目标，默认连接 `127.0.0.1:4318`。
+环境读取目标，默认连接 `127.0.0.1:5678`。
 
 ## 12. 安全与隐私
 
