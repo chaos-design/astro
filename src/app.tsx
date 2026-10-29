@@ -252,10 +252,10 @@ const EMPTY_EVENTS: TraceEvent[] = [];
  * Minimum horizontal slot per node in the trajectory lane overview. Below
  * roughly this width the segments stop being distinguishable (and clickable),
  * so the track scrolls instead of compressing further. Sized with the mark
- * itself: a 14px minimum keeps the blocks apart once they get tall, and 28px
- * per slot leaves every single-atom mark visibly wide.
+ * itself: a 22px minimum keeps the blocks apart once they get short, and a
+ * 52px slot leaves every single-atom mark clearly wide.
  */
-const TRAJECTORY_MIN_SLOT_PX = 28;
+const TRAJECTORY_MIN_SLOT_PX = 52;
 /**
  * Upper bound on lane-overview marks per lane. A 10k-node run otherwise draws
  * 10k segments, which is both unreadable and expensive to paint; slots

@@ -3093,10 +3093,10 @@ pre,
   width: 100%;
   height: 100%;
   min-height: 0;
-  /* Header, lane overview, atom list. The overview is deliberately tall: its
-   * marks are the primary way to scan a long run, and 8px blocks in 17px lanes
-   * were too small to hit or read. */
-  grid-template-rows: 58px 104px minmax(0, 1fr);
+  /* Header, lane overview, atom list. The overview keeps a deliberately wide,
+   * short lane strip: its marks are the primary way to scan a long run, but
+   * they should stay compact so the atom list below gets the vertical room. */
+  grid-template-rows: 58px 86px minmax(0, 1fr);
   overflow: hidden;
   background: var(--bg);
 }
@@ -3188,7 +3188,7 @@ pre,
 
 .trajectory-map__labels span {
   display: flex;
-  height: 24px;
+  height: 16px;
   align-items: center;
   font-weight: var(--weight-strong);
 }
@@ -3212,10 +3212,13 @@ pre,
   scrollbar-color: var(--line-bright) transparent;
   scrollbar-gutter: stable;
   scrollbar-width: thin;
+  /* Push the thin scrollbar clear of the lane marks so it reads as a separate
+   * control rather than hugging the blocks. */
+  padding-bottom: 4px;
 }
 
 .trajectory-map__tracks::-webkit-scrollbar {
-  height: 5px;
+  height: 3px;
 }
 
 .trajectory-map__tracks::-webkit-scrollbar-thumb {
@@ -3264,7 +3267,7 @@ pre,
   --lane-tone: var(--blue);
 
   position: relative;
-  height: 24px;
+  height: 16px;
   overflow: hidden;
   border-block: 1px solid
     color-mix(in srgb, var(--lane-tone) 42%, var(--chrome-line));
@@ -3293,9 +3296,9 @@ pre,
   position: absolute;
   top: 50%;
   left: var(--segment-left);
-  width: max(14px, calc(var(--segment-width) - 6px));
-  min-width: 14px;
-  height: 15px;
+  width: max(22px, calc(var(--segment-width) - 3px));
+  min-width: 22px;
+  height: 10px;
   border: 1px solid
     color-mix(in srgb, var(--segment-tone) 84%, var(--chrome-line));
   border-radius: 3px;
