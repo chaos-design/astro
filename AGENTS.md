@@ -79,6 +79,12 @@ use Node.js ES modules or CommonJS according to their existing file extension.
 - The same live key set drives the pin, the day-window exemption, the `N LIVE`
   count, and the live-only filter. Do not derive a second one — a row that is
   pinned but not counted (or the reverse) reads as a bug.
+- The live-only filter is a persisted preference (`ASTROX_RUN_HISTORY_LIVE_FILTER`)
+  that defaults to armed: while armed, the list shows every live run (live rows
+  are exempt from the day window) and cancels back to the windowed list when
+  the user turns it off. Zero live rows must not clear the filter — the arm
+  only gates rendering when live rows exist, so the stored choice survives
+  sessions without live runs and re-arms when one appears.
 - "Running again" means a historical session that received a new prompt, even
   days later: it must land in that live key set so the `N LIVE` filter can
   find it. Its clock (see Run Timeout Invariant) is the new prompt's, not the

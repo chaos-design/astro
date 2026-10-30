@@ -1651,7 +1651,18 @@ const RunHistory = memo(function RunHistory({
     onSelectRef.current(key, promptRunKey);
   }, []);
   const [liveJumpRequest, setLiveJumpRequest] = useState(0);
-  const [liveFilter, setLiveFilter] = useState(false);
+  // The live filter is a persisted preference that defaults to armed: the
+  // panel opens narrowed to the executing runs — all of them, live rows are
+  // exempt from the day window — and a session with no live run still shows
+  // its full list because the filter only gates rendering when live rows
+  // exist. Cancelling persists the opt-out across reloads.
+  const [liveFilter, setLiveFilter] = useState(() =>
+    readStorageBoolean(
+      window.localStorage,
+      storageKeys.runHistoryLiveFilter,
+      true,
+    ),
+  );
   const activePromptCount =
     promptRunsBySession.get(activeKey)?.length ?? 0;
 
@@ -1705,23 +1716,28 @@ const RunHistory = memo(function RunHistory({
   }, [liveSummary.firstLiveKey]);
 
   const toggleLiveFilter = useCallback(() => {
-    if (liveFilter) {
-      setLiveFilter(false);
+    // Both directions persist: the chip is a preference, not a session state,
+    // so the panel reopens the way the user left it.
+    const next = !liveFilter;
+    setLiveFilter(next);
+    writeStorageValue(
+      window.localStorage,
+      storageKeys.runHistoryLiveFilter,
+      next,
+    );
+    if (!next) {
       return;
     }
     // Entering the filter doubles as the jump: the first live row is the
     // natural anchor when the list suddenly gets much shorter.
-    setLiveFilter(true);
     jumpToLiveRun();
   }, [liveFilter, jumpToLiveRun]);
 
-  // The live set is derived from the currently loaded sessions; once every
-  // live run has settled the filter would hold up nothing but an empty list.
-  useEffect(() => {
-    if (liveFilter && liveSummary.count === 0) {
-      setLiveFilter(false);
-    }
-  }, [liveFilter, liveSummary.count]);
+  // The zero-live case must NOT clear the filter: `liveFiltering` already
+  // degrades to the full list when no run is executing, and auto-clearing
+  // here would silently overwrite the user's persisted default-on choice
+  // every time they opened the panel between runs. The preference re-arms
+  // on its own the moment a live row appears.
 
   // A manual reload exists to reveal what the loaded history was missing, so
   // when the fresh snapshot lands the list must point at it: the executing

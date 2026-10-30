@@ -84,6 +84,7 @@ export const storageKeys = {
   historyOpen: "ASTROX_HISTORY_OPEN",
   inspectorTab: "ASTROX_INSPECTOR_TAB",
   platform: "ASTROX_PLATFORM",
+  runHistoryLiveFilter: "ASTROX_RUN_HISTORY_LIVE_FILTER",
   theme: "ASTROX_THEME",
 } as const;
 
