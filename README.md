@@ -80,8 +80,10 @@ schedule tools, approve permissions, or alter agent decisions.
 - The executing message is pinned to the top of the run list, ordered by its
   latest activity. A resumed session keeps its original start, so its new
   prompt would otherwise sort below every run that merely started later.
-- Active session duration refreshes every second. It is capped at the shared
-  24-hour default and becomes `terminated` when that limit is reached.
+- Active session duration refreshes every second and is timed on the executing
+  message: a session resumed days later shows the new prompt's elapsed time,
+  not the age of the session. It is capped at the shared 24-hour default and
+  becomes `terminated` when that limit is reached.
 - Historical replay with restart, previous, play/pause, next, seek, and
   `0.5x`/`1x`/`2x`/`4x` speed controls.
 - Two complementary views:

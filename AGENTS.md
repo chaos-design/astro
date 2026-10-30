@@ -46,8 +46,15 @@ use Node.js ES modules or CommonJS according to their existing file extension.
 
 - `appTimings.activeRunTimeoutMs` is the single frontend timeout policy.
 - Its default is 24 hours in milliseconds.
+- The clock belongs to the executing message, not the session: while the newest
+  Prompt run is live, both the displayed duration and the timeout start at that
+  Prompt. Timing the session made a session resumed two days later read as a
+  48-hour run, so it flipped to `terminated` the instant the new prompt
+  arrived — invisible in the list and absent from `N LIVE`. Only a session with
+  no Prompt runs falls back to its own start.
 - A duration that is still advancing is capped at the timeout and its effective
-  UI status becomes `terminated`.
+  UI status becomes `terminated`. Terminal rows keep the recorded session
+  duration, so the row reads session span again once the run stops.
 - The timeout is derived at read/render time. It must not append a synthetic
   event or replace the persisted session status.
 - Expired selected runs must not keep live topology animation or running log
@@ -72,6 +79,10 @@ use Node.js ES modules or CommonJS according to their existing file extension.
 - The same live key set drives the pin, the day-window exemption, the `N LIVE`
   count, and the live-only filter. Do not derive a second one — a row that is
   pinned but not counted (or the reverse) reads as a bug.
+- "Running again" means a historical session that received a new prompt, even
+  days later: it must land in that live key set so the `N LIVE` filter can
+  find it. Its clock (see Run Timeout Invariant) is the new prompt's, not the
+  session's.
 - Finished messages (`complete` / `failed` / `terminated`) do not auto-locate
   the last atom: `getPromptAtomSelection` returns `null` for every non-live
   status, and only an explicit atom pick locates the topology.

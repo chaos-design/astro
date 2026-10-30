@@ -96,7 +96,7 @@ export function getRunHistoryDisplayStatus(
 
 export function getRunHistoryDuration(
   session: RunDurationSource,
-  promptRuns: readonly Pick<TracePromptRun, "status">[],
+  promptRuns: readonly RunDurationSource[],
   now: number,
   activeRunTimeoutMs = Number.POSITIVE_INFINITY,
 ): number {
@@ -110,29 +110,36 @@ export function getRunHistoryDuration(
 
 export function getRunHistoryDisplayState(
   session: RunDurationSource,
-  promptRuns: readonly Pick<TracePromptRun, "status">[],
+  promptRuns: readonly RunDurationSource[],
   now: number,
   activeRunTimeoutMs = Number.POSITIVE_INFINITY,
 ): {
   duration: number;
   status: TraceRunStatus;
 } {
+  const activePrompt = promptRuns.at(-1);
   const status = getRunHistoryDisplayStatus(
     session.status,
     promptRuns,
   );
-  // "active" and "waiting" are both live states: the duration keeps
-  // advancing and the run terminates once the message stream goes silent
-  // past the active-run timeout. Terminal states (complete/failed/
-  // terminated) keep their recorded duration.
-  if (status !== "active" && status !== "waiting") {
+  // Terminal states (complete/failed/terminated) keep their recorded
+  // duration.
+  if (!isLiveRunStatus(status)) {
     return {
       duration: session.duration,
       status,
     };
   }
+  // "active" and "waiting" are both live states: the duration keeps advancing
+  // and the run terminates once it has been running past the active-run
+  // timeout. The *executing message* owns that clock, not the session: a
+  // session resumed two days after its first prompt would otherwise present
+  // itself as a 48-hour run, and the timeout turned it into `terminated` (kept
+  // out of the `N LIVE` filter, off the top of the list) the instant the new
+  // prompt arrived. Only a session with no Prompt runs falls back to its own
+  // start.
   return getSessionDisplayState(
-    { ...session, status },
+    { ...(activePrompt ?? session), status },
     now,
     activeRunTimeoutMs,
   );
@@ -148,10 +155,8 @@ export function getRunHistoryTerminalInfo(
     statusDetail?: string | null;
     terminalReason?: RunTerminalReason | null;
   },
-  promptRuns: readonly Pick<
-    TracePromptRun,
-    "status" | "statusDetail" | "terminalReason"
-  >[],
+  promptRuns: readonly (RunDurationSource &
+    Pick<TracePromptRun, "statusDetail" | "terminalReason">)[],
   now: number,
   activeRunTimeoutMs = Number.POSITIVE_INFINITY,
 ): { detail: string | null; reason: RunTerminalReason | null } {
@@ -235,10 +240,7 @@ export function isLiveRunStatus(status: string | undefined): boolean {
  */
 export function collectLiveRunKeys(
   sessions: readonly (RunDurationSource & { key: string })[],
-  promptRunsBySession: ReadonlyMap<
-    string,
-    readonly Pick<TracePromptRun, "status">[]
-  >,
+  promptRunsBySession: ReadonlyMap<string, readonly RunDurationSource[]>,
   now: number,
   activeRunTimeoutMs = Number.POSITIVE_INFINITY,
 ): Set<string> {

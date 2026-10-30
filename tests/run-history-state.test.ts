@@ -70,22 +70,20 @@ test("derives the parent row status from the last Prompt run", () => {
   }
 });
 
-test("updates the parent duration while the latest Prompt is active or waiting", () => {
+test("times the parent row on the executing Prompt, not the session", () => {
   const session = {
     duration: 4_000,
     start: 1_000,
     status: "active",
   } as const;
   const now = 11_000;
+  // The newest Prompt started long after the session did: a resumed message.
+  const prompts = [
+    { duration: 4_000, start: 1_000, status: "complete" },
+    { duration: 0, start: 10_000, status: "active" },
+  ] as const;
 
-  assert.equal(
-    getRunHistoryDuration(
-      session,
-      [{ status: "complete" }, { status: "active" }],
-      now,
-    ),
-    10_000,
-  );
+  assert.equal(getRunHistoryDuration(session, [...prompts], now), 1_000);
 
   for (const status of [
     "complete",
@@ -93,12 +91,17 @@ test("updates the parent duration while the latest Prompt is active or waiting",
     "terminated",
   ] as const) {
     assert.equal(
-      getRunHistoryDuration(session, [{ status }], now),
+      getRunHistoryDuration(
+        session,
+        [{ duration: 0, start: 10_000, status }],
+        now,
+      ),
       session.duration,
       `${status} latest Prompt should freeze the parent duration`,
     );
   }
 
+  // Without Prompt runs the session itself is the run.
   assert.equal(getRunHistoryDuration(session, [], now), 10_000);
   assert.equal(
     getRunHistoryDuration(
@@ -110,6 +113,37 @@ test("updates the parent duration while the latest Prompt is active or waiting",
   );
 });
 
+test("keeps a resumed session live on its new Prompt's clock", () => {
+  const timeout = 24 * 60 * 60 * 1_000;
+  const firstPromptAt = 1_000;
+  // Two days later the user sends another message into the same session.
+  const resumedAt = firstPromptAt + 2 * timeout;
+  const session = {
+    duration: 2 * timeout,
+    start: firstPromptAt,
+    status: "active",
+  } as const;
+  const resumes = [{ duration: 0, start: resumedAt, status: "active" }] as const;
+
+  // Timing the session made this read as a 48-hour run, i.e. `terminated`
+  // the moment the new prompt arrived — absent from `N LIVE` and from the top
+  // of the list.
+  assert.deepEqual(
+    getRunHistoryDisplayState(
+      session,
+      [...resumes],
+      resumedAt + 30_000,
+      timeout,
+    ),
+    { duration: 30_000, status: "active" },
+  );
+  // The new Prompt keeps its own 24h cap.
+  assert.deepEqual(
+    getRunHistoryDisplayState(session, [...resumes], resumedAt + timeout, timeout),
+    { duration: timeout, status: "terminated" },
+  );
+});
+
 test("terminates the parent display when its active duration reaches the limit", () => {
   const timeout = 24 * 60 * 60 * 1_000;
   const session = {
@@ -117,13 +151,16 @@ test("terminates the parent display when its active duration reaches the limit",
     start: 1_000,
     status: "active",
   } as const;
-  const activePrompt = [{ status: "active" }] as const;
+  const promptStart = 5_000;
+  const activePrompt = [
+    { duration: 0, start: promptStart, status: "active" },
+  ] as const;
 
   assert.deepEqual(
     getRunHistoryDisplayState(
       session,
       activePrompt,
-      session.start + timeout - 1,
+      promptStart + timeout - 1,
       timeout,
     ),
     {
@@ -135,7 +172,7 @@ test("terminates the parent display when its active duration reaches the limit",
     getRunHistoryDisplayState(
       session,
       activePrompt,
-      session.start + timeout,
+      promptStart + timeout,
       timeout,
     ),
     {
@@ -146,8 +183,8 @@ test("terminates the parent display when its active duration reaches the limit",
   assert.deepEqual(
     getRunHistoryDisplayState(
       session,
-      [{ status: "waiting" }],
-      session.start + timeout - 1,
+      [{ duration: 0, start: promptStart, status: "waiting" }],
+      promptStart + timeout - 1,
       timeout,
     ),
     {
@@ -159,8 +196,8 @@ test("terminates the parent display when its active duration reaches the limit",
   assert.deepEqual(
     getRunHistoryDisplayState(
       session,
-      [{ status: "waiting" }],
-      session.start + timeout * 2,
+      [{ duration: 0, start: promptStart, status: "waiting" }],
+      promptStart + timeout * 2,
       timeout,
     ),
     {
@@ -257,8 +294,14 @@ test("collects the sessions whose message is executing", () => {
     run("failed", "failed", now - 240_000),
   ];
   const promptRuns = new Map([
-    ["reopened", [{ status: "waiting" as const }]],
-    ["settled", [{ status: "complete" as const }]],
+    [
+      "reopened",
+      [{ duration: 0, start: now - 120_000, status: "waiting" as const }],
+    ],
+    [
+      "settled",
+      [{ duration: 0, start: now - 180_000, status: "complete" as const }],
+    ],
   ]);
 
   assert.deepEqual(
@@ -331,7 +374,11 @@ test("reports why a run ended, including the display-timeout case", () => {
   };
 
   assert.deepEqual(
-    getRunHistoryTerminalInfo(session, [{ status: "terminated" }], 10_000),
+    getRunHistoryTerminalInfo(
+      session,
+      [{ duration: 4_000, start: 1_000, status: "terminated" }],
+      10_000,
+    ),
     { detail: "user abort", reason: "interrupted" },
   );
 
@@ -343,17 +390,18 @@ test("reports why a run ended, including the display-timeout case", () => {
     start: 1_000,
     status: "active" as const,
   };
+  const livePrompt = [{ duration: 0, start: live.start, status: "active" }];
   assert.deepEqual(
     getRunHistoryTerminalInfo(
       live,
-      [{ status: "active" }],
+      livePrompt,
       live.start + timeout + 1,
       timeout,
     ),
     { detail: null, reason: "timeout" },
   );
   assert.deepEqual(
-    getRunHistoryTerminalInfo(live, [{ status: "active" }], live.start + 10, timeout),
+    getRunHistoryTerminalInfo(live, livePrompt, live.start + 10, timeout),
     { detail: null, reason: null },
   );
 });
