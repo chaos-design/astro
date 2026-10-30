@@ -62,8 +62,18 @@ use Node.js ES modules or CommonJS according to their existing file extension.
 
 ## Run History Live Markers
 
-- `isLiveRunStatus` is the single definition of a live run (`active` and
-  `waiting`). RUN HISTORY must not invent extra live states.
+- `isLiveRunStatus` is the single definition of a live run status (`active` /
+  `waiting`); the live *index* additionally requires recent activity
+  (`isFreshLiveRun`: 10 minutes for `active`, 60 for `waiting`). A crashed
+  recorder leaves its last session `active` forever, so counting status alone
+  filled `N LIVE` with hours-dead sessions and pushed the one message that was
+  actually executing out of the picture. The row still reports the recorder
+  status (RUNNING capsule + STALE marker); pin, count, and filter use the
+  fresh set.
+- The live index is machine-wide: `collectLiveRunKeys` runs over every session,
+  not the agent-scoped list, and live runs of other agents join the history
+  pool. The dropdown scopes the finished history; it must never hide the
+  message that is executing right now.
 - A live message is marked on the row (status accent plus a `RUNNING` /
   `WAITING` capsule) and in the panel header (`N LIVE` chip that scrolls the
   first live row into view), so the executing message is findable without

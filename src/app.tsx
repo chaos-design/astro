@@ -1988,25 +1988,6 @@ const RunHistory = memo(function RunHistory({
               <button
                 type="button"
                 className={cn(
-                  "run-history__reload",
-                  reloading && "is-reloading",
-                )}
-                disabled={reloading || isDemo}
-                aria-label="重新加载最新消息列表"
-                onClick={onReloadLatest}
-              >
-                <RefreshCw aria-hidden="true" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              {reloading ? "正在加载最新消息…" : "重新加载最新消息列表"}
-            </TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                className={cn(
                   "run-history__live-jump",
                   liveSummary.count === 0 && "is-idle",
                   liveFiltering && "is-filtering",
@@ -2025,6 +2006,25 @@ const RunHistory = memo(function RunHistory({
             </TooltipTrigger>
             <TooltipContent side="bottom">
               {liveFiltering ? "取消筛选活动消息" : "只看正在执行的消息"}
+            </TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                className={cn(
+                  "run-history__reload",
+                  reloading && "is-reloading",
+                )}
+                disabled={reloading || isDemo}
+                aria-label="重新加载最新消息列表"
+                onClick={onReloadLatest}
+              >
+                <RefreshCw aria-hidden="true" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              {reloading ? "正在加载最新消息…" : "重新加载最新消息列表"}
             </TooltipContent>
           </Tooltip>
         </div>
@@ -4130,18 +4130,40 @@ export default function App() {
    * three things must agree on it: keeping the live run inside the visible
    * window, pinning it to the top of the list, and the `N LIVE` chip / filter
    * the panel derives from the same set.
+   *
+   * Deliberately *not* derived from the agent-scoped list: the live index
+   * answers "what is running on this machine", and the machine can run several
+   * agents at once. Scoping it to the dropdown made the chip report zero live
+   * runs while another agent was executing — exactly the "N LIVE is missing
+   * the message that is running" bug.
    */
   const liveSessionKeys = useMemo(() => {
     if (isDemo) {
       return new Set<string>();
     }
     return collectLiveRunKeys(
-      filteredSessions,
+      sessions,
       promptRunsBySession,
       now,
       appTimings.activeRunTimeoutMs,
     );
-  }, [filteredSessions, isDemo, now, promptRunsBySession]);
+  }, [isDemo, now, promptRunsBySession, sessions]);
+  // The history pool: the selected agent's sessions, plus live runs of other
+  // agents so the executing message stays reachable whatever the dropdown
+  // says. The pin below sorts those to the top either way.
+  const historySessions = useMemo(() => {
+    if (liveSessionKeys.size === 0) {
+      return filteredSessions;
+    }
+    const scoped = new Set(filteredSessions.map((session) => session.key));
+    const foreignLive = sessions.filter(
+      (session) =>
+        liveSessionKeys.has(session.key) && !scoped.has(session.key),
+    );
+    return foreignLive.length
+      ? [...filteredSessions, ...foreignLive]
+      : filteredSessions;
+  }, [filteredSessions, liveSessionKeys, sessions]);
   // Runs shown in RUN HISTORY: narrowed to the selected agent, then to the
   // visible day window (most recent N days), then the executing run is pinned
   // to the top — a resumed session is live *now*, even though it started
@@ -4150,14 +4172,14 @@ export default function App() {
     () =>
       pinLiveRunHistory(
         selectVisibleRunHistory(
-          filteredSessions,
+          historySessions,
           now,
           runHistoryDays,
           liveSessionKeys,
         ),
         liveSessionKeys,
       ),
-    [filteredSessions, liveSessionKeys, now, runHistoryDays],
+    [historySessions, liveSessionKeys, now, runHistoryDays],
   );
   const canLoadMoreRunHistory =
     canLoadMoreRunHistoryDays(filteredSessions, now, runHistoryDays);

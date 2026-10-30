@@ -316,6 +316,35 @@ test("collects the sessions whose message is executing", () => {
   );
 });
 
+test("keeps only recently active runs in the live index", () => {
+  const now = Date.parse("2026-10-30T12:00:00");
+  const run = (key: string, status: string, startedAt: number, lastAt: number) => ({
+    key,
+    status: status as TraceRunStatus,
+    start: startedAt,
+    end: lastAt,
+    duration: lastAt - startedAt,
+  });
+  const sessions = [
+    // Actively producing events: live.
+    run("hot", "active", now - 30 * 60_000, now - 20_000),
+    // A long tool call can be silent for minutes: still live.
+    run("quiet", "active", now - 30 * 60_000, now - 4 * 60_000),
+    // Crashed hours ago with no terminal event: still `active`, no longer
+    // running — this is what used to flood the N LIVE index.
+    run("dead", "active", now - 9 * 60 * 60_000, now - 8 * 60 * 60_000),
+    // Blocked on the user: a waiting run keeps its place much longer.
+    run("waiting", "waiting", now - 2 * 60 * 60_000, now - 30 * 60_000),
+    // …but an hour of silence means nobody is coming back.
+    run("abandoned", "waiting", now - 5 * 60 * 60_000, now - 2 * 60 * 60_000),
+  ];
+
+  assert.deepEqual(
+    [...collectLiveRunKeys(sessions, new Map(), now)].sort(),
+    ["hot", "quiet", "waiting"],
+  );
+});
+
 test("quantizes timestamps down to the start of their bucket", () => {
   assert.equal(quantizeTimestamp(1_000, 1_000), 1_000);
   assert.equal(quantizeTimestamp(1_999, 1_000), 1_000);

@@ -232,14 +232,66 @@ export function isLiveRunStatus(status: string | undefined): boolean {
 }
 
 /**
+ * How long an executing run may go without a single event before it stops
+ * counting as "running now". Status alone is not enough: a crashed agent
+ * leaves its last session `active` forever — the recorder never writes a
+ * terminal event — so opening the dashboard hours later listed half a dozen
+ * corpses as live while the message that was actually executing drowned among
+ * them. This is deliberately much longer than the STALE display threshold (a
+ * long build or test run is silent for minutes) and much shorter than the 24h
+ * display timeout.
+ */
+export const RUN_HISTORY_LIVE_WINDOW_MS = 10 * 60_000;
+
+/**
+ * A run blocked on the user keeps its place far longer than a running one: an
+ * unanswered permission prompt is still the thing the user has to deal with.
+ */
+export const RUN_HISTORY_WAITING_LIVE_WINDOW_MS = 60 * 60_000;
+
+/**
+ * Whether a run belongs to the live index right now: its status is live *and*
+ * the recorder produced an event inside the freshness window. A `waiting` run
+ * gets the longer window.
+ */
+export function isFreshLiveRun(
+  status: string | undefined,
+  lastActivityAt: number | null | undefined,
+  now: number,
+): boolean {
+  if (!isLiveRunStatus(status)) {
+    return false;
+  }
+  // Without activity information the status is all we have — trust it, as the
+  // timeout in `getRunHistoryDisplayState` already caps the age.
+  if (!lastActivityAt) {
+    return true;
+  }
+  const window =
+    status === "waiting"
+      ? RUN_HISTORY_WAITING_LIVE_WINDOW_MS
+      : RUN_HISTORY_LIVE_WINDOW_MS;
+  return now - lastActivityAt <= window;
+}
+
+/**
  * Keys of the sessions whose displayed message is still executing. RUN
  * HISTORY uses this one set for three things that must agree: the `N LIVE`
  * count, the live-only filter, and pinning executing rows to the top of the
  * list. A session is live when its newest prompt is — the prompt inherits the
  * session status, so the row and the thread always agree on what is running.
+ *
+ * Liveness also requires recent activity (`isFreshLiveRun`): a session whose
+ * recorder died hours ago still carries `active`, and counting it as running
+ * made the live index point at rows that were not running and miss the one
+ * that was.
  */
 export function collectLiveRunKeys(
-  sessions: readonly (RunDurationSource & { key: string })[],
+  sessions: readonly (RunDurationSource & {
+    key: string;
+    /** Timestamp of the session's newest event, when known. */
+    end?: number;
+  })[],
   promptRunsBySession: ReadonlyMap<string, readonly RunDurationSource[]>,
   now: number,
   activeRunTimeoutMs = Number.POSITIVE_INFINITY,
@@ -252,7 +304,7 @@ export function collectLiveRunKeys(
       now,
       activeRunTimeoutMs,
     );
-    if (isLiveRunStatus(status)) {
+    if (isFreshLiveRun(status, session.end ?? session.start, now)) {
       live.add(session.key);
     }
   }
