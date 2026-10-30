@@ -143,6 +143,11 @@ export class TraceRepository extends EventEmitter {
       for (const event of store.getEvents()) {
         this.indexEvent(event);
       }
+      // The folded events are new to the merged snapshot cache too. Without
+      // this the discovery reset below broadcast the previous snapshot while
+      // the derived counts already included the file — a freshly written
+      // session stayed invisible until one of its events arrived.
+      this.invalidateDerived();
       store.on("event", (event) => {
         this.indexEvent(event);
         this.invalidateDerived();
