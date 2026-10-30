@@ -88,7 +88,8 @@ schedule tools, approve permissions, or alter agent decisions.
   `0.5x`/`1x`/`2x`/`4x` speed controls.
 - Two complementary views:
   - **Execution Topology** for semantic runtime structure.
-  - **Run Trajectory** for observed time-ordered steps and turns.
+  - **Run Trajectory** for observed steps and turns, newest first — the
+    executing atom is the first row, the run preamble (context) is last.
 - Six base topology domains, 27 stable atoms, and 28 defined edges.
 - Dynamic `Subagent Execute` layers derived from `SubagentStart` and
   `SubagentStop`.

@@ -83,9 +83,26 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   days later: it must land in that live key set so the `N LIVE` filter can
   find it. Its clock (see Run Timeout Invariant) is the new prompt's, not the
   session's.
+- The footer Live button is the same state seen from the bottom bar:
+  `isPromptExecuting` delegates to `isLiveRunStatus` (so `waiting` keeps Live
+  available), the button is lit only while the open run is executing *and* the
+  selection still tracks its newest atom, and pressing it from a finished run
+  selects the executing run — never `sessions[0]`, which is the newest start
+  and therefore never a resumed run.
 - Finished messages (`complete` / `failed` / `terminated`) do not auto-locate
   the last atom: `getPromptAtomSelection` returns `null` for every non-live
   status, and only an explicit atom pick locates the topology.
+
+## Run Trajectory Order
+
+- The trajectory list renders newest first: turns descending, the atoms inside
+  a turn descending, and `RUN CONTEXT` (the run preamble) last. It mirrors RUN
+  HISTORY so the atom that is executing right now is the first row.
+- The model from `buildTrajectoryModel` stays chronological. Selection lookups,
+  the "latest atom" test, and the lane overview all depend on that order, so
+  `orderTrajectoryNewestFirst` is the only place allowed to reverse — never
+  sort the model in place.
+- The lane overview above the list remains a left-to-right timeline.
 
 ## Exception Events
 

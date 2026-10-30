@@ -47,6 +47,35 @@ export type TrajectorySegmentPosition = {
   width: number;
 };
 
+/**
+ * The trajectory list, newest first. RUN TRAJECTORY mirrors RUN HISTORY: the
+ * turn and atom that are executing right now are the first rows, so following
+ * a live run never means scrolling past its own start, and an older turn can
+ * simply be collapsed out of the way.
+ */
+export type TrajectoryDisplay = {
+  /** The run preamble, newest first; it renders after every turn. */
+  context: TrajectoryAtom[];
+  turns: TrajectoryTurn[];
+};
+
+/**
+ * Reverse the model for display. The model itself stays chronological —
+ * selection lookups, the "latest atom" test, and the lane timeline all depend
+ * on that order — only the rendered list flips.
+ */
+export function orderTrajectoryNewestFirst(
+  model: TrajectoryModel,
+): TrajectoryDisplay {
+  return {
+    context: [...model.context].reverse(),
+    turns: [...model.turns].reverse().map((turn) => ({
+      ...turn,
+      atoms: [...turn.atoms].reverse(),
+    })),
+  };
+}
+
 type MutableTrajectoryAtom = TrajectoryAtom & {
   lastOccurredAt: string;
 };

@@ -56,6 +56,10 @@ test("clearing the manual override restores Live at the latest session", () => {
 
 test("derives Prompt execution only from its own status and demo mode", () => {
   assert.equal(isPromptExecuting("active", false), true);
+  // A run waiting for a permission answer is still in flight — RUN HISTORY
+  // marks it live, so the footer's Live button must agree.
+  assert.equal(isPromptExecuting("waiting", false), true);
+  assert.equal(isPromptExecuting("waiting", true), false);
   assert.equal(isPromptExecuting("complete", false), false);
   assert.equal(isPromptExecuting("failed", false), false);
   assert.equal(isPromptExecuting("terminated", false), false);

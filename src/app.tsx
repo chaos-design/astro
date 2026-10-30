@@ -189,6 +189,7 @@ import {
   buildTrajectoryMapSlots,
   buildTrajectoryModel,
   getTrajectorySegmentPosition,
+  orderTrajectoryNewestFirst,
   type TrajectoryAtom,
   type TrajectoryTurn,
 } from "./lib/trajectory-model";
@@ -2793,6 +2794,10 @@ const TrajectoryView = memo(function TrajectoryView({
     [atomNodes, atomicEvents, events],
   );
   const turnKey = model.turns.map((turn) => turn.turn).join("|");
+  // Newest first, like RUN HISTORY: the turn and the atom that are executing
+  // right now are the first rows, so following a live run never means scrolling
+  // past its start. The lane overview above stays a left-to-right timeline.
+  const display = useMemo(() => orderTrajectoryNewestFirst(model), [model]);
   const [expandedTurns, setExpandedTurns] = useState<Set<number>>(
     () => new Set(model.turns.at(-1) ? [model.turns.at(-1)!.turn] : []),
   );
@@ -3049,25 +3054,7 @@ const TrajectoryView = memo(function TrajectoryView({
         </div>
       </div>
       <div className="trajectory-list" ref={listRef}>
-        {model.context.length ? (
-          <section className="trajectory-turn trajectory-context">
-            <header>
-              <strong>RUN CONTEXT</strong>
-              <span>{model.context.length} atoms</span>
-            </header>
-            {model.context.map((atom) => (
-              <TrajectoryRow
-                depth={0}
-                key={atom.id}
-                onActivate={() => onSelect(atom.event.id, atom.atomId)}
-                row={atom}
-                selected={atom.id === selectedTrajectoryAtomId}
-                showTurn={false}
-              />
-            ))}
-          </section>
-        ) : null}
-        {model.turns.map((turn) => {
+        {display.turns.map((turn) => {
           const isExpanded = expandedTurns.has(turn.turn);
           const loopRow = loopRowForTurn(turn);
           return (
@@ -3105,6 +3092,25 @@ const TrajectoryView = memo(function TrajectoryView({
             </section>
           );
         })}
+        {/* Oldest block last: the context atoms are the run's preamble. */}
+        {display.context.length ? (
+          <section className="trajectory-turn trajectory-context">
+            <header>
+              <strong>RUN CONTEXT</strong>
+              <span>{display.context.length} atoms</span>
+            </header>
+            {display.context.map((atom) => (
+              <TrajectoryRow
+                depth={0}
+                key={atom.id}
+                onActivate={() => onSelect(atom.event.id, atom.atomId)}
+                row={atom}
+                selected={atom.id === selectedTrajectoryAtomId}
+                showTurn={false}
+              />
+            ))}
+          </section>
+        ) : null}
       </div>
     </section>
   );
@@ -3114,6 +3120,7 @@ const ReplayFooter = memo(function ReplayFooter({
   events,
   cursor,
   live,
+  liveRun,
   playing,
   speed,
   onSeek,
@@ -3125,6 +3132,8 @@ const ReplayFooter = memo(function ReplayFooter({
   events: TraceEvent[];
   cursor: number;
   live: boolean;
+  /** Whether any run is executing, i.e. whether Live has somewhere to go. */
+  liveRun: boolean;
   playing: boolean;
   speed: number;
   onSeek: (cursor: number) => void;
@@ -3206,7 +3215,23 @@ const ReplayFooter = memo(function ReplayFooter({
           variant="playback"
           size="playback"
           className={cn("live-button", live && "is-live")}
-          aria-label="跟随实时事件"
+          // The footer mirrors the run state: live only while the open run is
+          // executing, and otherwise a jump to the run that *is* — which is
+          // what makes the control usable after a resumed run appears.
+          aria-label={
+            live
+              ? "跟随实时事件"
+              : liveRun
+                ? "跳到正在执行的运行"
+                : "回到最新运行"
+          }
+          title={
+            live
+              ? "正在跟随执行中的消息"
+              : liveRun
+                ? "跳转并跟随正在执行的消息"
+                : "没有正在执行的消息，回到最新运行"
+          }
           aria-pressed={live}
           onClick={onExit}
         >
@@ -4700,15 +4725,22 @@ export default function App() {
 
   /*
    * "Live" means "follow the execution I am looking at". When the open run is
-   * itself executing, resuming must stay on it (and jump to its newest
-   * event); only a finished selection falls back to the newest session.
-   * Either way the atom selection is cleared, which is what puts the canvas
-   * pulse back on the executing atom.
+   * itself live, resuming must stay on it (and jump to its newest event);
+   * otherwise it has to land on the run that is executing right now — not on
+   * `sessions[0]`, which is the newest *start* and therefore never a resumed
+   * run, so a Live click used to dead-end on another finished run while the
+   * executing one kept running. Either way the atom selection is cleared,
+   * which is what puts the canvas pulse back on the executing atom.
    */
   const handleReplayExit = useCallback(() => {
     startTransition(() => {
+      const liveSession = sessions.find((session) =>
+        liveSessionKeys.has(session.key),
+      );
       const targetSession =
-        activeSession && promptExecuting ? activeSession : sessions[0];
+        activeSession && promptExecuting
+          ? activeSession
+          : liveSession ?? sessions[0];
       const targetPromptRuns =
         promptRunsBySession.get(targetSession?.key || "") ?? [];
       const targetPromptRun = targetPromptRuns.at(-1);
@@ -4727,6 +4759,7 @@ export default function App() {
   }, [
     activeEvents,
     activeSession,
+    liveSessionKeys,
     promptExecuting,
     promptRunsBySession,
     sessions,
@@ -5073,6 +5106,7 @@ export default function App() {
             events={activeEvents}
             cursor={replayCursor}
             live={liveActive}
+            liveRun={liveSessionKeys.size > 0}
             playing={playing}
             speed={replaySpeed}
             onSeek={handleReplaySeek}

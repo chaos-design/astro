@@ -77,7 +77,8 @@ ASTRO 只观察智能体执行，不负责调用模型、调度工具、批准�
   `0.5x`、`1x`、`2x`、`4x` 播放速度。
 - 提供两个互补视图：
   - **Execution Topology：**展示运行时语义结构。
-  - **Run Trajectory：**展示按时间排序的真实步骤与轮次。
+  - **Run Trajectory：**按倒序展示真实步骤与轮次，正在执行的原子排在最前，运行前置
+    （RUN CONTEXT）排在最后。
 - 基础拓扑包含 6 个领域、27 个稳定原子和 28 条定义连线。
 - 根据 `SubagentStart` 和 `SubagentStop` 动态生成 `Subagent Execute` 层。
 - 基于 Web Worker 的正交连线路由，支持避障、交叉惩罚、诊断和主线程降级。

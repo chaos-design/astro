@@ -6,6 +6,7 @@ import {
   buildTrajectoryMapSlots,
   buildTrajectoryModel,
   getTrajectorySegmentPosition,
+  orderTrajectoryNewestFirst,
 } from "../src/lib/trajectory-model.ts";
 import {
   buildHarnessFlow,
@@ -44,6 +45,43 @@ test("uses explicit turn metadata before inferring loop boundaries", () => {
 
   assert.equal(turnByEventId.get(search?.id || ""), 2);
   assert.equal(turnByEventId.get(testRun?.id || ""), 3);
+});
+
+test("orders the rendered trajectory newest first without touching the model", () => {
+  const events = createDemoEvents(2_000_000_000_000);
+  const projection = projectTraceEvents(events, "codex");
+  const topology = buildHarnessFlow(events, "codex");
+  const model = buildTrajectoryModel(events, projection.events, topology.nodes);
+
+  const display = orderTrajectoryNewestFirst(model);
+
+  // The newest turn leads, and its newest atom is the first row of the block:
+  // the executing atom is reachable without scrolling through the run.
+  assert.deepEqual(
+    display.turns.map((turn) => turn.turn),
+    [...model.turns].map((turn) => turn.turn).reverse(),
+  );
+  const newestTurn = model.turns.at(-1)!;
+  assert.deepEqual(
+    display.turns[0].atoms.map((atom) => atom.id),
+    [...newestTurn.atoms].map((atom) => atom.id).reverse(),
+  );
+  // The run preamble renders last, newest first.
+  assert.deepEqual(
+    display.context.map((atom) => atom.id),
+    [...model.context].map((atom) => atom.id).reverse(),
+  );
+  // The chronological model is what selection and "latest atom" lookups read.
+  assert.deepEqual(
+    model.turns.map((turn) => turn.turn),
+    [...model.turns.map((turn) => turn.turn)].sort((left, right) => left - right),
+  );
+  assert.deepEqual(
+    model.turns[0].atoms.map((atom) => atom.sequence),
+    [...model.turns[0].atoms.map((atom) => atom.sequence)].sort(
+      (left, right) => left - right,
+    ),
+  );
 });
 
 test("positions trajectory segments on distinct node slots", () => {
