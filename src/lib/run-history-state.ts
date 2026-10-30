@@ -227,6 +227,37 @@ export function isLiveRunStatus(status: string | undefined): boolean {
 }
 
 /**
+ * Keys of the sessions whose displayed message is still executing. RUN
+ * HISTORY uses this one set for three things that must agree: the `N LIVE`
+ * count, the live-only filter, and pinning executing rows to the top of the
+ * list. A session is live when its newest prompt is — the prompt inherits the
+ * session status, so the row and the thread always agree on what is running.
+ */
+export function collectLiveRunKeys(
+  sessions: readonly (RunDurationSource & { key: string })[],
+  promptRunsBySession: ReadonlyMap<
+    string,
+    readonly Pick<TracePromptRun, "status">[]
+  >,
+  now: number,
+  activeRunTimeoutMs = Number.POSITIVE_INFINITY,
+): Set<string> {
+  const live = new Set<string>();
+  for (const session of sessions) {
+    const { status } = getRunHistoryDisplayState(
+      session,
+      promptRunsBySession.get(session.key) ?? [],
+      now,
+      activeRunTimeoutMs,
+    );
+    if (isLiveRunStatus(status)) {
+      live.add(session.key);
+    }
+  }
+  return live;
+}
+
+/**
  * Keep only the loaded sessions whose key appears at least once in the live
  * list, preserving the list's original order. The live list is derived from
  * the *currently loaded* sessions, so filtering can never reach for more

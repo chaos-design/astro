@@ -63,6 +63,15 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   scrolling.
 - Selection styling outranks the live accent; a selected live row keeps its
   selection border.
+- Executing runs are pinned to the top of the list, ordered by their latest
+  activity, and stay inside the visible day window whatever their `start`
+  (`collectLiveRunKeys` → `selectVisibleRunHistory` / `pinLiveRunHistory`). A
+  session resumed today began yesterday; without the pin its new prompt would
+  sort below every run that merely started later, and with a one-day window it
+  would not be listed at all. Finished runs fall back to newest-first order.
+- The same live key set drives the pin, the day-window exemption, the `N LIVE`
+  count, and the live-only filter. Do not derive a second one — a row that is
+  pinned but not counted (or the reverse) reads as a bug.
 - Finished messages (`complete` / `failed` / `terminated`) do not auto-locate
   the last atom: `getPromptAtomSelection` returns `null` for every non-live
   status, and only an explicit atom pick locates the topology.

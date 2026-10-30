@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  collectLiveRunKeys,
   ensureExpandedRun,
   filterSessionsByLiveKeys,
   getPromptAtomSelection,
@@ -16,6 +17,7 @@ import {
   RUN_HISTORY_WAITING_STALE_AFTER_MS,
   toggleExpandedRun,
 } from "../src/lib/run-history-state.ts";
+import type { TraceRunStatus } from "../src/types/trace.ts";
 
 test("derives the parent row status from the last Prompt run", () => {
   const cases = [
@@ -233,6 +235,42 @@ test("filters sessions down to the live ones without reordering", () => {
   // "show everything" — the panel distinguishes that from no history.
   assert.deepEqual(filterSessionsByLiveKeys(sessions, []), []);
   assert.deepEqual(filterSessionsByLiveKeys([], ["run-a"]), []);
+});
+
+test("collects the sessions whose message is executing", () => {
+  const now = Date.parse("2026-10-09T13:00:00");
+  const run = (key: string, status: string, startedAt: number) => ({
+    key,
+    status: status as TraceRunStatus,
+    start: startedAt,
+    end: startedAt,
+    duration: 0,
+  });
+  const sessions = [
+    run("executing", "active", now - 60_000),
+    // The session closed, but its newest prompt went back to waiting: the
+    // prompt status is what the row shows, so the row is live too.
+    run("reopened", "complete", now - 120_000),
+    // The opposite case: an active session whose latest prompt finished is a
+    // finished row, not a live one.
+    run("settled", "active", now - 180_000),
+    run("failed", "failed", now - 240_000),
+  ];
+  const promptRuns = new Map([
+    ["reopened", [{ status: "waiting" as const }]],
+    ["settled", [{ status: "complete" as const }]],
+  ]);
+
+  assert.deepEqual(
+    [...collectLiveRunKeys(sessions, promptRuns, now)],
+    ["executing", "reopened"],
+  );
+  // A live run past the display timeout has already been reported as
+  // terminated, so it must not stay pinned to the top of the list.
+  assert.deepEqual(
+    [...collectLiveRunKeys(sessions, promptRuns, now + 60_000 * 60, 60_000)],
+    [],
+  );
 });
 
 test("quantizes timestamps down to the start of their bucket", () => {

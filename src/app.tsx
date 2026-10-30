@@ -180,6 +180,7 @@ import {
   canLoadMoreRunHistoryDays,
   filterSessionsByAgent,
   nextRunHistoryVisibleDays,
+  pinLiveRunHistory,
   selectVisibleRunHistory,
 } from "./lib/run-history-window";
 import { atomLevel, projectTraceEvents } from "./lib/atomic-projection";
@@ -206,6 +207,7 @@ import {
   toggleAtomSelection,
 } from "./lib/atom-selection";
 import {
+  collectLiveRunKeys,
   ensureExpandedRun,
   filterSessionsByLiveKeys,
   getPromptAtomSelection,
@@ -1294,8 +1296,26 @@ const RunHistoryItem = memo(function RunHistoryItem({
 }) {
   // Newest prompt on top: the thread renders in reverse chronological
   // order while selection, live marking, and labels keep using the
-  // original index order.
-  const displayPromptRuns = [...promptRuns].reverse();
+  // original index order. The executing prompt outranks chronology — a
+  // resumed thread can leave an older prompt running while later ones already
+  // finished — so the message being watched is always the first row.
+  const promptRows = promptRuns.map((promptRun) => {
+    const displayState = getSessionDisplayState(
+      promptRun,
+      now,
+      appTimings.activeRunTimeoutMs,
+    );
+    return {
+      displayState,
+      promptLive: !isDemo && isLiveRunStatus(displayState.status),
+      promptRun,
+    };
+  });
+  const reversedPromptRows = [...promptRows].reverse();
+  const displayPromptRows = [
+    ...reversedPromptRows.filter((row) => row.promptLive),
+    ...reversedPromptRows.filter((row) => !row.promptLive),
+  ];
   const firstPromptRun = promptRuns[0];
   const hasPromptThread = promptRuns.length > 1;
   const parentSelected = session.key === activeKey && !hasPromptThread;
@@ -1403,25 +1423,18 @@ const RunHistoryItem = memo(function RunHistoryItem({
           }}
         >
           <ol className="run-history__prompts">
-            {displayPromptRuns.map((promptRun) => {
+            {displayPromptRows.map(({ displayState, promptLive, promptRun }) => {
               const promptSelected = promptRun.key === activePromptRunKey;
-              const promptDisplayState = getSessionDisplayState(
-                promptRun,
-                now,
-                appTimings.activeRunTimeoutMs,
-              );
               const roleLabel =
                 promptRun.role === "initial"
                   ? "INITIAL"
                   : `FOLLOW-UP ${String(promptRun.index).padStart(2, "0")}`;
               const promptCode = `${roleLabel} · ${promptRun.prompt.id}`;
-              const promptLive =
-                !isDemo && isLiveRunStatus(promptDisplayState.status);
               const promptLiveStatus = promptLive
-                ? promptDisplayState.status
+                ? displayState.status
                 : undefined;
               const promptFreshness = getRunFreshness(
-                isDemo ? undefined : promptDisplayState.status,
+                isDemo ? undefined : displayState.status,
                 promptRun.end,
                 now,
               );
@@ -1434,7 +1447,7 @@ const RunHistoryItem = memo(function RunHistoryItem({
               const promptDetails: RunHistoryRowDetails = {
                 code: promptCode,
                 cwd: promptRun.cwd,
-                duration: promptDisplayState.duration,
+                duration: displayState.duration,
                 extraLabel: "EVENTS",
                 extraValue: promptRun.events.length,
                 fullCode: promptCode,
@@ -1443,7 +1456,7 @@ const RunHistoryItem = memo(function RunHistoryItem({
                   : null,
                 live: promptLive,
                 reason: describeRunReason(
-                  promptDisplayState.status,
+                  displayState.status,
                   promptTerminal.reason,
                   promptTerminal.detail,
                 ),
@@ -1452,7 +1465,7 @@ const RunHistoryItem = memo(function RunHistoryItem({
                   : undefined,
                 source: promptRun.source,
                 start: promptRun.start,
-                status: isDemo ? "demo" : promptDisplayState.status,
+                status: isDemo ? "demo" : displayState.status,
                 title: promptRun.title,
               };
               return (
@@ -1586,6 +1599,7 @@ const RunHistory = memo(function RunHistory({
   gitInfo,
   initialLoading,
   isDemo,
+  liveKeys,
   now,
   promptRunsBySession,
   onLoadMore,
@@ -1595,6 +1609,8 @@ const RunHistory = memo(function RunHistory({
   activeKey: string;
   activePromptRunKey: string;
   isDemo: boolean;
+  /** Keys of the executing runs; these rows are pinned to the top. */
+  liveKeys: ReadonlySet<string>;
   now: number;
   promptRunsBySession: ReadonlyMap<string, TracePromptRun[]>;
   canLoadMore: boolean;
@@ -1632,35 +1648,24 @@ const RunHistory = memo(function RunHistory({
   const activePromptCount =
     promptRunsBySession.get(activeKey)?.length ?? 0;
 
-  // Live summary for the header chip. Parent display states are cheap
-  // arithmetic, and deriving them here keeps `RunHistoryRows` free of a
-  // second pass while leaving the row memo boundary intact.
+  // Live summary for the header chip, derived from the same key set the app
+  // uses to keep executing runs inside the window and pin them on top — one
+  // definition of "executing" for the list, the chip, and the filter. Narrowed
+  // to the rows actually rendered, so the chip can never point at a row that
+  // is not in this list, and ordered like the list (pinned run first).
   const liveSummary = useMemo(() => {
-    if (isDemo) {
+    if (isDemo || liveKeys.size === 0) {
       return { count: 0, firstLiveKey: "", liveKeys: [] as string[] };
     }
-    let count = 0;
-    let firstLiveKey = "";
-    const liveKeys: string[] = [];
-    for (const session of sessions) {
-      const promptRuns = promptRunsBySession.get(session.key) ?? [];
-      const { status } = getRunHistoryDisplayState(
-        session,
-        promptRuns,
-        now,
-        appTimings.activeRunTimeoutMs,
-      );
-      if (!isLiveRunStatus(status)) {
-        continue;
-      }
-      count += 1;
-      liveKeys.push(session.key);
-      if (!firstLiveKey) {
-        firstLiveKey = session.key;
-      }
-    }
-    return { count, firstLiveKey, liveKeys };
-  }, [isDemo, now, promptRunsBySession, sessions]);
+    const live = sessions
+      .filter((session) => liveKeys.has(session.key))
+      .map((session) => session.key);
+    return {
+      count: live.length,
+      firstLiveKey: live[0] ?? "",
+      liveKeys: live,
+    };
+  }, [isDemo, liveKeys, sessions]);
 
   // Filtering only ever narrows the *loaded* list, so switching the filter
   // off or loading more days can never lose a live row.
@@ -3956,15 +3961,45 @@ export default function App() {
     () => new Set(atomPlatformOptions.map((platform) => platform.source)),
     [],
   );
-  // Runs shown in RUN HISTORY: narrowed to the selected agent, then to the
-  // visible day window (most recent N days). Both are derived at render time.
+  // RUN HISTORY is narrowed to the selected agent first; the day window and
+  // the live pinning below are applied to that set.
   const filteredSessions = useMemo(
     () => filterSessionsByAgent(sessions, agentId, configuredSources),
     [agentId, configuredSources, sessions],
   );
+  /**
+   * Sessions whose message is executing right now. Derived once here because
+   * three things must agree on it: keeping the live run inside the visible
+   * window, pinning it to the top of the list, and the `N LIVE` chip / filter
+   * the panel derives from the same set.
+   */
+  const liveSessionKeys = useMemo(() => {
+    if (isDemo) {
+      return new Set<string>();
+    }
+    return collectLiveRunKeys(
+      filteredSessions,
+      promptRunsBySession,
+      now,
+      appTimings.activeRunTimeoutMs,
+    );
+  }, [filteredSessions, isDemo, now, promptRunsBySession]);
+  // Runs shown in RUN HISTORY: narrowed to the selected agent, then to the
+  // visible day window (most recent N days), then the executing run is pinned
+  // to the top — a resumed session is live *now*, even though it started
+  // earlier. Everything is derived at render time.
   const visibleSessions = useMemo(
-    () => selectVisibleRunHistory(filteredSessions, now, runHistoryDays),
-    [filteredSessions, now, runHistoryDays],
+    () =>
+      pinLiveRunHistory(
+        selectVisibleRunHistory(
+          filteredSessions,
+          now,
+          runHistoryDays,
+          liveSessionKeys,
+        ),
+        liveSessionKeys,
+      ),
+    [filteredSessions, liveSessionKeys, now, runHistoryDays],
   );
   const canLoadMoreRunHistory =
     canLoadMoreRunHistoryDays(filteredSessions, now, runHistoryDays);
@@ -4900,6 +4935,7 @@ export default function App() {
               activePromptRunKey={activePromptRun?.key || ""}
               gitInfo={gitInfo}
               isDemo={isDemo}
+              liveKeys={liveSessionKeys}
               now={now}
               promptRunsBySession={promptRunsBySession}
               canLoadMore={canLoadMoreRunHistory}

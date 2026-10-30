@@ -77,6 +77,9 @@ schedule tools, approve permissions, or alter agent decisions.
   answers with identical text.
 - Expandable prompt-run history within each session. `INITIAL` and numbered
   `FOLLOW-UP` rows isolate one prompt and all events before the next prompt.
+- The executing message is pinned to the top of the run list, ordered by its
+  latest activity. A resumed session keeps its original start, so its new
+  prompt would otherwise sort below every run that merely started later.
 - Active session duration refreshes every second. It is capped at the shared
   24-hour default and becomes `terminated` when that limit is reached.
 - Historical replay with restart, previous, play/pause, next, seek, and

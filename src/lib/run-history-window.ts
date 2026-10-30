@@ -57,17 +57,53 @@ export function getRunHistoryWindowStart(
   );
 }
 
+const NO_LIVE_RUNS: ReadonlySet<string> = new Set();
+
 /**
  * The runs to render: sessions that started within the window, newest first
  * (input is already sorted that way).
+ *
+ * A run that is still executing is always visible, window or not. A resumed
+ * session keeps the `start` of its first prompt, so once the clock rolls past
+ * midnight (or the configured day count) the one run the user is actually
+ * watching would otherwise drop out of the list mid-execution.
  */
 export function selectVisibleRunHistory(
   sessions: readonly TraceSession[],
   now: number,
   visibleDays: number,
+  liveKeys: ReadonlySet<string> = NO_LIVE_RUNS,
 ): TraceSession[] {
   const from = getRunHistoryWindowStart(sessions, now, visibleDays);
-  return sessions.filter((session) => session.start >= from);
+  return sessions.filter(
+    (session) => session.start >= from || liveKeys.has(session.key),
+  );
+}
+
+/**
+ * Pin the executing messages to the top of RUN HISTORY. Ordering strictly by
+ * `start` buries a resumed run: the session began hours or days ago, so the
+ * prompt that is executing *right now* would sort below every session that
+ * merely started later. Pinned rows are ordered by their latest activity
+ * (`end` — the moment the new prompt arrived), so the run that just received
+ * a message is the first row; finished rows keep their newest-first order
+ * underneath.
+ */
+export function pinLiveRunHistory<
+  T extends { key: string; start: number; end: number },
+>(sessions: readonly T[], liveKeys: ReadonlySet<string>): T[] {
+  if (liveKeys.size === 0) {
+    return [...sessions];
+  }
+  const live: T[] = [];
+  const finished: T[] = [];
+  for (const session of sessions) {
+    (liveKeys.has(session.key) ? live : finished).push(session);
+  }
+  live.sort(
+    (left, right) => right.end - left.end || right.start - left.start,
+  );
+  return [...live, ...finished];
 }
 
 /**

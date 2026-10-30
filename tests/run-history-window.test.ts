@@ -8,6 +8,7 @@ import {
   getRunHistoryAnchorDayStart,
   getRunHistoryWindowStart,
   nextRunHistoryVisibleDays,
+  pinLiveRunHistory,
   selectVisibleRunHistory,
 } from "../src/lib/run-history-window.ts";
 import type { TraceSession } from "../src/types/trace.ts";
@@ -80,6 +81,65 @@ test("selects only sessions inside the visible window", () => {
   assert.equal(visible[0].start, Date.parse("2026-10-09T08:00:00"));
   const twoDays = selectVisibleRunHistory(sessions, NOW, 2);
   assert.equal(twoDays.length, 2);
+});
+
+test("keeps an executing run visible outside the day window", () => {
+  const today = session(Date.parse("2026-10-09T08:00:00"));
+  // A resumed session keeps the start of its first prompt, so the day window
+  // would drop the run that is executing right now.
+  const resumed = session(Date.parse("2026-10-06T08:00:00"));
+
+  assert.deepEqual(
+    selectVisibleRunHistory([today, resumed], NOW, 1).map(
+      (entry) => entry.key,
+    ),
+    [today.key],
+  );
+  assert.deepEqual(
+    selectVisibleRunHistory(
+      [today, resumed],
+      NOW,
+      1,
+      new Set([resumed.key]),
+    ).map((entry) => entry.key),
+    [today.key, resumed.key],
+  );
+});
+
+test("pins the executing run above runs that started later", () => {
+  const resumed = session(Date.parse("2026-10-09T08:00:00"));
+  const later = session(Date.parse("2026-10-09T10:00:00"));
+  const newest = session(Date.parse("2026-10-09T11:30:00"));
+  // The resumed session received a new prompt at 13:00, so it is live now.
+  resumed.end = Date.parse("2026-10-09T13:00:00");
+
+  assert.deepEqual(
+    pinLiveRunHistory([newest, later, resumed], new Set([resumed.key])).map(
+      (entry) => entry.key,
+    ),
+    [resumed.key, newest.key, later.key],
+  );
+
+  // Several executing runs: the one that received the latest message leads.
+  const other = session(Date.parse("2026-10-05T08:00:00"));
+  other.end = Date.parse("2026-10-09T14:00:00");
+  assert.deepEqual(
+    pinLiveRunHistory(
+      [resumed, other, newest],
+      new Set([resumed.key, other.key]),
+    ).map((entry) => entry.key),
+    [other.key, resumed.key, newest.key],
+  );
+});
+
+test("keeps the newest-first order while nothing is executing", () => {
+  const first = session(Date.parse("2026-10-09T11:00:00"));
+  const second = session(Date.parse("2026-10-09T10:00:00"));
+
+  assert.deepEqual(
+    pinLiveRunHistory([first, second], new Set()).map((entry) => entry.key),
+    [first.key, second.key],
+  );
 });
 
 test("reports whether earlier days remain", () => {
