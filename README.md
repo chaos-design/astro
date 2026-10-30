@@ -1022,6 +1022,16 @@ prompt count, and an abbreviated session ID. A session with multiple prompts
 expands into `INITIAL` and numbered `FOLLOW-UP` rows. Each child row shows its
 own title, status, start time, duration, event count, and prompt event ID.
 
+Run History is scoped to the selected agent and then windowed by hours: three
+hours by default, changeable in Settings to 6, 12, or 24 hours or seven days.
+The window ends at the newest message, so opening the console the next morning
+still shows the session you left; executing messages ignore the window and stay
+pinned on top. `LOAD EARLIER` at the bottom doubles the window. The `N LIVE` chip
+in the panel header switches to the Live view, which lists every message of the
+selected agent and locates the one that is executing — including a prompt sent
+into a thread that started days ago. The GitHub icon in the header opens the
+project repository.
+
 Selecting a child scopes topology, trajectory, log, inspector, replay, and
 export to the interval beginning at that `UserPromptSubmit` and ending before
 the next prompt. Selecting the parent opens the latest prompt run. The active
@@ -1057,9 +1067,10 @@ result again from timestamps and current time.
 #### Global history search
 
 Use the header search control or `Cmd/Ctrl + K` to search all History data
-already loaded in the browser. The default range is the last three hours;
-presets cover 3, 6, 12, and 24 hours, today, yesterday, and seven days. Agent,
-run-status, event-category, and date filters can be combined.
+already loaded in the browser. The dialog opens on the default range from
+Settings — the last three hours unless changed; presets cover 3, 6, 12, and 24
+hours, today, yesterday, and seven days. Agent, run-status, event-category, and
+date filters can be combined.
 
 Search results include their Session and Prompt context. Selecting one switches
 the platform when supported, selects the exact run and event, exits replay,
@@ -1115,7 +1126,9 @@ transition, and selected inspector event.
 - Clear removes browser imports and calls `DELETE /api/events` outside demo
   mode.
 - Current selection is encoded as
-  `?source=<source>&session=<sessionId>&event=<eventId>`.
+  `?agent=<agent>&session=<sessionId>&event=<eventId>`; `agent` mirrors the
+  dropdown (a configured agent id or `others`), and legacy `?source=` links
+  still resolve.
 
 ## Configuration
 

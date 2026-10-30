@@ -28,19 +28,32 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   the canonical recorder.
 - `scripts/`: installation, migration, validation, and packaging scripts.
 - `tests/`: Node test runner suites.
-- `docs/`: English and Chinese architecture, protocol, operation, and user docs.
+- `site/`: the docs site; it reads `docs/*.md` at build time, so a new doc also
+  needs a catalog entry in `site/src/docs.ts`.
+- `docs/`: English and Chinese architecture, protocol, operation, user, and
+  convention docs. `docs/conventions-*.md` is the readable companion to this
+  file; keep the two in step.
 
 ## Conventions
 
 - Frontend filenames are lowercase and use hyphens.
 - Functions use lower camel case.
 - Follow existing TypeScript types and local shadcn/ui patterns.
-- Use Lucide icons for interface actions when an icon exists.
+- Use Lucide icons for interface actions when an icon exists; brand glyphs are
+  inline SVG components.
 - Keep raw `TraceEvent` data immutable. UI status, duration, topology, and
   trajectory state must be derived without rewriting persisted events.
 - Keep platform-neutral behavior in shared domain helpers. Platform-specific
   mappings belong in `src/config/atom-platforms.ts` or the relevant adapter.
+- One definition per concept: exception classification lives only in
+  `src/lib/exception-events.ts`, RUN HISTORY liveness only in
+  `src/lib/run-history-state.ts`, and the visible time window only in
+  `src/lib/run-history-window.ts`. Do not grow a second list of failure or live
+  event names.
 - Treat unrelated working-tree changes as user-owned and do not revert them.
+- A behavior change is only complete when `docs/user-manual-*.md`,
+  `docs/conventions-*.md`, this file, `docs/index.md`, and `site/src/docs.ts`
+  agree with it.
 
 ## Run Timeout Invariant
 
@@ -68,8 +81,8 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   recorder leaves its last session `active` forever, so counting status alone
   filled `N LIVE` with hours-dead sessions and pushed the one message that was
   actually executing out of the picture. The row still reports the recorder
-  status (RUNNING capsule + STALE marker); pin, count, and filter use the
-  fresh set.
+  status (RUNNING capsule + STALE marker); pin, count, and view use the fresh
+  set.
 - The live index is machine-wide: `collectLiveRunKeys` runs over every session,
   not the agent-scoped list, and live runs of other agents join the history
   pool. The dropdown scopes the finished history; it must never hide the
@@ -81,33 +94,17 @@ use Node.js ES modules or CommonJS according to their existing file extension.
 - Selection styling outranks the live accent; a selected live row keeps its
   selection border.
 - Executing runs are pinned to the top of the list, ordered by their latest
-  activity, and stay inside the visible day window whatever their `start`
+  activity, and stay inside the visible time window whatever their `start`
   (`collectLiveRunKeys` → `selectVisibleRunHistory` / `pinLiveRunHistory`). A
-  session resumed today began yesterday; without the pin its new prompt would
-  sort below every run that merely started later, and with a one-day window it
-  would not be listed at all. Finished runs fall back to newest-first order.
-- The same live key set drives the pin, the day-window exemption, the `N LIVE`
-  count, and the live-only filter. Do not derive a second one — a row that is
-  pinned but not counted (or the reverse) reads as a bug.
-- The live-only filter is a persisted preference (`ASTROX_RUN_HISTORY_LIVE_FILTER`)
-  that defaults to armed: while armed, the list shows every live run (live rows
-  are exempt from the day window) and cancels back to the windowed list when
-  the user turns it off. The `N LIVE` chip always renders — `0 LIVE` included,
-  in an idle (non-pulsing) variant — because the arm is a preference, not a
-  badge. Zero live rows must not clear the filter: armed + zero shows the
-  panel's "没有正在执行的消息" empty state, and the stored choice re-arms when a
-  run appears. Demo traces are synthetic and never live, so the demo list
-  ignores the arm instead of rendering empty.
-- While the filter is armed every live thread renders expanded, so each
-  executing Prompt is a row of its own — the quick index for "the message I am
-  waiting on" — instead of a child hidden behind a collapsed thread. Non-live
-  history stays lazy: only live rows are rendered while armed, and the
-  windowed list (with its load-earlier pagination) appears once the filter is
-  switched off.
+  session resumed today began days ago; without the pin its new prompt would
+  sort below every run that merely started later, and the window would drop it
+  mid-execution. Finished runs fall back to newest-first order.
+- The same live key set drives the pin, the window exemption, the `N LIVE`
+  count, and the Live view. Do not derive a second one — a row that is pinned
+  but not counted (or the reverse) reads as a bug.
 - "Running again" means a historical session that received a new prompt, even
-  days later: it must land in that live key set so the `N LIVE` filter can
-  find it. Its clock (see Run Timeout Invariant) is the new prompt's, not the
-  session's.
+  days later: it must land in that live key set so `N LIVE` can find it. Its
+  clock (see Run Timeout Invariant) is the new prompt's, not the session's.
 - The footer Live button is the same state seen from the bottom bar:
   `isPromptExecuting` delegates to `isLiveRunStatus` (so `waiting` keeps Live
   available), the button is lit only while the open run is executing *and* the
@@ -117,6 +114,78 @@ use Node.js ES modules or CommonJS according to their existing file extension.
 - Finished messages (`complete` / `failed` / `terminated`) do not auto-locate
   the last atom: `getPromptAtomSelection` returns `null` for every non-live
   status, and only an explicit atom pick locates the topology.
+
+## Run History Window
+
+- The window is measured in **hours**, never calendar days: a range must mean
+  the same span at 09:00 and at 23:00. `src/lib/run-history-window.ts` is the
+  only module that computes it.
+- Its length is the persisted preference `ASTROX_HISTORY_RANGE`
+  (`3h` / `6h` / `12h` / `24h` / `7d`, default `3h`), converted with
+  `getHistoryRangeHours`. The same value seeds the global search dialog.
+- The window ends at the newest message (`getRunHistoryAnchorTime`), not at
+  `Date.now()`. Anchoring on the wall clock left the panel empty on the first
+  login of a new day, when the only thing the user wanted was the session they
+  had been running before.
+- Live runs are exempt from the window (the `liveKeys` argument); a resumed
+  session's `start` is older than the range by definition.
+- "Load earlier" **doubles** the window (`nextRunHistoryVisibleHours`) instead of
+  advancing one day at a time, and disappears when `canLoadMoreRunHistory` is
+  false. Switching agent or changing the default range resets the width to the
+  preference.
+- The empty state names the configured range, so a short window never reads as
+  "no history at all".
+
+## Live View
+
+- The `N LIVE` chip is a count *and* a persisted toggle
+  (`ASTROX_RUN_HISTORY_LIVE_FILTER`, default on). It always renders —
+  `0 LIVE` included, in an idle (non-pulsing) variant — because the state is a
+  preference, not a badge.
+- Armed, RUN HISTORY lists **every message of the selected agent**: the time
+  window is dropped, `LOAD EARLIER` disappears, and live threads render
+  expanded so each executing Prompt is a row of its own. This is the view that
+  answers "what did I just send, and where is it".
+- Disarmed, the list returns to the windowed rendering.
+- A *new* key entering the live set means a message was just sent: the panel
+  expands it and scrolls it into view without a second click. The previous live
+  set is held in a ref, not in state — state there would re-render on every
+  live batch.
+- Zero live rows must not clear the arm: `0 LIVE` with the Live view armed still
+  lists the agent's history, and the stored choice survives reloads. Demo
+  traces are synthetic and never live, so the demo list ignores the arm
+  instead of pretending the filter is active.
+- Live runs of other agents stay in the list while armed (the history pool adds
+  them); the Live view is agent-scoped for *finished* history only.
+
+## Settings And Preferences
+
+- The settings dialog (`src/components/settings-dialog.tsx`) edits
+  browser-local preferences only: immediate effect, no Apply button, no server
+  round trip.
+- Every key is declared in `storageKeys` with the `ASTROX_` prefix and resolved
+  through `readStorageValue` / `readStorageBoolean`; an invalid stored value
+  falls back to `appDefaults` and must never block rendering.
+- `appDefaults.historyRange` is the single default for both the RUN HISTORY
+  window and the search dialog's initial range — do not add a second
+  "default range" constant.
+- A new preference updates, in one change: `storageKeys`, `appDefaults`, the
+  dialog, the §15.1 table in `docs/user-manual-*.md`, and
+  `tests/app-config.test.ts`.
+
+## Header Chrome
+
+- The GitHub entry is an anchor whose href comes from `appRepository.url` in
+  `src/config/app-config.ts`; it opens in a new tab with
+  `rel="noreferrer noopener"`. Never hardcode the URL in a component.
+- Header icon controls are 28 px (`size="console-icon"`) with the same height,
+  radius, and quiet surface as the theme switcher, and they stay visible when
+  the nav collapses on narrow screens.
+- Brand glyphs are inline SVG components (`src/components/repo-link.tsx`).
+  Lucide no longer ships brand icons, and a single path is not worth a
+  dependency.
+- Every icon control has an `aria-label` and a tooltip that names the action.
+
 
 ## Run Trajectory Order
 
@@ -231,8 +300,18 @@ pnpm typecheck
 pnpm build
 ```
 
+`site/` has its own tsconfig and is not covered by the root typecheck; verify a
+docs change with `pnpm build:docs` or
+`./node_modules/.bin/tsc -p site/tsconfig.json --noEmit`.
+
 The repository currently has no separate lint script. Use `git diff --check`
 for whitespace validation and keep public helpers covered by focused tests.
+
+For interface work, verify against an isolated data root
+(`ASTRO_HOME=/tmp/astro-check ASTRO_PORT=4401 node server/server.mjs`) with three
+kinds of data: finished messages inside the window, older messages outside it,
+and one executing message. Then `POST /api/events` and confirm the new prompt is
+located automatically.
 
 When capture or portable plugin sources change, also run:
 

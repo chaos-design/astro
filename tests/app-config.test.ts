@@ -5,8 +5,13 @@ import test from "node:test";
 import {
   appDefaults,
   appLayout,
+  appRepository,
   appTimings,
   appVersion,
+  defaultHistoryRange,
+  getHistoryRangeHours,
+  historyRangeOptions,
+  isHistoryRangeId,
   shouldShowDemo,
   storageKeys,
 } from "../src/config/app-config.ts";
@@ -21,6 +26,37 @@ test("keeps user preference defaults and storage keys in app config", () => {
   assert.ok(
     Object.values(storageKeys).every((key) => key.startsWith("ASTROX_")),
   );
+});
+
+test("defaults the loaded message range to the last three hours", () => {
+  // The preference is shared by RUN HISTORY and the search dialog, so its
+  // default is asserted once, here.
+  assert.equal(appDefaults.historyRange, "3h");
+  assert.equal(defaultHistoryRange, "3h");
+  assert.equal(getHistoryRangeHours("3h"), 3);
+  assert.equal(storageKeys.historyRange, "ASTROX_HISTORY_RANGE");
+});
+
+test("lists history ranges in ascending order with matching spans", () => {
+  const ids = historyRangeOptions.map((option) => option.id);
+  assert.deepEqual(ids, ["3h", "6h", "12h", "24h", "7d"]);
+
+  const hours = historyRangeOptions.map((option) => option.hours);
+  assert.deepEqual([...hours].sort((left, right) => left - right), hours);
+  assert.ok(
+    historyRangeOptions.every((option) => option.label && option.shortLabel),
+  );
+  assert.equal(getHistoryRangeHours("7d"), 168);
+
+  assert.equal(isHistoryRangeId("3h"), true);
+  assert.equal(isHistoryRangeId("9h"), false);
+  assert.equal(isHistoryRangeId(null), false);
+});
+
+test("points the header link at the project repository", () => {
+  assert.equal(appRepository.url, "https://github.com/chaos-design/astro");
+  assert.match(appRepository.url, /^https:\/\/github\.com\/[^/]+\/[^/]+$/);
+  assert.ok(appRepository.title.length > 0);
 });
 
 test("keeps the header version in sync with the release version", () => {

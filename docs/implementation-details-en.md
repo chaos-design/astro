@@ -162,23 +162,49 @@ changing domain geometry, node positions, or orthogonal routes.
 The executing message is marked in three places so locating it never depends on
 scrolling:
 
-- the panel header keeps an `N LIVE` chip: clicking it scrolls the first live
-  message to the middle of the list **and filters the loaded list down to the
-  live runs**; clicking again clears the filter. The armed state reads as a
-  solid status border (`.is-filtering`). The filter only ever narrows the
-  *loaded* sessions — it never loads more history. The live set is derived
-  from the currently loaded sessions via `filterSessionsByLiveKeys`, so when
-  every live run settles the chip hides and the filter drops by itself;
+- the panel header keeps an `N LIVE` chip that is both the count and the Live
+  view toggle (persisted in `ASTROX_RUN_HISTORY_LIVE_FILTER`, on by default).
+  Armed, the list shows every message of the selected agent — the time window is
+  dropped — with live runs pinned, expanded and scrolled into view; a message
+  that newly starts executing is located automatically by diffing the live set.
+  Disarmed, the list returns to the default window. The chip always renders,
+  using an idle variant for `0 LIVE`;
 - a live row draws an `inset 2px` status accent, purple for `active` and amber
   for `waiting`;
 - the tag row gains a pulsing `RUNNING` / `WAITING` capsule next to `STATUS`.
 
-`isLiveRunStatus` owns the live definition (`active` and `waiting`). Selection
-wins over the accent, so a selected live row keeps its selection border.
-Finished messages (`complete` / `failed` / `terminated`) no longer locate the
-last atom automatically: `getPromptAtomSelection` returns `null` for every
-non-live status, leaving the topology unselected until an atom is picked by
-hand.
+`isLiveRunStatus` owns the live definition (`active` and `waiting`); the live
+index additionally requires recent activity (`isFreshLiveRun`: 10 minutes for
+`active`, 60 for `waiting`) so a crashed recorder's `active` row cannot occupy
+`N LIVE`. Selection wins over the accent, so a selected live row keeps its
+selection border. Finished messages (`complete` / `failed` / `terminated`) no
+longer locate the last atom automatically: `getPromptAtomSelection` returns
+`null` for every non-live status, leaving the topology unselected until an atom
+is picked by hand.
+
+### Run History time window
+
+The list is narrowed to the agent, then filtered by an hour window (the
+`Default time range` setting, `3h` unless changed):
+
+- the window ends at the **newest message** (`getRunHistoryAnchorTime`), not at
+  `Date.now()`, so opening the console the next morning never shows an empty
+  list;
+- live runs are exempt from the window (`selectVisibleRunHistory`'s `liveKeys`);
+- `LOAD EARLIER` doubles the window (3 → 6 → 12 → 24 → 48 hours) and disappears
+  once `canLoadMoreRunHistory` is false;
+- switching agent or changing the default range resets the width to the
+  preference.
+
+### Settings and header
+
+The settings dialog (`src/components/settings-dialog.tsx`) holds browser-local
+preferences only; changes apply immediately and are written to `localStorage`.
+Its single setting, `Default time range`, drives both the RUN HISTORY window and
+the search dialog's initial range, so the two defaults cannot drift. The header
+also carries a GitHub anchor (`appRepository.url`, opened in a new tab) and the
+settings entry, both 28 px icon controls sharing the theme switcher's height and
+radius.
 
 ### Mobile layout
 

@@ -447,12 +447,19 @@ function SearchResult({
 }
 
 export function HistorySearch({
+  defaultRange = defaultTimeRange,
   onOpenChange,
   onSelect,
   open,
   promptRunsBySession,
   sessions,
 }: {
+  /**
+   * Range the dialog opens on. Comes from Settings, so "the default range for
+   * loading messages" is one preference shared with RUN HISTORY rather than a
+   * constant this dialog owns.
+   */
+  defaultRange?: HistoryTimeRange;
   onOpenChange: (open: boolean) => void;
   onSelect: (entry: HistorySearchEntry) => void;
   open: boolean;
@@ -464,7 +471,13 @@ export function HistorySearch({
   const hasIndexRef = useRef(false);
   const [query, setQuery] = useState("");
   const [timeRange, setTimeRange] =
-    useState<HistoryTimeRange>(defaultTimeRange);
+    useState<HistoryTimeRange>(defaultRange);
+  // The preference is the *default*, so a change in Settings re-seeds the
+  // dialog instead of waiting for a reload. A range the user picked inside the
+  // dialog still wins until the next change.
+  useEffect(() => {
+    setTimeRange(defaultRange);
+  }, [defaultRange]);
   const [customRange, setCustomRange] = useState<DateRange>();
   const [categories, setCategories] = useState<ReadonlySet<EventTone>>(
     () => new Set(),
@@ -688,7 +701,7 @@ export function HistorySearch({
 
   const resetFilters = () => {
     setQuery("");
-    setTimeRange(defaultTimeRange);
+    setTimeRange(defaultRange);
     setCustomRange(undefined);
     setCategories(new Set());
     setMessageCategories(new Set());

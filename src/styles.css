@@ -825,6 +825,187 @@ pre,
   display: none;
 }
 
+/* The icon controls stay a single row in both layouts: the collapsed nav panel
+ * turns every other child into a full-width list item, and stacking three 28px
+ * squares under it read as three broken buttons. */
+.header-icon-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Header repository link + settings trigger. Both are 28px console controls
+ * sitting next to the theme switcher, so they copy its quiet, borderless
+ * surface instead of introducing a second button style in the same row; the
+ * anchor needs its own rules because it is not a <button>. */
+.repo-link,
+.settings-trigger {
+  border-color: transparent;
+  border-radius: 6px;
+  color: var(--muted-soft);
+  background: var(--panel-raised);
+}
+
+.repo-link {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  transition:
+    color 120ms ease,
+    border-color 120ms ease,
+    background 120ms ease;
+}
+
+.repo-link > svg,
+.settings-trigger > svg {
+  width: 15px;
+  height: 15px;
+}
+
+.repo-link:hover,
+.settings-trigger:hover {
+  border-color: var(--violet);
+  color: var(--text);
+  background: var(--panel-hover);
+}
+
+.repo-link:focus-visible,
+.settings-trigger:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--selection-border) 70%, transparent);
+  outline-offset: 1px;
+}
+
+/* Settings dialog: one field per preference, stacked, with the range choices
+ * as a pick-one grid. Sized to stay a two-line-per-field card rather than a
+ * full page of options. */
+.settings-dialog {
+  gap: 16px;
+  padding: 18px;
+  border: 1px solid var(--line-bright);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--panel) 96%, transparent);
+  box-shadow:
+    0 32px 90px rgb(0 0 0 / 58%),
+    0 0 0 1px color-mix(in srgb, var(--selection-border) 12%, transparent);
+}
+
+.settings-dialog [data-slot="dialog-title"] {
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.settings-dialog [data-slot="dialog-description"] {
+  color: var(--muted-soft);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.settings-field {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.settings-field__copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.settings-field__copy strong {
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.settings-field__copy span {
+  color: var(--muted-soft);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.settings-range-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.settings-range-option {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 8px;
+  border: 1px solid var(--line-bright);
+  border-radius: 5px;
+  color: var(--muted-soft);
+  background: color-mix(in srgb, var(--panel-raised) 78%, transparent);
+  font-family: var(--font-mono);
+  font-size: var(--text-overline);
+  cursor: pointer;
+  transition:
+    color 120ms ease,
+    border-color 120ms ease,
+    background 120ms ease;
+}
+
+.settings-range-option:hover {
+  color: var(--text);
+  background: var(--panel-hover);
+}
+
+.settings-range-option.is-selected {
+  border-color: color-mix(in srgb, var(--selection-border) 62%, transparent);
+  color: var(--selection-text);
+  background: color-mix(in srgb, var(--selection-bg) 72%, var(--panel-raised));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--selection-border) 36%, transparent);
+}
+
+/* The tick is always in the layout, only invisible when unselected: adding it
+ * on selection would push the label sideways and make the grid jitter. */
+.settings-range-option__check {
+  position: absolute;
+  right: 6px;
+  width: 11px;
+  height: 11px;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.settings-range-option.is-selected .settings-range-option__check {
+  opacity: 1;
+}
+
+.settings-note {
+  margin: 0;
+  color: var(--muted-soft);
+  font-size: 10px;
+  line-height: 1.7;
+}
+
+.settings-footer {
+  display: flex;
+  justify-content: flex-end;
+  border-top: 1px solid var(--chrome-line);
+  padding-top: 12px;
+}
+
+.settings-footer button {
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
 .history-search {
   display: flex;
   width: min(820px, calc(100vw - 24px));
@@ -1497,10 +1678,11 @@ pre,
 .run-history__item {
   position: relative;
   min-width: 0;
-  /* Skip layout and paint for offscreen run rows: with a large day window the
-     list can hold hundreds of rows, and only the ones near the viewport need
-     rendering. `contain-intrinsic-size` keeps the scrollbar honest until each
-     row renders once (the browser then remembers the real height). */
+  /* Skip layout and paint for offscreen run rows: a widened window (or the
+     armed Live view) can hold hundreds of rows, and only the ones near the
+     viewport need rendering. `contain-intrinsic-size` keeps the scrollbar
+     honest until each row renders once (the browser then remembers the real
+     height). */
   content-visibility: auto;
   contain-intrinsic-size: auto 72px;
 }
@@ -1760,7 +1942,7 @@ pre,
   color: var(--selection-text);
 }
 
-/* Explicit "load one more day" control: a short list never auto-loads, so the
+/* Explicit "load earlier" control: a short list never auto-loads, so the
    affordance has to be visible rather than hidden in a sentinel. */
 .run-history__load-earlier {
   margin: 4px 2px 2px;
@@ -5654,6 +5836,18 @@ pre,
 
   .studio-header__actions .theme-select {
     width: 100%;
+  }
+
+  /* The icon group is one row, so its theme switcher keeps the square size
+   * the other rows do not need. */
+  .studio-header__actions .header-icon-group {
+    justify-content: flex-start;
+    gap: 8px;
+    padding: 2px 8px 6px;
+  }
+
+  .studio-header__actions .header-icon-group .theme-select {
+    width: 28px;
   }
 
   .nav-menu__group {

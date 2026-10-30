@@ -2,6 +2,7 @@ import { Monitor, Moon, Sun } from "lucide-react";
 import type { PlatformId } from "@/types/trace";
 
 export type ActiveView = "topology" | "trajectory";
+export type HistoryRangeId = "3h" | "6h" | "12h" | "24h" | "7d";
 export type Theme = "dark" | "light" | "system";
 
 type AppDefaults = {
@@ -9,6 +10,11 @@ type AppDefaults = {
   consoleOpenMinWidth: number;
   deepView: boolean;
   guideOpen: boolean;
+  /**
+   * How much history RUN HISTORY and the global search dialog load by default.
+   * A user preference (Settings → 默认时间范围), not a build constant.
+   */
+  historyRange: HistoryRangeId;
   historyOpenMinWidth: number;
   menuOpen: boolean;
   /**
@@ -32,6 +38,7 @@ export const appDefaults: AppDefaults = {
   consoleOpenMinWidth: 1180,
   deepView: true,
   guideOpen: false,
+  historyRange: "3h",
   historyOpenMinWidth: 900,
   menuOpen: false,
   platform: "claude",
@@ -41,6 +48,58 @@ export const appDefaults: AppDefaults = {
   replaySpeed: 1,
   theme: "dark",
 };
+
+/**
+ * Repository the header link points at. One constant for the icon, its tooltip
+ * and the tests, so a rename never leaves a dead link in the console.
+ */
+export const appRepository = {
+  label: "GitHub",
+  title: "在 GitHub 上查看 ASTRO 源码",
+  url: "https://github.com/chaos-design/astro",
+} as const;
+
+/**
+ * Selectable history ranges, in the order the settings dialog lists them.
+ *
+ * Hours rather than calendar days on purpose: "最近 3 小时" must mean the same
+ * span whether the console is opened at 09:00 or 23:00, and the same value is
+ * reused by the global search dialog (whose range ids are exactly these).
+ */
+export const historyRangeOptions: ReadonlyArray<{
+  id: HistoryRangeId;
+  /** Short form for dense chrome, e.g. the RUN HISTORY empty state. */
+  shortLabel: string;
+  label: string;
+  hours: number;
+}> = [
+  { id: "3h", shortLabel: "3 小时", label: "最近 3 小时", hours: 3 },
+  { id: "6h", shortLabel: "6 小时", label: "最近 6 小时", hours: 6 },
+  { id: "12h", shortLabel: "12 小时", label: "最近 12 小时", hours: 12 },
+  { id: "24h", shortLabel: "24 小时", label: "最近 24 小时", hours: 24 },
+  { id: "7d", shortLabel: "7 天", label: "最近 7 天", hours: 7 * 24 },
+];
+
+/** Range used until the user picks another one in Settings. */
+export const defaultHistoryRange: HistoryRangeId = appDefaults.historyRange;
+
+export function isHistoryRangeId(
+  value: string | null | undefined,
+): value is HistoryRangeId {
+  return historyRangeOptions.some((option) => option.id === value);
+}
+
+export function getHistoryRangeOption(range: HistoryRangeId) {
+  return (
+    historyRangeOptions.find((option) => option.id === range) ??
+    historyRangeOptions[0]
+  );
+}
+
+/** Span of a range in hours; the RUN HISTORY window is measured in these. */
+export function getHistoryRangeHours(range: HistoryRangeId): number {
+  return getHistoryRangeOption(range).hours;
+}
 
 /**
  * Release string shown in the application header. Kept in sync with the
@@ -80,8 +139,11 @@ export const appLayout = {
  * this application's preferences remain distinguishable from other products.
  */
 export const storageKeys = {
+  activeView: "ASTROX_ACTIVE_VIEW",
   consoleOpen: "ASTROX_CONSOLE_OPEN",
+  deepView: "ASTROX_DEEP_VIEW",
   historyOpen: "ASTROX_HISTORY_OPEN",
+  historyRange: "ASTROX_HISTORY_RANGE",
   inspectorTab: "ASTROX_INSPECTOR_TAB",
   platform: "ASTROX_PLATFORM",
   runHistoryLiveFilter: "ASTROX_RUN_HISTORY_LIVE_FILTER",

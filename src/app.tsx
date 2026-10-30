@@ -59,7 +59,9 @@ import { JsonViewer } from "./components/json-viewer";
 import { HistorySearch } from "./components/history-search";
 import { AgentSelect } from "./components/agent-select";
 import { PromptContent } from "./components/prompt-content";
+import { RepositoryLink } from "./components/repo-link";
 import { RuntimeCanvas } from "./components/runtime-canvas";
+import { SettingsDialog } from "./components/settings-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -119,6 +121,9 @@ import {
   appTimings,
   appVersion,
   defaultThemeOption,
+  getHistoryRangeHours,
+  getHistoryRangeOption,
+  isHistoryRangeId,
   legacyStorageKeys,
   panelHeaderClass,
   panelHeaderCopyClass,
@@ -129,6 +134,7 @@ import {
   trajectoryKindLabels,
   trajectoryLanes,
   type ActiveView,
+  type HistoryRangeId,
   type Theme,
 } from "./config/app-config";
 import {
@@ -148,7 +154,6 @@ import {
   getEventSummary,
   getExecutionInstruction,
   getFlowNodeIdForEvent,
-  getSessionDisplayState,
   normalizeTraceEvent,
   parseImportedTrace,
 } from "./lib/trace-model";
@@ -175,11 +180,10 @@ import {
   describeWorkspacePath,
 } from "./lib/workspace-path";
 import {
-  DEFAULT_RUN_HISTORY_DAYS,
   OTHERS_AGENT_ID,
-  canLoadMoreRunHistoryDays,
+  canLoadMoreRunHistory,
   filterSessionsByAgent,
-  nextRunHistoryVisibleDays,
+  nextRunHistoryVisibleHours,
   pinLiveRunHistory,
   selectVisibleRunHistory,
 } from "./lib/run-history-window";
@@ -210,8 +214,8 @@ import {
 import {
   collectLiveRunKeys,
   ensureExpandedRun,
-  filterSessionsByLiveKeys,
   getPromptAtomSelection,
+  getRunDisplayState,
   getRunFreshness,
   getRunHistoryDisplayState,
   getRunHistoryTerminalInfo,
@@ -1301,7 +1305,10 @@ const RunHistoryItem = memo(function RunHistoryItem({
   // resumed thread can leave an older prompt running while later ones already
   // finished — so the message being watched is always the first row.
   const promptRows = promptRuns.map((promptRun) => {
-    const displayState = getSessionDisplayState(
+    // Freshness-aware: a historical message whose recorder died mid-run must
+    // not keep wearing the RUNNING capsule (nor light the footer Live) —
+    // only the message still producing events counts as live.
+    const displayState = getRunDisplayState(
       promptRun,
       now,
       appTimings.activeRunTimeoutMs,
@@ -1600,11 +1607,14 @@ const RunHistory = memo(function RunHistory({
   gitInfo,
   initialLoading,
   isDemo,
+  liveFilter,
   liveKeys,
   now,
   promptRunsBySession,
+  rangeLabel,
   onLoadMore,
   onReloadLatest,
+  onToggleLiveFilter,
   reloading,
   onSelect,
 }: {
@@ -1612,6 +1622,12 @@ const RunHistory = memo(function RunHistory({
   activeKey: string;
   activePromptRunKey: string;
   isDemo: boolean;
+  /**
+   * Armed live filter: the list is the selected agent's *whole* history (the
+   * parent drops the time window) and the executing messages are pinned,
+   * expanded and located. Persisted by the parent, so every surface agrees.
+   */
+  liveFilter: boolean;
   /** Keys of the executing runs; these rows are pinned to the top. */
   liveKeys: ReadonlySet<string>;
   now: number;
@@ -1622,8 +1638,11 @@ const RunHistory = memo(function RunHistory({
   onLoadMore: () => void;
   /** Drop the client's loaded history and pull a fresh snapshot. */
   onReloadLatest: () => void;
+  onToggleLiveFilter: () => void;
   /** True while the fresh snapshot has been requested but not delivered. */
   reloading: boolean;
+  /** Human label of the configured default range, for the empty state. */
+  rangeLabel: string;
   onSelect: (sessionKey: string, promptRunKey?: string) => void;
 }) {
   const [expandedRuns, setExpandedRuns] = useState<Set<string>>(
@@ -1636,10 +1655,11 @@ const RunHistory = memo(function RunHistory({
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const hoverAnchorRef = useRef<HTMLElement | null>(null);
   const liveItemRef = useRef<HTMLElement | null>(null);
-  // Loading one more day is only ever armed by a real scroll gesture. A list
-  // that does not fill the panel keeps its bottom sentinel in view forever,
-  // and an always-on observer would then load day after day without the user
-  // asking for it. The explicit footer button covers the same need.
+  // Loading earlier messages is only ever armed by a real scroll gesture. A
+  // list that does not fill the panel keeps its bottom sentinel in view
+  // forever, and an always-on observer would then widen the window again and
+  // again without the user asking for it. The explicit footer button covers the
+  // same need.
   const loadArmedRef = useRef(false);
   const [loadArmed, setLoadArmed] = useState(false);
   // `onSelect` comes from the app shell and changes identity whenever the
@@ -1651,26 +1671,14 @@ const RunHistory = memo(function RunHistory({
     onSelectRef.current(key, promptRunKey);
   }, []);
   const [liveJumpRequest, setLiveJumpRequest] = useState(0);
-  // The live filter is a persisted preference that defaults to armed: the
-  // panel opens narrowed to the executing runs — all of them, live rows are
-  // exempt from the day window — and a session with no live run still shows
-  // its full list because the filter only gates rendering when live rows
-  // exist. Cancelling persists the opt-out across reloads.
-  const [liveFilter, setLiveFilter] = useState(() =>
-    readStorageBoolean(
-      window.localStorage,
-      storageKeys.runHistoryLiveFilter,
-      true,
-    ),
-  );
   const activePromptCount =
     promptRunsBySession.get(activeKey)?.length ?? 0;
 
   // Live summary for the header chip, derived from the same key set the app
   // uses to keep executing runs inside the window and pin them on top — one
-  // definition of "executing" for the list, the chip, and the filter. Narrowed
-  // to the rows actually rendered, so the chip can never point at a row that
-  // is not in this list, and ordered like the list (pinned run first).
+  // definition of "executing" for the list, the chip, and the Live view.
+  // Narrowed to the rows actually rendered, so the chip can never point at a
+  // row that is not in this list, and ordered like the list (pinned run first).
   const liveSummary = useMemo(() => {
     if (isDemo || liveKeys.size === 0) {
       return { count: 0, firstLiveKey: "", liveKeys: [] as string[] };
@@ -1685,20 +1693,11 @@ const RunHistory = memo(function RunHistory({
     };
   }, [isDemo, liveKeys, sessions]);
 
-  // Arming the filter means "show only the executing messages" — including
-  // when there are none: the chip reports `0 LIVE` and the list says so.
-  // Falling back to the full list at zero live would contradict the armed
-  // chip and hide the empty state behind a silent state change. Demo traces
-  // are synthetic and never live, so the demo list ignores the arm instead
-  // of rendering empty.
+  // Arming the filter means "show me this agent's messages, starting with the
+  // one that is executing": the parent drops the time window for the armed
+  // list, and the rows below keep the executing ones pinned. Demo traces are
+  // synthetic and never live, so the demo list ignores the arm.
   const liveFiltering = liveFilter && !isDemo;
-  const displayedSessions = useMemo(
-    () =>
-      liveFiltering
-        ? filterSessionsByLiveKeys(sessions, liveSummary.liveKeys)
-        : sessions,
-    [liveFiltering, liveSummary.liveKeys, sessions],
-  );
 
   useEffect(() => {
     if (liveJumpRequest === 0) {
@@ -1719,23 +1718,31 @@ const RunHistory = memo(function RunHistory({
     setLiveJumpRequest((current) => current + 1);
   }, [liveSummary.firstLiveKey]);
 
-  const toggleLiveFilter = useCallback(() => {
-    // Both directions persist: the chip is a preference, not a session state,
-    // so the panel reopens the way the user left it.
-    const next = !liveFilter;
-    setLiveFilter(next);
-    writeStorageValue(
-      window.localStorage,
-      storageKeys.runHistoryLiveFilter,
-      next,
-    );
-    if (!next) {
+  /*
+   * "A message was just sent" is visible here as a *new* key entering the live
+   * set: the run that was executing a second ago is still in the set, so only
+   * an addition means someone sent something. While the filter is armed the
+   * panel answers it the way the sender expects — the message is expanded and
+   * scrolled into view, whatever its age and wherever it sits in the agent's
+   * history — instead of leaving the user to hunt for the new row.
+   *
+   * The comparison lives in a ref rather than in state: it is bookkeeping for
+   * this effect alone, and storing it in state would schedule a second render
+   * on every live batch.
+   */
+  const previousLiveKeysRef = useRef<ReadonlySet<string>>(new Set());
+  useEffect(() => {
+    const previous = previousLiveKeysRef.current;
+    previousLiveKeysRef.current = liveKeys;
+    if (!liveFiltering || liveKeys.size === 0) {
       return;
     }
-    // Entering the filter doubles as the jump: the first live row is the
-    // natural anchor when the list suddenly gets much shorter.
+    const justStarted = [...liveKeys].some((key) => !previous.has(key));
+    if (!justStarted) {
+      return;
+    }
     jumpToLiveRun();
-  }, [liveFilter, jumpToLiveRun]);
+  }, [jumpToLiveRun, liveFiltering, liveKeys]);
 
   // The armed list is a live index: every live thread renders expanded, so
   // the executing Prompt — the message the user just sent — is a row of its
@@ -1760,11 +1767,11 @@ const RunHistory = memo(function RunHistory({
     });
   }, [liveFiltering, liveSummary.liveKeys]);
 
-  // The zero-live case must NOT clear the filter: `liveFiltering` already
-  // degrades to the full list when no run is executing, and auto-clearing
-  // here would silently overwrite the user's persisted default-on choice
-  // every time they opened the panel between runs. The preference re-arms
-  // on its own the moment a live row appears.
+  // Zero live rows must NOT clear the arm. The armed list is the agent's whole
+  // history, not a live-only slice, so `0 LIVE` still shows every message —
+  // and auto-clearing here would overwrite the user's persisted default-on
+  // choice every time they opened the panel between runs. The chip reports the
+  // zero and the view re-locates a run on its own the moment one starts.
 
   // A manual reload exists to reveal what the loaded history was missing, so
   // when the fresh snapshot lands the list must point at it: the executing
@@ -1801,13 +1808,13 @@ const RunHistory = memo(function RunHistory({
     });
   }, [activePromptRunKey]);
 
-  // On-demand loading: reveal one more day of history when the sentinel near
-  // the bottom of the list scrolls into view — but only after the user has
-  // actually scrolled this list. Two guards keep a short list from loading on
-  // its own: the sentinel is always visible when the content does not
-  // overflow, and the observer re-arms only on the next scroll gesture.
-  // While the `N LIVE` filter is armed the list is narrowed to the live rows,
-  // so loading more history stays off until the filter clears.
+  // On-demand loading: widen the window when the sentinel near the bottom of
+  // the list scrolls into view — but only after the user has actually scrolled
+  // this list. Two guards keep a short list from loading on its own: the
+  // sentinel is always visible when the content does not overflow, and the
+  // observer re-arms only on the next scroll gesture.
+  // The armed Live view already shows the whole history, so widening stays off
+  // there until the view is switched back.
   useEffect(() => {
     const sentinel = sentinelRef.current;
     const list = listRef.current;
@@ -1904,12 +1911,12 @@ const RunHistory = memo(function RunHistory({
     };
   }, [closeHoverCard, hasHoverCard]);
 
-  // Anything that changes which rows exist — another agent, another day,
+  // Anything that changes which rows exist — another agent, another range,
   // another prompt, a collapsed thread, a switched live filter — invalidates
   // a card anchored to one of them. The list is re-derived on every clock
   // tick with a fresh array identity, so the effect keys off the row
   // signature instead of the array.
-  const rowSignature = displayedSessions
+  const rowSignature = sessions
     .map(
       (session) =>
         `${session.key}:${promptRunsBySession.get(session.key)?.length ?? 0}`,
@@ -1995,17 +2002,28 @@ const RunHistory = memo(function RunHistory({
                 aria-pressed={liveFiltering}
                 aria-label={
                   liveFiltering
-                    ? `取消筛选活动消息（${liveSummary.count} 条）`
-                    : `只看正在执行的消息（${liveSummary.count} 条）`
+                    ? `关闭 Live 视图（正在执行 ${liveSummary.count} 条）`
+                    : `打开 Live 视图：该智能体的全部消息，并定位正在执行的 ${liveSummary.count} 条`
                 }
-                onClick={toggleLiveFilter}
+                onClick={() => {
+                  const arming = !liveFilter;
+                  onToggleLiveFilter();
+                  // Arming doubles as the jump: the executing message is the
+                  // reason to open this view, so it must not need a second
+                  // click to become visible.
+                  if (arming) {
+                    jumpToLiveRun();
+                  }
+                }}
               >
                 <Radio aria-hidden="true" />
                 <span>{liveSummary.count} LIVE</span>
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
-              {liveFiltering ? "取消筛选活动消息" : "只看正在执行的消息"}
+              {liveFiltering
+                ? "关闭 Live 视图，回到默认时间范围"
+                : "Live 视图：全部消息 + 定位执行中消息"}
             </TooltipContent>
           </Tooltip>
           <Tooltip>
@@ -2049,7 +2067,7 @@ const RunHistory = memo(function RunHistory({
           onToggleRun={toggleRun}
           gitInfo={gitInfo}
           promptRunsBySession={promptRunsBySession}
-          sessions={displayedSessions}
+          sessions={sessions}
         />
         {initialLoading ? (
           <div className="run-history__loading" aria-busy="true">
@@ -2057,15 +2075,15 @@ const RunHistory = memo(function RunHistory({
             <span>LOADING RUNS…</span>
           </div>
         ) : sessions.length === 0 ? (
-          <output className="run-history__empty">No runs in this window</output>
-        ) : displayedSessions.length === 0 ? (
           <output className="run-history__empty">
-            没有正在执行的消息
+            {liveFiltering
+              ? "该智能体还没有消息"
+              : `最近 ${rangeLabel}内没有消息`}
           </output>
         ) : null}
-        {/* Loading earlier days only makes sense against the windowed list;
-            while the live filter is armed those rows would be filtered out
-            anyway, so the affordance would be a dead end. */}
+        {/* Loading earlier messages only makes sense against the windowed
+            list: the armed Live view already shows the agent's whole history,
+            so the affordance would be a dead end there. */}
         {canLoadMore && !liveFiltering ? (
           <>
             <div
@@ -2079,9 +2097,9 @@ const RunHistory = memo(function RunHistory({
               type="button"
               className="run-history__load-earlier"
               onClick={requestMore}
-              title="滚动到底部或点击可加载更早的运行记录"
+              title="滚动到底部或点击可加载更早的消息"
             >
-              LOAD EARLIER DAYS
+              LOAD EARLIER
             </button>
           </>
         ) : null}
@@ -3650,7 +3668,10 @@ function GuideLegend({
 function getInitialLocation() {
   const params = new URLSearchParams(window.location.search);
   return {
-    source: params.get("source"),
+    // `agent` names the dropdown filter (a configured agent id or "others").
+    // `source` is the legacy deep-link parameter, still read so old shared
+    // links keep working; new links are written with `agent` only.
+    agent: params.get("agent") ?? params.get("source"),
     sessionId: params.get("session"),
     eventId: params.get("event"),
   };
@@ -3717,16 +3738,32 @@ export default function App() {
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [selectedAtomId, setSelectedAtomId] =
     useState<AtomSelection>(undefined);
-  const [activeView, setActiveView] = useState<ActiveView>(
-    appDefaults.activeView,
-  );
+  // The canvas view and the runtime-atom filter are user preferences, not
+  // session state: both survive a reload through localStorage so the studio
+  // reopens the way it was left.
+  const [activeView, setActiveView] = useState<ActiveView>(() => {
+    const stored = readStorageValue(
+      window.localStorage,
+      storageKeys.activeView,
+      appDefaults.activeView,
+    );
+    return stored === "topology" || stored === "trajectory"
+      ? stored
+      : appDefaults.activeView;
+  });
   // The trajectory view builds its turn model from every event and atom. That
   // is real work for a long run, so the view is mounted on first use instead
   // of on every session selection while the topology is what is on screen.
   const [trajectoryMounted, setTrajectoryMounted] = useState(
-    appDefaults.activeView === "trajectory",
+    activeView === "trajectory",
   );
-  const [deepView, setDeepView] = useState<boolean>(appDefaults.deepView);
+  const [deepView, setDeepView] = useState<boolean>(() =>
+    readStorageBoolean(
+      window.localStorage,
+      storageKeys.deepView,
+      appDefaults.deepView,
+    ),
+  );
   const [guideOpen, setGuideOpen] = useState<boolean>(appDefaults.guideOpen);
   const [historySearchOpen, setHistorySearchOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState<boolean>(appDefaults.menuOpen);
@@ -3752,7 +3789,7 @@ export default function App() {
   // The default agent is the first dropdown option unless a deep link or a
   // stored preference names an agent that is still offered.
   const [platformId, setPlatformId] = useState<PlatformId>(() => {
-    const fromUrl = getPlatformForSource(initialLocation?.source);
+    const fromUrl = getPlatformForSource(initialLocation?.agent);
     if (fromUrl) {
       return fromUrl;
     }
@@ -3769,11 +3806,41 @@ export default function App() {
   // The agent dropdown drives which agent's runs load. A configured agent is a
   // PlatformId; OTHERS_AGENT_ID is the trailing catch-all. Picking a configured
   // agent also drives the topology platform; "Others" leaves it unchanged.
+  // A deep link may name either: `agent=<id>` follows the dropdown, and the
+  // stored topology platform stands in when "Others" carries no projection.
   const [agentId, setAgentId] = useState<PlatformId | typeof OTHERS_AGENT_ID>(
-    platformId,
+    () => {
+      if (initialLocation?.agent === OTHERS_AGENT_ID) {
+        return OTHERS_AGENT_ID;
+      }
+      const fromUrl = getPlatformForSource(initialLocation?.agent);
+      return fromUrl ?? platformId;
+    },
   );
-  const [runHistoryDays, setRunHistoryDays] = useState(
-    DEFAULT_RUN_HISTORY_DAYS,
+  // Default history range: a settings preference, shared by RUN HISTORY's
+  // visible window and the global search dialog's initial time range.
+  const [historyRange, setHistoryRange] = useState<HistoryRangeId>(() => {
+    const stored = readStorageValue(
+      window.localStorage,
+      storageKeys.historyRange,
+      appDefaults.historyRange,
+    );
+    return isHistoryRangeId(stored) ? stored : appDefaults.historyRange;
+  });
+  const historyRangeHours = getHistoryRangeHours(historyRange);
+  const historyRangeLabel = getHistoryRangeOption(historyRange).shortLabel;
+  // The window widens on demand. Storing the *width* (not a boolean) keeps one
+  // number driving the list and the "load earlier" affordance; switching the
+  // range or the agent resets it to the preference.
+  const [runHistoryHours, setRunHistoryHours] = useState(historyRangeHours);
+  // Live view: the selected agent's whole history with the executing message
+  // pinned. A persisted preference like the other panel toggles.
+  const [liveFilter, setLiveFilter] = useState(() =>
+    readStorageBoolean(
+      window.localStorage,
+      storageKeys.runHistoryLiveFilter,
+      true,
+    ),
   );
   const [theme, setTheme] = useState<Theme>(
     () =>
@@ -3868,6 +3935,36 @@ export default function App() {
   useEffect(() => {
     writeStorageValue(window.localStorage, storageKeys.inspectorTab, inspectorTab);
   }, [inspectorTab]);
+
+  useEffect(() => {
+    writeStorageValue(window.localStorage, storageKeys.activeView, activeView);
+  }, [activeView]);
+
+  useEffect(() => {
+    writeStorageValue(window.localStorage, storageKeys.deepView, deepView);
+  }, [deepView]);
+
+  useEffect(() => {
+    writeStorageValue(
+      window.localStorage,
+      storageKeys.historyRange,
+      historyRange,
+    );
+  }, [historyRange]);
+
+  // Changing the default range must be visible immediately: the existing
+  // window may have been widened by hand, so it snaps back to the new default.
+  useEffect(() => {
+    setRunHistoryHours(historyRangeHours);
+  }, [historyRangeHours]);
+
+  useEffect(() => {
+    writeStorageValue(
+      window.localStorage,
+      storageKeys.runHistoryLiveFilter,
+      liveFilter,
+    );
+  }, [liveFilter]);
 
   useEffect(() => {
     const media = window.matchMedia("(prefers-color-scheme: dark)");
@@ -4119,7 +4216,7 @@ export default function App() {
     () => new Set(atomPlatformOptions.map((platform) => platform.source)),
     [],
   );
-  // RUN HISTORY is narrowed to the selected agent first; the day window and
+  // RUN HISTORY is narrowed to the selected agent first; the time window and
   // the live pinning below are applied to that set.
   const filteredSessions = useMemo(
     () => filterSessionsByAgent(sessions, agentId, configuredSources),
@@ -4164,25 +4261,43 @@ export default function App() {
       ? [...filteredSessions, ...foreignLive]
       : filteredSessions;
   }, [filteredSessions, liveSessionKeys, sessions]);
-  // Runs shown in RUN HISTORY: narrowed to the selected agent, then to the
-  // visible day window (most recent N days), then the executing run is pinned
-  // to the top — a resumed session is live *now*, even though it started
-  // earlier. Everything is derived at render time.
-  const visibleSessions = useMemo(
-    () =>
-      pinLiveRunHistory(
-        selectVisibleRunHistory(
-          historySessions,
-          now,
-          runHistoryDays,
-          liveSessionKeys,
-        ),
+  // Runs shown in RUN HISTORY.
+  //
+  // Two readings of the same history, one derivation:
+  // - Live view armed (`liveFilter`): the selected agent's *whole* list — the
+  //   time window is dropped — so the message that was just sent can be seen
+  //   against everything else the agent has done. Live rows stay on top.
+  // - Otherwise: the visible time window (the configured default range,
+  //   widened on demand) with the executing run pinned, because a resumed
+  //   session is live *now* even though it started earlier.
+  //
+  // Both paths end in `pinLiveRunHistory` so the executing message is always
+  // the first row, and both are derived at render time.
+  const visibleSessions = useMemo(() => {
+    if (liveFilter && !isDemo) {
+      return pinLiveRunHistory(historySessions, liveSessionKeys);
+    }
+    return pinLiveRunHistory(
+      selectVisibleRunHistory(
+        historySessions,
+        now,
+        runHistoryHours,
         liveSessionKeys,
       ),
-    [historySessions, liveSessionKeys, now, runHistoryDays],
-  );
-  const canLoadMoreRunHistory =
-    canLoadMoreRunHistoryDays(filteredSessions, now, runHistoryDays);
+      liveSessionKeys,
+    );
+  }, [
+    historySessions,
+    isDemo,
+    liveFilter,
+    liveSessionKeys,
+    now,
+    runHistoryHours,
+  ]);
+  // The Live view lists everything, so there is no window left to widen.
+  const canLoadMoreHistory =
+    !(liveFilter && !isDemo) &&
+    canLoadMoreRunHistory(filteredSessions, now, runHistoryHours);
   // Recomputed only when the inputs change instead of on every parent render.
   const hasAdvancingRun = useMemo(
     () =>
@@ -4199,7 +4314,7 @@ export default function App() {
           return true;
         }
         return promptRuns.some((promptRun) => {
-          const promptState = getSessionDisplayState(
+          const promptState = getRunDisplayState(
             promptRun,
             now,
             appTimings.activeRunTimeoutMs,
@@ -4249,15 +4364,34 @@ export default function App() {
       return;
     }
     const requested = initialLocation;
-    const deepLinkedSession = sessions.find(
-      (session) =>
-        session.id === requested?.sessionId &&
-        (!requested?.source || session.source === requested.source),
-    );
+    // The agent parameter scopes the fallback pool: `?agent=X` without a
+    // session opens agent X's newest run instead of whichever session happens
+    // to be newest overall. An unknown agent falls back to the full list.
+    const requestedAgent = requested?.agent;
+    const agentPool =
+      requestedAgent && requestedAgent !== OTHERS_AGENT_ID
+        ? sessions.filter((session) => session.source === requestedAgent)
+        : requestedAgent === OTHERS_AGENT_ID
+          ? sessions.filter((session) => !configuredSources.has(session.source))
+          : sessions;
+    const fallbackPool = agentPool.length ? agentPool : sessions;
+    // The session id wins over the agent scope: a shared link to a run of
+    // another agent (a foreign live row, say) must still land on that run.
+    const deepLinkedSession =
+      fallbackPool.find(
+        (session) =>
+          session.id === requested?.sessionId &&
+          (!requestedAgent ||
+            requestedAgent === OTHERS_AGENT_ID ||
+            session.source === requestedAgent),
+      ) ??
+      (requested?.sessionId
+        ? sessions.find((session) => session.id === requested.sessionId)
+        : undefined);
     const currentSession = sessions.find(
       (session) => session.key === activeSessionKey,
     );
-    const nextSession = currentSession || deepLinkedSession || sessions[0];
+    const nextSession = currentSession || deepLinkedSession || fallbackPool[0];
     const promptRuns = promptRunsBySession.get(nextSession.key) ?? [];
     const linkedPromptRun = requested?.eventId
       ? promptRuns.find((run) =>
@@ -4289,6 +4423,7 @@ export default function App() {
   }, [
     activePromptRunKey,
     activeSessionKey,
+    configuredSources,
     eventsLoaded,
     initialLocation,
     platformId,
@@ -4307,7 +4442,7 @@ export default function App() {
   const activeEvents =
     activePromptRun?.events ?? activeSession?.events ?? EMPTY_EVENTS;
   const activeDisplayState = activePromptRun
-    ? getSessionDisplayState(
+    ? getRunDisplayState(
         activePromptRun,
         now,
         appTimings.activeRunTimeoutMs,
@@ -4446,7 +4581,12 @@ export default function App() {
       return;
     }
     const params = new URLSearchParams(window.location.search);
-    params.set("source", activeSession.source);
+    // `agent` mirrors the dropdown filter, not the open run: the dropdown and
+    // the address bar must agree even while the open run belongs to another
+    // agent (a foreign live row), whose identity lives in `session`.
+    params.set("agent", agentId);
+    // The renamed parameter replaces the legacy one instead of accumulating.
+    params.delete("source");
     params.set("session", activeSession.id);
     if (selectedEventId) {
       params.set("event", selectedEventId);
@@ -4458,7 +4598,7 @@ export default function App() {
       "",
       `${window.location.pathname}?${params}`,
     );
-  }, [activeSession, initialLocation, selectedEventId]);
+  }, [activeSession, agentId, initialLocation, selectedEventId]);
 
   const displayedEvents = replayMode
     ? activeEvents.slice(0, replayCursor + 1)
@@ -4590,6 +4730,13 @@ export default function App() {
     const targetPlatform = getPlatformForSource(entry.source) ?? platformId;
     preserveAtomSelectionRef.current = targetPlatform !== platformId;
     setPlatformId(targetPlatform);
+    // The dropdown filter follows the jump: the opened run and the list it
+    // came from must stay visible together under the same agent.
+    setAgentId(
+      configuredSources.has(entry.source)
+        ? (entry.source as PlatformId)
+        : OTHERS_AGENT_ID,
+    );
     setActiveSessionKey(entry.sessionKey);
     setActivePromptRunKey(entry.promptRunKey);
     setSelectedEventId(entry.eventId);
@@ -4928,12 +5075,12 @@ export default function App() {
     sessions,
   ]);
 
-  // Loading one more day is pure filtering over already-loaded sessions, so it
+  // Widening the window is pure filtering over already-loaded sessions, so it
   // is synchronous: the previous implementation faked a 320ms "loading" state
   // on top of instantaneous work, which made the list feel slower than it is.
   const handleLoadMoreRunHistory = useCallback(() => {
-    setRunHistoryDays((current) =>
-      nextRunHistoryVisibleDays(filteredSessions, now, current),
+    setRunHistoryHours((current) =>
+      nextRunHistoryVisibleHours(filteredSessions, now, current),
     );
   }, [filteredSessions, now]);
 
@@ -5100,7 +5247,16 @@ export default function App() {
               }}
             />
           )}
-          <ThemeSwitcher theme={theme} onChange={setTheme} />
+          {/* One row of icon controls on desktop; kept as a group so the
+              collapsed nav panel does not stack them one per line. */}
+          <div className="header-icon-group">
+            <RepositoryLink />
+            <SettingsDialog
+              historyRange={historyRange}
+              onHistoryRangeChange={setHistoryRange}
+            />
+            <ThemeSwitcher theme={theme} onChange={setTheme} />
+          </div>
           <div className="nav-menu__group">
             <HeaderNavActions
               actions={headerNavActions}
@@ -5147,13 +5303,16 @@ export default function App() {
               activePromptRunKey={activePromptRun?.key || ""}
               gitInfo={gitInfo}
               isDemo={isDemo}
+              liveFilter={liveFilter}
               liveKeys={liveSessionKeys}
               now={now}
               promptRunsBySession={promptRunsBySession}
-              canLoadMore={canLoadMoreRunHistory}
+              canLoadMore={canLoadMoreHistory}
               initialLoading={!eventsLoaded && !isDemo}
               onLoadMore={handleLoadMoreRunHistory}
               onReloadLatest={handleReloadLatestEvents}
+              onToggleLiveFilter={() => setLiveFilter((current) => !current)}
+              rangeLabel={historyRangeLabel}
               reloading={reloadingEvents}
               onSelect={selectSession}
             />
@@ -5185,7 +5344,10 @@ export default function App() {
                         // as a transition.
                         startTransition(() => {
                           setAgentId(nextAgent);
-                          setRunHistoryDays(DEFAULT_RUN_HISTORY_DAYS);
+                          // Another agent starts at the configured default
+                          // range: keeping a window the previous agent needed
+                          // would silently load a different amount of history.
+                          setRunHistoryHours(historyRangeHours);
                           if (nextAgent !== OTHERS_AGENT_ID) {
                             setPlatformId(nextAgent);
                           }
@@ -5342,6 +5504,7 @@ export default function App() {
         onLocate={focusAtom}
       />
       <HistorySearch
+        defaultRange={historyRange}
         open={historySearchOpen}
         onOpenChange={setHistorySearchOpen}
         onSelect={selectHistorySearchResult}

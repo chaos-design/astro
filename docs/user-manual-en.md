@@ -232,13 +232,17 @@ migration or `--astro-home=/path/to/.astrox` to change the data root.
   - `accepted`: SSE connected;
   - `offline`: API or SSE unavailable;
   - `demo`: development/test mode is using embedded events because the real count is zero.
+- GitHub icon: opens the project repository
+  (`https://github.com/chaos-design/astro`) in a new tab.
+- Settings icon: opens the settings dialog for the default message range.
 - Theme: light, dark, or system; stored in `ASTROX_THEME`.
 
 ### 5.2 Global History Search
 
 Open Search History from the header or press `Cmd/Ctrl + K`. It searches every
 event already loaded in the browser, not only the currently selected Prompt.
-The default time range is the last three hours.
+The dialog opens on the default time range from Settings — the last three hours
+unless changed; a range picked inside the dialog applies to that search only.
 
 Available filters include:
 
@@ -259,10 +263,27 @@ remains a separate API.
 
 ### 5.3 Run History
 
-Run History is filtered to the selected agent and, by default, shows the most
-recent two days. Scroll to the bottom of the list to reveal one earlier day at
-a time; each reveal shows a brief bottom spinner. While the dashboard first
-loads events, the list shows a left-side loading indicator before runs appear.
+The list is narrowed to the selected agent and then windowed. The window length
+is the default time range from Settings (three hours unless changed), measured
+back from the **newest message** rather than from the wall clock: opening the
+console after a night away still shows the messages around the last session
+instead of an empty list. When older runs remain, `LOAD EARLIER` appears at the
+bottom; clicking it — or scrolling to the bottom — doubles the window
+(3 → 6 → 12 → 24 → 48 hours) until nothing older is left.
+
+Executing messages ignore the window: they are always listed and always pinned
+to the top.
+
+The `N LIVE` chip in the panel header toggles the Live view:
+
+- Armed, it lists **every message of the selected agent** (the time window is
+  dropped), with the executing messages pinned, expanded and scrolled into
+  view. When a message is sent, the run that newly starts executing is located
+  automatically — no hunting through the list.
+- Disarmed, the list returns to the default window and `LOAD EARLIER` returns.
+- The choice is stored in `ASTROX_RUN_HISTORY_LIVE_FILTER` and is on by default.
+- With nothing executing the chip reads `0 LIVE`; the list still shows the
+  agent's whole history.
 
 The agent list comes from the toolbar platform dropdown: the configured agents
 are listed first and a trailing **Others** catch-all collects runs whose source
@@ -377,6 +398,20 @@ while its latest Prompt is `active`; a waiting latest Prompt freezes the parent.
 The waiting child continues its own duration and can independently reach the
 timeout. A historical complete, failed, or terminated run keeps its recorded
 duration even when it is longer than the current limit.
+
+### 5.8 Settings
+
+The header settings icon opens the settings dialog. It currently holds one
+preference:
+
+- **Default time range**: `Last 3 hours` (default), `6 hours`, `12 hours`,
+  `24 hours`, `Last 7 days`.
+
+That single value drives both RUN HISTORY's visible window and the initial time
+range of the global search dialog. Changes apply immediately and are written to
+`ASTROX_HISTORY_RANGE`; **reset** restores three hours. The dialog also states
+that the range is measured back from the newest message and that executing
+messages are never filtered out.
 
 ## 6. Execution Topology
 
@@ -504,11 +539,13 @@ The action is destructive. Export any required sessions first.
 The page writes the current selection into:
 
 ```text
-?source=codex&session=<sessionId>&event=<eventId>
+?agent=codex&session=<sessionId>&event=<eventId>
 ```
 
-Opening the URL selects the matching source, session, containing prompt run,
-and event when that trace data exists in the target environment.
+`agent` mirrors the dropdown filter (a configured agent id or `others`).
+Opening the URL selects the matching agent, session, containing prompt run,
+and event when that trace data exists in the target environment. Legacy
+`?source=` links keep working.
 
 ## 11. Import Codex History
 
@@ -776,6 +813,10 @@ only effective display state.
 | `ASTROX_PLATFORM` | `codex` / `claude` / `trae` | Platform context |
 | `ASTROX_HISTORY_OPEN` | `true` / `false` | Left History panel |
 | `ASTROX_CONSOLE_OPEN` | `true` / `false` | Right Events/Inspector panel |
+| `ASTROX_HISTORY_RANGE` | `3h` / `6h` / `12h` / `24h` / `7d` | Default time range, `3h` unless changed |
+| `ASTROX_RUN_HISTORY_LIVE_FILTER` | `true` / `false` | Live view toggle, on by default |
+| `ASTROX_ACTIVE_VIEW` | `topology` / `trajectory` | Last canvas view |
+| `ASTROX_DEEP_VIEW` | `true` / `false` | Runtime-only atoms in the topology |
 
 Legacy `astro-theme` and `astro-platform` values migrate automatically and
 are removed after the new key is written. Invalid or unavailable storage falls

@@ -109,8 +109,8 @@ export function getRunHistoryDuration(
 }
 
 export function getRunHistoryDisplayState(
-  session: RunDurationSource,
-  promptRuns: readonly RunDurationSource[],
+  session: RunDurationSource & { end?: number },
+  promptRuns: readonly (RunDurationSource & { end?: number })[],
   now: number,
   activeRunTimeoutMs = Number.POSITIVE_INFINITY,
 ): {
@@ -138,11 +138,52 @@ export function getRunHistoryDisplayState(
   // out of the `N LIVE` filter, off the top of the list) the instant the new
   // prompt arrived. Only a session with no Prompt runs falls back to its own
   // start.
-  return getSessionDisplayState(
-    { ...(activePrompt ?? session), status },
-    now,
-    activeRunTimeoutMs,
-  );
+  const clockRun = { ...(activePrompt ?? session), status };
+  const display = getSessionDisplayState(clockRun, now, activeRunTimeoutMs);
+  // The freshness gate judges the executing message's last event: once the
+  // recorder has demonstrably stopped producing (a dead run kept its status
+  // forever otherwise), the display terminates on the session's recorded
+  // duration — the same definition the live index applies, so the row, the
+  // footer Live button, and the `N LIVE` chip cannot disagree.
+  if (
+    isLiveRunStatus(display.status) &&
+    !isFreshLiveRun(display.status, clockRun.end, now)
+  ) {
+    return { duration: session.duration, status: "terminated" };
+  }
+  return display;
+}
+
+/**
+ * Display state of one run with the live-freshness gate folded in.
+ *
+ * {@link getSessionDisplayState} only knows the recorded status: a run whose
+ * recorder died without a terminal event stays `active` forever, and every
+ * consumer that trusted the status — the RUNNING capsule, the footer Live
+ * button — presented a long-dead message as executing for up to the whole
+ * 24h timeout. The live index (`collectLiveRunKeys`) already refused to count
+ * such corpses via {@link isFreshLiveRun}; this helper applies the same
+ * definition to the *display*, so the row, the Live button, and the `N LIVE`
+ * chip can no longer disagree about what is executing. A run that went silent
+ * past its freshness window displays as `terminated` on its recorded
+ * duration; runs without an activity timestamp keep trusting their status.
+ */
+export function getRunDisplayState(
+  run: RunDurationSource & { end?: number },
+  now: number,
+  activeRunTimeoutMs = Number.POSITIVE_INFINITY,
+): {
+  duration: number;
+  status: TraceRunStatus;
+} {
+  const display = getSessionDisplayState(run, now, activeRunTimeoutMs);
+  if (
+    isLiveRunStatus(display.status) &&
+    !isFreshLiveRun(display.status, run.end, now)
+  ) {
+    return { duration: run.duration, status: "terminated" };
+  }
+  return display;
 }
 
 /**
@@ -309,18 +350,4 @@ export function collectLiveRunKeys(
     }
   }
   return live;
-}
-
-/**
- * Keep only the loaded sessions whose key appears at least once in the live
- * list, preserving the list's original order. The live list is derived from
- * the *currently loaded* sessions, so filtering can never reach for more
- * history than the panel already has.
- */
-export function filterSessionsByLiveKeys<T extends { key: string }>(
-  sessions: readonly T[],
-  liveKeys: readonly string[],
-): T[] {
-  const live = new Set(liveKeys);
-  return sessions.filter(({ key }) => live.has(key));
 }

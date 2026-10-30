@@ -78,12 +78,14 @@ const sectionBySlug: Record<string, string> = {
   "architecture-zh": "zh",
   "operations-zh": "zh",
   "implementation-details-zh": "zh",
+  "conventions-zh": "zh",
   "user-manual-en": "en",
   "event-protocol-en": "en",
   "data-definitions-en": "en",
   "architecture-en": "en",
   "operations-en": "en",
   "implementation-details-en": "en",
+  "conventions-en": "en",
   "plugin-installation": "common",
 };
 
@@ -96,6 +98,7 @@ const readingOrder: Record<string, string[]> = {
     "architecture-zh",
     "operations-zh",
     "implementation-details-zh",
+    "conventions-zh",
   ],
   en: [
     "user-manual-en",
@@ -104,6 +107,7 @@ const readingOrder: Record<string, string[]> = {
     "architecture-en",
     "operations-en",
     "implementation-details-en",
+    "conventions-en",
   ],
 };
 

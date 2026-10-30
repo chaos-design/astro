@@ -3,8 +3,8 @@ import test from "node:test";
 import {
   collectLiveRunKeys,
   ensureExpandedRun,
-  filterSessionsByLiveKeys,
   getPromptAtomSelection,
+  getRunDisplayState,
   getRunFreshness,
   getRunHistoryDisplayState,
   getRunHistoryDisplayStatus,
@@ -13,7 +13,9 @@ import {
   isLiveRunStatus,
   quantizeTimestamp,
   RUN_HISTORY_COARSE_REFRESH_MS,
+  RUN_HISTORY_LIVE_WINDOW_MS,
   RUN_HISTORY_STALE_AFTER_MS,
+  RUN_HISTORY_WAITING_LIVE_WINDOW_MS,
   RUN_HISTORY_WAITING_STALE_AFTER_MS,
   toggleExpandedRun,
 } from "../src/lib/run-history-state.ts";
@@ -207,6 +209,105 @@ test("terminates the parent display when its active duration reaches the limit",
   );
 });
 
+test("a run silent past the live window no longer displays as executing", () => {
+  // A historical message whose recorder died without a terminal event used to
+  // wear the RUNNING capsule (and light the footer Live button) until the 24h
+  // timeout — the live index refused to count it, so the two disagreed. The
+  // display now applies the same freshness gate.
+  const start = 1_000;
+  const lastEventAt = start + 5_000;
+  const run = {
+    duration: 5_000,
+    start,
+    end: lastEventAt,
+    status: "active",
+  } as const;
+
+  // Inside the window the run is still executing (and its duration advances).
+  assert.deepEqual(
+    getRunDisplayState(run, lastEventAt + RUN_HISTORY_LIVE_WINDOW_MS - 1, Infinity),
+    { duration: lastEventAt + RUN_HISTORY_LIVE_WINDOW_MS - 1 - start, status: "active" },
+  );
+  // Past the window it displays as terminated on its recorded duration.
+  assert.deepEqual(
+    getRunDisplayState(run, lastEventAt + RUN_HISTORY_LIVE_WINDOW_MS + 1, Infinity),
+    { duration: 5_000, status: "terminated" },
+  );
+});
+
+test("a waiting run keeps its longer freshness rope before terminating", () => {
+  const start = 1_000;
+  const run = {
+    duration: 60_000,
+    start,
+    end: start + 60_000,
+    status: "waiting",
+  } as const;
+
+  assert.deepEqual(
+    getRunDisplayState(
+      run,
+      run.end + RUN_HISTORY_WAITING_LIVE_WINDOW_MS - 1,
+      Infinity,
+    ),
+    {
+      duration: run.end + RUN_HISTORY_WAITING_LIVE_WINDOW_MS - 1 - start,
+      status: "waiting",
+    },
+  );
+  assert.deepEqual(
+    getRunDisplayState(
+      run,
+      run.end + RUN_HISTORY_WAITING_LIVE_WINDOW_MS + 1,
+      Infinity,
+    ),
+    { duration: 60_000, status: "terminated" },
+  );
+});
+
+test("runs without an activity timestamp keep trusting their status", () => {
+  // Legacy callers (and tests) pass bare {duration, start, status} records;
+  // without `end` there is nothing to judge freshness against.
+  const run = { duration: 30_000, start: 1_000, status: "active" } as const;
+  const now = 90 * 60_000;
+  assert.deepEqual(getRunDisplayState(run, now, Infinity), {
+    duration: now - run.start,
+    status: "active",
+  });
+});
+
+test("the parent display terminates when its newest Prompt went stale", () => {
+  const timeout = 24 * 60 * 60 * 1_000;
+  const hour = 60 * 60 * 1_000;
+  // A session whose recorder died an hour into the newest Prompt: the status
+  // stayed `active`, the session row used to keep wearing it.
+  const session = {
+    duration: 21 * hour,
+    start: 0,
+    status: "active",
+    end: 21 * hour,
+  } as const;
+  const activePrompt = [
+    {
+      duration: 1 * hour,
+      start: 20 * hour,
+      end: 21 * hour,
+      status: "active",
+    },
+  ] as const;
+  const staleAt = 21 * hour + RUN_HISTORY_LIVE_WINDOW_MS + 1;
+
+  assert.deepEqual(
+    getRunHistoryDisplayState(session, activePrompt, staleAt, timeout),
+    { duration: 21 * hour, status: "terminated" },
+  );
+  // The terminal info explains the flip as a timeout, not a recorded reason.
+  assert.deepEqual(
+    getRunHistoryTerminalInfo(session, activePrompt, staleAt, timeout),
+    { detail: null, reason: "timeout" },
+  );
+});
+
 test("expands and collapses one run without changing other groups", () => {
   const expanded = toggleExpandedRun(new Set(["run-a"]), "run-b");
   assert.deepEqual([...expanded], ["run-a", "run-b"]);
@@ -251,27 +352,6 @@ test("treats executing and waiting runs as live", () => {
   for (const status of ["complete", "failed", "terminated", "demo", undefined]) {
     assert.equal(isLiveRunStatus(status), false, String(status));
   }
-});
-
-test("filters sessions down to the live ones without reordering", () => {
-  const sessions = [
-    { key: "run-a" },
-    { key: "run-b" },
-    { key: "run-c" },
-    { key: "run-d" },
-  ];
-
-  // Preserves list order, keeps each session at most once even when the
-  // live list is duplicated, and drops sessions the filter does not know.
-  assert.deepEqual(
-    filterSessionsByLiveKeys(sessions, ["run-c", "run-a", "run-a"]),
-    [sessions[0], sessions[2]],
-  );
-
-  // An empty live set leaves the list empty rather than falling back to
-  // "show everything" — the panel distinguishes that from no history.
-  assert.deepEqual(filterSessionsByLiveKeys(sessions, []), []);
-  assert.deepEqual(filterSessionsByLiveKeys([], ["run-a"]), []);
 });
 
 test("collects the sessions whose message is executing", () => {

@@ -218,12 +218,16 @@ node ~/.astrox/plugins/astro/server/server.mjs
   - `accepted`：已连接 SSE；
   - `offline`：API/SSE 不可用；
   - `demo`：development/test 且无真实事件时使用内置演示数据。
+- GitHub 图标：在新标签页打开本项目的 GitHub 仓库
+  （`https://github.com/chaos-design/astro`）。
+- 设置图标：打开设置，配置默认加载消息的时间范围。
 - 主题：浅色、深色、跟随系统；选择保存在 `ASTROX_THEME`。
 
 ### 5.2 全局历史搜索
 
 点击顶栏 Search History 或按 `Cmd/Ctrl + K`，可以搜索浏览器已经加载的全部事件，
-而不只限于当前 Prompt。默认时间范围为最近 3 小时。
+而不只限于当前 Prompt。初始时间范围取设置里的「默认时间范围」，默认最近 3 小时；
+在弹窗内改动只影响本次搜索。
 
 筛选条件包括：
 
@@ -240,6 +244,23 @@ node ~/.astrox/plugins/astro/server/server.mjs
 History 搜索只覆盖浏览器已加载数据，与服务端 `/api/search` 是两个独立入口。
 
 ### 5.3 左侧 Run History
+
+列表先按所选智能体收窄，再套时间窗口。窗口长度取设置里的「默认时间范围」（默认
+最近 3 小时），起点以**最近一条消息**为终点向前推：隔夜或长时间空闲后打开控制台，
+看到的仍是上一次会话前后的消息，而不是空列表。窗口放不下更早的记录时，底部出现
+`LOAD EARLIER`，点击或滚动到底部会把窗口翻倍（3 → 6 → 12 → 24 → 48 小时），
+直到没有更早的消息。
+
+正在执行的消息不受窗口限制，始终显示并置顶。
+
+面板头部右侧的 `N LIVE` 胶囊是一个可切换的 Live 视图：
+
+- 开启时列出**所选智能体的全部消息**（忽略时间窗口），正在执行的消息置顶、自动
+  展开并滚动定位；发送新消息时，对应智能体新进入执行状态的那条消息会被自动定位，
+  不需要再翻列表。
+- 关闭时回到默认时间窗口，`LOAD EARLIER` 恢复可用。
+- 选择保存在 `ASTROX_RUN_HISTORY_LIVE_FILTER`，默认开启。
+- 没有正在执行的消息时胶囊显示 `0 LIVE`，列表仍然是该智能体的完整消息列表。
 
 每个父行代表一个会话，显示：
 
@@ -337,6 +358,17 @@ History 搜索只覆盖浏览器已加载数据，与服务端 `/api/search` 是
 父子行状态允许有意不同。Session 父行只有在最新 Prompt 为 `active` 时才增加；最新
 Prompt 为 waiting 时父行冻结。waiting 子行仍继续计算自身时长，并可独立达到超时。
 历史 complete、failed 或 terminated 运行即使长于当前阈值，也保留其已记录时长。
+
+### 5.8 设置
+
+顶栏设置图标打开设置弹窗。目前只有一项：
+
+- **默认时间范围**：`最近 3 小时`（默认）、`6 小时`、`12 小时`、`24 小时`、
+  `最近 7 天`。
+
+这一项同时驱动两处：RUN HISTORY 的可见时间窗口，以及全局历史搜索弹窗的初始时间
+范围。改动立即生效并写入 `ASTROX_HISTORY_RANGE`；「恢复默认」把值改回 3 小时。
+设置面板提示时间范围以最近一条消息为终点向前推算，且正在执行的消息不受范围限制。
 
 ## 6. 执行拓扑操作
 
@@ -461,11 +493,12 @@ astro-<source>-<sessionId>-prompt-<number>.jsonl
 页面会把当前定位写入查询参数：
 
 ```text
-?source=codex&session=<sessionId>&event=<eventId>
+?agent=codex&session=<sessionId>&event=<eventId>
 ```
 
-打开该 URL 时，页面会优先选择匹配来源、会话、包含该事件的 Prompt 子运行并定位
-事件。深链依赖目标环境中已存在对应 Trace 数据。
+`agent` 与下拉选择保持一致（已配置的智能体 ID 或 `others`）。打开该 URL 时，
+页面会优先选择匹配的智能体、会话、包含该事件的 Prompt 子运行并定位事件。
+深链依赖目标环境中已存在对应 Trace 数据，旧的 `?source=` 链接仍然可用。
 
 ## 11. 导入 Codex 历史
 
@@ -704,6 +737,10 @@ astro-trace doctor
 | `ASTROX_PLATFORM` | `codex` / `claude` / `trae` | 平台上下文 |
 | `ASTROX_HISTORY_OPEN` | `true` / `false` | 左侧 History 展开状态 |
 | `ASTROX_CONSOLE_OPEN` | `true` / `false` | 右侧 Events/Inspector 展开状态 |
+| `ASTROX_HISTORY_RANGE` | `3h` / `6h` / `12h` / `24h` / `7d` | 默认时间范围，默认 `3h` |
+| `ASTROX_RUN_HISTORY_LIVE_FILTER` | `true` / `false` | Live 视图开关，默认 `true` |
+| `ASTROX_ACTIVE_VIEW` | `topology` / `trajectory` | 上次使用的画布视图 |
+| `ASTROX_DEEP_VIEW` | `true` / `false` | 拓扑是否只显示运行时原子 |
 
 旧 `astro-theme` 和 `astro-platform` 会自动迁移并在新键写入后删除。Storage
 不可用或值非法时使用默认值，不影响 Trace 采集。

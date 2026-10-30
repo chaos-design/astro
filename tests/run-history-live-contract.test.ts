@@ -142,3 +142,50 @@ test("offers a manual reload control for stale loaded history", () => {
   // a second control push the live chip out of the 48px header.
   assert.match(cssRule(".run-history__header-meta"), /flex-direction:\s*row/);
 });
+
+/**
+ * The header gained two 28px controls (repository link, settings). They sit
+ * next to the theme switcher, so the contract is that they look like it rather
+ * than introducing a second button style in the same row.
+ */
+test("matches the header icon controls to the theme switcher", () => {
+  const shared = cssRule(".repo-link,\n.settings-trigger");
+
+  assert.match(shared, /border-color:\s*transparent/);
+  assert.match(shared, /border-radius:\s*6px/);
+  assert.match(shared, /background:\s*var\(--panel-raised\)/);
+
+  const link = cssRule(".repo-link");
+  assert.match(link, /width:\s*28px/);
+  assert.match(link, /height:\s*28px/);
+
+  // Both glyphs are sized together: a 14px mark next to a 16px mark read as a
+  // misaligned pair at this scale.
+  const glyph = cssRule(".repo-link > svg,\n.settings-trigger > svg");
+  assert.match(glyph, /width:\s*15px/);
+  assert.match(glyph, /height:\s*15px/);
+});
+
+test("lays the default range out as a pick-one grid", () => {
+  const grid = cssRule(".settings-range-grid");
+  assert.match(grid, /grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\)/);
+
+  // The tick reserves its slot instead of being added on selection: a layout
+  // that grows on select makes the whole grid jump.
+  assert.match(
+    cssRule(".settings-range-option__check"),
+    /position:\s*absolute/,
+  );
+  assert.match(
+    cssRule(".settings-range-option__check"),
+    /opacity:\s*0/,
+  );
+  assert.match(
+    cssRule(".settings-range-option.is-selected .settings-range-option__check"),
+    /opacity:\s*1/,
+  );
+  assert.match(
+    cssRule(".settings-range-option.is-selected"),
+    /var\(--selection-border\)/,
+  );
+});

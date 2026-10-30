@@ -141,18 +141,39 @@ Guide 的观测列表保留语义化 `ul` / `li`，使用原生 `disc` 标记。
 
 正在执行的消息在三处同时标识，使定位不依赖滚动：
 
-- 面板标题常驻 `N LIVE` 芯片：点击把首条活动消息滚动到列表中部，并**同时筛选**
-  当前已加载列表，只保留活动消息；再次点击取消筛选。芯片筛选时呈武装态
-  （`.is-filtering` 实心状态边框）；筛选范围仅限当前加载的消息，绝不触发加载
-  更早历史。筛选集合由 `filterSessionsByLiveKeys` 从已加载会话推导，一旦活动
-  消息全部结束，芯片隐藏且筛选自动解除；
+- 面板标题常驻 `N LIVE` 芯片：既是活动计数，也是 **Live 视图开关**（状态保存在
+  `ASTROX_RUN_HISTORY_LIVE_FILTER`，默认开启）。开启时列表显示所选智能体的全部
+  消息（丢弃时间窗口），活动消息置顶、自动展开并滚动定位；新消息开始执行时按
+  live 集合差集自动定位，无需手动翻找。关闭时回到默认时间窗口。芯片始终渲染，
+  `0 LIVE` 时使用安静的 idle 变体；
 - 活动行使用 `inset 2px` 的状态色左缘，`active` 为紫色、`waiting` 为琥珀色；
 - 标签行额外渲染带脉冲圆点的 `RUNNING` / `WAITING` 胶囊，与 `STATUS` 标签并列。
 
-活动状态由 `isLiveRunStatus` 判定，覆盖 `active` 与 `waiting`。选中态优先于活动色，
-因此被选中的活动行仍保留选择边框。已完成的消息（`complete` / `failed` /
-`terminated`）不再自动定位到最后一个原子：`getPromptAtomSelection` 对非活动状态返回
-`null`，拓扑保持未选中，只有人工点击原子才会定位。
+活动状态由 `isLiveRunStatus` 判定，覆盖 `active` 与 `waiting`；实时索引另需
+`isFreshLiveRun` 的活跃度门槛（`active` 10 分钟、`waiting` 60 分钟），避免崩溃
+录制器留下的 `active` 记录长期占用 `N LIVE`。选中态优先于活动色，因此被选中的
+活动行仍保留选择边框。已完成的消息（`complete` / `failed` / `terminated`）不再
+自动定位到最后一个原子：`getPromptAtomSelection` 对非活动状态返回 `null`，拓扑
+保持未选中，只有人工点击原子才会定位。
+
+### 运行历史时间窗口
+
+列表先按智能体收窄，再按小时窗口过滤（设置项 `默认时间范围`，默认 `3h`）：
+
+- 窗口终点取**最近一条消息**时间（`getRunHistoryAnchorTime`），不是 `Date.now()`，
+  因此隔夜打开不会得到空列表；
+- 活动消息不受窗口限制（`selectVisibleRunHistory` 的 `liveKeys` 参数为豁免集合）；
+- `LOAD EARLIER` 把窗口翻倍（3 → 6 → 12 → 24 → 48 小时），
+  `canLoadMoreRunHistory` 为 `false` 时按钮消失；
+- 切换智能体或修改默认范围时，窗口宽度回到设置的默认值。
+
+### 设置与顶栏
+
+设置弹窗（`src/components/settings-dialog.tsx`）只承载浏览器本地偏好，改动立即
+生效并写入 `localStorage`。当前唯一设置项「默认时间范围」同时驱动 RUN HISTORY
+窗口与全局搜索弹窗的初始范围，避免两处默认值漂移。顶栏另有 GitHub 锚点
+（`appRepository.url`，新标签页打开）与设置入口，均为 28 px 图标控件，与主题
+切换器同高同圆角。
 
 ### 移动端布局
 
