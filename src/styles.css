@@ -1607,9 +1607,9 @@ pre,
   display: inline-flex;
   flex: none;
   align-items: center;
-  gap: 4px;
-  height: 20px;
-  padding: 0 7px;
+  gap: 5px;
+  height: 24px;
+  padding: 0 9px;
   border: 1px solid color-mix(in srgb, var(--status-running) 32%, transparent);
   border-radius: 999px;
   color: color-mix(in srgb, var(--status-running) 74%, var(--text));
@@ -1629,15 +1629,16 @@ pre,
   background: color-mix(in srgb, var(--status-running) 22%, transparent);
 }
 
-/* The chip doubles as the live-row filter; while filtering it reads as the
- * armed toggle so switching it back off is obvious at a glance. */
+/* The armed toggle keeps the solid fill, but the glow is clipped to a thin
+   ring so it stays inside the header instead of bleeding across the panel
+   copy. */
 .run-history__live-jump.is-filtering {
   border-color: var(--bg);
   background: var(--status-running);
   color: var(--bg);
   box-shadow:
-    0 0 0 2px color-mix(in srgb, var(--status-running) 42%, transparent),
-    0 0 16px 2px color-mix(in srgb, var(--status-running) 70%, transparent);
+    0 0 0 2px color-mix(in srgb, var(--status-running) 22%, transparent),
+    0 0 10px 0 color-mix(in srgb, var(--status-running) 38%, transparent);
 }
 
 .run-history__live-jump.is-filtering > svg {
@@ -1648,14 +1649,15 @@ pre,
   color: var(--bg);
 }
 
-/* Header meta: the manual reload and the LIVE chip share one row at the right
-   edge of the header, so neither control can push the other out. */
+/* Header meta: the reload and the LIVE chip share one row at the right edge
+   of the header. Both controls use the same 24px pill geometry — the app's
+   header-control height (`h-6 rounded-full`) — so they read as one cluster. */
 .run-history__header-meta {
   display: flex;
   flex: none;
   flex-direction: row;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
 }
 
 /* Manual "load latest": pulls a fresh full snapshot for the whole list — the
@@ -1666,12 +1668,12 @@ pre,
   flex: none;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   border: 1px solid var(--line-bright);
   border-radius: 999px;
   color: var(--muted-soft);
-  background: transparent;
+  background: color-mix(in srgb, var(--panel-raised) 72%, transparent);
   cursor: pointer;
   transition:
     border-color 140ms ease,
@@ -1695,8 +1697,8 @@ pre,
 }
 
 .run-history__reload > svg {
-  width: 11px;
-  height: 11px;
+  width: 12px;
+  height: 12px;
 }
 
 /* While the fresh snapshot is in flight the icon spins on a dedicated
@@ -1791,8 +1793,8 @@ pre,
 }
 
 .run-history__live-jump > svg {
-  width: 13px;
-  height: 13px;
+  width: 12px;
+  height: 12px;
   /* Solid running colour so the icon reads clearly against the translucent
      chip; the dedicated keyframe only pulses opacity/scale/glow (via
      currentColor) and never dims the hue back to muted. */
@@ -1813,7 +1815,7 @@ pre,
 .run-history__live-jump.is-idle:not(.is-filtering) {
   border-color: var(--line-bright);
   color: var(--muted);
-  background: transparent;
+  background: color-mix(in srgb, var(--panel-raised) 72%, transparent);
 }
 
 .run-history__live-jump.is-idle:not(.is-filtering) > svg {

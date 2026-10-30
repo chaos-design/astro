@@ -91,7 +91,9 @@ test("keeps the chip in the header at zero live without pretending to run", () =
 
   assert.match(idle, /border-color:\s*var\(--line-bright\)/);
   assert.match(idle, /color:\s*var\(--muted\)/);
-  assert.match(idle, /background:\s*transparent/);
+  // Same raised surface as the reload button: the two header controls read
+  // as one cluster instead of a bare glyph next to a label.
+  assert.match(idle, /background:[\s\S]*var\(--panel-raised\)/);
   assert.match(
     cssRule(".run-history__live-jump.is-idle:not(.is-filtering) > svg"),
     /animation:\s*none/,
