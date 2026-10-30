@@ -1805,6 +1805,28 @@ pre,
   color: var(--bg);
 }
 
+/* `0 LIVE`: the chip stays in the header — the arm is a preference and the
+   count is part of the panel's state, not an occasional badge — but it drops
+   the running colour and the pulse so an idle panel does not pretend to be
+   busy. The armed look still wins: the filter is on, there is just nothing
+   executing. */
+.run-history__live-jump.is-idle:not(.is-filtering) {
+  border-color: var(--line-bright);
+  color: var(--muted);
+  background: transparent;
+}
+
+.run-history__live-jump.is-idle:not(.is-filtering) > svg {
+  color: var(--muted);
+  animation: none;
+}
+
+.run-history__live-jump.is-idle:not(.is-filtering):hover {
+  border-color: var(--selection-border);
+  color: var(--selection-text);
+  background: var(--selection-bg);
+}
+
 .run-history__row > svg {
   width: 14px;
   height: 14px;

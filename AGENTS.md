@@ -82,9 +82,12 @@ use Node.js ES modules or CommonJS according to their existing file extension.
 - The live-only filter is a persisted preference (`ASTROX_RUN_HISTORY_LIVE_FILTER`)
   that defaults to armed: while armed, the list shows every live run (live rows
   are exempt from the day window) and cancels back to the windowed list when
-  the user turns it off. Zero live rows must not clear the filter — the arm
-  only gates rendering when live rows exist, so the stored choice survives
-  sessions without live runs and re-arms when one appears.
+  the user turns it off. The `N LIVE` chip always renders — `0 LIVE` included,
+  in an idle (non-pulsing) variant — because the arm is a preference, not a
+  badge. Zero live rows must not clear the filter: armed + zero shows the
+  panel's "没有正在执行的消息" empty state, and the stored choice re-arms when a
+  run appears. Demo traces are synthetic and never live, so the demo list
+  ignores the arm instead of rendering empty.
 - "Running again" means a historical session that received a new prompt, even
   days later: it must land in that live key set so the `N LIVE` filter can
   find it. Its clock (see Run Timeout Invariant) is the new prompt's, not the

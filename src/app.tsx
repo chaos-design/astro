@@ -1685,9 +1685,13 @@ const RunHistory = memo(function RunHistory({
     };
   }, [isDemo, liveKeys, sessions]);
 
-  // Filtering only ever narrows the *loaded* list, so switching the filter
-  // off or loading more days can never lose a live row.
-  const liveFiltering = liveFilter && liveSummary.count > 0;
+  // Arming the filter means "show only the executing messages" — including
+  // when there are none: the chip reports `0 LIVE` and the list says so.
+  // Falling back to the full list at zero live would contradict the armed
+  // chip and hide the empty state behind a silent state change. Demo traces
+  // are synthetic and never live, so the demo list ignores the arm instead
+  // of rendering empty.
+  const liveFiltering = liveFilter && !isDemo;
   const displayedSessions = useMemo(
     () =>
       liveFiltering
@@ -1975,32 +1979,31 @@ const RunHistory = memo(function RunHistory({
               {reloading ? "正在加载最新消息…" : "重新加载最新消息列表"}
             </TooltipContent>
           </Tooltip>
-          {liveSummary.count > 0 ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  className={cn(
-                    "run-history__live-jump",
-                    liveFiltering && "is-filtering",
-                  )}
-                  aria-pressed={liveFiltering}
-                  aria-label={
-                    liveFiltering
-                      ? `取消筛选活动消息（${liveSummary.count} 条）`
-                      : `只看正在执行的消息（${liveSummary.count} 条）`
-                  }
-                  onClick={toggleLiveFilter}
-                >
-                  <Radio aria-hidden="true" />
-                  <span>{liveSummary.count} LIVE</span>
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                {liveFiltering ? "取消筛选活动消息" : "只看正在执行的消息"}
-              </TooltipContent>
-            </Tooltip>
-          ) : null}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                className={cn(
+                  "run-history__live-jump",
+                  liveSummary.count === 0 && "is-idle",
+                  liveFiltering && "is-filtering",
+                )}
+                aria-pressed={liveFiltering}
+                aria-label={
+                  liveFiltering
+                    ? `取消筛选活动消息（${liveSummary.count} 条）`
+                    : `只看正在执行的消息（${liveSummary.count} 条）`
+                }
+                onClick={toggleLiveFilter}
+              >
+                <Radio aria-hidden="true" />
+                <span>{liveSummary.count} LIVE</span>
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              {liveFiltering ? "取消筛选活动消息" : "只看正在执行的消息"}
+            </TooltipContent>
+          </Tooltip>
         </div>
       </header>
       <div
@@ -2037,7 +2040,10 @@ const RunHistory = memo(function RunHistory({
             没有正在执行的消息
           </output>
         ) : null}
-        {canLoadMore ? (
+        {/* Loading earlier days only makes sense against the windowed list;
+            while the live filter is armed those rows would be filtered out
+            anyway, so the affordance would be a dead end. */}
+        {canLoadMore && !liveFiltering ? (
           <>
             <div
               aria-hidden="true"

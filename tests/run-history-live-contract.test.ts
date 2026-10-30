@@ -84,6 +84,27 @@ test("marks the armed live filter on the same chip", () => {
   );
 });
 
+test("keeps the chip in the header at zero live without pretending to run", () => {
+  // `0 LIVE` uses the same control so the arm stays visible and operable;
+  // only the running colour and the pulse drop away.
+  const idle = cssRule(".run-history__live-jump.is-idle:not(.is-filtering)");
+
+  assert.match(idle, /border-color:\s*var\(--line-bright\)/);
+  assert.match(idle, /color:\s*var\(--muted\)/);
+  assert.match(idle, /background:\s*transparent/);
+  assert.match(
+    cssRule(".run-history__live-jump.is-idle:not(.is-filtering) > svg"),
+    /animation:\s*none/,
+  );
+  // The armed fill must survive the idle variant: the filter is on, there is
+  // simply nothing executing.
+  assert.match(
+    styles,
+    /\.run-history__live-jump\.is-idle:not\(\.is-filtering\)/,
+    "idle styling must defer to the armed chip",
+  );
+});
+
 test("offers a manual reload control for stale loaded history", () => {
   const reload = cssRule(".run-history__reload");
 
