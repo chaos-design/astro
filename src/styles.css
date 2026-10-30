@@ -1642,14 +1642,73 @@ pre,
   color: var(--bg);
 }
 
-/* Header meta: the LIVE chip and the stream-freshness clock share one column
-   so a long uptime string never pushes the chip out of the header. */
+/* Header meta: the manual reload and the LIVE chip share one row at the right
+   edge of the header, so neither control can push the other out. */
 .run-history__header-meta {
   display: flex;
   flex: none;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 3px;
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Manual "load latest": pulls a fresh full snapshot for the whole list — the
+   escape hatch when loaded history went stale (e.g. a historical session
+   resumed but its events never arrived over a broken stream). */
+.run-history__reload {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 20px;
+  border: 1px solid var(--line-bright);
+  border-radius: 999px;
+  color: var(--muted-soft);
+  background: transparent;
+  cursor: pointer;
+  transition:
+    border-color 140ms ease,
+    color 140ms ease,
+    background 140ms ease;
+}
+
+.run-history__reload:hover {
+  border-color: var(--selection-border);
+  color: var(--selection-text);
+  background: var(--selection-bg);
+}
+
+.run-history__reload:focus-visible {
+  outline: 1px solid var(--selection-border);
+  outline-offset: 1px;
+}
+
+.run-history__reload:disabled {
+  cursor: default;
+}
+
+.run-history__reload > svg {
+  width: 11px;
+  height: 11px;
+}
+
+/* While the fresh snapshot is in flight the icon spins on a dedicated
+   keyframe so the contract test can pin the behaviour. */
+.run-history__reload.is-reloading {
+  cursor: progress;
+  color: var(--status-running);
+  border-color: color-mix(in srgb, var(--status-running) 45%, transparent);
+}
+
+.run-history__reload.is-reloading > svg {
+  animation: run-history-reload-spin 0.9s linear infinite;
+}
+
+@keyframes run-history-reload-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /*

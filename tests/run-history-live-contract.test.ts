@@ -83,3 +83,26 @@ test("marks the armed live filter on the same chip", () => {
     /box-shadow:[\s\S]*color-mix\(in srgb, var\(--status-running\)/,
   );
 });
+
+test("offers a manual reload control for stale loaded history", () => {
+  const reload = cssRule(".run-history__reload");
+
+  // The control is a compact header button, never a text label: the header
+  // row is 48px and shares its edge with the `N LIVE` chip.
+  assert.match(reload, /cursor:\s*pointer/);
+  assert.match(reload, /border-radius:\s*999px/);
+  assert.doesNotMatch(reload, /display:\s*none/);
+
+  // While the fresh snapshot is in flight the control says so by spinning,
+  // and it must not leave the pointer claiming clickability.
+  assert.match(
+    cssRule(".run-history__reload.is-reloading > svg"),
+    /animation:\s*run-history-reload-spin/,
+  );
+  assert.match(cssRule(".run-history__reload.is-reloading"), /cursor:\s*progress/);
+  assert.match(styles, /@keyframes run-history-reload-spin \{/);
+
+  // The chip and the reload share one header row: a column layout would let
+  // a second control push the live chip out of the 48px header.
+  assert.match(cssRule(".run-history__header-meta"), /flex-direction:\s*row/);
+});

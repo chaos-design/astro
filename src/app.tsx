@@ -1604,6 +1604,8 @@ const RunHistory = memo(function RunHistory({
   now,
   promptRunsBySession,
   onLoadMore,
+  onReloadLatest,
+  reloading,
   onSelect,
 }: {
   sessions: TraceSession[];
@@ -1618,6 +1620,10 @@ const RunHistory = memo(function RunHistory({
   gitInfo: Record<string, { repo: string; branch: string } | null>;
   initialLoading: boolean;
   onLoadMore: () => void;
+  /** Drop the client's loaded history and pull a fresh snapshot. */
+  onReloadLatest: () => void;
+  /** True while the fresh snapshot has been requested but not delivered. */
+  reloading: boolean;
   onSelect: (sessionKey: string, promptRunKey?: string) => void;
 }) {
   const [expandedRuns, setExpandedRuns] = useState<Set<string>>(
@@ -1716,6 +1722,26 @@ const RunHistory = memo(function RunHistory({
       setLiveFilter(false);
     }
   }, [liveFilter, liveSummary.count]);
+
+  // A manual reload exists to reveal what the loaded history was missing, so
+  // when the fresh snapshot lands the list must point at it: the executing
+  // run when one is live, otherwise the top of the list — both are the
+  // newest state the reload promised. `reloading` flips false inside the
+  // same transition that swapped in the snapshot, so this effect always
+  // reads the fresh summary.
+  const wasReloadingRef = useRef(reloading);
+  useEffect(() => {
+    const finished = wasReloadingRef.current && !reloading;
+    wasReloadingRef.current = reloading;
+    if (!finished) {
+      return;
+    }
+    if (liveSummary.firstLiveKey) {
+      jumpToLiveRun();
+    } else {
+      listRef.current?.scrollTo({ top: 0 });
+    }
+  }, [jumpToLiveRun, liveSummary.firstLiveKey, reloading]);
 
   useEffect(() => {
     if (!activeKey) {
@@ -1914,6 +1940,25 @@ const RunHistory = memo(function RunHistory({
           <strong>{sessions.length} runs</strong>
         </div>
         <div className="run-history__header-meta">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                className={cn(
+                  "run-history__reload",
+                  reloading && "is-reloading",
+                )}
+                disabled={reloading || isDemo}
+                aria-label="重新加载最新消息列表"
+                onClick={onReloadLatest}
+              >
+                <RefreshCw aria-hidden="true" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              {reloading ? "正在加载最新消息…" : "重新加载最新消息列表"}
+            </TooltipContent>
+          </Tooltip>
           {liveSummary.count > 0 ? (
             <Tooltip>
               <TooltipTrigger asChild>
@@ -3589,6 +3634,18 @@ export default function App() {
   const [lastEventAt, setLastEventAt] = useState(0);
   // Bumped after an in-place service restart to re-subscribe the SSE stream.
   const [streamEpoch, setStreamEpoch] = useState(0);
+  // A manual "load latest" drops the resume cursor and re-subscribes the
+  // stream, so the server answers with a fresh full snapshot instead of a
+  // tail replay. It is the escape hatch for a client whose loaded history
+  // went stale — e.g. a historical session resumed execution but its new
+  // events never arrived over a broken stream. The flag only spans the
+  // re-subscribe: the snapshot handlers clear it once fresh data landed.
+  const [reloadingEvents, setReloadingEvents] = useState(false);
+  // Set together with the reload above and consumed once by the stream
+  // effect: a trace message landing between the click and the re-subscribe
+  // would otherwise re-fill the resume cursor and silently downgrade the
+  // full-snapshot reload into a tail replay.
+  const forceSnapshotRef = useRef(false);
   // Last event the live stream delivered. A reconnect names it so the server
   // replays only the missed tail instead of re-sending the whole history.
   const resumeCursorRef = useRef("");
@@ -3821,7 +3878,13 @@ export default function App() {
     if (pageSuspended) {
       return undefined;
     }
-    const resumeCursor = resumeCursorRef.current;
+    // A manual reload demands the full snapshot regardless of any trace
+    // message that slipped in between the click and this re-subscribe.
+    const forceSnapshot = forceSnapshotRef.current;
+    forceSnapshotRef.current = false;
+    const resumeCursor = forceSnapshot
+      ? ""
+      : resumeCursorRef.current;
     const source = new EventSource(
       resumeCursor
         ? `/api/stream?since=${encodeURIComponent(resumeCursor)}`
@@ -3899,11 +3962,16 @@ export default function App() {
       if (payload.git && Object.keys(payload.git).length) {
         setGitInfo((current) => ({ ...current, ...payload.git }));
       }
-      if (fresh.length) {
-        startTransition(() => {
+      // A reload can legitimately be answered by a tail replay (the server
+      // kept our cursor); either way fresh data landed, so stop waiting —
+      // inside the same transition as the append, so the reload-follow effect
+      // never reads the summary of the stale list.
+      startTransition(() => {
+        if (fresh.length) {
           setLiveEvents((current) => [...current, ...fresh]);
-        });
-      }
+        }
+        setReloadingEvents(false);
+      });
     });
     source.addEventListener("reset", (message: MessageEvent<string>) => {
       const payload = JSON.parse(message.data) as {
@@ -3931,9 +3999,16 @@ export default function App() {
         setLiveEvents(events);
         setGitInfo(payload.git ?? {});
         setEventsLoaded(true);
+        setReloadingEvents(false);
       });
     });
-    source.onerror = () => setConnected(false);
+    source.onerror = () => {
+      setConnected(false);
+      // A failed reconnect must not leave the manual-reload control spinning
+      // forever; EventSource keeps retrying and the next snapshot lands
+      // whenever the server answers.
+      setReloadingEvents(false);
+    };
     source.onopen = () => setConnected(true);
     return () => {
       if (flushTimer !== null) {
@@ -4774,6 +4849,22 @@ export default function App() {
     );
   }, [filteredSessions, now]);
 
+  // Manual "load latest" for RUN HISTORY: drop the resume cursor and
+  // re-subscribe the stream so the server answers with the full snapshot it
+  // currently holds. A historical session that resumed execution but whose
+  // new events never made it over a broken stream reappears with its real
+  // live status, and the list otherwise catches up with everything the
+  // recorder has written since the page loaded.
+  const handleReloadLatestEvents = useCallback(() => {
+    if (reloadingEvents) {
+      return;
+    }
+    setReloadingEvents(true);
+    resumeCursorRef.current = "";
+    forceSnapshotRef.current = true;
+    setStreamEpoch((current) => current + 1);
+  }, [reloadingEvents]);
+
   const headerNavActions: ReadonlyArray<HeaderNavAction> = [
     {
       id: "import",
@@ -4974,6 +5065,8 @@ export default function App() {
               canLoadMore={canLoadMoreRunHistory}
               initialLoading={!eventsLoaded && !isDemo}
               onLoadMore={handleLoadMoreRunHistory}
+              onReloadLatest={handleReloadLatestEvents}
+              reloading={reloadingEvents}
               onSelect={selectSession}
             />
           ) : (
