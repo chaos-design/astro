@@ -1737,6 +1737,29 @@ const RunHistory = memo(function RunHistory({
     jumpToLiveRun();
   }, [liveFilter, jumpToLiveRun]);
 
+  // The armed list is a live index: every live thread renders expanded, so
+  // the executing Prompt — the message the user just sent — is a row of its
+  // own instead of a hidden child. This is what makes "the message I am
+  // waiting on" reachable without a second click. It only fills in missing
+  // keys, so a manual collapse afterwards is left alone until the live set
+  // changes again.
+  useEffect(() => {
+    if (!liveFiltering) {
+      return;
+    }
+    setExpandedRuns((current) => {
+      const missing = liveSummary.liveKeys.filter((key) => !current.has(key));
+      if (!missing.length) {
+        return current;
+      }
+      const next = new Set(current);
+      for (const key of missing) {
+        next.add(key);
+      }
+      return next;
+    });
+  }, [liveFiltering, liveSummary.liveKeys]);
+
   // The zero-live case must NOT clear the filter: `liveFiltering` already
   // degrades to the full list when no run is executing, and auto-clearing
   // here would silently overwrite the user's persisted default-on choice
@@ -3325,7 +3348,14 @@ const ReplayFooter = memo(function ReplayFooter({
   );
 });
 
-function AtomGuide({
+/**
+ * Flow Guide drawer. Memoized because the shell re-renders every second (the
+ * live duration clock) and on every capture batch; without the memo the open
+ * drawer re-rendered its whole catalog on each tick, which is what made it
+ * feel laggy. Its props are stable: the open setter, a `useCallback` locator,
+ * and a platform id.
+ */
+const AtomGuide = memo(function AtomGuide({
   open,
   onOpenChange,
   platformId,
@@ -3357,7 +3387,13 @@ function AtomGuide({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="atom-guide">
+      <SheetContent
+        className="atom-guide"
+        // A full-viewport backdrop blur over a live-updating canvas has to be
+        // re-blurred on every repaint; the scrim alone reads the same and
+        // keeps the drawer smooth.
+        overlayClassName="backdrop-blur-none"
+      >
         <SheetHeader className="atom-guide__header">
           <span className="eyebrow">ATOMIC RUNTIME REFERENCE</span>
           <SheetTitle>Flow Guide</SheetTitle>
@@ -3553,7 +3589,7 @@ function AtomGuide({
       </SheetContent>
     </Sheet>
   );
-}
+});
 
 function GuideSection({
   children,
@@ -4696,9 +4732,17 @@ export default function App() {
     }
   };
 
+  // Locating an atom only needs the topology current at click time, so the
+  // callback reads it through a ref and keeps a stable identity: the Flow
+  // Guide is memoized on its props, and a per-batch `harnessFlow` would
+  // otherwise re-render the whole open drawer on every capture batch.
+  const harnessFlowRef = useRef(harnessFlow);
+  harnessFlowRef.current = harnessFlow;
   const focusAtom = useCallback(
     (atomId: string) => {
-      const node = harnessFlow.nodes.find((item) => item.id === atomId);
+      const node = harnessFlowRef.current.nodes.find(
+        (item) => item.id === atomId,
+      );
       if (!node) {
         return;
       }
@@ -4709,7 +4753,7 @@ export default function App() {
       setDeepView(true);
       setLocateRequest((current) => current + 1);
     },
-    [harnessFlow.nodes],
+    [],
   );
 
   const locateTrajectorySelection = useCallback(() => {

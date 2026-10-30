@@ -88,6 +88,12 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   panel's "没有正在执行的消息" empty state, and the stored choice re-arms when a
   run appears. Demo traces are synthetic and never live, so the demo list
   ignores the arm instead of rendering empty.
+- While the filter is armed every live thread renders expanded, so each
+  executing Prompt is a row of its own — the quick index for "the message I am
+  waiting on" — instead of a child hidden behind a collapsed thread. Non-live
+  history stays lazy: only live rows are rendered while armed, and the
+  windowed list (with its load-earlier pagination) appears once the filter is
+  switched off.
 - "Running again" means a historical session that received a new prompt, even
   days later: it must land in that live key set so the `N LIVE` filter can
   find it. Its clock (see Run Timeout Invariant) is the new prompt's, not the

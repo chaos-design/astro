@@ -74,14 +74,28 @@ test("offers a header chip that jumps to the executing run", () => {
 test("marks the armed live filter on the same chip", () => {
   const filtering = cssRule(".run-history__live-jump.is-filtering");
 
-  // The armed toggle must read clearly different from the resting chip:
-  // a solid status fill (not translucent) plus a glowing ring, so the
-  // on/off state is obvious at a glance on a dark panel.
-  assert.match(filtering, /background:\s*var\(--status-running\)/);
+  // Armed is a filter state, not a call to action: a tinted chip with an
+  // accent border — no solid fill, no glow — so it stays quiet next to the
+  // header copy and the reload button.
   assert.match(
     filtering,
-    /box-shadow:[\s\S]*color-mix\(in srgb, var\(--status-running\)/,
+    /background:\s*color-mix\(in srgb, var\(--status-running\) 16%, transparent\)/,
   );
+  assert.match(
+    filtering,
+    /border-color:\s*color-mix\(in srgb, var\(--status-running\) 62%, transparent\)/,
+  );
+  assert.match(filtering, /box-shadow:\s*none/);
+  assert.doesNotMatch(filtering, /background:\s*var\(--status-running\)/);
+});
+
+test("keeps the chip and the reload on one compact control height", () => {
+  // Both header controls are 20px pills with the same radius: the LIVE chip
+  // used to be a 24px glowing capsule that dominated the header.
+  assert.match(cssRule(".run-history__live-jump"), /height:\s*20px/);
+  assert.match(cssRule(".run-history__live-jump"), /border-radius:\s*999px/);
+  assert.match(cssRule(".run-history__reload"), /height:\s*20px/);
+  assert.match(cssRule(".run-history__reload"), /border-radius:\s*999px/);
 });
 
 test("keeps the chip in the header at zero live without pretending to run", () => {
@@ -91,9 +105,8 @@ test("keeps the chip in the header at zero live without pretending to run", () =
 
   assert.match(idle, /border-color:\s*var\(--line-bright\)/);
   assert.match(idle, /color:\s*var\(--muted\)/);
-  // Same raised surface as the reload button: the two header controls read
-  // as one cluster instead of a bare glyph next to a label.
-  assert.match(idle, /background:[\s\S]*var\(--panel-raised\)/);
+  // Same ghost surface as the reload button: one quiet pair of controls.
+  assert.match(idle, /background:\s*transparent/);
   assert.match(
     cssRule(".run-history__live-jump.is-idle:not(.is-filtering) > svg"),
     /animation:\s*none/,
