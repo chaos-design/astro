@@ -119,6 +119,9 @@
   --live-active-bg: #08201f;
   --live-active-text: #5eead4;
   --live-active-glow: rgb(45 212 191 / 14%);
+  /* Trajectory turn blocks: the section header carries a theme-specific
+     accent, so turn boundaries stay legible on either theme. */
+  --trajectory-turn-accent: var(--violet);
   --background: #07090e;
   --foreground: #dbe5f2;
   --card: #0c0f16;
@@ -211,6 +214,9 @@
   --live-active-bg: #dcefeb;
   --live-active-text: #087f73;
   --live-active-glow: rgb(8 127 115 / 12%);
+  /* Light theme turns read against white panels, so the accent shifts to the
+     saturated indigo instead of the dark theme's pastel violet. */
+  --trajectory-turn-accent: var(--violet-deep);
   --background: #f3f6f8;
   --foreground: #243043;
   --card: #ffffff;
@@ -3433,29 +3439,53 @@ pre,
   overflow: auto;
 }
 
+/* A turn is a block, not just a divider: the whole section carries an
+   accent-tinted ground so consecutive turns read as separate regions even
+   before the sticky header scrolls into view. */
+.trajectory-turn {
+  background: color-mix(in srgb, var(--accent) 22%, var(--panel));
+}
+
 .trajectory-turn > header {
   position: sticky;
   z-index: 5;
   top: 0;
   display: flex;
-  min-height: 32px;
+  min-height: 34px;
   align-items: center;
   gap: 9px;
   padding: 0 14px;
   border-block: 1px solid var(--chrome-line);
   color: var(--muted);
-  background: color-mix(in srgb, var(--panel) 94%, var(--bg));
+  /* Accent-tinted bar with a hard accent edge on the left: the boundary has
+     to survive scrolling over rows and read as a section header, not a stray
+     hairline. The accent hue itself is theme-specific. */
+  background: color-mix(in srgb, var(--accent) 62%, var(--panel));
+  box-shadow: inset 3px 0 var(--trajectory-turn-accent);
   font-family: var(--font-mono);
   font-size: 8px;
 }
 
+/* The turn number is a badge: it is the anchor users scan for when jumping
+   between turns, so it pops on an accent chip instead of drowning in the
+   muted header text. */
 .trajectory-turn > header strong {
-  color: var(--muted-soft);
-  font-size: 8px;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  padding: 2px 7px;
+  border: 1px solid
+    color-mix(in srgb, var(--trajectory-turn-accent) 45%, transparent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--trajectory-turn-accent) 16%, transparent);
+  color: color-mix(in srgb, var(--trajectory-turn-accent) 78%, var(--text));
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
 }
 
 .trajectory-turn > header span {
-  color: var(--muted);
+  color: color-mix(in srgb, var(--accent-foreground) 82%, var(--muted));
 }
 
 .trajectory-row {
