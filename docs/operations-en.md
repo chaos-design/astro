@@ -234,11 +234,17 @@ curl -s http://127.0.0.1:5678/api/health
 | `clientCount` | Connected SSE clients. |
 | `dataRoot` | Actual scanned root. |
 | `traceFiles` | Every currently discovered JSONL file. |
-| `build` / `node` | Running release and Node runtime, for comparison with the UI. |
+| `build` / `node` | Service release and Node runtime. `build` is read from `package.json` (source checkout) or the installed runtime's `plugin.json`; when neither is readable it is `unknown`. |
 
 Treat `dataRoot` and `traceFiles` as authoritative when diagnosing path mismatches. The
-uptime chip in the header reads this endpoint; expanding it shows every field above and a
-"restart local service" action.
+uptime chip in the header reads this endpoint and expands into a grouped card: **version**
+(the page's build vs the service's `build`, with a refresh/restart hint when they differ),
+**process** (start time, boot cost, restarts, SSE clients), **data** (events, trace files,
+full data root) and **sessions** (one count per state), plus a "restart local service"
+action. The session counters are what the recorders wrote; RUN HISTORY's `N LIVE` also
+requires recent activity, so the two can legitimately differ. `build = unknown` means
+neither `package.json` nor `plugin.json` was readable; the card reports it as "not
+reported" and says why.
 
 ### 7.1.1 Session states
 

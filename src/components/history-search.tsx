@@ -20,6 +20,7 @@ import {
 } from "react";
 import type { DateRange } from "react-day-picker";
 
+import { OthersAgentIcon } from "@/components/agent-icons";
 import { PlatformIcon } from "@/components/platform-icon";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -63,7 +64,8 @@ import {
   messageCategoryOrder,
 } from "@/lib/trace-model";
 import { cn } from "@/lib/utils";
-import { atomPlatformOptions } from "@/config/atom-platforms";
+import { agentOptions, atomPlatformOptions } from "@/config/atom-platforms";
+import { OTHERS_AGENT_ID } from "@/lib/run-history-window";
 import type {
   EventTone,
   MessageCategory,
@@ -72,6 +74,31 @@ import type {
   TraceRunStatus,
   TraceSession,
 } from "@/types/trace";
+
+/** Which sources already have an agent entry; `others` matches the rest. */
+const configuredAgentSources = new Set(
+  atomPlatformOptions.map((platform) => platform.source),
+);
+
+/**
+ * The Agent filter lists the configured agents plus a trailing "Others", the
+ * same list the toolbar dropdown shows. The entry list is deliberately *not* a
+ * factor: the search index only covers the selected time window, so deriving
+ * "Others" from it made the catch-all appear and disappear as the window
+ * moved, and a window without foreign sources hid the option entirely.
+ */
+const agentFilterOptions: MultiSelectOption<string>[] = [
+  ...agentOptions.map((agent) => ({
+    label: agent.label,
+    platform: agent.id,
+    value: agent.source,
+  })),
+  {
+    label: "Others",
+    platform: OTHERS_AGENT_ID,
+    value: OTHERS_AGENT_ID,
+  },
+];
 
 const resultBatchSize = 60;
 const defaultTimeRange = "3h" satisfies HistoryTimeRange;
@@ -126,7 +153,8 @@ const categoryLabels: Readonly<Record<EventTone, string>> = {
 
 type MultiSelectOption<T extends string> = {
   label: string;
-  platform?: PlatformId;
+  /** `others` is drawn with the catch-all glyph rather than a brand mark. */
+  platform?: PlatformId | typeof OTHERS_AGENT_ID;
   tone?: string;
   value: T;
 };
@@ -278,7 +306,9 @@ function MultiSelectFilter<T extends string>({
               }
               onSelect={(event) => event.preventDefault()}
             >
-              {option.platform ? (
+              {option.platform === OTHERS_AGENT_ID ? (
+                <OthersAgentIcon />
+              ) : option.platform ? (
                 <PlatformIcon platform={option.platform} />
               ) : option.tone ? (
                 <i className={option.tone} />
@@ -499,31 +529,9 @@ export function HistorySearch({
   const inputRef = useRef<HTMLInputElement | null>(null);
   const resultListRef = useRef<HTMLDivElement | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
-  const sourceOptions = useMemo(
-    () => {
-      const availableSources = new Set(
-        entries.map((entry) => entry.source),
-      );
-      const configuredSources = new Set(
-        atomPlatformOptions.map((platform) => platform.source),
-      );
-      const configuredOptions = atomPlatformOptions.map((platform) => ({
-        label: platform.label,
-        platform: platform.id,
-        value: platform.source,
-      }));
-      const additionalOptions = [...availableSources]
-        .filter((source) => !configuredSources.has(source))
-        .sort()
-        .map((source) => ({
-          label: source.toUpperCase(),
-          tone: `source-${source}`,
-          value: source,
-        }));
-      return [...configuredOptions, ...additionalOptions];
-    },
-    [entries],
-  );
+  // Agents only; every source without an agent definition folds into the
+  // trailing "Others" catch-all (see `agentFilterOptions`).
+  const sourceOptions = agentFilterOptions;
   const categoryOptions = useMemo(() => {
     const available = new Set(entries.map((entry) => entry.category));
     return categoryOrder
@@ -605,6 +613,9 @@ export function HistorySearch({
   }, [dateBounds, open, promptRunsBySession, sessions]);
   const filterInput = useMemo(
     () => ({
+      // `others` needs to know which sources already have an agent entry; the
+      // set is static, so this costs one module-level lookup per render.
+      agentSources: configuredAgentSources,
       categories,
       from: dateBounds.valid ? dateBounds.from : Number.NaN,
       messageCategories,

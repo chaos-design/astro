@@ -12,6 +12,7 @@ import {
   getMessageCategory,
   normalizeTraceEvent,
 } from "../src/lib/trace-model.ts";
+import { OTHERS_AGENT_ID } from "../src/lib/run-history-window.ts";
 import type {
   EventTone,
   MessageCategory,
@@ -102,6 +103,7 @@ function searchFixture() {
 
 function filters(
   overrides: Partial<{
+    agentSources: ReadonlySet<string>;
     categories: ReadonlySet<EventTone>;
     from: number | null;
     messageCategories: ReadonlySet<MessageCategory>;
@@ -112,6 +114,7 @@ function filters(
   }> = {},
 ) {
   return {
+    agentSources: new Set<string>(),
     categories: new Set<EventTone>(),
     from: null,
     messageCategories: new Set<MessageCategory>(),
@@ -169,6 +172,48 @@ test("combines agent, status, and time filters", () => {
   );
 
   assert.deepEqual(matches.map((entry) => entry.eventId), ["wait-b"]);
+});
+
+test("keeps the agent filter to agents and folds every other source into Others", () => {
+  const entries = searchFixture();
+
+  // Only trae is configured here, so a source the console has no agent for
+  // (claude in this fixture) is what the catch-all covers.
+  const others = filterHistorySearchEntries(
+    entries,
+    filters({
+      agentSources: new Set(["trae"]),
+      sources: new Set([OTHERS_AGENT_ID]),
+    }),
+  );
+  assert.ok(others.length > 0);
+  assert.equal(
+    others.every((entry) => entry.source === "claude"),
+    true,
+  );
+
+  // With every source configured, "Others" is legitimately empty instead of
+  // quietly meaning "everything".
+  assert.deepEqual(
+    filterHistorySearchEntries(
+      entries,
+      filters({
+        agentSources: new Set(["trae", "claude"]),
+        sources: new Set([OTHERS_AGENT_ID]),
+      }),
+    ),
+    [],
+  );
+
+  // A named agent and the catch-all combine as a union, not an intersection.
+  const named = filterHistorySearchEntries(
+    entries,
+    filters({
+      agentSources: new Set(["trae"]),
+      sources: new Set(["trae", OTHERS_AGENT_ID]),
+    }),
+  );
+  assert.equal(named.length, entries.length);
 });
 
 test("filters by event category without fuzzy scoring", () => {

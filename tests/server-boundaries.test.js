@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -38,6 +38,17 @@ async function startServer(t) {
   assert.match(output, /ASTRO:/, stderr);
   return `http://127.0.0.1:${port}`;
 }
+
+test("health reports the release the service was started from", async (t) => {
+  // The installed runtime ships `plugin.json` instead of a package manifest,
+  // so `build` must never regress to "unknown" for a normal start.
+  const url = await startServer(t);
+  const health = await (await fetch(`${url}/api/health`)).json();
+  const { version } = JSON.parse(
+    readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+  );
+  assert.equal(health.build, version);
+});
 
 test("malformed percent encoding returns 400 without terminating the service", async (t) => {
   const url = await startServer(t);

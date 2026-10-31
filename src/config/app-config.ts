@@ -144,7 +144,7 @@ export const appTimings = {
  * responsive studio header.
  */
 export const appLayout = {
-  historyPromptListMaxHeight: 270,
+  historyPromptListMaxHeight: 300,
   historyPromptRowEstimate: 116,
   /**
    * Viewport width (px) at and below which the studio header collapses its

@@ -282,15 +282,19 @@ button:not(:disabled),
   cursor: pointer;
 }
 
+/* Strip the UA button border, except for controls that draw their own:
+ * console/playback buttons, Radix triggers, and the two custom pills below.
+ * Without the exclusions the LIVE chip and the service card's restart action
+ * lost their borders and read as plain text. */
 button:not([data-variant="console"]):not([data-variant="playback"]):not([data-slot="select-trigger"]):not(
     [data-slot="tabs-trigger"]
-  ) {
+  ):not(.run-history__live-jump):not(.service-card__restart):not(.settings-footer__button) {
   border: 0;
 }
 
 button:not([data-variant="console"]):not([data-variant="playback"]):not([data-slot="select-trigger"]):not(
     [data-slot="tabs-trigger"]
-  ):focus-visible,
+  ):not(.run-history__live-jump):not(.service-card__restart):not(.settings-footer__button):focus-visible,
 input:not([data-slot="input-group-control"]):focus-visible {
   outline: 1px solid var(--selection-border);
   outline-offset: 2px;
@@ -720,61 +724,316 @@ pre,
   color: var(--muted);
 }
 
+/* Local service card: process identity first, then what the service knows
+ * about the data and the sessions it is serving. Values are aligned in a
+ * two-column grid so a long path or a five-digit session count never pushes
+ * the label out of line — the previous single-column `<dl>` wrapped every
+ * second value onto its own line. */
 .service-card {
-  width: min(340px, calc(100vw - 24px));
-  gap: 10px;
+  width: min(392px, calc(100vw - 24px));
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
   border: 1px solid var(--line-bright);
-  border-radius: 8px;
+  border-radius: 9px;
   color: var(--text);
   /* Opaque: the card floats over the canvas, and a translucent panel left the
      small mono labels unreadable. */
   background: var(--panel);
-  box-shadow: 0 18px 40px rgb(0 0 0 / 42%);
+  box-shadow: 0 18px 44px rgb(0 0 0 / 46%);
 }
 
-.service-card > header {
+.service-card__head {
   display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--chrome-line);
+}
+
+.service-card__identity {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 9px;
+}
+
+.service-card__identity > i {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.service-card__identity[data-health="online"] > i {
+  background: var(--status-completed);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--status-completed) 60%, transparent);
+}
+
+.service-card__identity[data-health="degraded"] > i {
+  background: var(--status-waiting);
+}
+
+.service-card__identity[data-health="error"] > i {
+  background: var(--status-failed);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--status-failed) 60%, transparent);
+}
+
+.service-card__identity[data-health="pending"] > i {
+  background: var(--muted);
+  animation: run-history-live-pulse 1.6s ease-in-out infinite;
+}
+
+.service-card__identity > div {
+  display: flex;
+  min-width: 0;
   flex-direction: column;
   gap: 2px;
 }
 
-.service-card > header strong {
+.service-card__identity .eyebrow {
+  color: var(--muted);
+  font-size: 8px;
+  letter-spacing: 0.14em;
+}
+
+.service-card__identity strong {
   color: var(--text);
   font-size: 11px;
   font-weight: 600;
 }
 
-.service-card dl {
+.service-card__clock {
+  flex: none;
+  color: var(--text-strong);
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+.service-card__endpoint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--chrome-line);
+  color: var(--muted-soft);
+  background: color-mix(in srgb, var(--panel-raised) 44%, transparent);
+  font-family: var(--font-mono);
+  font-size: 9px;
+}
+
+.service-card__endpoint code {
+  color: var(--selection-text);
+  font-family: var(--font-mono);
+}
+
+.service-card__endpoint > span {
+  padding-left: 8px;
+  border-left: 1px solid var(--line);
+}
+
+.service-card__group {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--chrome-line);
+}
+
+.service-card__group:last-of-type {
+  border-bottom: 0;
+}
+
+.service-card__group h4 {
+  margin: 0;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.service-card__group dl {
   display: grid;
-  gap: 4px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 16px;
   margin: 0;
   font-family: var(--font-mono);
   font-size: 10px;
   line-height: 1.45;
 }
 
-.service-card dl > div {
-  display: grid;
-  grid-template-columns: 76px minmax(0, 1fr);
-  gap: 8px;
+.service-card__group dl > div {
+  display: flex;
+  min-width: 0;
   align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
 }
 
-.service-card dt {
+.service-card__group dt {
+  flex: none;
   color: var(--muted-soft);
   font-size: 9px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
 }
 
-.service-card dd {
+.service-card__group dd {
   min-width: 0;
   margin: 0;
-  /* Wrap instead of truncating: the session summary and the data root are the
-     two values a reader actually needs in full. */
   overflow-wrap: anywhere;
   color: var(--text);
   font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.service-card__path {
+  display: grid;
+  gap: 3px;
+  margin: 8px 0 0;
+  padding: 6px 8px;
+  border: 1px solid var(--chrome-line);
+  border-radius: 5px;
+  color: var(--muted-soft);
+  background: var(--bg);
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.service-card__path-label {
+  color: var(--muted);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.service-card__path code {
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text);
+}
+
+.service-card__path em {
+  font-style: normal;
+  color: var(--muted-soft);
+}
+
+/* Two versions side by side: "which bundle am I looking at, and which bundle
+ * is serving it?" was a single "0.0.3 · node v24" line that conflated the
+ * console, the service, and the runtime. */
+.service-card__versions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.service-card__versions > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 9px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--panel-raised) 55%, transparent);
+}
+
+.service-card__versions > div[data-mismatch="true"] {
+  border-color: color-mix(in srgb, var(--status-waiting) 52%, transparent);
+}
+
+.service-card__versions span {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 8px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.service-card__versions strong {
+  color: var(--text-strong);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.service-card__versions em {
+  overflow-wrap: anywhere;
+  color: var(--muted-soft);
+  font-size: 9px;
+  font-style: normal;
+}
+
+.service-card__notice {
+  margin: 0;
+  color: var(--status-waiting);
+  font-size: 9px;
+  line-height: 1.55;
+}
+
+.service-card__counts {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.service-card__counts > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+  padding: 7px 6px;
+  border: 1px solid var(--chrome-line);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--panel-raised) 40%, transparent);
+}
+
+.service-card__counts strong {
+  color: var(--text-strong);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.service-card__counts span {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 8px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.service-card__counts > div[data-tone="running"] strong {
+  color: var(--status-running);
+}
+
+.service-card__counts > div[data-tone="completed"] strong {
+  color: var(--status-completed);
+}
+
+.service-card__counts > div[data-tone="waiting"] strong {
+  color: var(--status-waiting);
+}
+
+.service-card__counts > div[data-tone="failed"] strong {
+  color: var(--status-failed);
+}
+
+.service-card__footer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 11px 14px 12px;
+  border-top: 1px solid var(--chrome-line);
+  background: color-mix(in srgb, var(--panel-raised) 26%, transparent);
 }
 
 .service-card__hint {
@@ -792,6 +1051,7 @@ pre,
 }
 
 .service-card__restart {
+  width: 100%;
   justify-content: center;
   border-color: var(--line-bright);
   color: var(--muted-soft);
@@ -880,54 +1140,213 @@ pre,
   outline-offset: 1px;
 }
 
-/* Settings dialog: one field per preference, stacked, with the range choices
- * as a pick-one grid. Sized to stay a two-line-per-field card rather than a
- * full page of options. */
-/* Header and footer stay put while the preference sections scroll between
- * them: a list that pushes its own reset button below the fold makes the
- * dialog feel broken on a short window. */
+/* Settings dialog: a two-pane card. The rail on the left names the sections,
+ * the pane on the right shows the active one's fields. A single stacked column
+ * either scrolled the entire dialog or squeezed every control on a short
+ * window, so the shell is deliberately wider and taller than a form card. */
 .settings-dialog {
   display: flex;
-  max-height: min(820px, calc(100dvh - 32px));
+  width: min(920px, calc(100vw - 48px));
+  height: min(672px, calc(100dvh - 48px));
+  max-width: none;
+  max-height: calc(100dvh - 32px);
   flex-direction: column;
-  gap: 14px;
-  padding: 18px 0 0;
+  gap: 0;
+  padding: 0;
   overflow: hidden;
   border: 1px solid var(--line-bright);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--panel) 96%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--panel) 97%, transparent);
   box-shadow:
     0 32px 90px rgb(0 0 0 / 58%),
     0 0 0 1px color-mix(in srgb, var(--selection-border) 12%, transparent);
 }
 
-.settings-dialog [data-slot="dialog-header"] {
-  padding: 0 46px 0 18px;
+.settings-dialog__header {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 5px;
+  padding: 18px 56px 14px 22px;
+  border-bottom: 1px solid var(--chrome-line);
 }
 
-.settings-dialog__body {
+.settings-dialog__title {
   display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.settings-dialog__title .eyebrow {
+  color: var(--muted);
+  font-size: 8px;
+  letter-spacing: 0.16em;
+}
+
+.settings-dialog [data-slot="dialog-title"] {
+  color: var(--text-strong);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
+.settings-dialog [data-slot="dialog-description"] {
+  max-width: 66ch;
+  color: var(--muted-soft);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+/* Rail + pane share one scroll boundary: the rail never scrolls out of reach
+ * while a long pane is being read. */
+.settings-dialog__layout {
+  display: grid;
+  flex: 1;
+  min-height: 0;
+  grid-template-columns: 208px minmax(0, 1fr);
+  gap: 0;
+}
+
+.settings-nav {
+  display: flex;
+  width: auto;
+  height: auto;
   min-height: 0;
   flex-direction: column;
-  gap: 14px;
-  padding: 0 18px 4px;
+  justify-content: flex-start;
+  gap: 2px;
+  padding: 12px 10px;
+  overflow-y: auto;
+  border-right: 1px solid var(--chrome-line);
+  border-radius: 0;
+  background: color-mix(in srgb, var(--panel-raised) 24%, transparent);
+  scrollbar-width: none;
+}
+
+.settings-nav__item {
+  display: flex;
+  width: 100%;
+  height: auto;
+  flex: none;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--muted-soft);
+  background: transparent;
+  text-align: left;
+  white-space: normal;
+  cursor: pointer;
+  transition:
+    color 120ms ease,
+    border-color 120ms ease,
+    background 120ms ease;
+}
+
+.settings-nav__item:hover {
+  color: var(--text);
+  background: var(--panel-hover);
+}
+
+/* Keyboard focus is a halo *outside* the row. It used to reuse the ring token
+ * and painted a cyan border on the previously focused section, which read as
+ * a second active item beside the tinted one. */
+.settings-nav__item:focus-visible {
+  /* The shared trigger utilities paint a solid ring + border in the accent,
+     which made a focused-but-inactive section look selected next to the tinted
+     one. Focus is a dashed inset instead; the active fill stays the only
+     selected treatment. */
+  border-color: transparent;
+  box-shadow: none;
+  outline: 1px dashed color-mix(in srgb, var(--selection-border) 52%, transparent);
+  outline-offset: -3px;
+}
+
+.settings-nav__item[data-state="active"]:focus-visible {
+  border-color: color-mix(in srgb, var(--selection-border) 34%, transparent);
+  box-shadow: inset 2px 0 var(--selection-border);
+}
+
+.settings-nav__item[data-state="active"] {
+  border-color: color-mix(in srgb, var(--selection-border) 34%, transparent);
+  color: var(--text-strong);
+  background: color-mix(in srgb, var(--selection-bg) 78%, var(--panel-raised));
+  box-shadow: inset 2px 0 var(--selection-border);
+}
+
+.settings-nav__icon {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+  color: var(--muted);
+}
+
+.settings-nav__item[data-state="active"] .settings-nav__icon {
+  color: var(--selection-border);
+}
+
+.settings-nav__copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.settings-nav__copy strong {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.settings-nav__copy small {
+  color: var(--muted);
+  font-size: 9px;
+  letter-spacing: 0.02em;
+}
+
+.settings-nav__item[data-state="active"] .settings-nav__copy small {
+  color: var(--muted-soft);
+}
+
+.settings-pane {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  gap: 18px;
+  padding: 18px 22px 22px;
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
   scrollbar-color: var(--line-bright) transparent;
 }
 
-.settings-dialog [data-slot="dialog-title"] {
+.settings-pane__head {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.settings-pane__head h3 {
+  margin: 0;
+  color: var(--text-strong);
   font-family: var(--font-mono);
-  font-size: var(--text-label);
+  font-size: 12px;
+  font-weight: 650;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
-.settings-dialog [data-slot="dialog-description"] {
+.settings-pane__head p {
+  max-width: 64ch;
+  margin: 0;
   color: var(--muted-soft);
   font-size: 11px;
-  line-height: 1.6;
+  line-height: 1.65;
 }
 
 .settings-field {
@@ -951,52 +1370,181 @@ pre,
 }
 
 .settings-field__copy span {
+  max-width: 64ch;
   color: var(--muted-soft);
   font-size: 11px;
   line-height: 1.6;
 }
 
-/* Sections group the preferences by what they change; the dialog scrolls once
- * the groups outgrow the viewport instead of shrinking the controls. */
+/* The pane already separates sections by heading; a rule per group only
+ * fragments a page that is read one group at a time. */
 .settings-section {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding-top: 14px;
-  border-top: 1px solid var(--chrome-line);
-}
-
-.settings-section:first-of-type {
-  padding-top: 0;
+  gap: 20px;
+  padding: 0;
   border-top: 0;
 }
 
-.settings-section__head {
+/* About: one key/value card per fact, aligned like a manifest rather than
+ * like a paragraph of release notes. */
+.settings-about {
   display: flex;
-  align-items: baseline;
+  flex-direction: column;
   gap: 8px;
+  margin: 0;
 }
 
-.settings-section__head > span {
-  color: var(--text);
+.settings-about > div {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 14px;
+  align-items: baseline;
+  padding: 10px 12px;
+  border: 1px solid var(--chrome-line);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--panel-raised) 44%, transparent);
+}
+
+.settings-about dt {
+  color: var(--muted);
   font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.1em;
+  font-size: 9px;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
-.settings-section__head > small {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--muted);
-  font-size: 10px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.settings-about dd {
+  margin: 0;
+  color: var(--text);
+  font-size: 11px;
+  line-height: 1.65;
 }
 
-/* Four per row by default (eight ranges read as two tidy rows); a pick-one
- * group sets `--settings-columns` when it has fewer choices. */
+.settings-about code {
+  padding: 1px 5px;
+  border: 1px solid var(--line-bright);
+  border-radius: 4px;
+  color: var(--selection-text);
+  background: var(--panel);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.settings-footer {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 20px;
+  border-top: 1px solid var(--chrome-line);
+  background: color-mix(in srgb, var(--panel-raised) 30%, transparent);
+}
+
+.settings-footer__note {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.settings-footer__note > span {
+  width: 5px;
+  height: 5px;
+  flex: 0 0 5px;
+  border-radius: 50%;
+  background: var(--status-completed);
+}
+
+.settings-footer__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Footer actions carry their own ink and surface. The shared
+ * `button { color: inherit }` reset outranks Tailwind's text-* utilities, so
+ * the primary action rendered inherited light text on the bright primary fill
+ * (≈1.6:1) and the outline action was a near-black block with a near-black
+ * border — both hard to read on the dark panel. Disabled stays legible in
+ * muted tones instead of fading to 50% opacity and disappearing. */
+.settings-footer__actions button {
+  border-radius: 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.03em;
+}
+
+.settings-footer__actions button[data-variant="default"] {
+  border: 1px solid color-mix(in srgb, var(--primary) 68%, transparent);
+  color: var(--primary-foreground);
+  background: var(--primary);
+  font-weight: 600;
+}
+
+.settings-footer__actions button[data-variant="default"]:hover:not(:disabled) {
+  border-color: var(--primary);
+  color: var(--primary-foreground);
+  background: color-mix(in srgb, var(--primary) 86%, var(--panel));
+}
+
+.settings-footer__actions button[data-variant="outline"] {
+  border: 1px solid var(--line-bright);
+  color: var(--text);
+  background: var(--panel-raised);
+}
+
+.settings-footer__actions button[data-variant="outline"]:hover:not(:disabled) {
+  border-color: var(--selection-border);
+  color: var(--selection-text);
+  background: var(--selection-bg);
+}
+
+.settings-footer__actions button[data-variant="outline"]:disabled {
+  opacity: 1;
+  border-color: var(--line);
+  color: var(--muted);
+  background: color-mix(in srgb, var(--panel-raised) 40%, transparent);
+}
+
+/* Narrow windows lose the rail's width, not its function: the sections stack
+ * above the pane and scroll horizontally as one row of chips. */
+@media (max-width: 780px) {
+  .settings-dialog {
+    width: calc(100vw - 24px);
+    height: min(720px, calc(100dvh - 24px));
+  }
+
+  .settings-dialog__layout {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .settings-nav {
+    flex-direction: row;
+    padding: 8px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border-right: 0;
+    border-bottom: 1px solid var(--chrome-line);
+  }
+
+  .settings-nav__item {
+    width: auto;
+    flex: none;
+  }
+
+  .settings-nav__copy small {
+    display: none;
+  }
+}
+
+/* Four per row by default; the history range picks five so the hour ranges
+ * and the day ranges each own a row. A pick-one group sets
+ * `--settings-columns` when it has fewer choices. */
 .settings-options {
   display: grid;
   grid-template-columns: repeat(var(--settings-columns, 4), minmax(0, 1fr));
@@ -1121,20 +1669,6 @@ pre,
 .settings-switch:focus-visible {
   outline: 2px solid color-mix(in srgb, var(--selection-border) 70%, transparent);
   outline-offset: 2px;
-}
-
-.settings-footer {
-  display: flex;
-  flex: 0 0 auto;
-  justify-content: flex-end;
-  padding: 10px 18px 12px;
-  border-top: 1px solid var(--chrome-line);
-  background: color-mix(in srgb, var(--panel-raised) 42%, transparent);
-}
-
-.settings-footer button {
-  font-family: var(--font-mono);
-  font-size: 10px;
 }
 
 .history-search {
@@ -1944,17 +2478,23 @@ pre,
   animation: run-history-live-pulse 1.6s ease-in-out infinite;
 }
 
+/* The chip is a filter toggle. Disarmed it is a light, quiet pill — muted
+ * text, hairline border, no fill; armed it is a dark, saturated pill with
+ * light accent text. The previous polarity was inverted (the armed state was
+ * the brightest fill in the panel), which is the opposite of how a toggle
+ * reads on a dark surface. The glyph stays in both states: it is what makes
+ * the control legible as "live" while the fill carries on/off. */
 .run-history__live-jump {
   display: inline-flex;
   flex: none;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
   height: 20px;
-  padding: 0 8px;
-  border: 1px solid color-mix(in srgb, var(--status-running) 32%, transparent);
+  padding: 0 8px 0 7px;
+  border: 1px solid var(--line-bright);
   border-radius: 999px;
-  color: color-mix(in srgb, var(--status-running) 74%, var(--text));
-  background: color-mix(in srgb, var(--status-running) 8%, transparent);
+  color: var(--muted-soft);
+  background: color-mix(in srgb, var(--panel-raised) 58%, transparent);
   cursor: pointer;
   font-family: var(--font-mono);
   font-size: 8px;
@@ -1962,44 +2502,54 @@ pre,
   letter-spacing: 0.08em;
   transition:
     background 140ms ease,
-    border-color 140ms ease;
+    border-color 140ms ease,
+    color 140ms ease,
+    box-shadow 140ms ease;
 }
 
 .run-history__live-jump:hover {
-  border-color: color-mix(in srgb, var(--status-running) 70%, transparent);
-  background: color-mix(in srgb, var(--status-running) 22%, transparent);
+  border-color: color-mix(in srgb, var(--status-running) 46%, var(--line-bright));
+  color: var(--text);
+  background: color-mix(in srgb, var(--status-running) 12%, var(--panel-raised));
 }
 
-/* Armed is a *mode*, not a hint: a solid running-accent pill with the panel
-   colour knocked out of it, plus a halo. The old armed state was an 8% tint —
-   two shades away from the disarmed chip, which is exactly what a filter
-   toggle must not be: at a glance you could not tell whether the list was
-   filtered. */
+/* Armed is a *mode*: the pill goes dark and running-tinted so the state reads
+ * from the fill, not from a barely-different tint. The halo is soft (no 3px
+ * ring): the chip sits in a 48px header next to the reload control. */
 .run-history__live-jump.is-filtering {
-  border-color: var(--status-running);
-  color: var(--panel);
-  background: var(--status-running);
+  border-color: color-mix(in srgb, var(--status-running) 64%, transparent);
+  color: var(--highlight-observed);
+  background: color-mix(in srgb, var(--status-running) 26%, var(--bg));
   box-shadow:
-    0 0 0 3px color-mix(in srgb, var(--status-running) 20%, transparent),
-    0 6px 16px color-mix(in srgb, var(--status-running) 28%, transparent);
+    inset 0 0 0 1px color-mix(in srgb, var(--status-running) 20%, transparent),
+    0 4px 14px color-mix(in srgb, var(--status-running) 20%, transparent);
 }
 
 .run-history__live-jump.is-filtering:hover {
-  background: color-mix(in srgb, var(--status-running) 88%, var(--panel));
-  box-shadow:
-    0 0 0 3px color-mix(in srgb, var(--status-running) 26%, transparent),
-    0 6px 18px color-mix(in srgb, var(--status-running) 34%, transparent);
-}
-
-/* The armed pill drops the glyph: the filled shape carries the state, and the
-   30px it frees keeps "RUN HISTORY" + the scope badge on one line in a narrow
-   left column. */
-.run-history__live-jump.is-filtering > svg {
-  display: none;
+  border-color: var(--status-running);
+  color: var(--text-strong);
+  background: color-mix(in srgb, var(--status-running) 34%, var(--bg));
 }
 
 .run-history__live-jump.is-filtering > span {
   color: inherit;
+}
+
+/* On a light panel the dark-theme fill (26% accent over the page) stays light,
+ * which would make "on" read as another pale tint. The light theme therefore
+ * uses the deep accent with white text: still the darker of the two states,
+ * which is the contract. */
+:root[data-theme="light"] .run-history__live-jump.is-filtering {
+  border-color: var(--violet-deep);
+  color: #ffffff;
+  background: var(--violet-deep);
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--violet-deep) 26%, transparent);
+}
+
+:root[data-theme="light"] .run-history__live-jump.is-filtering:hover {
+  border-color: var(--violet-deep);
+  color: #ffffff;
+  background: color-mix(in srgb, var(--violet-deep) 86%, #000000);
 }
 
 /* Header meta: the reload and the LIVE chip share one row at the right edge
@@ -2148,22 +2698,17 @@ pre,
 .run-history__live-jump > svg {
   width: 10px;
   height: 10px;
-  /* Solid running colour so the icon reads clearly against the translucent
-     chip; the dedicated keyframe only pulses opacity/scale/glow (via
-     currentColor) and never dims the hue back to muted. */
-  color: var(--status-running);
-  animation: run-history-live-breathe 1.45s ease-in-out infinite;
-}
-/* Selected (armed filter) state: tinted chip, running-coloured icon. */
-.run-history__live-jump.is-filtering > svg {
-  color: var(--status-running);
+  flex: 0 0 10px;
+  /* The glyph inherits the chip colour in both states: light grey when the
+     filter is off, light violet on the dark armed fill. No pulse — the row's
+     RUNNING capsule already carries "this is happening now". */
+  color: currentColor;
 }
 
 /* `0 LIVE`: the chip stays in the header — the arm is a preference and the
-   count is part of the panel's state, not an occasional badge — but it drops
-   the running colour and the pulse so an idle panel does not pretend to be
-   busy. The armed look still wins: the filter is on, there is just nothing
-   executing. */
+   count is part of the panel's state, not an occasional badge — but it goes a
+   shade quieter than a disarmed chip with runs. The armed look still wins:
+   the filter is on, there is just nothing executing. */
 .run-history__live-jump.is-idle:not(.is-filtering) {
   border-color: var(--line-bright);
   color: var(--muted);
@@ -2171,8 +2716,7 @@ pre,
 }
 
 .run-history__live-jump.is-idle:not(.is-filtering) > svg {
-  color: var(--muted);
-  animation: none;
+  color: currentColor;
 }
 
 .run-history__live-jump.is-idle:not(.is-filtering):hover {
@@ -2301,8 +2845,10 @@ pre,
   transform: rotate(90deg);
 }
 
+/* Height is measured in RunHistoryItem and capped there (with a small
+ * overshoot tolerance for two- and three-message threads); a CSS max-height
+ * here would clip that measured height again. */
 .run-history__prompt-scroll {
-  max-height: 270px;
   margin: 5px 4px 5px 8px;
   overflow: hidden;
   border-left: 1px solid color-mix(in srgb, var(--blue) 48%, var(--line));
@@ -2681,10 +3227,6 @@ pre,
 
 .dark .platform-icon--zcode {
   color: #e4e4e7;
-}
-
-.platform-icon--gpt {
-  color: #74aa9c;
 }
 
 .platform-icon--gemini {
@@ -5815,25 +6357,6 @@ pre,
   50% {
     opacity: 1;
     transform: scale(1.15);
-  }
-}
-
-/* Breathing treatment for the N LIVE chip's Radio icon. Unlike the shared
-   active-status-icon-breathe (which blends the hue back to --muted at the
-   trough, so the icon nearly vanishes), this keyframe keeps the colour solid
-   (currentColor) and only modulates opacity, scale and a soft glow — so the
-   icon is always clearly visible while still visibly "breathing". */
-@keyframes run-history-live-breathe {
-  0%,
-  100% {
-    opacity: 0.78;
-    transform: scale(0.92);
-    filter: drop-shadow(0 0 1px color-mix(in srgb, currentColor 45%, transparent));
-  }
-  50% {
-    opacity: 1;
-    transform: scale(1.18);
-    filter: drop-shadow(0 0 6px color-mix(in srgb, currentColor 78%, transparent));
   }
 }
 

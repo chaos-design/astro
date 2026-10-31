@@ -251,7 +251,9 @@ unless changed; a range picked inside the dialog applies to that search only.
 Available filters include:
 
 - 3, 6, 12, or 24 hours, today, yesterday, seven days, or a custom date range;
-- one or more Agents;
+- one or more agents: the list contains configured agents only; every other
+  source (browser, generic, a custom HTTP collector) is grouped under the
+  trailing **Others** entry instead of getting a pseudo-agent of its own;
 - one or more run statuses;
 - one or more event categories.
 
@@ -283,8 +285,10 @@ The `N LIVE` chip in the panel header toggles the Live filter:
 - Armed, it lists **only the messages whose run is executing right now**. The
   filter reads the selected agent's whole history (the time window is dropped,
   so a session that started days ago and was just prompted again qualifies),
-  but finished messages are not listed. Executing messages are pinned,
-  expanded and scrolled into view. When a message is sent, the run that newly
+  but finished messages are not listed, and the chip turns into a dark filled
+  pill with light text while keeping its radar glyph (disarmed it is a light
+  outlined pill). Executing messages are pinned, expanded and scrolled into
+  view. When a message is sent, the run that newly
   starts executing is located automatically — no hunting through the list.
 - With nothing executing the chip reads `0 LIVE` and the list is empty, with a
   "nothing is executing right now" message and the way out. That is a normal
@@ -318,7 +322,8 @@ and abbreviated prompt event ID. A prompt run begins with one
 
 Click a child row to make that prompt run the active diagnostic scope. Clicking
 the parent selects its latest prompt. Only one session thread is expanded at a
-time; the child list is capped at 270 px, scrolls independently, and keeps the
+time. The child list is measured to its content (300 px ceiling; a two- or
+three-message thread expands in full), scrolls independently, and keeps the
 selected child visible. The left panel can collapse to a `RUNS` rail to give the
 topology more desktop workspace.
 The expanded state is stored in `ASTROX_HISTORY_OPEN` and restored after refresh.
@@ -412,8 +417,10 @@ duration even when it is longer than the current limit.
 
 ### 5.8 Settings
 
-The gear in the header opens the settings dialog. Preferences are grouped by
-what they change, and each one applies immediately:
+The gear in the header opens the settings dialog. It is a two-pane card: a
+section rail on the left (Appearance, Run history, Canvas, Panels, About) and
+the active section's fields on the right. Every entry applies immediately, and
+the footer's **Done** button only closes the dialog — there is no Apply step:
 
 **Appearance**
 
@@ -422,7 +429,8 @@ what they change, and each one applies immediately:
 
 **Run history**
 
-- **Default time range**: four per row, eight choices — `1 hour`, `3 hours`
+- **Default time range**: hour choices on one row, day choices on the
+  next (eight total) — `1 hour`, `3 hours`
   (default), `6 hours`, `12 hours`, `24 hours`, `3 days`, `7 days`,
   `30 days`. It drives RUN HISTORY's visible window (while the Live filter is
   off) and the initial range of the global search dialog; the window is
@@ -444,8 +452,14 @@ what they change, and each one applies immediately:
 - **Expand RUN HISTORY** and **Expand EVENTS**: the two columns' expanded state
   (`ASTROX_HISTORY_OPEN` / `ASTROX_CONSOLE_OPEN`).
 
+**About**
+
+- The console version (`v0.0.3`), where the preferences actually live (browser
+  localStorage under the `ASTROX_` prefix), and a note that settings only affect
+  presentation and never rewrite captured events.
+
 The values are written to `ASTROX_HISTORY_RANGE`, `ASTROX_RUN_HISTORY_LIVE_VIEW`
-and the other keys above. **Reset** restores all four groups at once (3 hours,
+and the other keys above. **Reset** restores every section at once (3 hours,
 Live off, dark, topology, runtime atoms only, and the width-based panel
 defaults).
 

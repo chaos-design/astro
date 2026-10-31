@@ -22,7 +22,9 @@ test("keeps user preference defaults and storage keys in app config", () => {
   assert.equal(appDefaults.theme, "dark");
   assert.equal(appDefaults.activeView, "topology");
   assert.equal(appTimings.activeRunTimeoutMs, 24 * 60 * 60 * 1_000);
-  assert.equal(appLayout.historyPromptListMaxHeight, 270);
+  // The ceiling of the measured Prompt thread; short threads may overshoot it
+  // by 1.25x and are still shown whole (see RunHistoryItem).
+  assert.equal(appLayout.historyPromptListMaxHeight, 300);
   assert.ok(appLayout.historyPromptRowEstimate > 0);
   assert.ok(
     Object.values(storageKeys).every((key) => key.startsWith("ASTROX_")),

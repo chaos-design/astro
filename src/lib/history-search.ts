@@ -1,5 +1,6 @@
 import { differenceInCalendarDays } from "date-fns";
 
+import { OTHERS_AGENT_ID } from "./run-history-window.ts";
 import { eventMeta, getEventSummary, getMessageCategory } from "./trace-model.ts";
 import type {
   EventTone,
@@ -67,6 +68,12 @@ export type HistorySearchMatch = HistorySearchEntry & {
 };
 
 export type HistorySearchFilters = {
+  /**
+   * Sources that belong to a configured agent. The `others` selection keeps
+   * every source *outside* this set, so the filter never has to enumerate
+   * ad-hoc trace sources as if they were agents.
+   */
+  agentSources?: ReadonlySet<string>;
   categories: ReadonlySet<EventTone>;
   from: number | null;
   messageCategories: ReadonlySet<MessageCategory>;
@@ -392,6 +399,27 @@ export function buildHistorySearchIndex(
   return entries.sort((left, right) => right.timestamp - left.timestamp);
 }
 
+const NO_AGENT_SOURCES: ReadonlySet<string> = new Set();
+
+/**
+ * The Agent filter is a list of *agents*, so a source matches when it is
+ * selected by name, or when `others` is selected and the source is not a
+ * configured agent. Sources the console has no agent definition for (a
+ * browser, the generic adapter, a one-off custom HTTP source) are reachable
+ * through `others` instead of appearing as entries of their own — the
+ * dropdown used to grow a new pseudo-agent for every such collector.
+ */
+export function matchesAgentSourceFilter(
+  source: string,
+  selected: ReadonlySet<string>,
+  configuredSources: ReadonlySet<string> = NO_AGENT_SOURCES,
+): boolean {
+  if (selected.has(source)) {
+    return true;
+  }
+  return selected.has(OTHERS_AGENT_ID) && !configuredSources.has(source);
+}
+
 export function filterHistorySearchEntries(
   entries: readonly HistorySearchEntry[],
   filters: HistorySearchFilters,
@@ -418,7 +446,12 @@ export function filterHistorySearchEntries(
         !filters.categories.has(entry.category)) ||
       (filters.messageCategories.size &&
         !filters.messageCategories.has(entry.messageCategory)) ||
-      (filters.sources.size && !filters.sources.has(entry.source)) ||
+      (filters.sources.size &&
+        !matchesAgentSourceFilter(
+          entry.source,
+          filters.sources,
+          filters.agentSources,
+        )) ||
       (filters.statuses.size && !filters.statuses.has(entry.status))
     ) {
       continue;

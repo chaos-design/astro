@@ -205,7 +205,6 @@ export type PlatformId =
   | "claude"
   | "codex"
   | "deepseek"
-  | "gpt"
   | "llama"
   | "pi"
   | "opencode"

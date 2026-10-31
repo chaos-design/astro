@@ -60,37 +60,43 @@ test("offers a header chip that jumps to the executing run", () => {
 
   assert.match(chip, /display:\s*inline-flex/);
   assert.match(chip, /cursor:\s*pointer/);
-  // The chip's Radio icon "breathes" via a dedicated keyframe that keeps the
-  // running colour solid (and adds a glow), so the affordance stays clearly
-  // visible — unlike the shared active-status-icon-breathe, which blends the
-  // hue back to muted at the trough and nearly hides the icon.
+  // Disarmed reads light: a quiet surface, hairline border, muted text. The
+  // armed state is the dark one, so "off" must not borrow the running accent.
+  assert.match(chip, /border:\s*1px solid var\(--line-bright\)/);
+  assert.match(chip, /color:\s*var\(--muted-soft\)/);
+  // The glyph stays in every state — it is what makes the control legible as
+  // "live" — and takes its colour from the chip instead of a hard-coded hue.
   assert.match(
     cssRule(".run-history__live-jump > svg"),
-    /animation:\s*run-history-live-breathe/,
+    /color:\s*currentColor/,
   );
-  assert.match(styles, /@keyframes run-history-live-breathe \{/);
+  assert.doesNotMatch(
+    styles,
+    /\.run-history__live-jump[^{]*>\s*svg\s*\{[^}]*display:\s*none/,
+  );
 });
 
-test("turns the armed chip into a solid mode badge", () => {
+test("darkens the armed chip into a mode badge", () => {
   const filtering = cssRule(".run-history__live-jump.is-filtering");
 
-  // Armed and disarmed must be distinguishable at a glance: the armed chip is
-  // a solid running-accent pill with the panel colour knocked out of it, not
-  // another tint of the same grey-violet.
-  assert.match(filtering, /background:\s*var\(--status-running\)/);
-  assert.match(filtering, /border-color:\s*var\(--status-running\)/);
-  assert.match(filtering, /color:\s*var\(--panel\)/);
-  // The halo is what makes it read as "on" without changing the label.
+  // Armed and disarmed must be distinguishable at a glance, with the polarity
+  // a toggle reads as on a dark surface: off is light, on is dark and
+  // saturated. The armed fill blends the running accent into the page colour,
+  // which keeps it darker than the panel instead of glowing above it.
   assert.match(
     filtering,
-    /box-shadow:[\s\S]*0 0 0 3px color-mix\(in srgb, var\(--status-running\) 20%, transparent\)/,
+    /background:\s*color-mix\(in srgb, var\(--status-running\) 26%, var\(--bg\)\)/,
   );
+  assert.match(filtering, /border-color:\s*color-mix\(in srgb, var\(--status-running\)/);
+  // Light text on the dark fill, not the panel colour knocked out of a solid
+  // accent.
+  assert.match(filtering, /color:\s*var\(--highlight-observed\)/);
+  assert.match(filtering, /box-shadow:[\s\S]*var\(--status-running\)/);
 
-  // The armed pill drops the glyph: the filled shape carries the state and the
-  // freed width keeps the header line from wrapping in a narrow column.
-  assert.match(
-    cssRule(".run-history__live-jump.is-filtering > svg"),
-    /display:\s*none/,
+  // The glyph is retained: the fill carries on/off, the icon carries "live".
+  assert.doesNotMatch(
+    styles,
+    /\.run-history__live-jump[^{]*>\s*svg\s*\{[^}]*display:\s*none/,
   );
 });
 
@@ -105,7 +111,7 @@ test("keeps the chip and the reload on one compact control height", () => {
 
 test("keeps the chip in the header at zero live without pretending to run", () => {
   // `0 LIVE` uses the same control so the arm stays visible and operable;
-  // only the running colour and the pulse drop away.
+  // it only goes a shade quieter than a disarmed chip with runs.
   const idle = cssRule(".run-history__live-jump.is-idle:not(.is-filtering)");
 
   assert.match(idle, /border-color:\s*var\(--line-bright\)/);
@@ -114,7 +120,7 @@ test("keeps the chip in the header at zero live without pretending to run", () =
   assert.match(idle, /background:\s*transparent/);
   assert.match(
     cssRule(".run-history__live-jump.is-idle:not(.is-filtering) > svg"),
-    /animation:\s*none/,
+    /color:\s*currentColor/,
   );
   // The armed fill must survive the idle variant: the filter is on, there is
   // simply nothing executing.
@@ -192,20 +198,24 @@ test("lays the range choices out four per row", () => {
   );
 });
 
-test("groups settings into labelled sections", () => {
-  // Section headings plus their one-line explanation; the first group is not
-  // separated from the dialog title by a rule.
-  assert.match(cssRule(".settings-section"), /gap:\s*12px/);
-  assert.match(cssRule(".settings-section"), /border-top:\s*1px solid/);
-  assert.match(cssRule(".settings-section:first-of-type"), /border-top:\s*0/);
-  assert.match(cssRule(".settings-section__head"), /align-items:\s*baseline/);
+test("lays settings out as a section rail beside the active pane", () => {
+  // Two panes, not one stacked column: the rail names the sections and the
+  // pane shows only the active one's fields.
+  assert.match(
+    cssRule(".settings-dialog__layout"),
+    /grid-template-columns:\s*208px minmax\(0, 1fr\)/,
+  );
+  assert.match(cssRule(".settings-nav"), /flex-direction:\s*column/);
+  assert.match(cssRule(".settings-dialog__layout"), /min-height:\s*0/);
 
-  // Tall lists of preferences scroll between a fixed header and footer instead
-  // of pushing the reset button below the fold.
-  assert.match(cssRule(".settings-dialog"), /max-height:/);
+  // The dialog is a real card, not a form strip: fixed height on a wide
+  // viewport, with the pane scrolling between fixed header and footer so the
+  // reset button never falls below the fold.
+  assert.match(cssRule(".settings-dialog"), /height:\s*min\(672px/);
   assert.match(cssRule(".settings-dialog"), /overflow:\s*hidden/);
-  assert.match(cssRule(".settings-dialog__body"), /overflow-y:\s*auto/);
-  assert.match(cssRule(".settings-dialog__body"), /min-height:\s*0/);
+  assert.match(cssRule(".settings-pane"), /overflow-y:\s*auto/);
+  assert.match(cssRule(".settings-pane"), /min-height:\s*0/);
+  assert.match(cssRule(".settings-footer"), /flex:\s*none/);
 });
 
 test("keeps the log scroll controls out of the list", () => {

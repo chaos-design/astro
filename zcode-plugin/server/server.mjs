@@ -22,14 +22,24 @@ const serverFile = fileURLToPath(import.meta.url);
 const projectDir = resolve(serverDir, "..");
 const publicDir = join(projectDir, "dist");
 // Reported by /api/health so the UI can compare the running service with the
-// bundle it was built from.
+// bundle it was built from. The installed runtime ships `plugin.json` instead
+// of a package manifest (scripts/install-plugins.mjs copies only the runtime
+// directories), so both manifests are read before reporting "unknown" — the
+// console otherwise had to explain a version the service could have known.
 const appBuild = (() => {
-  try {
-    return JSON.parse(readFileSync(join(projectDir, "package.json"), "utf8"))
-      .version || "unknown";
-  } catch {
-    return "unknown";
+  for (const manifest of ["package.json", "plugin.json"]) {
+    try {
+      const { version } = JSON.parse(
+        readFileSync(join(projectDir, manifest), "utf8"),
+      );
+      if (typeof version === "string" && version.trim()) {
+        return version.trim();
+      }
+    } catch {
+      // Missing or unreadable manifest: try the next one.
+    }
   }
+  return "unknown";
 })();
 const runtimeConfig = runtimeConfigLoader.loadRuntimeConfig({
   environment: process.env,

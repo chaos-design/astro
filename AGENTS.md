@@ -122,7 +122,7 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   only module that computes it.
 - Its length is the persisted preference `ASTROX_HISTORY_RANGE`
   (`1h` / `3h` / `6h` / `12h` / `24h` / `3d` / `7d` / `30d`, default `3h`;
-  four per row in the settings dialog), converted with
+  hours on one row, days on the next), converted with
   `getHistoryRangeHours`. The same value seeds the global search dialog, so a
   new option also needs an entry in the `HistoryTimeRange` duration table.
 - The window ends at the newest message (`getRunHistoryAnchorTime`), not at
@@ -144,11 +144,14 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   (`ASTROX_RUN_HISTORY_LIVE_VIEW`, default **off**, also editable in Settings).
   It always renders — `0 LIVE` included, in an idle (non-pulsing) variant —
   because the state is a preference, not a badge.
-- Armed and disarmed must be distinguishable at a glance: armed is a solid
-  `--status-running` pill (panel-coloured text, glyph dropped, 3px halo),
-  disarmed a ghost outline, and the header's second line switches from `N runs`
-  to the "全部历史" badge. Do not express the armed state as one shade more tint
-  — on the dark theme the two states then read the same.
+- Armed and disarmed must be distinguishable at a glance, with the polarity
+  "light when off, dark when on": armed is a dark filled pill (`--status-running`
+  at 26% over `--bg`, light-violet text, soft halo), disarmed a light outlined
+  pill, and the header's second line switches from `N runs` to the "全部历史"
+  badge. The radar glyph is kept in both states and inherits the pill colour.
+  Do not express the armed state as one shade more tint (unreadable on the dark
+  theme) or as a solid bright accent fill (the brightest surface in the panel,
+  which reads as "lighter" than the disarmed pill).
 - Armed, RUN HISTORY is a **filter**: the rows are only the messages whose run
   is executing right now (`selectLiveRunHistory`). The pool it filters is the
   agent's *whole* history — the time window is dropped, so a session resumed a
@@ -186,13 +189,44 @@ use Node.js ES modules or CommonJS according to their existing file extension.
 - `appDefaults.liveView` is the single default of the Live filter. Its old key
   (`ASTROX_RUN_HISTORY_LIVE_FILTER`) is retired, not migrated: it meant "show
   the whole history", so honouring it would arm the new filter on load.
-- The dialog groups preferences by what they change (外观 / 运行历史 / 画布 /
-  面板) instead of listing them flat; a preference that also has an inline control
-  in the header or toolbar is listed here as well. Header and footer are fixed
-  and `.settings-dialog__body` scrolls.
+- The dialog is a two-pane card: `.settings-nav` (外观 / 运行历史 / 画布 / 面板 /
+  关于) beside a `.settings-pane` that renders only the active section, carried by
+  a vertical Radix `Tabs` so arrow keys work. A single stacked column scrolled the
+  whole dialog or squeezed the controls on a short window. Header and footer are
+  fixed and only the pane scrolls; Done merely closes it. A preference that also
+  has an inline control in the header or toolbar is listed here as well.
+- 关于 names the console version, where preferences live (`localStorage`, the
+  `ASTROX_` prefix), and that settings never write back to captured events.
+- The footer actions carry their own ink and surface. The app-level
+  `button { color: inherit }` and `button:not(...){ border: 0 }` resets outrank
+  Tailwind's `text-*` / `border` utilities, so a plain `variant="default"`
+  button rendered light text on the bright primary fill (~1.6:1). Footer
+  buttons are tagged `settings-footer__button` (exempted from both resets) and
+  styled against `--primary` / `--primary-foreground`; the disabled outline
+  action stays muted-but-legible instead of fading to 50% opacity.
 - A new preference updates, in one change: `storageKeys`, `appDefaults`, the
   dialog, the §15.1 table in `docs/user-manual-*.md`, and
   `tests/app-config.test.ts`.
+
+## Run History Prompt Thread
+
+- The expanded Prompt list is **measured**, not estimated: a `ResizeObserver` in
+  `RunHistoryItem` sizes it to `scrollHeight` up to
+  `appLayout.historyPromptListMaxHeight` (300 px), and a thread that overshoots
+  the ceiling by less than 1.25× is shown whole. `rows × fixed estimate` clipped
+  the last row whenever a title wrapped — exactly the two-message thread where
+  that row is the whole second message.
+- The estimate stays as the first-paint fallback only. `max-height` must not be
+  re-added in CSS: it would clip the measured height again.
+
+## Agent Filter
+
+- An "agent" filter lists agents. The RUN HISTORY dropdown and the global
+  search's Agent filter both use `agentOptions` plus the trailing `Others`
+  (`OTHERS_AGENT_ID`); `matchesAgentSourceFilter` treats `Others` as "every
+  source that is not a configured agent". Sources without an agent definition
+  (browser, generic, custom HTTP collectors) must not become pseudo-agent
+  entries of their own.
 
 ## Header Chrome
 
@@ -215,6 +249,12 @@ use Node.js ES modules or CommonJS according to their existing file extension.
 - The Flow Guide drawer dims the console with a flat scrim
   (`.atom-guide__overlay`), never a backdrop blur — the canvas repaints
   continuously and would pay for the blur on every frame.
+- The uptime chip's `LOCAL SERVICE` card names its version subjects: **console**
+  is `appVersion`, **service** is `build` from `/api/health`. The server reads
+  `package.json` first and the installed runtime's `plugin.json` second (the
+  installer copies no package manifest), so an installed service can report its
+  release instead of `unknown`. A mismatch is called out, and an unreadable
+  manifest renders "未上报" with the reason — never a bare `unknown`.
 
 
 ## Run Trajectory Order

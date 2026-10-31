@@ -693,9 +693,15 @@ function formatBootDuration(milliseconds: number) {
   if (!Number.isFinite(milliseconds) || milliseconds <= 0) {
     return "--";
   }
-  return milliseconds < 1_000
-    ? `${Math.round(milliseconds)}ms`
-    : formatDuration(milliseconds);
+  if (milliseconds < 1_000) {
+    return `${Math.round(milliseconds)} ms`;
+  }
+  // Sub-10s boots are the common case after a warm start; rounding them to
+  // whole seconds lost the difference between 1.2s and 4.4s.
+  if (milliseconds < 10_000) {
+    return `${(milliseconds / 1_000).toFixed(1)} s`;
+  }
+  return formatDuration(milliseconds);
 }
 
 /**
@@ -753,7 +759,24 @@ function ServiceStatus({
         ? "online"
         : "degraded";
   const counts = service?.sessionCounts ?? {};
-  const liveCount = (counts.active ?? 0) + (counts.waiting ?? 0);
+  // `build` is the service's own release string. `unknown` is its honest
+  // answer when neither package.json nor the installed runtime's plugin.json
+  // could be read — the card names that case instead of printing a bare
+  // "unknown" next to the Node runtime.
+  const reportedVersion = service?.build ?? "";
+  const versionKnown = Boolean(reportedVersion) && reportedVersion !== "unknown";
+  const versionMatches = versionKnown && reportedVersion === appVersion;
+  // Every recorded status, not a single "live" number: the server counts what
+  // the recorders wrote, while RUN HISTORY's `N LIVE` additionally requires
+  // recent activity, so folding active + waiting into "live" made the card
+  // disagree with the panel beside it.
+  const sessionCounts = [
+    { label: "active", tone: "running", value: counts.active ?? 0 },
+    { label: "waiting", tone: "waiting", value: counts.waiting ?? 0 },
+    { label: "complete", tone: "completed", value: counts.complete ?? 0 },
+    { label: "failed", tone: "failed", value: counts.failed ?? 0 },
+    { label: "terminated", tone: "terminated", value: counts.terminated ?? 0 },
+  ] as const;
 
   return (
     <Popover>
@@ -782,86 +805,155 @@ function ServiceStatus({
           </span>
         </button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="service-card">
-        <header>
-          <span className="eyebrow">LOCAL SERVICE</span>
-          <strong>
-            {error
-              ? "服务不可达"
-              : connected
-                ? "运行中 · 流已连接"
-                : "运行中 · 流未连接"}
-          </strong>
+      <PopoverContent
+        align="end"
+        className="service-card"
+        // The card is a status readout: taking focus would outline the restart
+        // button the moment the popover opens and read as a call to action.
+        onOpenAutoFocus={(event) => event.preventDefault()}
+      >
+        <header className="service-card__head">
+          <div className="service-card__identity" data-health={health}>
+            <i aria-hidden="true" />
+            <div>
+              <span className="eyebrow">LOCAL SERVICE</span>
+              <strong>
+                {error
+                  ? "服务不可达"
+                  : connected
+                    ? "运行中 · 事件流已连接"
+                    : "运行中 · 事件流未连接"}
+              </strong>
+            </div>
+          </div>
+          <span className="service-card__clock" title="已运行时长">
+            {service ? formatDuration(uptime) : "--"}
+          </span>
         </header>
-        <dl>
-          <div>
-            <dt>已运行</dt>
-            <dd>{service ? formatDuration(uptime) : "--"}</dd>
-          </div>
-          <div>
-            <dt>启动耗时</dt>
-            <dd>{service ? formatBootDuration(service.bootMs) : "--"}</dd>
-          </div>
-          <div>
-            <dt>启动于</dt>
-            <dd>{service ? formatRunDate(service.startedAt) : "--"}</dd>
-          </div>
-          <div>
-            <dt>PID · 端口</dt>
-            <dd>
-              {service ? `${service.pid} · ${service.port}` : "--"}
-            </dd>
-          </div>
-          <div>
-            <dt>版本</dt>
-            <dd>
-              {service ? `${service.build} · node ${service.node}` : "--"}
-            </dd>
-          </div>
-          <div>
-            <dt>重启次数</dt>
-            <dd>{service ? service.restartCount : 0}</dd>
-          </div>
-          <div>
-            <dt>事件</dt>
-            <dd>
-              {service ? service.eventCount.toLocaleString() : "--"} ·{" "}
-              {service ? service.traceFiles.length : 0} files
-            </dd>
-          </div>
-          <div>
-            <dt>会话</dt>
-            <dd>
-              {service
-                ? `${liveCount} live · ${counts.complete ?? 0} complete · ${
-                    counts.failed ?? 0
-                  } failed · ${counts.terminated ?? 0} terminated`
-                : "--"}
-            </dd>
-          </div>
-          <div>
-            <dt>数据目录</dt>
-            <dd title={service?.dataRoot}>{service?.dataRoot || "--"}</dd>
-          </div>
-        </dl>
-        {error ? <p className="service-card__error">{error}</p> : null}
-        <p className="service-card__hint">
-          重启会保留当前端口，页面与事件流会自动重连。
+        <p className="service-card__endpoint">
+          <code>
+            {service ? `${service.host}:${service.port}` : "127.0.0.1:5678"}
+          </code>
+          <span>PID {service ? service.pid : "--"}</span>
+          <span>node {service ? service.node : "--"}</span>
         </p>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="service-card__restart"
-          disabled={restarting}
-          onClick={onRestart}
+
+        <section className="service-card__group">
+          <h4>版本</h4>
+          <div className="service-card__versions">
+            <div>
+              <span>控制台</span>
+              <strong>v{appVersion}</strong>
+              <em>当前页面构建</em>
+            </div>
+            <div data-mismatch={versionKnown && !versionMatches}>
+              <span>服务</span>
+              <strong>{versionKnown ? `v${reportedVersion}` : "未上报"}</strong>
+              <em>
+                {!service
+                  ? "等待服务响应"
+                  : versionKnown
+                    ? versionMatches
+                      ? "与控制台一致"
+                      : "与控制台不一致"
+                    : "未读到清单文件"}
+              </em>
+            </div>
+          </div>
+          {service && versionKnown && !versionMatches ? (
+            <p className="service-card__notice">
+              控制台与服务版本不一致：刷新页面以加载新构建，或重启服务让两侧对齐。
+            </p>
+          ) : null}
+          {service && !versionKnown ? (
+            <p className="service-card__notice">
+              服务未上报版本号：它从源码目录或缺少清单文件的旧安装启动。重启服务会重新
+              读取 package.json / plugin.json。
+            </p>
+          ) : null}
+        </section>
+
+        <section className="service-card__group">
+          <h4>进程</h4>
+          <dl>
+            <div>
+              <dt>启动于</dt>
+              <dd>{service ? formatRunDate(service.startedAt) : "--"}</dd>
+            </div>
+            <div>
+              <dt>启动耗时</dt>
+              <dd>{service ? formatBootDuration(service.bootMs) : "--"}</dd>
+            </div>
+            <div>
+              <dt>重启</dt>
+              <dd>{service ? `${service.restartCount} 次` : "--"}</dd>
+            </div>
+            <div>
+              <dt>客户端</dt>
+              <dd>{service ? service.clientCount : "--"}</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section className="service-card__group">
+          <h4>数据</h4>
+          <dl>
+            <div>
+              <dt>事件</dt>
+              <dd>{service ? service.eventCount.toLocaleString() : "--"}</dd>
+            </div>
+            <div>
+              <dt>轨迹文件</dt>
+              <dd>{service ? service.traceFiles.length : "--"}</dd>
+            </div>
+          </dl>
+          <div className="service-card__path">
+            <span className="service-card__path-label">数据目录</span>
+            <code title={service?.dataRoot}>
+              {service?.dataRoot || "--"}
+            </code>
+            <em>
+              各采集客户端（录制器）写入的会话事件 JSONL 保存在这里；轨迹文件按客户端与
+              会话分目录存放，是控制台全部读数的来源。
+            </em>
+          </div>
+        </section>
+
+        <section
+          className="service-card__group"
+          title="录制器上报的会话状态；RUN HISTORY 的 N LIVE 还要求最近有活动"
         >
-          <RefreshCw
-            data-icon="inline-start"
-            className={restarting ? "animate-spin" : ""}
-          />
-          {restarting ? "正在重启…" : "重启本地服务"}
-        </Button>
+          <h4>会话</h4>
+          <div className="service-card__counts">
+            {sessionCounts.map((entry) => (
+              <div key={entry.label} data-tone={entry.tone}>
+                <strong>{service ? entry.value : "--"}</strong>
+                <span>{entry.label}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <div className="service-card__footer">
+          {error ? <p className="service-card__error">{error}</p> : null}
+          <p className="service-card__hint">
+            重启会保留当前端口，页面与事件流会自动重连。
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="service-card__restart"
+            disabled={restarting}
+            onClick={onRestart}
+          >
+            <RefreshCw
+              data-icon="inline-start"
+              className={restarting ? "animate-spin" : ""}
+            />
+            {restarting ? "正在重启…" : "重启本地服务"}
+          </Button>
+        </div>
       </PopoverContent>
     </Popover>
   );
@@ -1326,6 +1418,42 @@ const RunHistoryItem = memo(function RunHistoryItem({
     ...reversedPromptRows.filter((row) => row.promptLive),
     ...reversedPromptRows.filter((row) => !row.promptLive),
   ];
+  // The thread is sized to its measured content, capped at the configured
+  // maximum. A fixed `rows × estimate` height clipped the last row whenever a
+  // title wrapped (short threads are exactly the case where one clipped row is
+  // the whole second message), so the estimate is now only the first-paint
+  // fallback until the ResizeObserver reports the real height.
+  const promptListRef = useRef<HTMLOListElement | null>(null);
+  const [measuredThreadHeight, setMeasuredThreadHeight] = useState(0);
+  useLayoutEffect(() => {
+    if (!expanded) {
+      setMeasuredThreadHeight(0);
+      return undefined;
+    }
+    const node = promptListRef.current;
+    if (!node) {
+      return undefined;
+    }
+    const measure = () => setMeasuredThreadHeight(node.scrollHeight);
+    measure();
+    // A wrapped title, a new prompt, or a width change moves the content
+    // height; observing the list keeps the cap exact without polling.
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [expanded, promptRuns.length]);
+  const estimatedThreadHeight =
+    promptRuns.length * appLayout.historyPromptRowEstimate + 8;
+  // A short thread that overshoots the ceiling by less than a quarter is shown
+  // whole: at two or three messages, one clipped row and a scrollbar is a
+  // worse answer than a slightly taller panel. Longer threads keep the cap so
+  // the rest of RUN HISTORY stays on screen.
+  const threadHeight = measuredThreadHeight
+    ? measuredThreadHeight <=
+      appLayout.historyPromptListMaxHeight * 1.25
+      ? measuredThreadHeight
+      : appLayout.historyPromptListMaxHeight
+    : Math.min(appLayout.historyPromptListMaxHeight, estimatedThreadHeight);
   const firstPromptRun = promptRuns[0];
   const hasPromptThread = promptRuns.length > 1;
   const parentSelected = session.key === activeKey && !hasPromptThread;
@@ -1425,14 +1553,9 @@ const RunHistoryItem = memo(function RunHistoryItem({
         <ScrollArea
           id={promptListId}
           className="run-history__prompt-scroll"
-          style={{
-            height: Math.min(
-              appLayout.historyPromptListMaxHeight,
-              promptRuns.length * appLayout.historyPromptRowEstimate + 8,
-            ),
-          }}
+          style={{ height: threadHeight }}
         >
-          <ol className="run-history__prompts">
+          <ol className="run-history__prompts" ref={promptListRef}>
             {displayPromptRows.map(({ displayState, promptLive, promptRun }) => {
               const promptSelected = promptRun.key === activePromptRunKey;
               const roleLabel =
@@ -2000,7 +2123,7 @@ const RunHistory = memo(function RunHistory({
               className="run-history__scope"
               title="Live 筛选读取该智能体的全部历史，不受时间范围限制"
             >
-              全部历史
+              All
             </strong>
           ) : (
             <strong>
@@ -2041,8 +2164,8 @@ const RunHistory = memo(function RunHistory({
             </TooltipTrigger>
             <TooltipContent side="bottom">
               {liveFiltering
-                ? `关闭 Live 筛选，回到最近 ${rangeLabel}内的消息`
-                : "Live 筛选：只看正在执行的消息"}
+                ? `关闭 Live 筛选，回到按 ${rangeLabel}窗口加载的消息`
+                : `正在执行的消息共 ${liveSummary.count} 条：最新一次运行处于 running 或 waiting，且最近仍有活动（崩溃残留的 recorder 会被剔除）。按整个机器统计，不受时间范围限制。点击开启 Live 筛选，仅显示这些消息。`}
             </TooltipContent>
           </Tooltip>
           <Tooltip>

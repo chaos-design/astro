@@ -171,8 +171,9 @@ scrolling:
   view; a message that newly starts executing is located automatically by
   diffing the live set. Zero live rows leaves an empty list with the "nothing is
   executing" state rather than the full history. Disarmed, the list returns to
-  the default window. The chip always renders, using an idle variant for
-  `0 LIVE`;
+  the default window. The chip always renders — a light outlined pill when
+  disarmed, a dark filled pill when armed (the radar glyph stays in both states
+  and inherits the pill colour) — using an idle variant for `0 LIVE`;
 - a live row draws an `inset 2px` status accent, purple for `active` and amber
   for `waiting`;
 - the tag row gains a pulsing `RUNNING` / `WAITING` capsule next to `STATUS`.
@@ -205,13 +206,24 @@ The list is narrowed to the agent, then filtered by an hour window (the
 
 The settings dialog (`src/components/settings-dialog.tsx`) holds browser-local
 preferences only; changes apply immediately and are written to `localStorage`.
-Preferences are grouped by what they change (appearance, run history, canvas,
-panels) with a fixed header and footer around a scrolling
-`.settings-dialog__body`; the reset restores every group at once. The range
+It is a two-pane card: a `.settings-nav` rail on the left (appearance, run
+history, canvas, panels, about) and a `.settings-pane` on the right that renders
+only the active section, carried by a vertical Radix `Tabs` so arrow keys work.
+Header and footer are fixed and only the pane scrolls; the footer's Done button
+merely closes the dialog. The reset restores every section at once. The range
 drives both the RUN HISTORY window and the search dialog's initial range, so the
 two defaults cannot drift. The header carries settings, theme, and the GitHub
 anchor (`appRepository.url`, opened in a new tab), all 28 px icon controls
 sharing the theme switcher's height and radius.
+
+The uptime chip opens a `LOCAL SERVICE` card split into four groups: **version**
+(console = this page's `appVersion`; service = `build` from `/api/health`, read
+from `package.json` or the installed runtime's `plugin.json`), **process**
+(start time, boot cost, restart count, SSE clients), **data** (event count,
+trace files, data root) and **sessions** (`active` / `waiting` / `complete` /
+`failed` / `terminated`). A console/service version mismatch is called out; an
+unreadable manifest reports "not reported" with the reason instead of a bare
+`unknown`.
 
 ### Guide and log controls
 
