@@ -312,7 +312,7 @@ test("builds inclusive preset and custom date bounds", () => {
     to: now,
     valid: true,
   });
-  assert.deepEqual(getHistoryDateBounds("24h", now), {
+  assert.deepEqual(getHistoryDateBounds("1d", now), {
     from: now - 86_400_000,
     to: now,
     valid: true,
@@ -323,8 +323,8 @@ test("builds inclusive preset and custom date bounds", () => {
     to: now,
     valid: true,
   });
-  assert.deepEqual(getHistoryDateBounds("30d", now), {
-    from: now - 30 * 86_400_000,
+  assert.deepEqual(getHistoryDateBounds("5d", now), {
+    from: now - 5 * 86_400_000,
     to: now,
     valid: true,
   });

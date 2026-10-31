@@ -56,8 +56,9 @@ test("opens RUN HISTORY unfiltered", () => {
 
 test("lists history ranges in ascending order with matching spans", () => {
   const ids = historyRangeOptions.map((option) => option.id);
-  // Four per row in the settings dialog: eight choices read as two tidy rows.
-  assert.deepEqual(ids, ["1h", "3h", "6h", "12h", "24h", "3d", "7d", "30d"]);
+  // Four per row in the settings dialog: the hour choices read as one row, the
+  // day choices as the next.
+  assert.deepEqual(ids, ["1h", "3h", "6h", "12h", "1d", "3d", "5d", "7d"]);
 
   const hours = historyRangeOptions.map((option) => option.hours);
   assert.deepEqual([...hours].sort((left, right) => left - right), hours);
@@ -65,9 +66,10 @@ test("lists history ranges in ascending order with matching spans", () => {
     historyRangeOptions.every((option) => option.label && option.shortLabel),
   );
   assert.equal(getHistoryRangeHours("1h"), 1);
+  assert.equal(getHistoryRangeHours("1d"), 24);
   assert.equal(getHistoryRangeHours("3d"), 72);
+  assert.equal(getHistoryRangeHours("5d"), 120);
   assert.equal(getHistoryRangeHours("7d"), 168);
-  assert.equal(getHistoryRangeHours("30d"), 720);
 
   assert.equal(isHistoryRangeId("3h"), true);
   assert.equal(isHistoryRangeId("9h"), false);

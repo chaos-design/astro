@@ -7,10 +7,10 @@ export type HistoryRangeId =
   | "3h"
   | "6h"
   | "12h"
-  | "24h"
+  | "1d"
   | "3d"
-  | "7d"
-  | "30d";
+  | "5d"
+  | "7d";
 export type Theme = "dark" | "light" | "system";
 
 type AppDefaults = {
@@ -77,7 +77,8 @@ export const appRepository = {
 
 /**
  * Selectable history ranges, in the order the settings dialog lists them —
- * four per row, from an hour to a month.
+ * four per row: the hour choices on the first row, the day choices on the
+ * second, from an hour to a week.
  *
  * Hours rather than calendar days on purpose: "最近 3 小时" must mean the same
  * span whether the console is opened at 09:00 or 23:00, and the same value is
@@ -95,10 +96,10 @@ export const historyRangeOptions: ReadonlyArray<{
   { id: "3h", shortLabel: "3 小时", label: "最近 3 小时", hours: 3 },
   { id: "6h", shortLabel: "6 小时", label: "最近 6 小时", hours: 6 },
   { id: "12h", shortLabel: "12 小时", label: "最近 12 小时", hours: 12 },
-  { id: "24h", shortLabel: "24 小时", label: "最近 24 小时", hours: 24 },
+  { id: "1d", shortLabel: "1 天", label: "最近 1 天", hours: 24 },
   { id: "3d", shortLabel: "3 天", label: "最近 3 天", hours: 3 * 24 },
+  { id: "5d", shortLabel: "5 天", label: "最近 5 天", hours: 5 * 24 },
   { id: "7d", shortLabel: "7 天", label: "最近 7 天", hours: 7 * 24 },
-  { id: "30d", shortLabel: "30 天", label: "最近 30 天", hours: 30 * 24 },
 ];
 
 /** Range used until the user picks another one in Settings. */

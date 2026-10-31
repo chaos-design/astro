@@ -64,7 +64,7 @@
 - The window unit is **hours**, not calendar days: "last 3 hours" is the same
   span at 09:00 and at 23:00, and it does not change length at midnight.
 - The length comes from the `Default time range` setting (`1h` / `3h` / `6h` /
-  `12h` / `24h` / `3d` / `7d` / `30d`, default `3h`; hour choices on one
+  `12h` / `1d` / `3d` / `5d` / `7d`, default `3h`; hour choices on one
   row, day choices on the next), converted at runtime by `getHistoryRangeHours()`. The same value
   seeds the global search dialog, so a new option also needs an entry in the
   `HistoryTimeRange` duration table.

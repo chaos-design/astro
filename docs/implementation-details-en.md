@@ -191,7 +191,7 @@ is picked by hand.
 
 The list is narrowed to the agent, then filtered by an hour window (the
 `Default time range` setting, `3h` unless changed; the alternatives are `1h`,
-`6h`, `12h`, `24h`, `3d`, `7d`, `30d`):
+`6h`, `12h`, `1d`, `3d`, `5d`, `7d`):
 
 - the window ends at the **newest message** (`getRunHistoryAnchorTime`), not at
   `Date.now()`, so opening the console the next morning never shows an empty

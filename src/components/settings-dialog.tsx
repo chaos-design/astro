@@ -342,7 +342,7 @@ export function SettingsDialog({
                 <ChoiceGroup
                   label="默认时间范围"
                   value={historyRange}
-                  columns={5}
+                  columns={4}
                   onChange={onHistoryRangeChange}
                   options={historyRangeOptions.map((option) => ({
                     id: option.id,

@@ -2162,10 +2162,10 @@ const RunHistory = memo(function RunHistory({
                 <span>{liveSummary.count} LIVE</span>
               </button>
             </TooltipTrigger>
-            <TooltipContent side="bottom">
+            <TooltipContent side="bottom" align="start" className="run-history__live-hint">
               {liveFiltering
                 ? `关闭 Live 筛选，回到按 ${rangeLabel}窗口加载的消息`
-                : `正在执行的消息共 ${liveSummary.count} 条：最新一次运行处于 running 或 waiting，且最近仍有活动（崩溃残留的 recorder 会被剔除）。按整个机器统计，不受时间范围限制。点击开启 Live 筛选，仅显示这些消息。`}
+                : `${liveSummary.count} 条消息正在执行。判定：该消息最新一次运行仍处于 running / waiting，且最近有活动（running 要求 10 分钟内、waiting 要求 60 分钟内），崩溃残留的会话不计入。计数覆盖全部客户端，不受时间范围限制。点击开启 Live 筛选，仅显示这 ${liveSummary.count} 条。`}
             </TooltipContent>
           </Tooltip>
           <Tooltip>

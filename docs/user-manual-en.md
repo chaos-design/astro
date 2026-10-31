@@ -431,8 +431,8 @@ the footer's **Done** button only closes the dialog — there is no Apply step:
 
 - **Default time range**: hour choices on one row, day choices on the
   next (eight total) — `1 hour`, `3 hours`
-  (default), `6 hours`, `12 hours`, `24 hours`, `3 days`, `7 days`,
-  `30 days`. It drives RUN HISTORY's visible window (while the Live filter is
+  (default), `6 hours`, `12 hours`, `1 day`, `3 days`, `5 days`,
+  `7 days`. It drives RUN HISTORY's visible window (while the Live filter is
   off) and the initial range of the global search dialog; the window is
   measured back from the newest message, so opening the console the next
   morning still shows the last session.
@@ -865,7 +865,7 @@ only effective display state.
 | `ASTROX_PLATFORM` | `codex` / `claude` / `trae` | Platform context |
 | `ASTROX_HISTORY_OPEN` | `true` / `false` | Left History panel |
 | `ASTROX_CONSOLE_OPEN` | `true` / `false` | Right Events/Inspector panel |
-| `ASTROX_HISTORY_RANGE` | `1h` / `3h` / `6h` / `12h` / `24h` / `3d` / `7d` / `30d` | Default time range, `3h` unless changed |
+| `ASTROX_HISTORY_RANGE` | `1h` / `3h` / `6h` / `12h` / `1d` / `3d` / `5d` / `7d` | Default time range, `3h` unless changed |
 | `ASTROX_RUN_HISTORY_LIVE_VIEW` | `true` / `false` | Live filter armed by default, off unless changed |
 | `ASTROX_ACTIVE_VIEW` | `topology` / `trajectory` | Last canvas view |
 | `ASTROX_DEEP_VIEW` | `true` / `false` | Runtime-only atoms in the topology |

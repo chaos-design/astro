@@ -121,7 +121,7 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   the same span at 09:00 and at 23:00. `src/lib/run-history-window.ts` is the
   only module that computes it.
 - Its length is the persisted preference `ASTROX_HISTORY_RANGE`
-  (`1h` / `3h` / `6h` / `12h` / `24h` / `3d` / `7d` / `30d`, default `3h`;
+  (`1h` / `3h` / `6h` / `12h` / `1d` / `3d` / `5d` / `7d`, default `3h`;
   hours on one row, days on the next), converted with
   `getHistoryRangeHours`. The same value seeds the global search dialog, so a
   new option also needs an entry in the `HistoryTimeRange` duration table.

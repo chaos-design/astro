@@ -233,7 +233,7 @@ node ~/.astrox/plugins/astro/server/server.mjs
 
 筛选条件包括：
 
-- 最近 1、3、6、12、24 小时、今天、昨天、最近 3、7、30 天或自定义日期；
+- 最近 1、3、6、12 小时、最近 1 天、今天、昨天、最近 3、5、7 天或自定义日期；
 - 一个或多个智能体：列表只包含已配置的智能体，其他来源（browser、generic、自定义
   HTTP 采集器等）统一归入末尾的 **Others**，不再各自占一项；
 - 一个或多个运行状态；
@@ -249,7 +249,7 @@ History 搜索只覆盖浏览器已加载数据，与服务端 `/api/search` 是
 ### 5.3 左侧 Run History
 
 列表先按所选智能体收窄，再套时间窗口。窗口长度取设置里的「默认时间范围」（默认
-最近 3 小时，可选 1 小时到 30 天），起点以**最近一条消息**为终点向前推：隔夜或长
+最近 3 小时，可选 1 小时到 7 天），起点以**最近一条消息**为终点向前推：隔夜或长
 时间空闲后打开控制台，看到的仍是上一次会话前后的消息，而不是空列表。窗口放不下更早
 的记录时，底部出现 `LOAD EARLIER`，点击或滚动到底部会把窗口翻倍（3 → 6 → 12 → 24
 → 48 小时），直到没有更早的消息。
@@ -383,7 +383,7 @@ Prompt 为 waiting 时父行冻结。waiting 子行仍继续计算自身时长�
 **运行历史**
 
 - **默认时间范围**：小时一行、天一行，共 8 个选项——`1 小时`、`3 小时`（默认）、`6 小时`、
-  `12 小时`、`24 小时`、`3 天`、`7 天`、`30 天`。它驱动 RUN HISTORY 的可见窗口
+  `12 小时`、`1 天`、`3 天`、`5 天`、`7 天`。它驱动 RUN HISTORY 的可见窗口
   （Live 筛选关闭时）和全局历史搜索弹窗的初始范围；窗口终点取最近一条消息，隔夜打开
   仍能看到上次的会话。
 - **Live 筛选**：默认关闭。开启后打开控制台即进入 Live 筛选（等价于按下面板头部的
@@ -776,7 +776,7 @@ astro-trace doctor
 | `ASTROX_PLATFORM` | `codex` / `claude` / `trae` | 平台上下文 |
 | `ASTROX_HISTORY_OPEN` | `true` / `false` | 左侧 History 展开状态 |
 | `ASTROX_CONSOLE_OPEN` | `true` / `false` | 右侧 Events/Inspector 展开状态 |
-| `ASTROX_HISTORY_RANGE` | `1h` / `3h` / `6h` / `12h` / `24h` / `3d` / `7d` / `30d` | 默认时间范围，默认 `3h` |
+| `ASTROX_HISTORY_RANGE` | `1h` / `3h` / `6h` / `12h` / `1d` / `3d` / `5d` / `7d` | 默认时间范围，默认 `3h` |
 | `ASTROX_RUN_HISTORY_LIVE_VIEW` | `true` / `false` | Live 筛选是否默认开启，默认 `false` |
 | `ASTROX_ACTIVE_VIEW` | `topology` / `trajectory` | 上次使用的画布视图 |
 | `ASTROX_DEEP_VIEW` | `true` / `false` | 拓扑是否只显示运行时原子 |

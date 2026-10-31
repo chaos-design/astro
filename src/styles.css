@@ -1542,9 +1542,9 @@ pre,
   }
 }
 
-/* Four per row by default; the history range picks five so the hour ranges
- * and the day ranges each own a row. A pick-one group sets
- * `--settings-columns` when it has fewer choices. */
+/* Four per row by default (eight ranges read as two tidy rows: hours above,
+ * days below); a pick-one group sets `--settings-columns` when it has fewer
+ * choices. */
 .settings-options {
   display: grid;
   grid-template-columns: repeat(var(--settings-columns, 4), minmax(0, 1fr));
@@ -2912,6 +2912,14 @@ pre,
   padding: 6px 12px;
   flex-direction: column;
   gap: 5px;
+}
+
+/* The N LIVE hint is a definition, not a card: keep it a narrow strip that
+ * opens flush with the chip's bottom-left edge instead of spanning the panel. */
+.run-history__live-hint {
+  max-width: min(264px, calc(100vw - 24px));
+  padding: 8px 10px;
+  line-height: 1.55;
 }
 
 .run-history__tooltip strong {
