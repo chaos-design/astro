@@ -232,9 +232,13 @@ migration or `--astro-home=/path/to/.astrox` to change the data root.
   - `accepted`: SSE connected;
   - `offline`: API or SSE unavailable;
   - `demo`: development/test mode is using embedded events because the real count is zero.
+- The icons on the right read, left to right: settings (gear), theme, GitHub.
+  GitHub is always the right-most one, because it is the only header control
+  that leaves the console.
 - GitHub icon: opens the project repository
   (`https://github.com/chaos-design/astro`) in a new tab.
-- Settings icon: opens the settings dialog for the default message range.
+- Settings icon (gear): opens the settings dialog for the default message range
+  and the Live filter.
 - Theme: light, dark, or system; stored in `ASTROX_THEME`.
 
 ### 5.2 Global History Search
@@ -274,16 +278,21 @@ bottom; clicking it — or scrolling to the bottom — doubles the window
 Executing messages ignore the window: they are always listed and always pinned
 to the top.
 
-The `N LIVE` chip in the panel header toggles the Live view:
+The `N LIVE` chip in the panel header toggles the Live filter:
 
-- Armed, it lists **every message of the selected agent** (the time window is
-  dropped), with the executing messages pinned, expanded and scrolled into
-  view. When a message is sent, the run that newly starts executing is located
-  automatically — no hunting through the list.
+- Armed, it lists **only the messages whose run is executing right now**. The
+  filter reads the selected agent's whole history (the time window is dropped,
+  so a session that started days ago and was just prompted again qualifies),
+  but finished messages are not listed. Executing messages are pinned,
+  expanded and scrolled into view. When a message is sent, the run that newly
+  starts executing is located automatically — no hunting through the list.
+- With nothing executing the chip reads `0 LIVE` and the list is empty, with a
+  "nothing is executing right now" message and the way out. That is a normal
+  filter result; it never falls back to the full history.
 - Disarmed, the list returns to the default window and `LOAD EARLIER` returns.
-- The choice is stored in `ASTROX_RUN_HISTORY_LIVE_FILTER` and is on by default.
-- With nothing executing the chip reads `0 LIVE`; the list still shows the
-  agent's whole history.
+- The choice is stored in `ASTROX_RUN_HISTORY_LIVE_VIEW` and is off by default
+  (Settings can change that default): a filter may legitimately match nothing,
+  so arming it on load would open the console on an empty panel.
 
 The agent list comes from the toolbar platform dropdown: the configured agents
 are listed first and a trailing **Others** catch-all collects runs whose source
@@ -344,7 +353,9 @@ The upper LOG area:
 - searches any serialized field in the selected prompt run;
 - selects or clears an event by clicking its row;
 - locates the mapped atom in the topology;
-- provides floating controls for top/bottom scrolling.
+- puts the top/bottom scroll controls in the panel header (only the edge that is
+  actually out of view shows a control), so no floating button ever covers the
+  first visible atom.
 
 The inspector provides:
 
@@ -401,17 +412,42 @@ duration even when it is longer than the current limit.
 
 ### 5.8 Settings
 
-The header settings icon opens the settings dialog. It currently holds one
-preference:
+The gear in the header opens the settings dialog. Preferences are grouped by
+what they change, and each one applies immediately:
 
-- **Default time range**: `Last 3 hours` (default), `6 hours`, `12 hours`,
-  `24 hours`, `Last 7 days`.
+**Appearance**
 
-That single value drives both RUN HISTORY's visible window and the initial time
-range of the global search dialog. Changes apply immediately and are written to
-`ASTROX_HISTORY_RANGE`; **reset** restores three hours. The dialog also states
-that the range is measured back from the newest message and that executing
-messages are never filtered out.
+- **Theme**: light / dark / system — the same preference as the header switcher
+  (`ASTROX_THEME`).
+
+**Run history**
+
+- **Default time range**: four per row, eight choices — `1 hour`, `3 hours`
+  (default), `6 hours`, `12 hours`, `24 hours`, `3 days`, `7 days`,
+  `30 days`. It drives RUN HISTORY's visible window (while the Live filter is
+  off) and the initial range of the global search dialog; the window is
+  measured back from the newest message, so opening the console the next
+  morning still shows the last session.
+- **Live filter**: off by default. When on, the console opens with the Live
+  filter armed (the same state as pressing the `N LIVE` chip), so RUN HISTORY
+  lists only the executing messages — and nothing at all while the machine is
+  idle. It ignores the time range above.
+
+**Canvas**
+
+- **Default view**: topology / trajectory (`ASTROX_ACTIVE_VIEW`).
+- **Runtime atoms only**: hide atoms that take no part in this execution
+  (`ASTROX_DEEP_VIEW`).
+
+**Panels**
+
+- **Expand RUN HISTORY** and **Expand EVENTS**: the two columns' expanded state
+  (`ASTROX_HISTORY_OPEN` / `ASTROX_CONSOLE_OPEN`).
+
+The values are written to `ASTROX_HISTORY_RANGE`, `ASTROX_RUN_HISTORY_LIVE_VIEW`
+and the other keys above. **Reset** restores all four groups at once (3 hours,
+Live off, dark, topology, runtime atoms only, and the width-based panel
+defaults).
 
 ## 6. Execution Topology
 
@@ -452,7 +488,9 @@ Use all atoms for architecture, tool internals, or output-quality analysis. Use 
 
 ### 6.4 Atom Guide
 
-The question-mark control opens a guide with:
+The question-mark control slides a guide in from the right and dims the console
+behind it, so the drawer reads as a layer over the workspace instead of a fourth
+column:
 
 - edge semantics;
 - one tab per domain;
@@ -813,14 +851,16 @@ only effective display state.
 | `ASTROX_PLATFORM` | `codex` / `claude` / `trae` | Platform context |
 | `ASTROX_HISTORY_OPEN` | `true` / `false` | Left History panel |
 | `ASTROX_CONSOLE_OPEN` | `true` / `false` | Right Events/Inspector panel |
-| `ASTROX_HISTORY_RANGE` | `3h` / `6h` / `12h` / `24h` / `7d` | Default time range, `3h` unless changed |
-| `ASTROX_RUN_HISTORY_LIVE_FILTER` | `true` / `false` | Live view toggle, on by default |
+| `ASTROX_HISTORY_RANGE` | `1h` / `3h` / `6h` / `12h` / `24h` / `3d` / `7d` / `30d` | Default time range, `3h` unless changed |
+| `ASTROX_RUN_HISTORY_LIVE_VIEW` | `true` / `false` | Live filter armed by default, off unless changed |
 | `ASTROX_ACTIVE_VIEW` | `topology` / `trajectory` | Last canvas view |
 | `ASTROX_DEEP_VIEW` | `true` / `false` | Runtime-only atoms in the topology |
 
 Legacy `astro-theme` and `astro-platform` values migrate automatically and
 are removed after the new key is written. Invalid or unavailable storage falls
-back to defaults without affecting capture.
+back to defaults without affecting capture. The old
+`ASTROX_RUN_HISTORY_LIVE_FILTER` is not migrated: it meant "show every
+message", the opposite of the Live filter, so it is deleted on the next write.
 
 ### 15.2 Upgrade from the previous data layout
 

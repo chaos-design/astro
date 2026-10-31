@@ -127,6 +127,7 @@ import {
   legacyStorageKeys,
   panelHeaderClass,
   panelHeaderCopyClass,
+  retiredStorageKeys,
   shouldShowDemo,
   storageKeys,
   themeOptions,
@@ -185,6 +186,7 @@ import {
   filterSessionsByAgent,
   nextRunHistoryVisibleHours,
   pinLiveRunHistory,
+  selectLiveRunHistory,
   selectVisibleRunHistory,
 } from "./lib/run-history-window";
 import { atomLevel, projectTraceEvents } from "./lib/atomic-projection";
@@ -1623,9 +1625,10 @@ const RunHistory = memo(function RunHistory({
   activePromptRunKey: string;
   isDemo: boolean;
   /**
-   * Armed live filter: the list is the selected agent's *whole* history (the
-   * parent drops the time window) and the executing messages are pinned,
-   * expanded and located. Persisted by the parent, so every surface agrees.
+   * Armed live filter: the rows are the messages that are executing right
+   * now, filtered out of the selected agent's *whole* history (the parent
+   * drops the time window) and pinned, expanded and located. Persisted by the
+   * parent, so the chip, the settings dialog and the list agree.
    */
   liveFilter: boolean;
   /** Keys of the executing runs; these rows are pinned to the top. */
@@ -1676,7 +1679,7 @@ const RunHistory = memo(function RunHistory({
 
   // Live summary for the header chip, derived from the same key set the app
   // uses to keep executing runs inside the window and pin them on top — one
-  // definition of "executing" for the list, the chip, and the Live view.
+  // definition of "executing" for the list, the chip, and the Live filter.
   // Narrowed to the rows actually rendered, so the chip can never point at a
   // row that is not in this list, and ordered like the list (pinned run first).
   const liveSummary = useMemo(() => {
@@ -1693,10 +1696,11 @@ const RunHistory = memo(function RunHistory({
     };
   }, [isDemo, liveKeys, sessions]);
 
-  // Arming the filter means "show me this agent's messages, starting with the
-  // one that is executing": the parent drops the time window for the armed
-  // list, and the rows below keep the executing ones pinned. Demo traces are
-  // synthetic and never live, so the demo list ignores the arm.
+  // Arming the filter means "show me only what is executing, starting with the
+  // message that is running": the parent drops the time window for the armed
+  // list so a resumed session still qualifies, and the rows below are the live
+  // ones only. Demo traces are synthetic and never live, so the demo list
+  // ignores the arm.
   const liveFiltering = liveFilter && !isDemo;
 
   useEffect(() => {
@@ -1767,11 +1771,11 @@ const RunHistory = memo(function RunHistory({
     });
   }, [liveFiltering, liveSummary.liveKeys]);
 
-  // Zero live rows must NOT clear the arm. The armed list is the agent's whole
-  // history, not a live-only slice, so `0 LIVE` still shows every message —
-  // and auto-clearing here would overwrite the user's persisted default-on
-  // choice every time they opened the panel between runs. The chip reports the
-  // zero and the view re-locates a run on its own the moment one starts.
+  // Zero live rows must NOT clear the arm. The armed view is a filter, so an
+  // empty list is its honest answer — the panel says "nothing is executing"
+  // and re-locates a run on its own the moment one starts. Auto-clearing here
+  // would silently turn the filter into "show everything" and overwrite the
+  // user's persisted choice on every idle visit.
 
   // A manual reload exists to reveal what the loaded history was missing, so
   // when the fresh snapshot lands the list must point at it: the executing
@@ -1813,8 +1817,8 @@ const RunHistory = memo(function RunHistory({
   // this list. Two guards keep a short list from loading on its own: the
   // sentinel is always visible when the content does not overflow, and the
   // observer re-arms only on the next scroll gesture.
-  // The armed Live view already shows the whole history, so widening stays off
-  // there until the view is switched back.
+  // The armed Live filter reads the whole history (no window), so widening stays
+  // off there until the filter is switched back.
   useEffect(() => {
     const sentinel = sentinelRef.current;
     const list = listRef.current;
@@ -1987,7 +1991,22 @@ const RunHistory = memo(function RunHistory({
       <header className={panelHeaderClass}>
         <div className={panelHeaderCopyClass}>
           <span className="eyebrow">RUN HISTORY</span>
-          <strong>{sessions.length} runs</strong>
+          {/* Armed, the second line carries the scope instead of a count: the
+              chip already says how many are live, and "全部历史" is the part
+              that is easy to get wrong — the filter reads the agent's whole
+              history, so the range in Settings no longer applies. */}
+          {liveFiltering ? (
+            <strong
+              className="run-history__scope"
+              title="Live 筛选读取该智能体的全部历史，不受时间范围限制"
+            >
+              全部历史
+            </strong>
+          ) : (
+            <strong>
+              {sessions.length} {sessions.length === 1 ? "run" : "runs"}
+            </strong>
+          )}
         </div>
         <div className="run-history__header-meta">
           <Tooltip>
@@ -2002,8 +2021,8 @@ const RunHistory = memo(function RunHistory({
                 aria-pressed={liveFiltering}
                 aria-label={
                   liveFiltering
-                    ? `关闭 Live 视图（正在执行 ${liveSummary.count} 条）`
-                    : `打开 Live 视图：该智能体的全部消息，并定位正在执行的 ${liveSummary.count} 条`
+                    ? `关闭 Live 筛选（当前显示 ${liveSummary.count} 条正在执行的消息）`
+                    : `打开 Live 筛选：只看正在执行的消息（${liveSummary.count} 条）`
                 }
                 onClick={() => {
                   const arming = !liveFilter;
@@ -2022,8 +2041,8 @@ const RunHistory = memo(function RunHistory({
             </TooltipTrigger>
             <TooltipContent side="bottom">
               {liveFiltering
-                ? "关闭 Live 视图，回到默认时间范围"
-                : "Live 视图：全部消息 + 定位执行中消息"}
+                ? `关闭 Live 筛选，回到最近 ${rangeLabel}内的消息`
+                : "Live 筛选：只看正在执行的消息"}
             </TooltipContent>
           </Tooltip>
           <Tooltip>
@@ -2076,14 +2095,19 @@ const RunHistory = memo(function RunHistory({
           </div>
         ) : sessions.length === 0 ? (
           <output className="run-history__empty">
-            {liveFiltering
-              ? "该智能体还没有消息"
-              : `最近 ${rangeLabel}内没有消息`}
+            {liveFiltering ? (
+              <>
+                <strong>当前没有正在执行的消息</strong>
+                <span>关闭 Live 筛选可回到最近 {rangeLabel}内的消息</span>
+              </>
+            ) : (
+              `最近 ${rangeLabel}内没有消息`
+            )}
           </output>
         ) : null}
         {/* Loading earlier messages only makes sense against the windowed
-            list: the armed Live view already shows the agent's whole history,
-            so the affordance would be a dead end there. */}
+            list: the armed Live filter already reads the agent's whole history,
+            so a wider window could not add a row. */}
         {canLoadMore && !liveFiltering ? (
           <>
             <div
@@ -2444,6 +2468,35 @@ const AtomicLog = memo(function AtomicLog({
             <Search aria-hidden="true" />
           </InputGroupAddon>
         </InputGroup>
+        {/* Scroll controls live in the header, not floating over the list: an
+            overlay chevron sat on top of the first visible atom, so the row a
+            reader had just scrolled to was half hidden behind a button. In the
+            header both edges stay reachable and no row is ever covered. Each
+            control only exists while that edge is actually out of view. */}
+        <div className="atomic-log__scroll-controls">
+          {scrollPosition.canScrollUp ? (
+            <button
+              type="button"
+              className="atomic-log__scroll-button"
+              aria-label={live ? "回到最新事件" : "滚动到顶部"}
+              title={live ? "回到最新事件" : "滚动到顶部"}
+              onClick={() => scrollToEdge("top")}
+            >
+              <ChevronUp aria-hidden="true" />
+            </button>
+          ) : null}
+          {scrollPosition.canScrollDown ? (
+            <button
+              type="button"
+              className="atomic-log__scroll-button"
+              aria-label="滚动到底部"
+              title="滚动到底部"
+              onClick={() => scrollToEdge("bottom")}
+            >
+              <ChevronDown aria-hidden="true" />
+            </button>
+          ) : null}
+        </div>
       </header>
       <div className="atomic-log__body relative min-h-0 overflow-hidden">
         <div
@@ -2494,29 +2547,6 @@ const AtomicLog = memo(function AtomicLog({
             </output>
           )}
         </div>
-        {/* The up chevron appears once the reader has scrolled into older
-            events (it jumps back to the newest ones) — while Live it doubles
-            as "return to the stream", so it must not be suppressed. */}
-        {scrollPosition.canScrollUp ? (
-          <IconAction
-            label={live ? "回到最新事件" : "滚动到顶部"}
-            side="left"
-            className="atomic-log__scroll-button atomic-log__scroll-button--top"
-            onClick={() => scrollToEdge("top")}
-          >
-            <ChevronUp />
-          </IconAction>
-        ) : null}
-        {scrollPosition.canScrollDown ? (
-          <IconAction
-            label="滚动到底部"
-            side="left"
-            className="atomic-log__scroll-button atomic-log__scroll-button--bottom"
-            onClick={() => scrollToEdge("bottom")}
-          >
-            <ChevronDown />
-          </IconAction>
-        ) : null}
       </div>
     </section>
   );
@@ -3408,9 +3438,10 @@ const AtomGuide = memo(function AtomGuide({
       <SheetContent
         className="atom-guide"
         // A full-viewport backdrop blur over a live-updating canvas has to be
-        // re-blurred on every repaint; the scrim alone reads the same and
-        // keeps the drawer smooth.
-        overlayClassName="backdrop-blur-none"
+        // re-blurred on every repaint; a deeper scrim instead reads the same,
+        // keeps the drawer smooth, and still separates the drawer from the
+        // console underneath.
+        overlayClassName="atom-guide__overlay backdrop-blur-none"
       >
         <SheetHeader className="atom-guide__header">
           <span className="eyebrow">ATOMIC RUNTIME REFERENCE</span>
@@ -3833,13 +3864,15 @@ export default function App() {
   // number driving the list and the "load earlier" affordance; switching the
   // range or the agent resets it to the preference.
   const [runHistoryHours, setRunHistoryHours] = useState(historyRangeHours);
-  // Live view: the selected agent's whole history with the executing message
-  // pinned. A persisted preference like the other panel toggles.
+  // Live filter: RUN HISTORY narrowed to the messages that are executing right
+  // now, drawn from the agent's whole history (no time window). Off by
+  // default — the filter is allowed to match nothing, so arming it on load
+  // would present an empty panel as the normal state.
   const [liveFilter, setLiveFilter] = useState(() =>
     readStorageBoolean(
       window.localStorage,
-      storageKeys.runHistoryLiveFilter,
-      true,
+      storageKeys.runHistoryLiveView,
+      appDefaults.liveView,
     ),
   );
   const [theme, setTheme] = useState<Theme>(
@@ -3959,10 +3992,14 @@ export default function App() {
   }, [historyRangeHours]);
 
   useEffect(() => {
+    // The retired key is dropped on the first write: its stored `true` meant
+    // "show the agent's whole history", which is the opposite of the Live
+    // view's filter, so it must not be migrated into the new preference.
     writeStorageValue(
       window.localStorage,
-      storageKeys.runHistoryLiveFilter,
+      storageKeys.runHistoryLiveView,
       liveFilter,
+      retiredStorageKeys.runHistoryLiveFilter,
     );
   }, [liveFilter]);
 
@@ -4264,9 +4301,11 @@ export default function App() {
   // Runs shown in RUN HISTORY.
   //
   // Two readings of the same history, one derivation:
-  // - Live view armed (`liveFilter`): the selected agent's *whole* list — the
-  //   time window is dropped — so the message that was just sent can be seen
-  //   against everything else the agent has done. Live rows stay on top.
+  // - Live filter armed (`liveFilter`): the *executing* messages only, filtered
+  //   out of the agent's whole history — the time window is dropped so a
+  //   session resumed a minute ago (and started days ago) still qualifies, but
+  //   finished messages are not part of the list. An empty result is a real
+  //   answer: nothing is running.
   // - Otherwise: the visible time window (the configured default range,
   //   widened on demand) with the executing run pinned, because a resumed
   //   session is live *now* even though it started earlier.
@@ -4275,7 +4314,7 @@ export default function App() {
   // the first row, and both are derived at render time.
   const visibleSessions = useMemo(() => {
     if (liveFilter && !isDemo) {
-      return pinLiveRunHistory(historySessions, liveSessionKeys);
+      return selectLiveRunHistory(historySessions, liveSessionKeys);
     }
     return pinLiveRunHistory(
       selectVisibleRunHistory(
@@ -4294,7 +4333,7 @@ export default function App() {
     now,
     runHistoryHours,
   ]);
-  // The Live view lists everything, so there is no window left to widen.
+  // The Live filter reads the whole history, so there is no window to widen.
   const canLoadMoreHistory =
     !(liveFilter && !isDemo) &&
     canLoadMoreRunHistory(filteredSessions, now, runHistoryHours);
@@ -5248,14 +5287,33 @@ export default function App() {
             />
           )}
           {/* One row of icon controls on desktop; kept as a group so the
-              collapsed nav panel does not stack them one per line. */}
+              collapsed nav panel does not stack them one per line. The
+              repository link closes the row — it is the only control that
+              leaves the console, so it owns the far right edge. */}
           <div className="header-icon-group">
-            <RepositoryLink />
             <SettingsDialog
+              activeView={activeView}
+              consoleOpen={consoleOpen}
+              deepView={deepView}
+              historyOpen={historyOpen}
               historyRange={historyRange}
+              liveView={liveFilter}
+              theme={theme}
+              onActiveViewChange={(view) => {
+                setActiveView(view);
+                if (view === "trajectory") {
+                  setTrajectoryMounted(true);
+                }
+              }}
+              onConsoleOpenChange={setConsoleOpen}
+              onDeepViewChange={setDeepView}
+              onHistoryOpenChange={setHistoryOpen}
               onHistoryRangeChange={setHistoryRange}
+              onLiveViewChange={setLiveFilter}
+              onThemeChange={setTheme}
             />
             <ThemeSwitcher theme={theme} onChange={setTheme} />
+            <RepositoryLink />
           </div>
           <div className="nav-menu__group">
             <HeaderNavActions

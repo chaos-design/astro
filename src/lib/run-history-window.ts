@@ -111,6 +111,30 @@ export function pinLiveRunHistory<
 }
 
 /**
+ * The Live filter's rows: exactly the messages whose run is executing right now.
+ *
+ * The pool is the agent's *whole* history, not the time window — a session
+ * resumed a minute ago still carries the `start` of its first prompt, so a
+ * windowed pool would drop precisely the message the user is waiting on.
+ *
+ * Zero live runs is a legitimate result and the caller must render it as
+ * such ("nothing is executing"): falling back to the full list would turn a
+ * filter the user armed into "show everything", which is the opposite of what
+ * the `N LIVE` chip promises.
+ */
+export function selectLiveRunHistory<
+  T extends { key: string; start: number; end: number },
+>(sessions: readonly T[], liveKeys: ReadonlySet<string>): T[] {
+  if (liveKeys.size === 0) {
+    return [];
+  }
+  return pinLiveRunHistory(
+    sessions.filter((session) => liveKeys.has(session.key)),
+    liveKeys,
+  );
+}
+
+/**
  * Whether widening the window would reveal additional runs. True when at
  * least one session started before the current window.
  */

@@ -9,6 +9,7 @@ import {
   getRunHistoryWindowStart,
   nextRunHistoryVisibleHours,
   pinLiveRunHistory,
+  selectLiveRunHistory,
   selectVisibleRunHistory,
 } from "../src/lib/run-history-window.ts";
 import type { TraceSession } from "../src/types/trace.ts";
@@ -157,20 +158,39 @@ test("keeps the newest-first order while nothing is executing", () => {
   );
 });
 
-test("a full-history listing needs no window at all", () => {
-  // The Live view renders the agent's sessions as they are; the only ordering
-  // rule it applies is the live pin.
+test("the Live filter keeps only the executing messages, whole history included", () => {
+  // The Live filter reads the agent's entire history, not the time window:
+  // time window: a session resumed a minute ago still carries the start of its
+  // first prompt, so a windowed pool would drop exactly what is running.
   const ancient = session(Date.parse("2026-09-01T08:00:00"));
   const recent = session(NOW - HOUR);
   ancient.status = "active";
   ancient.end = NOW;
 
   assert.deepEqual(
-    pinLiveRunHistory([recent, ancient], new Set([ancient.key])).map(
+    selectLiveRunHistory([recent, ancient], new Set([ancient.key])).map(
       (entry) => entry.key,
     ),
-    [ancient.key, recent.key],
+    [ancient.key],
   );
+
+  // Two executing runs lead with the one that received the latest message.
+  const other = session(NOW - 48 * HOUR);
+  other.end = NOW + 1_000;
+  assert.deepEqual(
+    selectLiveRunHistory(
+      [recent, ancient, other],
+      new Set([ancient.key, other.key]),
+    ).map((entry) => entry.key),
+    [other.key, ancient.key],
+  );
+});
+
+test("an armed Live filter with nothing executing selects nothing", () => {
+  // Not a fallback to the full list: the chip promises a filter, and an empty
+  // answer is what the panel renders as "nothing is running".
+  const finished = session(NOW - HOUR);
+  assert.deepEqual(selectLiveRunHistory([finished], new Set()), []);
 });
 
 test("reports whether earlier messages remain", () => {

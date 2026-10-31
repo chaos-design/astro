@@ -2,7 +2,15 @@ import { Monitor, Moon, Sun } from "lucide-react";
 import type { PlatformId } from "@/types/trace";
 
 export type ActiveView = "topology" | "trajectory";
-export type HistoryRangeId = "3h" | "6h" | "12h" | "24h" | "7d";
+export type HistoryRangeId =
+  | "1h"
+  | "3h"
+  | "6h"
+  | "12h"
+  | "24h"
+  | "3d"
+  | "7d"
+  | "30d";
 export type Theme = "dark" | "light" | "system";
 
 type AppDefaults = {
@@ -16,6 +24,13 @@ type AppDefaults = {
    */
   historyRange: HistoryRangeId;
   historyOpenMinWidth: number;
+  /**
+   * Whether RUN HISTORY opens with the Live filter armed — only the messages
+   * whose run is executing right now. Off by default: the filter can match
+   * nothing, and a panel that opens empty reads as broken rather than as
+   * "nothing is running".
+   */
+  liveView: boolean;
   menuOpen: boolean;
   /**
    * Fallback agent when no preference is stored. This mirrors the first entry
@@ -40,6 +55,7 @@ export const appDefaults: AppDefaults = {
   guideOpen: false,
   historyRange: "3h",
   historyOpenMinWidth: 900,
+  liveView: false,
   menuOpen: false,
   platform: "claude",
   replayCursor: 0,
@@ -60,11 +76,13 @@ export const appRepository = {
 } as const;
 
 /**
- * Selectable history ranges, in the order the settings dialog lists them.
+ * Selectable history ranges, in the order the settings dialog lists them —
+ * four per row, from an hour to a month.
  *
  * Hours rather than calendar days on purpose: "最近 3 小时" must mean the same
  * span whether the console is opened at 09:00 or 23:00, and the same value is
- * reused by the global search dialog (whose range ids are exactly these).
+ * reused by the global search dialog (whose hour/day presets are exactly
+ * these; `today` / `yesterday` / `custom` exist only in that dialog).
  */
 export const historyRangeOptions: ReadonlyArray<{
   id: HistoryRangeId;
@@ -73,11 +91,14 @@ export const historyRangeOptions: ReadonlyArray<{
   label: string;
   hours: number;
 }> = [
+  { id: "1h", shortLabel: "1 小时", label: "最近 1 小时", hours: 1 },
   { id: "3h", shortLabel: "3 小时", label: "最近 3 小时", hours: 3 },
   { id: "6h", shortLabel: "6 小时", label: "最近 6 小时", hours: 6 },
   { id: "12h", shortLabel: "12 小时", label: "最近 12 小时", hours: 12 },
   { id: "24h", shortLabel: "24 小时", label: "最近 24 小时", hours: 24 },
+  { id: "3d", shortLabel: "3 天", label: "最近 3 天", hours: 3 * 24 },
   { id: "7d", shortLabel: "7 天", label: "最近 7 天", hours: 7 * 24 },
+  { id: "30d", shortLabel: "30 天", label: "最近 30 天", hours: 30 * 24 },
 ];
 
 /** Range used until the user picks another one in Settings. */
@@ -146,8 +167,21 @@ export const storageKeys = {
   historyRange: "ASTROX_HISTORY_RANGE",
   inspectorTab: "ASTROX_INSPECTOR_TAB",
   platform: "ASTROX_PLATFORM",
-  runHistoryLiveFilter: "ASTROX_RUN_HISTORY_LIVE_FILTER",
+  runHistoryLiveView: "ASTROX_RUN_HISTORY_LIVE_VIEW",
   theme: "ASTROX_THEME",
+} as const;
+
+/**
+ * Keys from earlier releases that are deliberately not read any more.
+ *
+ * `ASTROX_RUN_HISTORY_LIVE_FILTER` armed a view of *every* message of the
+ * agent; the Live filter now shows only the executing messages. Its stored
+ * `true` would therefore open the panel on a filter that matches nothing on an
+ * idle machine, so the value is dropped rather than migrated — the new
+ * preference is written alongside (and the old key removed) by the app.
+ */
+export const retiredStorageKeys = {
+  runHistoryLiveFilter: "ASTROX_RUN_HISTORY_LIVE_FILTER",
 } as const;
 
 /**

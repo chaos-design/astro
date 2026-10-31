@@ -163,12 +163,16 @@ The executing message is marked in three places so locating it never depends on
 scrolling:
 
 - the panel header keeps an `N LIVE` chip that is both the count and the Live
-  view toggle (persisted in `ASTROX_RUN_HISTORY_LIVE_FILTER`, on by default).
-  Armed, the list shows every message of the selected agent — the time window is
-  dropped — with live runs pinned, expanded and scrolled into view; a message
-  that newly starts executing is located automatically by diffing the live set.
-  Disarmed, the list returns to the default window. The chip always renders,
-  using an idle variant for `0 LIVE`;
+  filter toggle (persisted in `ASTROX_RUN_HISTORY_LIVE_VIEW`, off by default and
+  editable in Settings). Armed, the list keeps **only the messages whose run is
+  executing**: the pool is the selected agent's whole history — the time window
+  is dropped, so a session resumed after days still qualifies — while finished
+  messages are not listed. Live runs are pinned, expanded and scrolled into
+  view; a message that newly starts executing is located automatically by
+  diffing the live set. Zero live rows leaves an empty list with the "nothing is
+  executing" state rather than the full history. Disarmed, the list returns to
+  the default window. The chip always renders, using an idle variant for
+  `0 LIVE`;
 - a live row draws an `inset 2px` status accent, purple for `active` and amber
   for `waiting`;
 - the tag row gains a pulsing `RUNNING` / `WAITING` capsule next to `STATUS`.
@@ -185,7 +189,8 @@ is picked by hand.
 ### Run History time window
 
 The list is narrowed to the agent, then filtered by an hour window (the
-`Default time range` setting, `3h` unless changed):
+`Default time range` setting, `3h` unless changed; the alternatives are `1h`,
+`6h`, `12h`, `24h`, `3d`, `7d`, `30d`):
 
 - the window ends at the **newest message** (`getRunHistoryAnchorTime`), not at
   `Date.now()`, so opening the console the next morning never shows an empty
@@ -200,11 +205,22 @@ The list is narrowed to the agent, then filtered by an hour window (the
 
 The settings dialog (`src/components/settings-dialog.tsx`) holds browser-local
 preferences only; changes apply immediately and are written to `localStorage`.
-Its single setting, `Default time range`, drives both the RUN HISTORY window and
-the search dialog's initial range, so the two defaults cannot drift. The header
-also carries a GitHub anchor (`appRepository.url`, opened in a new tab) and the
-settings entry, both 28 px icon controls sharing the theme switcher's height and
-radius.
+Preferences are grouped by what they change (appearance, run history, canvas,
+panels) with a fixed header and footer around a scrolling
+`.settings-dialog__body`; the reset restores every group at once. The range
+drives both the RUN HISTORY window and the search dialog's initial range, so the
+two defaults cannot drift. The header carries settings, theme, and the GitHub
+anchor (`appRepository.url`, opened in a new tab), all 28 px icon controls
+sharing the theme switcher's height and radius.
+
+### Guide and log controls
+
+Opening the Flow Guide dims the console with a flat scrim
+(`.atom-guide__overlay`, 58% on dark, 34% on light) instead of a backdrop blur:
+the canvas repaints continuously and would recompute the blur every frame. The
+LOG header carries the top/bottom scroll controls
+(`.atomic-log__scroll-controls`), rendered only while that edge is out of view;
+they used to float over the list and cover the first visible atom.
 
 ### Mobile layout
 

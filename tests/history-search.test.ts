@@ -247,6 +247,11 @@ test("returns no matches for invalid or reversed time bounds", () => {
 
 test("builds inclusive preset and custom date bounds", () => {
   const now = Date.parse("2026-09-10T12:00:00.000Z");
+  assert.deepEqual(getHistoryDateBounds("1h", now), {
+    from: now - 60 * 60 * 1_000,
+    to: now,
+    valid: true,
+  });
   assert.deepEqual(getHistoryDateBounds("3h", now), {
     from: now - 3 * 60 * 60 * 1_000,
     to: now,
@@ -264,6 +269,17 @@ test("builds inclusive preset and custom date bounds", () => {
   });
   assert.deepEqual(getHistoryDateBounds("24h", now), {
     from: now - 86_400_000,
+    to: now,
+    valid: true,
+  });
+  // The multi-day presets are the same ids the RUN HISTORY preference uses.
+  assert.deepEqual(getHistoryDateBounds("3d", now), {
+    from: now - 3 * 86_400_000,
+    to: now,
+    valid: true,
+  });
+  assert.deepEqual(getHistoryDateBounds("30d", now), {
+    from: now - 30 * 86_400_000,
     to: now,
     valid: true,
   });

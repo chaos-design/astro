@@ -63,9 +63,11 @@
 
 - The window unit is **hours**, not calendar days: "last 3 hours" is the same
   span at 09:00 and at 23:00, and it does not change length at midnight.
-- The length comes from the `Default time range` setting (`3h` / `6h` / `12h` /
-  `24h` / `7d`, default `3h`), converted at runtime by
-  `getHistoryRangeHours()`.
+- The length comes from the `Default time range` setting (`1h` / `3h` / `6h` /
+  `12h` / `24h` / `3d` / `7d` / `30d`, default `3h`; four per row in the
+  dialog), converted at runtime by `getHistoryRangeHours()`. The same value
+  seeds the global search dialog, so a new option also needs an entry in the
+  `HistoryTimeRange` duration table.
 - The window **ends at the newest message**, not at `Date.now()`. Opened after a
   night away, the console still shows the messages around the last session.
 - Executing messages ignore the window: `selectVisibleRunHistory` takes
@@ -75,28 +77,49 @@
 - Switching agent or changing the default range resets the window width to the
   configured default.
 
-## 6. The Live view
+## 6. The Live filter
 
 - The `N LIVE` chip in the panel header is both a count and a toggle. Its state
-  persists in `ASTROX_RUN_HISTORY_LIVE_FILTER` and defaults to on.
-- Armed, the list is **every message of the selected agent**: the time window is
-  dropped, executing messages are pinned (`pinLiveRunHistory`), expanded and
-  scrolled into view, and `LOAD EARLIER` is not offered.
+  persists in `ASTROX_RUN_HISTORY_LIVE_VIEW` and defaults to **off** (the
+  settings dialog edits the same default). The older
+  `ASTROX_RUN_HISTORY_LIVE_FILTER` means the opposite, so it is retired rather
+  than migrated and removed on the next write.
+- Armed and disarmed must be distinguishable at a glance: armed is a solid
+  `--status-running` pill (panel-coloured text, glyph dropped, 3px halo);
+  disarmed is a ghost outline. The header's second line switches from `N runs`
+  to an "all history" badge, because the filter drops the time window. Never
+  implement the armed state as "the same tint, one shade darker" — in the dark
+  theme the two states become indistinguishable.
+- Armed, the list is a **filter**: only the messages whose run is executing
+  right now (`selectLiveRunHistory`). The pool it filters is the selected
+  agent's *whole* history — the time window is dropped, so a session resumed a
+  minute ago (started days ago) still qualifies — while finished messages are
+  not listed. Live rows are pinned, expanded and scrolled into view, and
+  `LOAD EARLIER` is not offered.
+- Zero live rows is an empty list with the "nothing is executing" empty state.
+  Never fall back to the full history and never clear the arm: a filter that
+  shows everything when it matches nothing is not a filter. That is also why
+  the preference defaults to off — an empty panel on load reads as broken.
 - Disarmed, the list returns to the default window.
 - A *new* key entering the live set means "a message was just sent": `RunHistory`
   diffs against the previous live set and locates the run automatically. The
   previous set lives in a ref, not in state — storing it would schedule a second
   render on every live batch.
-- The count, the pin, the window exemption, and the auto-locate must all come
-  from the same `liveSessionKeys`. A row that is pinned but not counted (or the
-  reverse) is a bug.
-- Live runs of other agents still enter the list (`historySessions` adds them):
-  the dropdown scopes finished history, never the message that is executing.
+- The count, the pin, and the auto-locate must all come from the same
+  `liveSessionKeys`. A row that is pinned but not counted (or the reverse) is a
+  bug.
+- Live runs of other agents still enter the filtered list (`historySessions`
+  adds them): the dropdown scopes finished history, never the message that is
+  executing.
 
 ## 7. Settings and local preferences
 
 - The settings dialog holds browser-local preferences only. Changes apply
   immediately, with no server round trip and no Apply button.
+- It groups preferences by what they change (appearance / run history / canvas /
+  panels). A preference that also has an inline control in the header or toolbar
+  is still listed here: one place that lists everything beats hunting the
+  chrome. Header and footer stay fixed while `settings-dialog__body` scrolls.
 - Keys are namespaced `ASTROX_` and centralized in `storageKeys` in
   `src/config/app-config.ts`.
 - Invalid values must fall back to `appDefaults`; corrupt storage must never
@@ -104,6 +127,10 @@
 - A new preference must update: `storageKeys`, `appDefaults`, the settings
   dialog, the §15.1 table in `docs/user-manual-*.md`, and
   `tests/app-config.test.ts`.
+- A key whose *meaning* changed is retired (`retiredStorageKeys`) and deleted on
+  write instead of migrated. The Live filter is the example: its stored `true`
+  meant "show every message", which would arm the new filter on a machine where
+  nothing runs.
 
 ## 8. Header controls
 
@@ -111,10 +138,19 @@
   `appRepository.url`; it opens in a new tab with `rel="noreferrer noopener"`.
   Never hardcode the URL inside a component.
 - Icon buttons are 28 px (`size="console-icon"`) with the same height and radius
-  as the theme switcher; new controls sit to its left and stay visible when the
-  header nav collapses on narrow screens.
+  as the theme switcher, and they stay visible when the header nav collapses on
+  narrow screens.
+- The order is fixed: settings (gear) → theme → GitHub. GitHub is always the
+  right-most control — it is the only one that leaves the console — so new
+  controls go to its left.
+- The settings trigger uses a gear, not a sliders glyph: it configures the Live
+  filter rather than filtering the list itself.
 - Every icon button needs an `aria-label` and a tooltip that describes the
   action, not the glyph.
+- In-list scroll controls belong in the panel header, never as a floating
+  overlay: a floating chevron sits on the first visible atom, so the row the
+  reader just scrolled to is the one they cannot read. Render a direction's
+  control only while that edge is out of view.
 
 ## 9. Keeping docs in sync
 
@@ -160,5 +196,6 @@ ASTRO_HOME=/tmp/astro-check ASTRO_PORT=4401 node server/server.mjs
 | `N LIVE` misses an executing message | the live set was derived from the agent-scoped list | derive `liveSessionKeys` from every session |
 | A row says RUNNING but is missing from `N LIVE` | display state bypassed `isFreshLiveRun` | always go through `getRunDisplayState` |
 | The list is empty the morning after | window ended at `now` | anchor on `getRunHistoryAnchorTime` |
-| A new message has to be hunted for | Live view never diffed the live set | see the auto-locate rule in §6 |
+| A new message has to be hunted for | Live filter never diffed the live set | see the auto-locate rule in §6 |
+| The armed Live filter shows an empty list | possibly nothing is running; possibly the window was not dropped | check `0 LIVE` first, then that the rows come from `selectLiveRunHistory` (no window) |
 | The setting changed but the list did not | window width was not reset with the range | keep `runHistoryHours` in step with `historyRangeHours` |

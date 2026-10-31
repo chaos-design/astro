@@ -1023,14 +1023,17 @@ expands into `INITIAL` and numbered `FOLLOW-UP` rows. Each child row shows its
 own title, status, start time, duration, event count, and prompt event ID.
 
 Run History is scoped to the selected agent and then windowed by hours: three
-hours by default, changeable in Settings to 6, 12, or 24 hours or seven days.
+hours by default, changeable in Settings to 1, 6, 12, or 24 hours or 3, 7, or
+30 days.
 The window ends at the newest message, so opening the console the next morning
 still shows the session you left; executing messages ignore the window and stay
 pinned on top. `LOAD EARLIER` at the bottom doubles the window. The `N LIVE` chip
-in the panel header switches to the Live view, which lists every message of the
-selected agent and locates the one that is executing — including a prompt sent
-into a thread that started days ago. The GitHub icon in the header opens the
-project repository.
+in the panel header arms the Live filter, which keeps only the messages whose
+run is executing right now — filtered out of the agent's whole history, so a
+prompt sent into a thread that started days ago still qualifies — and locates
+them. With nothing running the list is empty and says so; the filter is off by
+default and Settings can change that default. The GitHub icon at the far right
+of the header opens the project repository.
 
 Selecting a child scopes topology, trajectory, log, inspector, replay, and
 export to the interval beginning at that `UserPromptSubmit` and ending before
@@ -1069,7 +1072,7 @@ result again from timestamps and current time.
 Use the header search control or `Cmd/Ctrl + K` to search all History data
 already loaded in the browser. The dialog opens on the default range from
 Settings — the last three hours unless changed; presets cover 3, 6, 12, and 24
-hours, today, yesterday, and seven days. Agent, run-status, event-category, and
+hours, today, yesterday, and 3, 7, or 30 days. Agent, run-status, event-category, and
 date filters can be combined.
 
 Search results include their Session and Prompt context. Selecting one switches

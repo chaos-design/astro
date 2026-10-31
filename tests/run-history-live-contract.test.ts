@@ -71,22 +71,27 @@ test("offers a header chip that jumps to the executing run", () => {
   assert.match(styles, /@keyframes run-history-live-breathe \{/);
 });
 
-test("marks the armed live filter on the same chip", () => {
+test("turns the armed chip into a solid mode badge", () => {
   const filtering = cssRule(".run-history__live-jump.is-filtering");
 
-  // Armed is a filter state, not a call to action: a tinted chip with an
-  // accent border — no solid fill, no glow — so it stays quiet next to the
-  // header copy and the reload button.
+  // Armed and disarmed must be distinguishable at a glance: the armed chip is
+  // a solid running-accent pill with the panel colour knocked out of it, not
+  // another tint of the same grey-violet.
+  assert.match(filtering, /background:\s*var\(--status-running\)/);
+  assert.match(filtering, /border-color:\s*var\(--status-running\)/);
+  assert.match(filtering, /color:\s*var\(--panel\)/);
+  // The halo is what makes it read as "on" without changing the label.
   assert.match(
     filtering,
-    /background:\s*color-mix\(in srgb, var\(--status-running\) 16%, transparent\)/,
+    /box-shadow:[\s\S]*0 0 0 3px color-mix\(in srgb, var\(--status-running\) 20%, transparent\)/,
   );
+
+  // The armed pill drops the glyph: the filled shape carries the state and the
+  // freed width keeps the header line from wrapping in a narrow column.
   assert.match(
-    filtering,
-    /border-color:\s*color-mix\(in srgb, var\(--status-running\) 62%, transparent\)/,
+    cssRule(".run-history__live-jump.is-filtering > svg"),
+    /display:\s*none/,
   );
-  assert.match(filtering, /box-shadow:\s*none/);
-  assert.doesNotMatch(filtering, /background:\s*var\(--status-running\)/);
 });
 
 test("keeps the chip and the reload on one compact control height", () => {
@@ -166,26 +171,96 @@ test("matches the header icon controls to the theme switcher", () => {
   assert.match(glyph, /height:\s*15px/);
 });
 
-test("lays the default range out as a pick-one grid", () => {
-  const grid = cssRule(".settings-range-grid");
-  assert.match(grid, /grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\)/);
+test("lays the range choices out four per row", () => {
+  const grid = cssRule(".settings-options");
+  assert.match(
+    grid,
+    /grid-template-columns:\s*repeat\(var\(--settings-columns, 4\), minmax\(0, 1fr\)\)/,
+  );
 
   // The tick reserves its slot instead of being added on selection: a layout
   // that grows on select makes the whole grid jump.
+  assert.match(cssRule(".settings-option__check"), /position:\s*absolute/);
+  assert.match(cssRule(".settings-option__check"), /opacity:\s*0/);
   assert.match(
-    cssRule(".settings-range-option__check"),
-    /position:\s*absolute/,
-  );
-  assert.match(
-    cssRule(".settings-range-option__check"),
-    /opacity:\s*0/,
-  );
-  assert.match(
-    cssRule(".settings-range-option.is-selected .settings-range-option__check"),
+    cssRule(".settings-option.is-selected .settings-option__check"),
     /opacity:\s*1/,
   );
   assert.match(
-    cssRule(".settings-range-option.is-selected"),
+    cssRule(".settings-option.is-selected"),
     /var\(--selection-border\)/,
   );
+});
+
+test("groups settings into labelled sections", () => {
+  // Section headings plus their one-line explanation; the first group is not
+  // separated from the dialog title by a rule.
+  assert.match(cssRule(".settings-section"), /gap:\s*12px/);
+  assert.match(cssRule(".settings-section"), /border-top:\s*1px solid/);
+  assert.match(cssRule(".settings-section:first-of-type"), /border-top:\s*0/);
+  assert.match(cssRule(".settings-section__head"), /align-items:\s*baseline/);
+
+  // Tall lists of preferences scroll between a fixed header and footer instead
+  // of pushing the reset button below the fold.
+  assert.match(cssRule(".settings-dialog"), /max-height:/);
+  assert.match(cssRule(".settings-dialog"), /overflow:\s*hidden/);
+  assert.match(cssRule(".settings-dialog__body"), /overflow-y:\s*auto/);
+  assert.match(cssRule(".settings-dialog__body"), /min-height:\s*0/);
+});
+
+test("keeps the log scroll controls out of the list", () => {
+  // The chevrons used to float over the log: the top one covered the first
+  // visible atom. They now sit in the header row, so no row is ever covered.
+  const controls = cssRule(".atomic-log__scroll-controls");
+  assert.match(controls, /display:\s*flex/);
+  assert.doesNotMatch(controls, /position:\s*absolute/);
+
+  const button = cssRule(".atomic-log__scroll-button");
+  assert.doesNotMatch(button, /position:\s*absolute/);
+  assert.doesNotMatch(button, /backdrop-filter/);
+  assert.match(button, /width:\s*22px/);
+});
+
+test("dims the console behind the Flow Guide", () => {
+  // A drawer without a scrim read as a fourth column. The scrim is a flat
+  // fill, not a backdrop blur: the canvas repaints continuously.
+  const overlay = cssRule(".atom-guide__overlay");
+  assert.match(overlay, /background:\s*rgb\(4 6 10 \/ 58%\)/);
+  assert.doesNotMatch(overlay, /backdrop-filter/);
+  assert.match(
+    styles,
+    /:root\[data-theme="light"\] \.atom-guide__overlay/,
+    "light theme needs its own scrim strength",
+  );
+});
+
+/**
+ * The Live filter is a persisted preference, so Settings owns a switch for it.
+ * Its on-state borrows the running accent — the same colour as the chip the
+ * setting arms — rather than introducing a fourth accent into the console.
+ */
+test("switches the Live filter on with the running accent", () => {
+  const track = cssRule(".settings-switch");
+  assert.match(track, /border-radius:\s*999px/);
+  assert.match(track, /cursor:\s*pointer/);
+
+  const on = cssRule(".settings-switch.is-on");
+  assert.match(on, /var\(--status-running\)/);
+
+  const thumb = cssRule(".settings-switch.is-on .settings-switch__thumb");
+  assert.match(thumb, /transform:\s*translateX\(18px\)/);
+  assert.match(thumb, /background:\s*var\(--status-running\)/);
+
+  // Keyboard reachable: the switch is a real control, not a styled div.
+  assert.match(cssRule(".settings-switch:focus-visible"), /outline:/);
+});
+
+test("gives the armed Live filter's empty state a title and a way out", () => {
+  // `0 LIVE` with the filter armed is a legitimate result, and the panel must
+  // say so instead of looking like a failed load.
+  assert.match(
+    cssRule(".run-history__empty > strong,\n.run-history__empty > span"),
+    /display:\s*block/,
+  );
+  assert.match(cssRule(".run-history__empty > strong"), /var\(--text\)/);
 });

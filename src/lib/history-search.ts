@@ -11,13 +11,16 @@ import type {
 } from "../types/trace.ts";
 
 export type HistoryTimeRange =
+  | "1h"
   | "3h"
   | "6h"
   | "12h"
   | "today"
   | "yesterday"
   | "24h"
+  | "3d"
   | "7d"
+  | "30d"
   | "custom";
 
 export type HistorySearchEntry = {
@@ -81,15 +84,21 @@ export type HistoryDateBounds = {
 
 const rangeDurations: Readonly<
   Record<
-    Extract<HistoryTimeRange, "3h" | "6h" | "12h" | "24h" | "7d">,
+    Extract<
+      HistoryTimeRange,
+      "1h" | "3h" | "6h" | "12h" | "24h" | "3d" | "7d" | "30d"
+    >,
     number
   >
 > = {
+  "1h": 1 * 60 * 60 * 1_000,
   "3h": 3 * 60 * 60 * 1_000,
   "6h": 6 * 60 * 60 * 1_000,
   "12h": 12 * 60 * 60 * 1_000,
   "24h": 24 * 60 * 60 * 1_000,
+  "3d": 3 * 24 * 60 * 60 * 1_000,
   "7d": 7 * 24 * 60 * 60 * 1_000,
+  "30d": 30 * 24 * 60 * 60 * 1_000,
 };
 
 /**

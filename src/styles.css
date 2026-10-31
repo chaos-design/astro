@@ -834,10 +834,11 @@ pre,
   gap: 10px;
 }
 
-/* Header repository link + settings trigger. Both are 28px console controls
+/* Header settings trigger + repository link. Both are 28px console controls
  * sitting next to the theme switcher, so they copy its quiet, borderless
  * surface instead of introducing a second button style in the same row; the
- * anchor needs its own rules because it is not a <button>. */
+ * anchor needs its own rules because it is not a <button>. The link closes the
+ * row: it is the only control that leaves the console. */
 .repo-link,
 .settings-trigger {
   border-color: transparent;
@@ -882,15 +883,38 @@ pre,
 /* Settings dialog: one field per preference, stacked, with the range choices
  * as a pick-one grid. Sized to stay a two-line-per-field card rather than a
  * full page of options. */
+/* Header and footer stay put while the preference sections scroll between
+ * them: a list that pushes its own reset button below the fold makes the
+ * dialog feel broken on a short window. */
 .settings-dialog {
-  gap: 16px;
-  padding: 18px;
+  display: flex;
+  max-height: min(820px, calc(100dvh - 32px));
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px 0 0;
+  overflow: hidden;
   border: 1px solid var(--line-bright);
   border-radius: 8px;
   background: color-mix(in srgb, var(--panel) 96%, transparent);
   box-shadow:
     0 32px 90px rgb(0 0 0 / 58%),
     0 0 0 1px color-mix(in srgb, var(--selection-border) 12%, transparent);
+}
+
+.settings-dialog [data-slot="dialog-header"] {
+  padding: 0 46px 0 18px;
+}
+
+.settings-dialog__body {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: 14px;
+  padding: 0 18px 4px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-bright) transparent;
 }
 
 .settings-dialog [data-slot="dialog-title"] {
@@ -932,13 +956,54 @@ pre,
   line-height: 1.6;
 }
 
-.settings-range-grid {
+/* Sections group the preferences by what they change; the dialog scrolls once
+ * the groups outgrow the viewport instead of shrinking the controls. */
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 14px;
+  border-top: 1px solid var(--chrome-line);
+}
+
+.settings-section:first-of-type {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.settings-section__head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.settings-section__head > span {
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.settings-section__head > small {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Four per row by default (eight ranges read as two tidy rows); a pick-one
+ * group sets `--settings-columns` when it has fewer choices. */
+.settings-options {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(var(--settings-columns, 4), minmax(0, 1fr));
   gap: 6px;
 }
 
-.settings-range-option {
+.settings-option {
   position: relative;
   display: flex;
   min-width: 0;
@@ -960,12 +1025,18 @@ pre,
     background 120ms ease;
 }
 
-.settings-range-option:hover {
+.settings-option > svg:first-child {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 12px;
+}
+
+.settings-option:hover {
   color: var(--text);
   background: var(--panel-hover);
 }
 
-.settings-range-option.is-selected {
+.settings-option.is-selected {
   border-color: color-mix(in srgb, var(--selection-border) 62%, transparent);
   color: var(--selection-text);
   background: color-mix(in srgb, var(--selection-bg) 72%, var(--panel-raised));
@@ -974,7 +1045,7 @@ pre,
 
 /* The tick is always in the layout, only invisible when unselected: adding it
  * on selection would push the label sideways and make the grid jitter. */
-.settings-range-option__check {
+.settings-option__check {
   position: absolute;
   right: 6px;
   width: 11px;
@@ -983,22 +1054,82 @@ pre,
   transition: opacity 120ms ease;
 }
 
-.settings-range-option.is-selected .settings-range-option__check {
+.settings-option.is-selected .settings-option__check {
   opacity: 1;
 }
 
-.settings-note {
-  margin: 0;
-  color: var(--muted-soft);
-  font-size: 10px;
-  line-height: 1.7;
+/* A boolean preference sits on one line: label and explanation on the left,
+ * the switch pinned to the right edge and aligned with the label — centring it
+ * against a two-line description left it floating beside the second line. */
+.settings-field--row {
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.settings-field--row .settings-field__copy {
+  min-width: 0;
+}
+
+/* 40×22 switch: the console's on-state colour is the running accent, the same
+ * one the `N LIVE` chip uses, because the setting enables that chip's filter. */
+.settings-switch {
+  display: inline-flex;
+  width: 40px;
+  height: 22px;
+  flex: 0 0 40px;
+  align-items: center;
+  /* Optically centred on the row heading, not on the 22px track: the heading is
+     a 10px mono label, so the switch rides up 3px to sit on that line. */
+  margin-top: -3px;
+  padding: 0;
+  border: 1px solid var(--line-bright);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--panel-raised) 82%, transparent);
+  cursor: pointer;
+  transition:
+    border-color 140ms ease,
+    background 140ms ease;
+}
+
+.settings-switch:hover {
+  border-color: var(--violet);
+}
+
+.settings-switch__thumb {
+  width: 14px;
+  height: 14px;
+  margin-left: 3px;
+  border-radius: 50%;
+  background: var(--muted-soft);
+  transition:
+    transform 140ms ease,
+    background 140ms ease;
+}
+
+.settings-switch.is-on {
+  border-color: color-mix(in srgb, var(--status-running) 62%, transparent);
+  background: color-mix(in srgb, var(--status-running) 18%, transparent);
+}
+
+.settings-switch.is-on .settings-switch__thumb {
+  background: var(--status-running);
+  transform: translateX(18px);
+}
+
+.settings-switch:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--selection-border) 70%, transparent);
+  outline-offset: 2px;
 }
 
 .settings-footer {
   display: flex;
+  flex: 0 0 auto;
   justify-content: flex-end;
+  padding: 10px 18px 12px;
   border-top: 1px solid var(--chrome-line);
-  padding-top: 12px;
+  background: color-mix(in srgb, var(--panel-raised) 42%, transparent);
 }
 
 .settings-footer button {
@@ -1669,6 +1800,35 @@ pre,
   padding-right: 36px;
 }
 
+/* Armed the header line carries the scope ("N live · 全部历史"), which is
+   longer than "N runs": truncate instead of pushing the chip off the header. */
+.run-history .panel-header strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.run-history .panel-header .eyebrow {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Armed, the header's second line is the scope ("全部历史") instead of a run
+   count: a small accent chip so it reads as a mode note, not as the count. */
+.run-history .panel-header strong.run-history__scope {
+  align-self: flex-start;
+  margin-top: 2px;
+  padding: 0 5px;
+  border: 1px solid color-mix(in srgb, var(--status-running) 46%, transparent);
+  border-radius: 3px;
+  color: color-mix(in srgb, var(--status-running) 84%, var(--text));
+  font-family: var(--font-mono);
+  font-size: 9px;
+  line-height: 13px;
+  letter-spacing: 0.04em;
+}
+
 .run-history__list {
   display: flex;
   flex-direction: column;
@@ -1678,9 +1838,8 @@ pre,
 .run-history__item {
   position: relative;
   min-width: 0;
-  /* Skip layout and paint for offscreen run rows: a widened window (or the
-     armed Live view) can hold hundreds of rows, and only the ones near the
-     viewport need rendering. `contain-intrinsic-size` keeps the scrollbar
+  /* Skip layout and paint for offscreen run rows: a widened window can hold
+     hundreds of rows, and only the ones near the viewport need rendering. `contain-intrinsic-size` keeps the scrollbar
      honest until each row renders once (the browser then remembers the real
      height). */
   content-visibility: auto;
@@ -1811,18 +1970,32 @@ pre,
   background: color-mix(in srgb, var(--status-running) 22%, transparent);
 }
 
-/* The armed toggle reads as an accent-tinted filter chip, not a call to
-   action: no solid fill and no glow, so it sits quietly next to the header
-   copy and the reload button. */
+/* Armed is a *mode*, not a hint: a solid running-accent pill with the panel
+   colour knocked out of it, plus a halo. The old armed state was an 8% tint —
+   two shades away from the disarmed chip, which is exactly what a filter
+   toggle must not be: at a glance you could not tell whether the list was
+   filtered. */
 .run-history__live-jump.is-filtering {
-  border-color: color-mix(in srgb, var(--status-running) 62%, transparent);
-  background: color-mix(in srgb, var(--status-running) 16%, transparent);
-  color: color-mix(in srgb, var(--status-running) 86%, var(--text));
-  box-shadow: none;
+  border-color: var(--status-running);
+  color: var(--panel);
+  background: var(--status-running);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--status-running) 20%, transparent),
+    0 6px 16px color-mix(in srgb, var(--status-running) 28%, transparent);
 }
 
+.run-history__live-jump.is-filtering:hover {
+  background: color-mix(in srgb, var(--status-running) 88%, var(--panel));
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--status-running) 26%, transparent),
+    0 6px 18px color-mix(in srgb, var(--status-running) 34%, transparent);
+}
+
+/* The armed pill drops the glyph: the filled shape carries the state, and the
+   30px it frees keeps "RUN HISTORY" + the scope badge on one line in a narrow
+   left column. */
 .run-history__live-jump.is-filtering > svg {
-  color: var(--status-running);
+  display: none;
 }
 
 .run-history__live-jump.is-filtering > span {
@@ -2431,6 +2604,24 @@ pre,
   color: var(--muted-soft);
   font-size: var(--text-caption);
   text-align: center;
+}
+
+/* The armed Live filter's empty state answers "nothing is running" and names
+ * the way out; two lines, because a single sentence wrapped into the same
+ * muted grey read as "the panel failed to load". */
+.run-history__empty > strong,
+.run-history__empty > span {
+  display: block;
+}
+
+.run-history__empty > strong {
+  color: var(--text);
+  font-weight: var(--weight-strong);
+}
+
+.run-history__empty > span {
+  margin-top: 4px;
+  font-size: var(--text-overline);
 }
 
 .run-history__more {
@@ -4513,36 +4704,44 @@ pre,
   animation: dot-breathe 2.2s ease-in-out infinite;
 }
 
+/* Log edge controls live in the header row. They used to float over the list,
+   where the top chevron sat on the first visible atom — the row a reader had
+   just scrolled to was half covered by a button. */
+.atomic-log__scroll-controls {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+}
+
 .atomic-log__scroll-button {
-  position: absolute;
-  z-index: 12;
-  left: 50%;
-  width: 36px;
-  height: 28px;
-  border-color: color-mix(in srgb, var(--selection-border) 48%, var(--line-bright));
-  border-radius: 99px;
-  color: var(--selection-muted);
-  background: color-mix(in srgb, var(--panel-raised) 90%, transparent);
-  box-shadow:
-    0 8px 18px rgb(0 0 0 / 30%),
-    inset 0 0 0 1px color-mix(in srgb, var(--selection-border) 8%, transparent);
-  backdrop-filter: blur(10px);
-  transform: translateX(-50%);
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--line-bright);
+  border-radius: 5px;
+  color: var(--muted-soft);
+  background: transparent;
+  cursor: pointer;
+  transition:
+    color 120ms ease,
+    border-color 120ms ease,
+    background 120ms ease;
 }
 
-.atomic-log__scroll-button--top {
-  top: 8px;
-}
-
-.atomic-log__scroll-button--bottom {
-  bottom: 8px;
+.atomic-log__scroll-button > svg {
+  width: 12px;
+  height: 12px;
 }
 
 .atomic-log__scroll-button:hover {
   border-color: var(--selection-border);
   color: var(--selection-text);
   background: var(--selection-bg);
-  box-shadow: 0 0 16px var(--selection-glow);
 }
 
 .atomic-log__scroll-button--top:hover svg {
@@ -4923,6 +5122,17 @@ pre,
 
 .json-viewer__empty {
   color: var(--muted);
+}
+
+/* The drawer needs to read as a layer over the console, not as a column that
+ * happens to sit on the right: a deep scrim pushes the topology and the log
+ * back without the per-repaint cost of a backdrop blur. */
+.atom-guide__overlay {
+  background: rgb(4 6 10 / 58%);
+}
+
+:root[data-theme="light"] .atom-guide__overlay {
+  background: rgb(10 14 20 / 34%);
 }
 
 .atom-guide {

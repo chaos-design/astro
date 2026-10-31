@@ -100,8 +100,8 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   sort below every run that merely started later, and the window would drop it
   mid-execution. Finished runs fall back to newest-first order.
 - The same live key set drives the pin, the window exemption, the `N LIVE`
-  count, and the Live view. Do not derive a second one — a row that is pinned
-  but not counted (or the reverse) reads as a bug.
+  count, and the Live filter's rows. Do not derive a second one — a row that is
+  pinned but not counted (or the reverse) reads as a bug.
 - "Running again" means a historical session that received a new prompt, even
   days later: it must land in that live key set so `N LIVE` can find it. Its
   clock (see Run Timeout Invariant) is the new prompt's, not the session's.
@@ -121,8 +121,10 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   the same span at 09:00 and at 23:00. `src/lib/run-history-window.ts` is the
   only module that computes it.
 - Its length is the persisted preference `ASTROX_HISTORY_RANGE`
-  (`3h` / `6h` / `12h` / `24h` / `7d`, default `3h`), converted with
-  `getHistoryRangeHours`. The same value seeds the global search dialog.
+  (`1h` / `3h` / `6h` / `12h` / `24h` / `3d` / `7d` / `30d`, default `3h`;
+  four per row in the settings dialog), converted with
+  `getHistoryRangeHours`. The same value seeds the global search dialog, so a
+  new option also needs an entry in the `HistoryTimeRange` duration table.
 - The window ends at the newest message (`getRunHistoryAnchorTime`), not at
   `Date.now()`. Anchoring on the wall clock left the panel empty on the first
   login of a new day, when the only thing the user wanted was the session they
@@ -139,36 +141,55 @@ use Node.js ES modules or CommonJS according to their existing file extension.
 ## Live View
 
 - The `N LIVE` chip is a count *and* a persisted toggle
-  (`ASTROX_RUN_HISTORY_LIVE_FILTER`, default on). It always renders —
-  `0 LIVE` included, in an idle (non-pulsing) variant — because the state is a
-  preference, not a badge.
-- Armed, RUN HISTORY lists **every message of the selected agent**: the time
-  window is dropped, `LOAD EARLIER` disappears, and live threads render
-  expanded so each executing Prompt is a row of its own. This is the view that
-  answers "what did I just send, and where is it".
+  (`ASTROX_RUN_HISTORY_LIVE_VIEW`, default **off**, also editable in Settings).
+  It always renders — `0 LIVE` included, in an idle (non-pulsing) variant —
+  because the state is a preference, not a badge.
+- Armed and disarmed must be distinguishable at a glance: armed is a solid
+  `--status-running` pill (panel-coloured text, glyph dropped, 3px halo),
+  disarmed a ghost outline, and the header's second line switches from `N runs`
+  to the "全部历史" badge. Do not express the armed state as one shade more tint
+  — on the dark theme the two states then read the same.
+- Armed, RUN HISTORY is a **filter**: the rows are only the messages whose run
+  is executing right now (`selectLiveRunHistory`). The pool it filters is the
+  agent's *whole* history — the time window is dropped, so a session resumed a
+  minute ago (and started days ago) still qualifies — but finished messages are
+  not part of the list. `LOAD EARLIER` disappears; live threads render expanded
+  so each executing Prompt is a row of its own. This answers "what is running,
+  and where is it" rather than "what has this agent ever done".
+- Zero live rows with the filter armed means an **empty list** with the
+  "nothing is executing" empty state. It must not fall back to the full history
+  and must not clear the arm: a filter that quietly shows everything when it
+  matches nothing is not a filter. This is also why the preference defaults to
+  off — an empty panel on first load would read as broken.
 - Disarmed, the list returns to the windowed rendering.
 - A *new* key entering the live set means a message was just sent: the panel
   expands it and scrolls it into view without a second click. The previous live
   set is held in a ref, not in state — state there would re-render on every
   live batch.
-- Zero live rows must not clear the arm: `0 LIVE` with the Live view armed still
-  lists the agent's history, and the stored choice survives reloads. Demo
-  traces are synthetic and never live, so the demo list ignores the arm
+- Demo traces are synthetic and never live, so the demo list ignores the arm
   instead of pretending the filter is active.
-- Live runs of other agents stay in the list while armed (the history pool adds
+- Live runs of other agents stay in the filtered list (the history pool adds
   them); the Live view is agent-scoped for *finished* history only.
 
 ## Settings And Preferences
 
 - The settings dialog (`src/components/settings-dialog.tsx`) edits
   browser-local preferences only: immediate effect, no Apply button, no server
-  round trip.
+  round trip. Its trigger is the gear icon, not a sliders glyph: the control
+  configures the Live filter, it does not filter anything itself.
 - Every key is declared in `storageKeys` with the `ASTROX_` prefix and resolved
   through `readStorageValue` / `readStorageBoolean`; an invalid stored value
   falls back to `appDefaults` and must never block rendering.
 - `appDefaults.historyRange` is the single default for both the RUN HISTORY
   window and the search dialog's initial range — do not add a second
   "default range" constant.
+- `appDefaults.liveView` is the single default of the Live filter. Its old key
+  (`ASTROX_RUN_HISTORY_LIVE_FILTER`) is retired, not migrated: it meant "show
+  the whole history", so honouring it would arm the new filter on load.
+- The dialog groups preferences by what they change (外观 / 运行历史 / 画布 /
+  面板) instead of listing them flat; a preference that also has an inline control
+  in the header or toolbar is listed here as well. Header and footer are fixed
+  and `.settings-dialog__body` scrolls.
 - A new preference updates, in one change: `storageKeys`, `appDefaults`, the
   dialog, the §15.1 table in `docs/user-manual-*.md`, and
   `tests/app-config.test.ts`.
@@ -178,6 +199,9 @@ use Node.js ES modules or CommonJS according to their existing file extension.
 - The GitHub entry is an anchor whose href comes from `appRepository.url` in
   `src/config/app-config.ts`; it opens in a new tab with
   `rel="noreferrer noopener"`. Never hardcode the URL in a component.
+- It is the **last** control in the header icon row: settings and theme are
+  console-local, the repository link is the one control that leaves the console,
+  so it owns the far right edge.
 - Header icon controls are 28 px (`size="console-icon"`) with the same height,
   radius, and quiet surface as the theme switcher, and they stay visible when
   the nav collapses on narrow screens.
@@ -185,6 +209,12 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   Lucide no longer ships brand icons, and a single path is not worth a
   dependency.
 - Every icon control has an `aria-label` and a tooltip that names the action.
+- Scroll controls for a list live in its panel header, never as a floating
+  overlay: the overlay chevron covered the first visible atom. Each direction's
+  control renders only while that edge is out of view.
+- The Flow Guide drawer dims the console with a flat scrim
+  (`.atom-guide__overlay`), never a backdrop blur — the canvas repaints
+  continuously and would pay for the blur on every frame.
 
 
 ## Run Trajectory Order

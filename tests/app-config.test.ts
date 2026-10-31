@@ -12,6 +12,7 @@ import {
   getHistoryRangeHours,
   historyRangeOptions,
   isHistoryRangeId,
+  retiredStorageKeys,
   shouldShowDemo,
   storageKeys,
 } from "../src/config/app-config.ts";
@@ -37,16 +38,34 @@ test("defaults the loaded message range to the last three hours", () => {
   assert.equal(storageKeys.historyRange, "ASTROX_HISTORY_RANGE");
 });
 
+test("opens RUN HISTORY unfiltered", () => {
+  // The Live filter can legitimately match nothing, so it must not be armed
+  // on first load: an empty panel would read as broken rather than as "idle".
+  assert.equal(appDefaults.liveView, false);
+  assert.equal(storageKeys.runHistoryLiveView, "ASTROX_RUN_HISTORY_LIVE_VIEW");
+  // The old key meant "show the whole history" — the opposite of the filter —
+  // so it is retired rather than migrated.
+  assert.equal(
+    retiredStorageKeys.runHistoryLiveFilter,
+    "ASTROX_RUN_HISTORY_LIVE_FILTER",
+  );
+  assert.ok(!Object.values(storageKeys).includes("ASTROX_RUN_HISTORY_LIVE_FILTER"));
+});
+
 test("lists history ranges in ascending order with matching spans", () => {
   const ids = historyRangeOptions.map((option) => option.id);
-  assert.deepEqual(ids, ["3h", "6h", "12h", "24h", "7d"]);
+  // Four per row in the settings dialog: eight choices read as two tidy rows.
+  assert.deepEqual(ids, ["1h", "3h", "6h", "12h", "24h", "3d", "7d", "30d"]);
 
   const hours = historyRangeOptions.map((option) => option.hours);
   assert.deepEqual([...hours].sort((left, right) => left - right), hours);
   assert.ok(
     historyRangeOptions.every((option) => option.label && option.shortLabel),
   );
+  assert.equal(getHistoryRangeHours("1h"), 1);
+  assert.equal(getHistoryRangeHours("3d"), 72);
   assert.equal(getHistoryRangeHours("7d"), 168);
+  assert.equal(getHistoryRangeHours("30d"), 720);
 
   assert.equal(isHistoryRangeId("3h"), true);
   assert.equal(isHistoryRangeId("9h"), false);

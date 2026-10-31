@@ -90,13 +90,16 @@ const timeOptions: ReadonlyArray<{
   label: string;
   value: HistoryTimeRange;
 }> = [
+  { label: "Last hour", value: "1h" },
   { label: "Last 3 hours", value: "3h" },
   { label: "Last 6 hours", value: "6h" },
   { label: "Last 12 hours", value: "12h" },
   { label: "Last 24 hours", value: "24h" },
   { label: "Today", value: "today" },
   { label: "Yesterday", value: "yesterday" },
+  { label: "Last 3 days", value: "3d" },
   { label: "Last 7 days", value: "7d" },
+  { label: "Last 30 days", value: "30d" },
 ];
 const categoryOrder: readonly EventTone[] = [
   "prompt",
