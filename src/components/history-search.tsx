@@ -11,6 +11,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { format } from "date-fns";
 import {
+  startTransition,
   useDeferredValue,
   useEffect,
   useMemo,
@@ -19,6 +20,7 @@ import {
 } from "react";
 import type { DateRange } from "react-day-picker";
 
+import { OthersAgentIcon } from "@/components/agent-icons";
 import { PlatformIcon } from "@/components/platform-icon";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -48,9 +50,12 @@ import {
 } from "@/components/ui/popover";
 import { Separator } from "@/components/ui/separator";
 import {
+  buildHistorySearchIndex,
   filterHistorySearchEntries,
   getHistoryDateBounds,
+  getHistorySearchSnippet,
   type HistorySearchEntry,
+  type HistorySearchFilters,
   type HistorySearchMatch,
   type HistoryTimeRange,
 } from "@/lib/history-search";
@@ -59,13 +64,41 @@ import {
   messageCategoryOrder,
 } from "@/lib/trace-model";
 import { cn } from "@/lib/utils";
-import { atomPlatformOptions } from "@/config/atom-platforms";
+import { agentOptions, atomPlatformOptions } from "@/config/atom-platforms";
+import { OTHERS_AGENT_ID } from "@/lib/run-history-window";
 import type {
   EventTone,
   MessageCategory,
   PlatformId,
+  TracePromptRun,
   TraceRunStatus,
+  TraceSession,
 } from "@/types/trace";
+
+/** Which sources already have an agent entry; `others` matches the rest. */
+const configuredAgentSources = new Set(
+  atomPlatformOptions.map((platform) => platform.source),
+);
+
+/**
+ * The Agent filter lists the configured agents plus a trailing "Others", the
+ * same list the toolbar dropdown shows. The entry list is deliberately *not* a
+ * factor: the search index only covers the selected time window, so deriving
+ * "Others" from it made the catch-all appear and disappear as the window
+ * moved, and a window without foreign sources hid the option entirely.
+ */
+const agentFilterOptions: MultiSelectOption<string>[] = [
+  ...agentOptions.map((agent) => ({
+    label: agent.label,
+    platform: agent.id,
+    value: agent.source,
+  })),
+  {
+    label: "Others",
+    platform: OTHERS_AGENT_ID,
+    value: OTHERS_AGENT_ID,
+  },
+];
 
 const resultBatchSize = 60;
 const defaultTimeRange = "3h" satisfies HistoryTimeRange;
@@ -84,12 +117,15 @@ const timeOptions: ReadonlyArray<{
   label: string;
   value: HistoryTimeRange;
 }> = [
+  { label: "Last hour", value: "1h" },
   { label: "Last 3 hours", value: "3h" },
   { label: "Last 6 hours", value: "6h" },
   { label: "Last 12 hours", value: "12h" },
-  { label: "Last 24 hours", value: "24h" },
+  { label: "Last 1 day", value: "1d" },
   { label: "Today", value: "today" },
   { label: "Yesterday", value: "yesterday" },
+  { label: "Last 3 days", value: "3d" },
+  { label: "Last 5 days", value: "5d" },
   { label: "Last 7 days", value: "7d" },
 ];
 const categoryOrder: readonly EventTone[] = [
@@ -117,7 +153,8 @@ const categoryLabels: Readonly<Record<EventTone, string>> = {
 
 type MultiSelectOption<T extends string> = {
   label: string;
-  platform?: PlatformId;
+  /** `others` is drawn with the catch-all glyph rather than a brand mark. */
+  platform?: PlatformId | typeof OTHERS_AGENT_ID;
   tone?: string;
   value: T;
 };
@@ -269,7 +306,9 @@ function MultiSelectFilter<T extends string>({
               }
               onSelect={(event) => event.preventDefault()}
             >
-              {option.platform ? (
+              {option.platform === OTHERS_AGENT_ID ? (
+                <OthersAgentIcon />
+              ) : option.platform ? (
                 <PlatformIcon platform={option.platform} />
               ) : option.tone ? (
                 <i className={option.tone} />
@@ -379,6 +418,9 @@ function SearchResult({
   onSelect: (entry: HistorySearchEntry) => void;
   query: string;
 }) {
+  // Only visible rows build a snippet: doing it inside the filter would run it
+  // for every match, including the tens of thousands that never render.
+  const snippet = getHistorySearchSnippet(match, query);
   return (
     <button
       type="button"
@@ -400,7 +442,7 @@ function SearchResult({
         <span className="history-search__result-snippet">
           <HighlightedText
             query={query}
-            text={truncateSnippet(match.snippet || match.summary)}
+            text={truncateSnippet(snippet || match.summary)}
           />
         </span>
         <span className="history-search__result-meta">
@@ -438,19 +480,37 @@ function SearchResult({
 }
 
 export function HistorySearch({
-  entries,
+  defaultRange = defaultTimeRange,
   onOpenChange,
   onSelect,
   open,
+  promptRunsBySession,
+  sessions,
 }: {
-  entries: readonly HistorySearchEntry[];
+  /**
+   * Range the dialog opens on. Comes from Settings, so "the default range for
+   * loading messages" is one preference shared with RUN HISTORY rather than a
+   * constant this dialog owns.
+   */
+  defaultRange?: HistoryTimeRange;
   onOpenChange: (open: boolean) => void;
   onSelect: (entry: HistorySearchEntry) => void;
   open: boolean;
+  promptRunsBySession: ReadonlyMap<string, readonly TracePromptRun[]>;
+  sessions: readonly TraceSession[];
 }) {
+  const [entries, setEntries] = useState<readonly HistorySearchEntry[]>([]);
+  const [indexing, setIndexing] = useState(false);
+  const hasIndexRef = useRef(false);
   const [query, setQuery] = useState("");
   const [timeRange, setTimeRange] =
-    useState<HistoryTimeRange>(defaultTimeRange);
+    useState<HistoryTimeRange>(defaultRange);
+  // The preference is the *default*, so a change in Settings re-seeds the
+  // dialog instead of waiting for a reload. A range the user picked inside the
+  // dialog still wins until the next change.
+  useEffect(() => {
+    setTimeRange(defaultRange);
+  }, [defaultRange]);
   const [customRange, setCustomRange] = useState<DateRange>();
   const [categories, setCategories] = useState<ReadonlySet<EventTone>>(
     () => new Set(),
@@ -469,31 +529,9 @@ export function HistorySearch({
   const inputRef = useRef<HTMLInputElement | null>(null);
   const resultListRef = useRef<HTMLDivElement | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
-  const sourceOptions = useMemo(
-    () => {
-      const availableSources = new Set(
-        entries.map((entry) => entry.source),
-      );
-      const configuredSources = new Set(
-        atomPlatformOptions.map((platform) => platform.source),
-      );
-      const configuredOptions = atomPlatformOptions.map((platform) => ({
-        label: platform.label,
-        platform: platform.id,
-        value: platform.source,
-      }));
-      const additionalOptions = [...availableSources]
-        .filter((source) => !configuredSources.has(source))
-        .sort()
-        .map((source) => ({
-          label: source.toUpperCase(),
-          tone: `source-${source}`,
-          value: source,
-        }));
-      return [...configuredOptions, ...additionalOptions];
-    },
-    [entries],
-  );
+  // Agents only; every source without an agent definition folds into the
+  // trailing "Others" catch-all (see `agentFilterOptions`).
+  const sourceOptions = agentFilterOptions;
   const categoryOptions = useMemo(() => {
     const available = new Set(entries.map((entry) => entry.category));
     return categoryOrder
@@ -526,8 +564,58 @@ export function HistorySearch({
       ),
     [customRange, openedAt, timeRange],
   );
+  /*
+   * The index is built for the selected window only. Opening on the default
+   * "last 3 hours" should not pay for every event ever recorded, and the
+   * dialog can only show what is inside its own date filter anyway. The build
+   * runs off the click's critical path (the dialog paints first, the index
+   * lands in a transition) and is debounced so a recording run cannot rebuild
+   * it on every event flush.
+   */
+  useEffect(() => {
+    if (!open) {
+      hasIndexRef.current = false;
+      setEntries((current) => (current.length ? [] : current));
+      setIndexing(false);
+      return undefined;
+    }
+    if (!dateBounds.valid) {
+      return undefined;
+    }
+    const from = dateBounds.from;
+    const to = dateBounds.to;
+    let cancelled = false;
+    // Only the first index for this open announces itself; refreshes keep the
+    // previous results on screen until the new ones land.
+    setIndexing(!hasIndexRef.current);
+    const timer = window.setTimeout(
+      () => {
+        if (cancelled) {
+          return;
+        }
+        startTransition(() => {
+          setEntries(
+            buildHistorySearchIndex(sessions, promptRunsBySession, {
+              from,
+              to,
+            }),
+          );
+          hasIndexRef.current = true;
+          setIndexing(false);
+        });
+      },
+      hasIndexRef.current ? 600 : 0,
+    );
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [dateBounds, open, promptRunsBySession, sessions]);
   const filterInput = useMemo(
     () => ({
+      // `others` needs to know which sources already have an agent entry; the
+      // set is static, so this costs one module-level lookup per render.
+      agentSources: configuredAgentSources,
       categories,
       from: dateBounds.valid ? dateBounds.from : Number.NaN,
       messageCategories,
@@ -539,10 +627,47 @@ export function HistorySearch({
     [categories, dateBounds, messageCategories, query, sources, statuses],
   );
   const deferredFilters = useDeferredValue(filterInput);
-  const matches = useMemo(
-    () => filterHistorySearchEntries(entries, deferredFilters),
-    [deferredFilters, entries],
-  );
+  /*
+   * Typing narrows. A query that only extends the previous one is guaranteed
+   * to match a subset of the previous matches (both substring and ordered
+   * subsequence matching are monotone under token extension), so the next
+   * keystroke can filter the previous result set instead of rescanning every
+   * loaded event. Deleting characters, changing a filter, or a new index falls
+   * back to the full set.
+   */
+  const narrowingRef = useRef<{
+    entries: readonly HistorySearchEntry[];
+    filters: HistorySearchFilters;
+    query: string;
+    source: readonly HistorySearchEntry[];
+  } | null>(null);
+  const matches = useMemo(() => {
+    const previous = narrowingRef.current;
+    const trimmedQuery = deferredFilters.query.trim();
+    const canNarrow =
+      previous !== null &&
+      previous.source === entries &&
+      previous.filters.categories === deferredFilters.categories &&
+      previous.filters.messageCategories ===
+        deferredFilters.messageCategories &&
+      previous.filters.sources === deferredFilters.sources &&
+      previous.filters.statuses === deferredFilters.statuses &&
+      previous.filters.from === deferredFilters.from &&
+      previous.filters.to === deferredFilters.to &&
+      trimmedQuery.length > previous.query.length &&
+      trimmedQuery.startsWith(previous.query);
+    const result = filterHistorySearchEntries(
+      canNarrow ? previous.entries : entries,
+      deferredFilters,
+    );
+    narrowingRef.current = {
+      entries: result,
+      filters: deferredFilters,
+      query: trimmedQuery,
+      source: entries,
+    };
+    return result;
+  }, [deferredFilters, entries]);
   const visibleMatches = useMemo(
     () => matches.slice(0, visibleCount),
     [matches, visibleCount],
@@ -590,7 +715,7 @@ export function HistorySearch({
 
   const resetFilters = () => {
     setQuery("");
-    setTimeRange(defaultTimeRange);
+    setTimeRange(defaultRange);
     setCustomRange(undefined);
     setCategories(new Set());
     setMessageCategories(new Set());
@@ -701,11 +826,11 @@ export function HistorySearch({
           <output
             className={cn(
               "history-search__count",
-              filterInput !== deferredFilters && "is-pending",
+              (indexing || filterInput !== deferredFilters) && "is-pending",
             )}
             aria-live="polite"
           >
-            {matches.length} matches
+            {indexing && !entries.length ? "indexing…" : `${matches.length} matches`}
           </output>
         </div>
 
@@ -721,7 +846,9 @@ export function HistorySearch({
           {!matches.length ? (
             <output className="history-search__empty">
               {dateBounds.valid
-                ? "No matching history"
+                ? indexing
+                  ? "Indexing loaded history…"
+                  : "No matching history"
                 : "The selected date range is invalid"}
             </output>
           ) : null}

@@ -19,17 +19,15 @@ import {
 
 /**
  * Agents with an official brand mark render it through a lucide icon so the
- * dropdown keeps one sizing and coloring contract for every entry. Codex and
- * GPT are both OpenAI products and share the OpenAI knot; the per-platform
- * brand color in styles.css keeps the two entries distinguishable. DeepSeek and
- * WorkBuddy ship raster logos and are special-cased below.
+ * dropdown keeps one sizing and coloring contract for every entry. Codex uses
+ * the OpenAI knot. DeepSeek and WorkBuddy ship raster logos and are
+ * special-cased below.
  */
 const brandIcons: Readonly<
   Partial<Record<PlatformId, typeof ClaudeIcon>>
 > = {
   claude: ClaudeIcon,
   codex: GptIcon,
-  gpt: GptIcon,
   gemini: GeminiIcon,
   llama: LlamaIcon,
   pi: PiAgentIcon,
@@ -71,6 +69,8 @@ export function PlatformIcon({
         alt=""
         aria-hidden="true"
         className={iconClassName}
+        decoding="async"
+        loading="lazy"
         src="/icons/deepseek.svg"
         {...props}
       />

@@ -254,7 +254,7 @@ Trae, then start a new Agent conversation. Events are written to
 hook sandbox must allow writes to this user-level data root.
 
 The checked-in hooks use `$HOME/.astrox`. The development API and Vite proxy
-both default to port `4318` and read the same directory:
+both default to port `5678` and read the same directory:
 `ASTRO_HOME="$HOME/.astrox" pnpm start`. To use another port, set the same
 `ASTRO_PORT` in both the API and `pnpm dev` processes.
 After changing hook commands, reload the Trae workspace so existing sessions
@@ -378,7 +378,7 @@ For manual startup:
 node ~/.astrox/plugins/astro/server/server.mjs
 ```
 
-Open the URL printed by the process, normally `http://127.0.0.1:4318`, then
+Open the URL printed by the process, normally `http://127.0.0.1:5678`, then
 select the captured session in **Run History** and choose its matching
 platform.
 
@@ -427,7 +427,7 @@ AgentMessage      turn 2
 Stop              turn 2
 ```
 
-Keep `curl -N http://127.0.0.1:4318/api/stream` open during the test. The
+Keep `curl -N http://127.0.0.1:5678/api/stream` open during the test. The
 first events must be `reset` and `ready`; later writes arrive as `trace`.
 Reconnect and confirm the new `reset` includes events emitted while disconnected.
 In Run History, expand the session and confirm that the two turns appear as
@@ -461,7 +461,7 @@ captured content to a remote service.
       storage-paths.cjs
       trace-recorder.cjs
     server/
-  dashboard-4318.pid
+  dashboard-5678.pid
   claude/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
   codex/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
   deepseek/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
@@ -477,7 +477,7 @@ The recorder redacts common credentials before writing JSONL.
 ```bash
 mkdir -p "$HOME/.astrox"
 test -w "$HOME/.astrox"
-curl -s http://127.0.0.1:4318/api/health
+curl -s http://127.0.0.1:5678/api/health
 ```
 
 Use the health response as the source of truth:

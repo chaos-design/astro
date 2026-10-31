@@ -119,6 +119,9 @@
   --live-active-bg: #08201f;
   --live-active-text: #5eead4;
   --live-active-glow: rgb(45 212 191 / 14%);
+  /* Trajectory turn blocks: the section header carries a theme-specific
+     accent, so turn boundaries stay legible on either theme. */
+  --trajectory-turn-accent: var(--violet);
   --background: #07090e;
   --foreground: #dbe5f2;
   --card: #0c0f16;
@@ -211,6 +214,9 @@
   --live-active-bg: #dcefeb;
   --live-active-text: #087f73;
   --live-active-glow: rgb(8 127 115 / 12%);
+  /* Light theme turns read against white panels, so the accent shifts to the
+     saturated indigo instead of the dark theme's pastel violet. */
+  --trajectory-turn-accent: var(--violet-deep);
   --background: #f3f6f8;
   --foreground: #243043;
   --card: #ffffff;
@@ -276,15 +282,19 @@ button:not(:disabled),
   cursor: pointer;
 }
 
+/* Strip the UA button border, except for controls that draw their own:
+ * console/playback buttons, Radix triggers, and the two custom pills below.
+ * Without the exclusions the LIVE chip and the service card's restart action
+ * lost their borders and read as plain text. */
 button:not([data-variant="console"]):not([data-variant="playback"]):not([data-slot="select-trigger"]):not(
     [data-slot="tabs-trigger"]
-  ) {
+  ):not(.run-history__live-jump):not(.service-card__restart):not(.settings-footer__button) {
   border: 0;
 }
 
 button:not([data-variant="console"]):not([data-variant="playback"]):not([data-slot="select-trigger"]):not(
     [data-slot="tabs-trigger"]
-  ):focus-visible,
+  ):not(.run-history__live-jump):not(.service-card__restart):not(.settings-footer__button):focus-visible,
 input:not([data-slot="input-group-control"]):focus-visible {
   outline: 1px solid var(--selection-border);
   outline-offset: 2px;
@@ -648,6 +658,413 @@ pre,
   background: var(--red);
 }
 
+/*
+ * Local service chip: uptime in the header, details plus the restart control
+ * in a popover. The chip is the only place the studio exposes process-level
+ * facts (pid, startup cost, data root), so it has to stay compact.
+ */
+.service-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--line-bright);
+  border-radius: 999px;
+  color: var(--muted-soft);
+  background: var(--panel-raised);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+  transition:
+    border-color 140ms ease,
+    color 140ms ease,
+    background 140ms ease;
+}
+
+.service-status:hover,
+.service-status[data-state="open"] {
+  border-color: var(--selection-border);
+  color: var(--text);
+  background: var(--panel-hover);
+}
+
+.service-status > i {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 6px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.service-status[data-health="online"] > i {
+  background: var(--status-completed);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--status-completed) 60%, transparent);
+}
+
+.service-status[data-health="degraded"] > i {
+  background: var(--status-waiting);
+}
+
+.service-status[data-health="error"] > i {
+  background: var(--status-failed);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--status-failed) 60%, transparent);
+}
+
+.service-status[data-health="pending"] > i {
+  background: var(--muted);
+  animation: run-history-live-pulse 1.6s ease-in-out infinite;
+}
+
+.service-status > svg {
+  width: 12px;
+  height: 12px;
+  color: var(--muted);
+}
+
+/* Local service card: process identity first, then what the service knows
+ * about the data and the sessions it is serving. Values are aligned in a
+ * two-column grid so a long path or a five-digit session count never pushes
+ * the label out of line — the previous single-column `<dl>` wrapped every
+ * second value onto its own line. */
+.service-card {
+  width: min(392px, calc(100vw - 24px));
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--line-bright);
+  border-radius: 9px;
+  color: var(--text);
+  /* Opaque: the card floats over the canvas, and a translucent panel left the
+     small mono labels unreadable. */
+  background: var(--panel);
+  box-shadow: 0 18px 44px rgb(0 0 0 / 46%);
+}
+
+.service-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--chrome-line);
+}
+
+.service-card__identity {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 9px;
+}
+
+.service-card__identity > i {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.service-card__identity[data-health="online"] > i {
+  background: var(--status-completed);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--status-completed) 60%, transparent);
+}
+
+.service-card__identity[data-health="degraded"] > i {
+  background: var(--status-waiting);
+}
+
+.service-card__identity[data-health="error"] > i {
+  background: var(--status-failed);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--status-failed) 60%, transparent);
+}
+
+.service-card__identity[data-health="pending"] > i {
+  background: var(--muted);
+  animation: run-history-live-pulse 1.6s ease-in-out infinite;
+}
+
+.service-card__identity > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.service-card__identity .eyebrow {
+  color: var(--muted);
+  font-size: 8px;
+  letter-spacing: 0.14em;
+}
+
+.service-card__identity strong {
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.service-card__clock {
+  flex: none;
+  color: var(--text-strong);
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+.service-card__endpoint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--chrome-line);
+  color: var(--muted-soft);
+  background: color-mix(in srgb, var(--panel-raised) 44%, transparent);
+  font-family: var(--font-mono);
+  font-size: 9px;
+}
+
+.service-card__endpoint code {
+  color: var(--selection-text);
+  font-family: var(--font-mono);
+}
+
+.service-card__endpoint > span {
+  padding-left: 8px;
+  border-left: 1px solid var(--line);
+}
+
+.service-card__group {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--chrome-line);
+}
+
+.service-card__group:last-of-type {
+  border-bottom: 0;
+}
+
+.service-card__group h4 {
+  margin: 0;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.service-card__group dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 16px;
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.service-card__group dl > div {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.service-card__group dt {
+  flex: none;
+  color: var(--muted-soft);
+  font-size: 9px;
+}
+
+.service-card__group dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.service-card__path {
+  display: grid;
+  gap: 3px;
+  margin: 8px 0 0;
+  padding: 6px 8px;
+  border: 1px solid var(--chrome-line);
+  border-radius: 5px;
+  color: var(--muted-soft);
+  background: var(--bg);
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.service-card__path-label {
+  color: var(--muted);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.service-card__path code {
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text);
+}
+
+.service-card__path em {
+  font-style: normal;
+  color: var(--muted-soft);
+}
+
+/* Two versions side by side: "which bundle am I looking at, and which bundle
+ * is serving it?" was a single "0.0.3 · node v24" line that conflated the
+ * console, the service, and the runtime. */
+.service-card__versions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.service-card__versions > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 9px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--panel-raised) 55%, transparent);
+}
+
+.service-card__versions > div[data-mismatch="true"] {
+  border-color: color-mix(in srgb, var(--status-waiting) 52%, transparent);
+}
+
+.service-card__versions span {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 8px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.service-card__versions strong {
+  color: var(--text-strong);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.service-card__versions em {
+  overflow-wrap: anywhere;
+  color: var(--muted-soft);
+  font-size: 9px;
+  font-style: normal;
+}
+
+.service-card__notice {
+  margin: 0;
+  color: var(--status-waiting);
+  font-size: 9px;
+  line-height: 1.55;
+}
+
+.service-card__counts {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.service-card__counts > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+  padding: 7px 6px;
+  border: 1px solid var(--chrome-line);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--panel-raised) 40%, transparent);
+}
+
+.service-card__counts strong {
+  color: var(--text-strong);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.service-card__counts span {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 8px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.service-card__counts > div[data-tone="running"] strong {
+  color: var(--status-running);
+}
+
+.service-card__counts > div[data-tone="completed"] strong {
+  color: var(--status-completed);
+}
+
+.service-card__counts > div[data-tone="waiting"] strong {
+  color: var(--status-waiting);
+}
+
+.service-card__counts > div[data-tone="failed"] strong {
+  color: var(--status-failed);
+}
+
+.service-card__footer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 11px 14px 12px;
+  border-top: 1px solid var(--chrome-line);
+  background: color-mix(in srgb, var(--panel-raised) 26%, transparent);
+}
+
+.service-card__hint {
+  margin: 0;
+  color: var(--muted-soft);
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.service-card__error {
+  margin: 0;
+  color: var(--status-failed);
+  font-family: var(--font-mono);
+  font-size: 9px;
+}
+
+.service-card__restart {
+  width: 100%;
+  justify-content: center;
+  border-color: var(--line-bright);
+  color: var(--muted-soft);
+  background: var(--panel);
+  font-size: 10px;
+}
+
+.service-card__restart:hover:not(:disabled) {
+  border-color: var(--selection-border);
+  color: var(--selection-text);
+  background: var(--selection-bg);
+}
+
 .theme-select {
   width: 28px;
   min-width: 28px;
@@ -666,6 +1083,592 @@ pre,
 
 .theme-select > svg:last-child {
   display: none;
+}
+
+/* The icon controls stay a single row in both layouts: the collapsed nav panel
+ * turns every other child into a full-width list item, and stacking three 28px
+ * squares under it read as three broken buttons. */
+.header-icon-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Header settings trigger + repository link. Both are 28px console controls
+ * sitting next to the theme switcher, so they copy its quiet, borderless
+ * surface instead of introducing a second button style in the same row; the
+ * anchor needs its own rules because it is not a <button>. The link closes the
+ * row: it is the only control that leaves the console. */
+.repo-link,
+.settings-trigger {
+  border-color: transparent;
+  border-radius: 6px;
+  color: var(--muted-soft);
+  background: var(--panel-raised);
+}
+
+.repo-link {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  transition:
+    color 120ms ease,
+    border-color 120ms ease,
+    background 120ms ease;
+}
+
+.repo-link > svg,
+.settings-trigger > svg {
+  width: 15px;
+  height: 15px;
+}
+
+.repo-link:hover,
+.settings-trigger:hover {
+  border-color: var(--violet);
+  color: var(--text);
+  background: var(--panel-hover);
+}
+
+.repo-link:focus-visible,
+.settings-trigger:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--selection-border) 70%, transparent);
+  outline-offset: 1px;
+}
+
+/* Settings dialog: a two-pane card. The rail on the left names the sections,
+ * the pane on the right shows the active one's fields. A single stacked column
+ * either scrolled the entire dialog or squeezed every control on a short
+ * window, so the shell is deliberately wider and taller than a form card. */
+.settings-dialog {
+  display: flex;
+  width: min(920px, calc(100vw - 48px));
+  height: min(672px, calc(100dvh - 48px));
+  max-width: none;
+  max-height: calc(100dvh - 32px);
+  flex-direction: column;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--line-bright);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--panel) 97%, transparent);
+  box-shadow:
+    0 32px 90px rgb(0 0 0 / 58%),
+    0 0 0 1px color-mix(in srgb, var(--selection-border) 12%, transparent);
+}
+
+.settings-dialog__header {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 5px;
+  padding: 18px 56px 14px 22px;
+  border-bottom: 1px solid var(--chrome-line);
+}
+
+.settings-dialog__title {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.settings-dialog__title .eyebrow {
+  color: var(--muted);
+  font-size: 8px;
+  letter-spacing: 0.16em;
+}
+
+.settings-dialog [data-slot="dialog-title"] {
+  color: var(--text-strong);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
+.settings-dialog [data-slot="dialog-description"] {
+  max-width: 66ch;
+  color: var(--muted-soft);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+/* Rail + pane share one scroll boundary: the rail never scrolls out of reach
+ * while a long pane is being read. */
+.settings-dialog__layout {
+  display: grid;
+  flex: 1;
+  min-height: 0;
+  grid-template-columns: 208px minmax(0, 1fr);
+  gap: 0;
+}
+
+.settings-nav {
+  display: flex;
+  width: auto;
+  height: auto;
+  min-height: 0;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 2px;
+  padding: 12px 10px;
+  overflow-y: auto;
+  border-right: 1px solid var(--chrome-line);
+  border-radius: 0;
+  background: color-mix(in srgb, var(--panel-raised) 24%, transparent);
+  scrollbar-width: none;
+}
+
+.settings-nav__item {
+  display: flex;
+  width: 100%;
+  height: auto;
+  flex: none;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--muted-soft);
+  background: transparent;
+  text-align: left;
+  white-space: normal;
+  cursor: pointer;
+  transition:
+    color 120ms ease,
+    border-color 120ms ease,
+    background 120ms ease;
+}
+
+.settings-nav__item:hover {
+  color: var(--text);
+  background: var(--panel-hover);
+}
+
+/* Keyboard focus is a halo *outside* the row. It used to reuse the ring token
+ * and painted a cyan border on the previously focused section, which read as
+ * a second active item beside the tinted one. */
+.settings-nav__item:focus-visible {
+  /* The shared trigger utilities paint a solid ring + border in the accent,
+     which made a focused-but-inactive section look selected next to the tinted
+     one. Focus is a dashed inset instead; the active fill stays the only
+     selected treatment. */
+  border-color: transparent;
+  box-shadow: none;
+  outline: 1px dashed color-mix(in srgb, var(--selection-border) 52%, transparent);
+  outline-offset: -3px;
+}
+
+.settings-nav__item[data-state="active"]:focus-visible {
+  border-color: color-mix(in srgb, var(--selection-border) 34%, transparent);
+  box-shadow: inset 2px 0 var(--selection-border);
+}
+
+.settings-nav__item[data-state="active"] {
+  border-color: color-mix(in srgb, var(--selection-border) 34%, transparent);
+  color: var(--text-strong);
+  background: color-mix(in srgb, var(--selection-bg) 78%, var(--panel-raised));
+  box-shadow: inset 2px 0 var(--selection-border);
+}
+
+.settings-nav__icon {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+  color: var(--muted);
+}
+
+.settings-nav__item[data-state="active"] .settings-nav__icon {
+  color: var(--selection-border);
+}
+
+.settings-nav__copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.settings-nav__copy strong {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.settings-nav__copy small {
+  color: var(--muted);
+  font-size: 9px;
+  letter-spacing: 0.02em;
+}
+
+.settings-nav__item[data-state="active"] .settings-nav__copy small {
+  color: var(--muted-soft);
+}
+
+.settings-pane {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  gap: 18px;
+  padding: 18px 22px 22px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-bright) transparent;
+}
+
+.settings-pane__head {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.settings-pane__head h3 {
+  margin: 0;
+  color: var(--text-strong);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.settings-pane__head p {
+  max-width: 64ch;
+  margin: 0;
+  color: var(--muted-soft);
+  font-size: 11px;
+  line-height: 1.65;
+}
+
+.settings-field {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.settings-field__copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.settings-field__copy strong {
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.settings-field__copy span {
+  max-width: 64ch;
+  color: var(--muted-soft);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+/* The pane already separates sections by heading; a rule per group only
+ * fragments a page that is read one group at a time. */
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 0;
+  border-top: 0;
+}
+
+/* About: one key/value card per fact, aligned like a manifest rather than
+ * like a paragraph of release notes. */
+.settings-about {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+}
+
+.settings-about > div {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 14px;
+  align-items: baseline;
+  padding: 10px 12px;
+  border: 1px solid var(--chrome-line);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--panel-raised) 44%, transparent);
+}
+
+.settings-about dt {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.settings-about dd {
+  margin: 0;
+  color: var(--text);
+  font-size: 11px;
+  line-height: 1.65;
+}
+
+.settings-about code {
+  padding: 1px 5px;
+  border: 1px solid var(--line-bright);
+  border-radius: 4px;
+  color: var(--selection-text);
+  background: var(--panel);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.settings-footer {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 20px;
+  border-top: 1px solid var(--chrome-line);
+  background: color-mix(in srgb, var(--panel-raised) 30%, transparent);
+}
+
+.settings-footer__note {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.settings-footer__note > span {
+  width: 5px;
+  height: 5px;
+  flex: 0 0 5px;
+  border-radius: 50%;
+  background: var(--status-completed);
+}
+
+.settings-footer__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Footer actions carry their own ink and surface. The shared
+ * `button { color: inherit }` reset outranks Tailwind's text-* utilities, so
+ * the primary action rendered inherited light text on the bright primary fill
+ * (≈1.6:1) and the outline action was a near-black block with a near-black
+ * border — both hard to read on the dark panel. Disabled stays legible in
+ * muted tones instead of fading to 50% opacity and disappearing. */
+.settings-footer__actions button {
+  border-radius: 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.03em;
+}
+
+.settings-footer__actions button[data-variant="default"] {
+  border: 1px solid color-mix(in srgb, var(--primary) 68%, transparent);
+  color: var(--primary-foreground);
+  background: var(--primary);
+  font-weight: 600;
+}
+
+.settings-footer__actions button[data-variant="default"]:hover:not(:disabled) {
+  border-color: var(--primary);
+  color: var(--primary-foreground);
+  background: color-mix(in srgb, var(--primary) 86%, var(--panel));
+}
+
+.settings-footer__actions button[data-variant="outline"] {
+  border: 1px solid var(--line-bright);
+  color: var(--text);
+  background: var(--panel-raised);
+}
+
+.settings-footer__actions button[data-variant="outline"]:hover:not(:disabled) {
+  border-color: var(--selection-border);
+  color: var(--selection-text);
+  background: var(--selection-bg);
+}
+
+.settings-footer__actions button[data-variant="outline"]:disabled {
+  opacity: 1;
+  border-color: var(--line);
+  color: var(--muted);
+  background: color-mix(in srgb, var(--panel-raised) 40%, transparent);
+}
+
+/* Narrow windows lose the rail's width, not its function: the sections stack
+ * above the pane and scroll horizontally as one row of chips. */
+@media (max-width: 780px) {
+  .settings-dialog {
+    width: calc(100vw - 24px);
+    height: min(720px, calc(100dvh - 24px));
+  }
+
+  .settings-dialog__layout {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .settings-nav {
+    flex-direction: row;
+    padding: 8px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border-right: 0;
+    border-bottom: 1px solid var(--chrome-line);
+  }
+
+  .settings-nav__item {
+    width: auto;
+    flex: none;
+  }
+
+  .settings-nav__copy small {
+    display: none;
+  }
+}
+
+/* Four per row by default (eight ranges read as two tidy rows: hours above,
+ * days below); a pick-one group sets `--settings-columns` when it has fewer
+ * choices. */
+.settings-options {
+  display: grid;
+  grid-template-columns: repeat(var(--settings-columns, 4), minmax(0, 1fr));
+  gap: 6px;
+}
+
+.settings-option {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 8px;
+  border: 1px solid var(--line-bright);
+  border-radius: 5px;
+  color: var(--muted-soft);
+  background: color-mix(in srgb, var(--panel-raised) 78%, transparent);
+  font-family: var(--font-mono);
+  font-size: var(--text-overline);
+  cursor: pointer;
+  transition:
+    color 120ms ease,
+    border-color 120ms ease,
+    background 120ms ease;
+}
+
+.settings-option > svg:first-child {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 12px;
+}
+
+.settings-option:hover {
+  color: var(--text);
+  background: var(--panel-hover);
+}
+
+.settings-option.is-selected {
+  border-color: color-mix(in srgb, var(--selection-border) 62%, transparent);
+  color: var(--selection-text);
+  background: color-mix(in srgb, var(--selection-bg) 72%, var(--panel-raised));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--selection-border) 36%, transparent);
+}
+
+/* The tick is always in the layout, only invisible when unselected: adding it
+ * on selection would push the label sideways and make the grid jitter. */
+.settings-option__check {
+  position: absolute;
+  right: 6px;
+  width: 11px;
+  height: 11px;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.settings-option.is-selected .settings-option__check {
+  opacity: 1;
+}
+
+/* A boolean preference sits on one line: label and explanation on the left,
+ * the switch pinned to the right edge and aligned with the label — centring it
+ * against a two-line description left it floating beside the second line. */
+.settings-field--row {
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.settings-field--row .settings-field__copy {
+  min-width: 0;
+}
+
+/* 40×22 switch: the console's on-state colour is the running accent, the same
+ * one the `N LIVE` chip uses, because the setting enables that chip's filter. */
+.settings-switch {
+  display: inline-flex;
+  width: 40px;
+  height: 22px;
+  flex: 0 0 40px;
+  align-items: center;
+  /* Optically centred on the row heading, not on the 22px track: the heading is
+     a 10px mono label, so the switch rides up 3px to sit on that line. */
+  margin-top: -3px;
+  padding: 0;
+  border: 1px solid var(--line-bright);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--panel-raised) 82%, transparent);
+  cursor: pointer;
+  transition:
+    border-color 140ms ease,
+    background 140ms ease;
+}
+
+.settings-switch:hover {
+  border-color: var(--violet);
+}
+
+.settings-switch__thumb {
+  width: 14px;
+  height: 14px;
+  margin-left: 3px;
+  border-radius: 50%;
+  background: var(--muted-soft);
+  transition:
+    transform 140ms ease,
+    background 140ms ease;
+}
+
+.settings-switch.is-on {
+  border-color: color-mix(in srgb, var(--status-running) 62%, transparent);
+  background: color-mix(in srgb, var(--status-running) 18%, transparent);
+}
+
+.settings-switch.is-on .settings-switch__thumb {
+  background: var(--status-running);
+  transform: translateX(18px);
+}
+
+.settings-switch:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--selection-border) 70%, transparent);
+  outline-offset: 2px;
 }
 
 .history-search {
@@ -1331,6 +2334,35 @@ pre,
   padding-right: 36px;
 }
 
+/* Armed the header line carries the scope ("N live · 全部历史"), which is
+   longer than "N runs": truncate instead of pushing the chip off the header. */
+.run-history .panel-header strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.run-history .panel-header .eyebrow {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Armed, the header's second line is the scope ("全部历史") instead of a run
+   count: a small accent chip so it reads as a mode note, not as the count. */
+.run-history .panel-header strong.run-history__scope {
+  align-self: flex-start;
+  margin-top: 2px;
+  padding: 0 5px;
+  border: 1px solid color-mix(in srgb, var(--status-running) 46%, transparent);
+  border-radius: 3px;
+  color: color-mix(in srgb, var(--status-running) 84%, var(--text));
+  font-family: var(--font-mono);
+  font-size: 9px;
+  line-height: 13px;
+  letter-spacing: 0.04em;
+}
+
 .run-history__list {
   display: flex;
   flex-direction: column;
@@ -1340,6 +2372,12 @@ pre,
 .run-history__item {
   position: relative;
   min-width: 0;
+  /* Skip layout and paint for offscreen run rows: a widened window can hold
+     hundreds of rows, and only the ones near the viewport need rendering. `contain-intrinsic-size` keeps the scrollbar
+     honest until each row renders once (the browser then remembers the real
+     height). */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 72px;
 }
 
 .run-history__row {
@@ -1440,17 +2478,23 @@ pre,
   animation: run-history-live-pulse 1.6s ease-in-out infinite;
 }
 
+/* The chip is a filter toggle. Disarmed it is a light, quiet pill — muted
+ * text, hairline border, no fill; armed it is a dark, saturated pill with
+ * light accent text. The previous polarity was inverted (the armed state was
+ * the brightest fill in the panel), which is the opposite of how a toggle
+ * reads on a dark surface. The glyph stays in both states: it is what makes
+ * the control legible as "live" while the fill carries on/off. */
 .run-history__live-jump {
   display: inline-flex;
   flex: none;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
   height: 20px;
-  padding: 0 7px;
-  border: 1px solid color-mix(in srgb, var(--status-running) 32%, transparent);
+  padding: 0 8px 0 7px;
+  border: 1px solid var(--line-bright);
   border-radius: 999px;
-  color: color-mix(in srgb, var(--status-running) 74%, var(--text));
-  background: color-mix(in srgb, var(--status-running) 8%, transparent);
+  color: var(--muted-soft);
+  background: color-mix(in srgb, var(--panel-raised) 58%, transparent);
   cursor: pointer;
   font-family: var(--font-mono);
   font-size: 8px;
@@ -1458,31 +2502,192 @@ pre,
   letter-spacing: 0.08em;
   transition:
     background 140ms ease,
-    border-color 140ms ease;
+    border-color 140ms ease,
+    color 140ms ease,
+    box-shadow 140ms ease;
 }
 
 .run-history__live-jump:hover {
-  border-color: color-mix(in srgb, var(--status-running) 70%, transparent);
-  background: color-mix(in srgb, var(--status-running) 22%, transparent);
+  border-color: color-mix(in srgb, var(--status-running) 46%, var(--line-bright));
+  color: var(--text);
+  background: color-mix(in srgb, var(--status-running) 12%, var(--panel-raised));
 }
 
-/* The chip doubles as the live-row filter; while filtering it reads as the
- * armed toggle so switching it back off is obvious at a glance. */
+/* Armed is a *mode*: the pill goes dark and running-tinted so the state reads
+ * from the fill, not from a barely-different tint. The halo is soft (no 3px
+ * ring): the chip sits in a 48px header next to the reload control. */
 .run-history__live-jump.is-filtering {
-  border-color: var(--bg);
-  background: var(--status-running);
-  color: var(--bg);
+  border-color: color-mix(in srgb, var(--status-running) 64%, transparent);
+  color: var(--highlight-observed);
+  background: color-mix(in srgb, var(--status-running) 26%, var(--bg));
   box-shadow:
-    0 0 0 2px color-mix(in srgb, var(--status-running) 42%, transparent),
-    0 0 16px 2px color-mix(in srgb, var(--status-running) 70%, transparent);
+    inset 0 0 0 1px color-mix(in srgb, var(--status-running) 20%, transparent),
+    0 4px 14px color-mix(in srgb, var(--status-running) 20%, transparent);
 }
 
-.run-history__live-jump.is-filtering > svg {
-  color: var(--bg);
+.run-history__live-jump.is-filtering:hover {
+  border-color: var(--status-running);
+  color: var(--text-strong);
+  background: color-mix(in srgb, var(--status-running) 34%, var(--bg));
 }
 
 .run-history__live-jump.is-filtering > span {
-  color: var(--bg);
+  color: inherit;
+}
+
+/* On a light panel the dark-theme fill (26% accent over the page) stays light,
+ * which would make "on" read as another pale tint. The light theme therefore
+ * uses the deep accent with white text: still the darker of the two states,
+ * which is the contract. */
+:root[data-theme="light"] .run-history__live-jump.is-filtering {
+  border-color: var(--violet-deep);
+  color: #ffffff;
+  background: var(--violet-deep);
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--violet-deep) 26%, transparent);
+}
+
+:root[data-theme="light"] .run-history__live-jump.is-filtering:hover {
+  border-color: var(--violet-deep);
+  color: #ffffff;
+  background: color-mix(in srgb, var(--violet-deep) 86%, #000000);
+}
+
+/* Header meta: the reload and the LIVE chip share one row at the right edge
+   of the header. Both controls are 20px pills (the chip's own height) with
+   the same radius and border so they read as one quiet control pair. */
+.run-history__header-meta {
+  display: flex;
+  flex: none;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Manual "load latest": pulls a fresh full snapshot for the whole list — the
+   escape hatch when loaded history went stale (e.g. a historical session
+   resumed but its events never arrived over a broken stream). */
+.run-history__reload {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--line-bright);
+  border-radius: 999px;
+  color: var(--muted-soft);
+  background: transparent;
+  cursor: pointer;
+  transition:
+    border-color 140ms ease,
+    color 140ms ease,
+    background 140ms ease;
+}
+
+.run-history__reload:hover {
+  border-color: var(--selection-border);
+  color: var(--selection-text);
+  background: var(--selection-bg);
+}
+
+.run-history__reload:focus-visible {
+  outline: 1px solid var(--selection-border);
+  outline-offset: 1px;
+}
+
+.run-history__reload:disabled {
+  cursor: default;
+}
+
+.run-history__reload > svg {
+  width: 11px;
+  height: 11px;
+}
+
+/* While the fresh snapshot is in flight the icon spins on a dedicated
+   keyframe so the contract test can pin the behaviour. */
+.run-history__reload.is-reloading {
+  cursor: progress;
+  color: var(--status-running);
+  border-color: color-mix(in srgb, var(--status-running) 45%, transparent);
+}
+
+.run-history__reload.is-reloading > svg {
+  animation: run-history-reload-spin 0.9s linear infinite;
+}
+
+@keyframes run-history-reload-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/*
+ * Sync freshness lives only in the app header. RUN HISTORY used to repeat the
+ * same clock next to its own header, which read as a second, competing status.
+ */
+/*
+ * An executing run that stopped producing events. The status stays `active`
+ * (only the recorder knows for sure) but the row says the stream went silent,
+ * which is the difference between "still thinking" and "probably died".
+ */
+.run-history__stale-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 5px;
+  border: 1px solid color-mix(in srgb, var(--status-waiting) 52%, transparent);
+  border-radius: 999px;
+  color: color-mix(in srgb, var(--status-waiting) 90%, var(--text));
+  background: color-mix(in srgb, var(--status-waiting) 14%, transparent);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.run-history__stale-tag > svg {
+  width: 10px;
+  height: 10px;
+}
+
+.run-history__row.is-live[data-stale="true"]:not(.is-selected) {
+  border-color: color-mix(in srgb, var(--status-waiting) 42%, transparent);
+  background: color-mix(in srgb, var(--status-waiting) 7%, transparent);
+  box-shadow: inset 2px 0 var(--status-waiting);
+}
+
+/* The recorded end cause, next to the status word. */
+.run-history__reason {
+  color: color-mix(in srgb, var(--status-failed) 72%, var(--muted));
+  font-style: normal;
+}
+
+.run-history__row.is-selected .run-history__reason {
+  color: var(--selection-text);
+}
+
+/* Explicit "load earlier" control: a short list never auto-loads, so the
+   affordance has to be visible rather than hidden in a sentinel. */
+.run-history__load-earlier {
+  margin: 4px 2px 2px;
+  padding: 6px 8px;
+  border: 1px dashed var(--line-bright);
+  border-radius: 6px;
+  color: var(--muted-soft);
+  background: transparent;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 8px;
+  letter-spacing: 0.08em;
+  transition:
+    border-color 140ms ease,
+    color 140ms ease,
+    background 140ms ease;
+}
+
+.run-history__load-earlier:hover {
+  border-color: var(--selection-border);
+  color: var(--selection-text);
+  background: var(--selection-bg);
 }
 
 .run-history__live-jump:focus-visible {
@@ -1491,18 +2696,33 @@ pre,
 }
 
 .run-history__live-jump > svg {
-  width: 13px;
-  height: 13px;
-  /* Solid running colour so the icon reads clearly against the translucent
-     chip; the dedicated keyframe only pulses opacity/scale/glow (via
-     currentColor) and never dims the hue back to muted. */
-  color: var(--status-running);
-  animation: run-history-live-breathe 1.45s ease-in-out infinite;
+  width: 10px;
+  height: 10px;
+  flex: 0 0 10px;
+  /* The glyph inherits the chip colour in both states: light grey when the
+     filter is off, light violet on the dark armed fill. No pulse — the row's
+     RUNNING capsule already carries "this is happening now". */
+  color: currentColor;
 }
-/* Selected (armed filter) state: the chip is filled with the running colour,
-   so the icon cuts through as the page background and its glow follows. */
-.run-history__live-jump.is-filtering > svg {
-  color: var(--bg);
+
+/* `0 LIVE`: the chip stays in the header — the arm is a preference and the
+   count is part of the panel's state, not an occasional badge — but it goes a
+   shade quieter than a disarmed chip with runs. The armed look still wins:
+   the filter is on, there is just nothing executing. */
+.run-history__live-jump.is-idle:not(.is-filtering) {
+  border-color: var(--line-bright);
+  color: var(--muted);
+  background: transparent;
+}
+
+.run-history__live-jump.is-idle:not(.is-filtering) > svg {
+  color: currentColor;
+}
+
+.run-history__live-jump.is-idle:not(.is-filtering):hover {
+  border-color: var(--selection-border);
+  color: var(--selection-text);
+  background: var(--selection-bg);
 }
 
 .run-history__row > svg {
@@ -1625,8 +2845,10 @@ pre,
   transform: rotate(90deg);
 }
 
+/* Height is measured in RunHistoryItem and capped there (with a small
+ * overshoot tolerance for two- and three-message threads); a CSS max-height
+ * here would clip that measured height again. */
 .run-history__prompt-scroll {
-  max-height: 270px;
   margin: 5px 4px 5px 8px;
   overflow: hidden;
   border-left: 1px solid color-mix(in srgb, var(--blue) 48%, var(--line));
@@ -1690,6 +2912,14 @@ pre,
   padding: 6px 12px;
   flex-direction: column;
   gap: 5px;
+}
+
+/* The N LIVE hint is a definition, not a card: keep it a narrow strip that
+ * opens flush with the chip's bottom-left edge instead of spanning the panel. */
+.run-history__live-hint {
+  max-width: min(264px, calc(100vw - 24px));
+  padding: 8px 10px;
+  line-height: 1.55;
 }
 
 .run-history__tooltip strong {
@@ -1930,6 +3160,24 @@ pre,
   text-align: center;
 }
 
+/* The armed Live filter's empty state answers "nothing is running" and names
+ * the way out; two lines, because a single sentence wrapped into the same
+ * muted grey read as "the panel failed to load". */
+.run-history__empty > strong,
+.run-history__empty > span {
+  display: block;
+}
+
+.run-history__empty > strong {
+  color: var(--text);
+  font-weight: var(--weight-strong);
+}
+
+.run-history__empty > span {
+  margin-top: 4px;
+  font-size: var(--text-overline);
+}
+
 .run-history__more {
   height: 1px;
   min-height: 1px;
@@ -1987,10 +3235,6 @@ pre,
 
 .dark .platform-icon--zcode {
   color: #e4e4e7;
-}
-
-.platform-icon--gpt {
-  color: #74aa9c;
 }
 
 .platform-icon--gemini {
@@ -2133,9 +3377,22 @@ pre,
   overflow: visible;
   opacity: 1;
   filter: saturate(1);
+  /* The canvas is committed as soon as the layout resolves, so it fades in
+     instead of waiting out a fixed skeleton delay. Opacity only: the element
+     carries an inline translate() for the live pan. */
+  animation: runtime-canvas-enter 190ms ease-out;
   transition:
     opacity 210ms ease,
     filter 210ms ease;
+}
+
+@keyframes runtime-canvas-enter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .runtime-canvas-fit.is-reflowing {
@@ -2845,7 +4102,10 @@ pre,
   width: 100%;
   height: 100%;
   min-height: 0;
-  grid-template-rows: 58px 78px minmax(0, 1fr);
+  /* Header, lane overview, atom list. The overview keeps a deliberately wide,
+   * short lane strip: its marks are the primary way to scan a long run, but
+   * they should stay compact so the atom list below gets the vertical room. */
+  grid-template-rows: 58px 86px minmax(0, 1fr);
   overflow: hidden;
   background: var(--bg);
 }
@@ -2921,14 +4181,14 @@ pre,
   background: color-mix(in srgb, var(--panel) 44%, var(--bg));
   color: var(--muted);
   font-family: var(--font-mono);
-  font-size: 7px;
+  font-size: 8px;
   text-transform: uppercase;
 }
 
 .trajectory-map__labels,
 .trajectory-map__track-content {
   display: grid;
-  gap: 4px;
+  gap: 6px;
 }
 
 .trajectory-map__labels {
@@ -2937,7 +4197,7 @@ pre,
 
 .trajectory-map__labels span {
   display: flex;
-  height: 17px;
+  height: 16px;
   align-items: center;
   font-weight: var(--weight-strong);
 }
@@ -2961,10 +4221,13 @@ pre,
   scrollbar-color: var(--line-bright) transparent;
   scrollbar-gutter: stable;
   scrollbar-width: thin;
+  /* Push the thin scrollbar clear of the lane marks so it reads as a separate
+   * control rather than hugging the blocks. */
+  padding-bottom: 4px;
 }
 
 .trajectory-map__tracks::-webkit-scrollbar {
-  height: 5px;
+  height: 3px;
 }
 
 .trajectory-map__tracks::-webkit-scrollbar-thumb {
@@ -2973,14 +4236,47 @@ pre,
 }
 
 .trajectory-map__track-content {
+  position: relative;
   width: 100%;
+}
+
+/*
+ * Where the reader currently is in the run: one vertical guide through every
+ * lane at the selected (or executing) slot, labelled with its position. The
+ * slot minimum width makes long runs scroll instead of compressing, and this
+ * cursor keeps the "which part of the flow" question answerable while it does.
+ */
+.trajectory-map__cursor {
+  position: absolute;
+  z-index: 4;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: color-mix(in srgb, var(--selection-border) 62%, transparent);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--selection-glow) 55%, transparent);
+  pointer-events: none;
+}
+
+.trajectory-map__cursor-label {
+  position: absolute;
+  top: -2px;
+  left: 50%;
+  padding: 1px 4px;
+  border-radius: 3px;
+  color: var(--bg);
+  background: var(--selection-border);
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  transform: translateX(-50%);
+  white-space: nowrap;
 }
 
 .trajectory-map__track-content i {
   --lane-tone: var(--blue);
 
   position: relative;
-  height: 17px;
+  height: 16px;
   overflow: hidden;
   border-block: 1px solid
     color-mix(in srgb, var(--lane-tone) 42%, var(--chrome-line));
@@ -3009,12 +4305,12 @@ pre,
   position: absolute;
   top: 50%;
   left: var(--segment-left);
-  width: max(6px, calc(var(--segment-width) - 3px));
-  min-width: 6px;
-  height: 8px;
+  width: max(22px, calc(var(--segment-width) - 3px));
+  min-width: 22px;
+  height: 10px;
   border: 1px solid
     color-mix(in srgb, var(--segment-tone) 84%, var(--chrome-line));
-  border-radius: 2px;
+  border-radius: 3px;
   background: color-mix(in srgb, var(--segment-tone) 92%, transparent);
   box-shadow:
     0 0 8px color-mix(in srgb, var(--segment-tone) 46%, transparent),
@@ -3040,6 +4336,23 @@ pre,
   outline-offset: 1px;
   background: color-mix(in srgb, var(--segment-tone) 72%, white);
   animation: trajectory-segment-pulse 1.05s ease-in-out infinite;
+}
+
+/* Aggregated slots stand for a node range: a hatched fill hints at "several
+   events in one mark" without needing a second dimension. */
+.trajectory-map b.is-aggregate {
+  background:
+    repeating-linear-gradient(
+      115deg,
+      color-mix(in srgb, var(--segment-tone) 92%, transparent) 0 1px,
+      color-mix(in srgb, var(--segment-tone) 62%, transparent) 1px 3px
+    );
+}
+
+.trajectory-map b.is-failed {
+  box-shadow:
+    0 0 10px color-mix(in srgb, var(--red) 70%, transparent),
+    inset 0 0 5px color-mix(in srgb, white 14%, transparent);
 }
 
 .tone-bg-prompt {
@@ -3070,29 +4383,53 @@ pre,
   overflow: auto;
 }
 
+/* A turn is a block, not just a divider: the whole section carries an
+   accent-tinted ground so consecutive turns read as separate regions even
+   before the sticky header scrolls into view. */
+.trajectory-turn {
+  background: color-mix(in srgb, var(--accent) 22%, var(--panel));
+}
+
 .trajectory-turn > header {
   position: sticky;
   z-index: 5;
   top: 0;
   display: flex;
-  min-height: 32px;
+  min-height: 34px;
   align-items: center;
   gap: 9px;
   padding: 0 14px;
   border-block: 1px solid var(--chrome-line);
   color: var(--muted);
-  background: color-mix(in srgb, var(--panel) 94%, var(--bg));
+  /* Accent-tinted bar with a hard accent edge on the left: the boundary has
+     to survive scrolling over rows and read as a section header, not a stray
+     hairline. The accent hue itself is theme-specific. */
+  background: color-mix(in srgb, var(--accent) 62%, var(--panel));
+  box-shadow: inset 3px 0 var(--trajectory-turn-accent);
   font-family: var(--font-mono);
   font-size: 8px;
 }
 
+/* The turn number is a badge: it is the anchor users scan for when jumping
+   between turns, so it pops on an accent chip instead of drowning in the
+   muted header text. */
 .trajectory-turn > header strong {
-  color: var(--muted-soft);
-  font-size: 8px;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  padding: 2px 7px;
+  border: 1px solid
+    color-mix(in srgb, var(--trajectory-turn-accent) 45%, transparent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--trajectory-turn-accent) 16%, transparent);
+  color: color-mix(in srgb, var(--trajectory-turn-accent) 78%, var(--text));
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
 }
 
 .trajectory-turn > header span {
-  color: var(--muted);
+  color: color-mix(in srgb, var(--accent-foreground) 82%, var(--muted));
 }
 
 .trajectory-row {
@@ -3917,36 +5254,44 @@ pre,
   animation: dot-breathe 2.2s ease-in-out infinite;
 }
 
+/* Log edge controls live in the header row. They used to float over the list,
+   where the top chevron sat on the first visible atom — the row a reader had
+   just scrolled to was half covered by a button. */
+.atomic-log__scroll-controls {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+}
+
 .atomic-log__scroll-button {
-  position: absolute;
-  z-index: 12;
-  left: 50%;
-  width: 36px;
-  height: 28px;
-  border-color: color-mix(in srgb, var(--selection-border) 48%, var(--line-bright));
-  border-radius: 99px;
-  color: var(--selection-muted);
-  background: color-mix(in srgb, var(--panel-raised) 90%, transparent);
-  box-shadow:
-    0 8px 18px rgb(0 0 0 / 30%),
-    inset 0 0 0 1px color-mix(in srgb, var(--selection-border) 8%, transparent);
-  backdrop-filter: blur(10px);
-  transform: translateX(-50%);
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--line-bright);
+  border-radius: 5px;
+  color: var(--muted-soft);
+  background: transparent;
+  cursor: pointer;
+  transition:
+    color 120ms ease,
+    border-color 120ms ease,
+    background 120ms ease;
 }
 
-.atomic-log__scroll-button--top {
-  top: 8px;
-}
-
-.atomic-log__scroll-button--bottom {
-  bottom: 8px;
+.atomic-log__scroll-button > svg {
+  width: 12px;
+  height: 12px;
 }
 
 .atomic-log__scroll-button:hover {
   border-color: var(--selection-border);
   color: var(--selection-text);
   background: var(--selection-bg);
-  box-shadow: 0 0 16px var(--selection-glow);
 }
 
 .atomic-log__scroll-button--top:hover svg {
@@ -4327,6 +5672,17 @@ pre,
 
 .json-viewer__empty {
   color: var(--muted);
+}
+
+/* The drawer needs to read as a layer over the console, not as a column that
+ * happens to sit on the right: a deep scrim pushes the topology and the log
+ * back without the per-repaint cost of a backdrop blur. */
+.atom-guide__overlay {
+  background: rgb(4 6 10 / 58%);
+}
+
+:root[data-theme="light"] .atom-guide__overlay {
+  background: rgb(10 14 20 / 34%);
 }
 
 .atom-guide {
@@ -4781,6 +6137,11 @@ pre,
 
 .atom-guide__atom-group {
   margin-top: 16px;
+  /* The catalog can carry dozens of atoms per domain. Skip layout and paint
+     for groups below the fold — the drawer opens fast and scrolling fills
+     them in on demand. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 240px;
 }
 
 .atom-guide__atom-group h3 {
@@ -5007,25 +6368,6 @@ pre,
   }
 }
 
-/* Breathing treatment for the N LIVE chip's Radio icon. Unlike the shared
-   active-status-icon-breathe (which blends the hue back to --muted at the
-   trough, so the icon nearly vanishes), this keyframe keeps the colour solid
-   (currentColor) and only modulates opacity, scale and a soft glow — so the
-   icon is always clearly visible while still visibly "breathing". */
-@keyframes run-history-live-breathe {
-  0%,
-  100% {
-    opacity: 0.78;
-    transform: scale(0.92);
-    filter: drop-shadow(0 0 1px color-mix(in srgb, currentColor 45%, transparent));
-  }
-  50% {
-    opacity: 1;
-    transform: scale(1.18);
-    filter: drop-shadow(0 0 6px color-mix(in srgb, currentColor 78%, transparent));
-  }
-}
-
 @keyframes loader-spin {
   to {
     transform: rotate(360deg);
@@ -5227,8 +6569,26 @@ pre,
     font-size: var(--text-meta);
   }
 
+  /* The uptime chip needs room the collapsed header does not have; the same
+   * facts stay reachable through the nav panel's "Restart service" action. */
+  .studio-header__actions .service-status {
+    display: none;
+  }
+
   .studio-header__actions .theme-select {
     width: 100%;
+  }
+
+  /* The icon group is one row, so its theme switcher keeps the square size
+   * the other rows do not need. */
+  .studio-header__actions .header-icon-group {
+    justify-content: flex-start;
+    gap: 8px;
+    padding: 2px 8px 6px;
+  }
+
+  .studio-header__actions .header-icon-group .theme-select {
+    width: 28px;
   }
 
   .nav-menu__group {
@@ -5412,7 +6772,7 @@ pre,
   }
 
   .trajectory-view {
-    grid-template-rows: 82px 78px minmax(0, 1fr);
+    grid-template-rows: 82px 104px minmax(0, 1fr);
   }
 
   .trajectory-header hgroup {

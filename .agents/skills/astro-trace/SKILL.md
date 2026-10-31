@@ -41,7 +41,7 @@ tail -n 1 ~/.astrox/zcode/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
 
 ## Local server and dashboard
 
-The server (default `http://127.0.0.1:4318`, override with `ASTRO_PORT`)
+The server (default `http://127.0.0.1:5678`, override with `ASTRO_PORT`)
 watches every source directory and streams updates over SSE:
 
 - `GET /api/health` — source of truth for `dataRoot`, `traceFiles`,
@@ -75,7 +75,7 @@ The `astro-trace` binary (repository `bin/astro.mjs`) supports:
    `claude plugin list`, or the matching client equivalent.
 2. Check `<ASTRO_HOME>/<source>/` exists and has fresh session directories;
    only clients that emitted at least one event have data files.
-3. Run `curl -s http://127.0.0.1:4318/api/health` and confirm `dataRoot`
+3. Run `curl -s http://127.0.0.1:5678/api/health` and confirm `dataRoot`
    matches the client's `ASTRO_HOME` and `eventCount` increases after a new
    prompt.
 4. Recorder failures never block the agent; they write

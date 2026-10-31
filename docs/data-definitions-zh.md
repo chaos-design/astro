@@ -53,7 +53,7 @@
 | `toolUseId` | string \| null | 是 | 工具开始与结果的关联键。 |
 | `toolName` | string \| null | 是 | 工具、函数或来源 item 类型。 |
 | `cwd` | string \| null | 是 | 事件发生时的工作目录或浏览器上下文 URL。 |
-| `status` | string \| null | 是 | 来源状态或 ASTRO 推断的 `failed`。 |
+| `status` | string \| null | 是 | 来源状态；缺省时按规范事件名补 `failed`（`PostToolUseFailure`、`StopFailure`）或 `interrupted`（`Interrupt`）。 |
 | `sequence` | number \| null | 是 | 来源可选序号，无可靠序号时为 `null`。 |
 | `payload` | object | 是 | 脱敏后的来源业务载荷与补充字段。 |
 | `locator` | string | 是 | 可复制定位符 `trace://source/session/event`。 |
@@ -115,6 +115,11 @@
 | `failed` | 失败信号，保持到后续进展、Prompt 或终态证据出现。 |
 | `complete` | `Stop`（只结束当前回答）。 |
 | `terminated` | `Interrupt`、`SessionEnd` 或等价终止证据。 |
+
+异常的判定顺序为 **终止 > 等待 > 失败 > 停止 > 恢复**：工具失败与用户拒绝是可
+恢复的 `failed`，轮次失败（`StopFailure`、`Stop` + `failed`）与中止是终态，限流类
+失败派生 `waiting`。完整边界、各客户端入口与载荷规则见《ASTRO 事件协议参考》
+§4.1，读取端分类实现在 `src/lib/exception-events.ts`。
 
 ### 7.2 Prompt 子运行
 

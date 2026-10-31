@@ -48,11 +48,11 @@ pnpm build
 pnpm start
 ```
 
-默认地址是 `http://127.0.0.1:4318`。如果端口被占用，服务最多尝试后续 20 个端口，并在终端输出最终 URL。
+默认地址是 `http://127.0.0.1:5678`。如果端口被占用，服务最多尝试后续 20 个端口，并在终端输出最终 URL。
 
 ### 3.3 开发模式
 
-Vite 从环境读取 `ASTRO_HOST` 和 `ASTRO_PORT`，默认代理到 `http://127.0.0.1:4318`：
+Vite 从环境读取 `ASTRO_HOST` 和 `ASTRO_PORT`，默认代理到 `http://127.0.0.1:5678`：
 
 ```bash
 # 终端 1
@@ -82,7 +82,7 @@ ASTRO_PORT=4320 pnpm dev
     dist/
     plugin/
     server/
-  dashboard-4318.pid
+  dashboard-5678.pid
   trae/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
   claude/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
   codex/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
@@ -123,7 +123,7 @@ find "$HOME/.astrox" -type f -name events.jsonl -print
 | 变量 | 默认值 | 用途 |
 | --- | --- | --- |
 | `ASTRO_HOST` | `127.0.0.1` | HTTP/SSE 监听地址和 Vite 代理主机。 |
-| `ASTRO_PORT` | `4318` | 首选服务端口和 PID 文件名中的端口。 |
+| `ASTRO_PORT` | `5678` | 首选服务端口和 PID 文件名中的端口。 |
 | `ASTRO_HOME` | `~/.astrox` | 运行时和按来源组织的数据根目录。 |
 | `ASTRO_TRACE_DIR` | 未设置 | 覆盖 Trace 目录；可为绝对或相对路径。 |
 | `ASTRO_PROJECT_DIR` | 当前目录 | 解析相对 `ASTRO_TRACE_DIR` 的基准。 |
@@ -135,6 +135,10 @@ find "$HOME/.astrox" -type f -name events.jsonl -print
 采集器、CLI、服务、安装器、DeepSeek 适配器和 Vite 代理统一读取这两个文件。
 
 新变量优先于兼容变量。`AOT_HOME`、`AGENT_TRACE_*` 和 `TRAE_TRACE_*` 只用于升级兼容。
+
+旧版本生成的配置仍带着已退役的默认端口 `4318`。服务初始化插件目录时只会把
+这一个值改写为 `5678`，同时报告 `CONFIG_PORT_MIGRATED`，其余设置原样保留。
+如需保留其他端口，请设置 `ASTRO_PORT`，或把 `server.port` 改成别的值。
 
 实时运行超时是前端构建时策略，不是进程环境变量。修改
 `src/config/app-config.ts` 中的 `appTimings.activeRunTimeoutMs` 可调整阈值，
@@ -207,7 +211,7 @@ PID 文件是避免重复启动的协调信息，不是 Trace 数据。进程异
 ### 7.1 HTTP 健康状态
 
 ```bash
-curl -s http://127.0.0.1:4318/api/health
+curl -s http://127.0.0.1:5678/api/health
 ```
 
 关键字段：
@@ -216,19 +220,53 @@ curl -s http://127.0.0.1:4318/api/health
 | --- | --- |
 | `status` | 正常时为 `ok`。 |
 | `pid` | 当前本地服务进程。 |
-| `url` | 服务最终监听 URL。 |
+| `url` / `host` / `port` | 服务最终监听地址（重启会保留同一端口）。 |
+| `startedAt` | 当前进程的启动时间。 |
+| `uptimeMs` | 已运行时长。 |
+| `bootMs` | 启动耗时：进程启动到开始监听，包含读取全部 JSONL 的时间。 |
+| `restartCount` / `restartedAt` | 通过页内重启按钮接手的次数与最近一次时间。 |
+| `eventCount` | Repository 当前聚合事件数（O(1)，可直接轮询）。 |
+| `sessionCounts` | 服务端按会话推导的状态计数：`active` / `waiting` / `complete` / `failed` / `terminated`。 |
 | `clientCount` | 当前 SSE 客户端数量。 |
-| `eventCount` | Repository 当前聚合事件数。 |
 | `dataRoot` | 服务实际扫描的数据根目录。 |
 | `traceFiles` | 当前已发现的所有 JSONL 文件。 |
+| `build` / `node` | 服务版本与 Node 运行时。`build` 依次读 `package.json`（源码运行）和安装目录的 `plugin.json`（安装版），两者都读不到时为 `unknown`。 |
 
-`dataRoot` 和 `traceFiles` 是判断路径是否一致的权威依据。
+`dataRoot` 和 `traceFiles` 是判断路径是否一致的权威依据。页面右上角的运行时长胶囊
+读取的就是本接口；展开后是一张分组卡片：**版本**（控制台当前构建 vs 服务 `build`，
+不一致会提示刷新或重启）、**进程**（启动时间、启动耗时、重启次数、SSE 客户端数）、
+**数据**（事件数、轨迹文件数、完整数据根目录）、**会话**（五个状态各自的计数），
+底部提供“重启本地服务”按钮。卡片里的“会话”计数是录制器上报的原始状态，RUN HISTORY
+的 `N LIVE` 还要求最近有活动，两者可能不同。`build = unknown` 表示服务启动时既没有
+`package.json` 也没有 `plugin.json`，页面会显示「未上报」并说明原因。
+
+### 7.1.1 会话状态
+
+```bash
+curl -s http://127.0.0.1:5678/api/sessions
+```
+
+返回服务端维护的会话摘要，字段包括 `state`、`reason`（`completed` / `interrupted` /
+`session-end` / 失败原因）、`eventCount`、`lastEventAt` 与 `lastEventName`。
+
+页面本身仍然从原始事件派生展示状态（UI 不写回事件）；该接口的价值在于**不打开页面也能
+确认某个会话是真的结束、异常还是仍在执行**，并让“静默中的 active 会话”有对照依据。
+
+### 7.1.2 就地重启
+
+```bash
+curl -s -X POST http://127.0.0.1:5678/api/restart
+```
+
+服务会派生出继承同一端口的后继进程，然后退出；SSE 客户端随后自动重连并重新拉取
+`reset` 快照。`ASTRO_RESTART_COUNT` / `ASTRO_RESTARTED_AT` 会传递给后继进程，因此
+`/api/health` 能给出重启次数与上次重启时间。
 
 ### 7.2 事件与流
 
 ```bash
-curl -s http://127.0.0.1:4318/api/events
-curl -N http://127.0.0.1:4318/api/stream
+curl -s http://127.0.0.1:5678/api/events
+curl -N http://127.0.0.1:5678/api/stream
 ```
 
 SSE 首先应出现 `reset`，随后是 `ready`。新事件产生后出现 `trace`。服务声明 1 秒重连间隔；重连时再次发送完整 `reset`，用于补齐断线期间遗漏事件。
@@ -353,6 +391,23 @@ astro-trace update
 
 `--no-deepseek` 可跳过刷新 DeepSeek 插件运行时；`--astro-home /path/to/.astrox` 可覆盖默认数据根。该命令是一次「内容刷新」：把新的运行时文件重新复制到现有 `<ASTRO_HOME>/plugins/astro`，并按当前版本重写 `plugin.json`；若该路径从未安装过则直接报错而不是静默创建。
 
+### 11.1 已安装副本与当前构建不一致
+
+仪表盘跑的是 `<ASTRO_HOME>/plugins/astro` 里的**副本**，不是仓库本身。只 `git pull` + `pnpm build` 而不刷新副本，面板会继续使用旧 `dist`——表现为「界面上某个已发布功能不见了」，但源码和构建产物都在。
+
+排查顺序：
+
+```bash
+astrox status          # plugin build 行给出 STALE v<旧> ≠ CLI v<新>
+astrox update          # 重写副本内容（保留 Hook、.env 与已捕获数据）
+astrox restart         # 重启守护进程，加载新 server 与 dist
+```
+
+- `astrox status` 的 `plugin build` 行比对副本 `plugin.json` 的版本与 CLI 版本，不一致即标记 `STALE` 并给出修复命令；`dashboard` 行同时显示运行中实例的版本与来源路径，`other` 行列出同 `ASTRO_HOME` 下其他端口上的实例。
+- `astrox start` 检测到副本落后时，会在启动前自动刷新副本（不动 DeepSeek 插件），并按配置端口启动；若该端口已有旧副本在跑，会提示改用 `astrox restart`。
+- `astrox start/stop/restart` 只作用于配置端口（`server.port`，可用 `--port` 覆盖）对应的实例，不会因为其他端口上存在同 `ASTRO_HOME` 的实例而误判「已在运行」或误杀。
+- 同一 `ASTRO_HOME` 下允许并存多个实例（例如另一个 checkout 或插件缓存），它们各自服务自己的副本，`astrox status` 会把非配置端口的实例单列为 `other`。
+
 升级前后检查：
 
 1. `/api/health.dataRoot` 未意外改变；
@@ -394,7 +449,7 @@ astro-trace update
 | Hook 报未记录 | `ASTRO_HOME` 权限和磁盘状态 | 修复写权限/空间后重新触发；历史来源可再导入。 |
 | 事件重复 | 是否同时安装原生插件和直接 Hook | 每个客户端只保留一种接入方式。 |
 | 清空后重新出现 | 运行中的 Hook 仍在追加 | 先停止 Agent，再执行清空。 |
-| 端口不是 4318 | 首选端口被占用 | 使用终端或 PID 中的实际 URL，或释放端口。 |
+| 端口不是 5678 | 首选端口被占用 | 使用终端或 PID 中的实际 URL，或释放端口。 |
 | active 时长不动 | 会话状态、超时阈值和页面 JS | 检查最新事件是否是新的提示词、页面 JS 是否运行；默认达到 24 小时并显示 `terminated` 属于预期行为。 |
 | 父行 waiting，但子行时长仍增加 | 最新 Prompt 是否是等待状态 | 属于预期：父行仅在 active 时增加，waiting 子行继续独立计时直到超时。 |
 | terminated 状态没有对应 JSONL 事件 | 显示时长是否等于超时阈值 | 属于派生状态；通过 Raw/导出排除显式 interrupt 或 cancel 证据。 |

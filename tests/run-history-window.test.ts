@@ -1,13 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  DEFAULT_RUN_HISTORY_DAYS,
+  DEFAULT_RUN_HISTORY_HOURS,
   OTHERS_AGENT_ID,
-  canLoadMoreRunHistoryDays,
+  canLoadMoreRunHistory,
   filterSessionsByAgent,
-  getRunHistoryAnchorDayStart,
+  getRunHistoryAnchorTime,
   getRunHistoryWindowStart,
-  nextRunHistoryVisibleDays,
+  nextRunHistoryVisibleHours,
+  pinLiveRunHistory,
+  selectLiveRunHistory,
   selectVisibleRunHistory,
 } from "../src/lib/run-history-window.ts";
 import type { TraceSession } from "../src/types/trace.ts";
@@ -29,80 +31,187 @@ function session(start: number, source = "codex"): TraceSession {
   };
 }
 
-// A fixed "now" on 2026-10-09 14:00 local; window math is calendar-day based.
+// A fixed "now" on 2026-10-09 14:00 local; the window is measured in hours.
 const NOW = Date.parse("2026-10-09T14:00:00");
+const HOUR = 3_600_000;
 
 test("exposes stable window constants", () => {
-  assert.equal(DEFAULT_RUN_HISTORY_DAYS, 1);
+  assert.equal(DEFAULT_RUN_HISTORY_HOURS, 3);
   assert.equal(OTHERS_AGENT_ID, "others");
 });
 
-test("anchor day is the most recent day with data, else today", () => {
+test("anchors the window on the newest message, else on now", () => {
   const sessions = [
     session(Date.parse("2026-10-06T08:00:00")),
     session(Date.parse("2026-10-08T21:00:00")),
   ];
   assert.equal(
-    getRunHistoryAnchorDayStart(sessions, NOW),
-    Date.parse("2026-10-08T00:00:00"),
+    getRunHistoryAnchorTime(sessions, NOW),
+    Date.parse("2026-10-08T21:00:00"),
   );
-  assert.equal(
-    getRunHistoryAnchorDayStart([], NOW),
-    Date.parse("2026-10-09T00:00:00"),
-  );
+  // Nothing recorded yet: the window follows the wall clock.
+  assert.equal(getRunHistoryAnchorTime([], NOW), NOW);
 });
 
-test("window start counts back from the anchor data day", () => {
+test("window start counts back from the anchor, not from midnight", () => {
   const sessions = [
     session(Date.parse("2026-10-08T21:00:00")),
     session(Date.parse("2026-10-05T08:00:00")),
   ];
-  // Default single day shows only the most recent data day, even when today
-  // (2026-10-09) has no runs for this agent.
+  const anchor = Date.parse("2026-10-08T21:00:00");
+
+  assert.equal(getRunHistoryWindowStart(sessions, NOW, 3), anchor - 3 * HOUR);
   assert.equal(
-    getRunHistoryWindowStart(sessions, NOW, 1),
-    Date.parse("2026-10-08T00:00:00"),
+    getRunHistoryWindowStart(sessions, NOW, 168),
+    anchor - 168 * HOUR,
   );
-  assert.equal(
-    getRunHistoryWindowStart(sessions, NOW, 3),
-    Date.parse("2026-10-06T00:00:00"),
+});
+
+test("shows the default range even when the newest message is old", () => {
+  // The message arrived 14 hours ago; a wall-clock anchored 3h window would be
+  // empty, which is exactly the "opened it in the morning and saw nothing"
+  // failure the anchor exists to prevent.
+  const lastNight = session(Date.parse("2026-10-09T00:00:00"));
+  assert.deepEqual(
+    selectVisibleRunHistory([lastNight], NOW, 3).map((entry) => entry.key),
+    [lastNight.key],
   );
 });
 
 test("selects only sessions inside the visible window", () => {
   const sessions = [
-    session(Date.parse("2026-10-09T08:00:00")),
-    session(Date.parse("2026-10-08T08:00:00")),
-    session(Date.parse("2026-10-07T08:00:00")),
+    session(NOW - 1 * HOUR),
+    session(NOW - 5 * HOUR),
+    session(NOW - 30 * HOUR),
   ];
-  const visible = selectVisibleRunHistory(sessions, NOW, 1);
-  assert.equal(visible.length, 1);
-  assert.equal(visible[0].start, Date.parse("2026-10-09T08:00:00"));
-  const twoDays = selectVisibleRunHistory(sessions, NOW, 2);
-  assert.equal(twoDays.length, 2);
+  // The anchor is the newest message, so a 3-hour window reaches back to
+  // four hours ago here; the older runs stay outside it.
+  const visible = selectVisibleRunHistory(sessions, NOW, 3);
+  assert.deepEqual(
+    visible.map((entry) => entry.start),
+    [NOW - 1 * HOUR],
+  );
+  const wider = selectVisibleRunHistory(sessions, NOW, 6);
+  assert.deepEqual(
+    wider.map((entry) => entry.start),
+    [NOW - 1 * HOUR, NOW - 5 * HOUR],
+  );
 });
 
-test("reports whether earlier days remain", () => {
-  const sessions = [
-    session(Date.parse("2026-10-09T08:00:00")),
-    session(Date.parse("2026-10-07T08:00:00")),
-  ];
-  assert.equal(canLoadMoreRunHistoryDays(sessions, NOW, 1), true);
-  // Two days covers Oct 8-9; the Oct 7 run is still outside the window.
-  assert.equal(canLoadMoreRunHistoryDays(sessions, NOW, 2), true);
-  // Three days reaches the anchor day plus the older run -> no more to load.
-  assert.equal(canLoadMoreRunHistoryDays(sessions, NOW, 3), false);
+test("keeps an executing run visible outside the window", () => {
+  const recent = session(NOW - 1 * HOUR);
+  // A resumed session keeps the start of its first prompt, so the window
+  // would drop the run that is executing right now.
+  const resumed = session(NOW - 72 * HOUR);
+  resumed.status = "active";
+
+  assert.deepEqual(
+    selectVisibleRunHistory([recent, resumed], NOW, 3).map(
+      (entry) => entry.key,
+    ),
+    [recent.key],
+  );
+  assert.deepEqual(
+    selectVisibleRunHistory(
+      [recent, resumed],
+      NOW,
+      3,
+      new Set([resumed.key]),
+    ).map((entry) => entry.key),
+    [recent.key, resumed.key],
+  );
 });
 
-test("advances the window by one day and clamps when exhausted", () => {
+test("pins the executing run above runs that started later", () => {
+  const resumed = session(Date.parse("2026-10-09T08:00:00"));
+  const later = session(Date.parse("2026-10-09T10:00:00"));
+  const newest = session(Date.parse("2026-10-09T11:30:00"));
+  // The resumed session received a new prompt at 13:00, so it is live now.
+  resumed.end = Date.parse("2026-10-09T13:00:00");
+
+  assert.deepEqual(
+    pinLiveRunHistory([newest, later, resumed], new Set([resumed.key])).map(
+      (entry) => entry.key,
+    ),
+    [resumed.key, newest.key, later.key],
+  );
+
+  // Several executing runs: the one that received the latest message leads.
+  const other = session(Date.parse("2026-10-05T08:00:00"));
+  other.end = Date.parse("2026-10-09T14:00:00");
+  assert.deepEqual(
+    pinLiveRunHistory(
+      [resumed, other, newest],
+      new Set([resumed.key, other.key]),
+    ).map((entry) => entry.key),
+    [other.key, resumed.key, newest.key],
+  );
+});
+
+test("keeps the newest-first order while nothing is executing", () => {
+  const first = session(Date.parse("2026-10-09T11:00:00"));
+  const second = session(Date.parse("2026-10-09T10:00:00"));
+
+  assert.deepEqual(
+    pinLiveRunHistory([first, second], new Set()).map((entry) => entry.key),
+    [first.key, second.key],
+  );
+});
+
+test("the Live filter keeps only the executing messages, whole history included", () => {
+  // The Live filter reads the agent's entire history, not the time window:
+  // time window: a session resumed a minute ago still carries the start of its
+  // first prompt, so a windowed pool would drop exactly what is running.
+  const ancient = session(Date.parse("2026-09-01T08:00:00"));
+  const recent = session(NOW - HOUR);
+  ancient.status = "active";
+  ancient.end = NOW;
+
+  assert.deepEqual(
+    selectLiveRunHistory([recent, ancient], new Set([ancient.key])).map(
+      (entry) => entry.key,
+    ),
+    [ancient.key],
+  );
+
+  // Two executing runs lead with the one that received the latest message.
+  const other = session(NOW - 48 * HOUR);
+  other.end = NOW + 1_000;
+  assert.deepEqual(
+    selectLiveRunHistory(
+      [recent, ancient, other],
+      new Set([ancient.key, other.key]),
+    ).map((entry) => entry.key),
+    [other.key, ancient.key],
+  );
+});
+
+test("an armed Live filter with nothing executing selects nothing", () => {
+  // Not a fallback to the full list: the chip promises a filter, and an empty
+  // answer is what the panel renders as "nothing is running".
+  const finished = session(NOW - HOUR);
+  assert.deepEqual(selectLiveRunHistory([finished], new Set()), []);
+});
+
+test("reports whether earlier messages remain", () => {
   const sessions = [
-    session(Date.parse("2026-10-09T08:00:00")),
-    session(Date.parse("2026-10-06T08:00:00")),
+    session(NOW - 1 * HOUR),
+    session(NOW - 10 * HOUR),
   ];
-  assert.equal(nextRunHistoryVisibleDays(sessions, NOW, 1), 2);
-  assert.equal(nextRunHistoryVisibleDays(sessions, NOW, 3), 4);
-  // 4 days covers everything -> stays put.
-  assert.equal(nextRunHistoryVisibleDays(sessions, NOW, 4), 4);
+  assert.equal(canLoadMoreRunHistory(sessions, NOW, 3), true);
+  // 12 hours reaches the 10-hour-old run -> nothing older left.
+  assert.equal(canLoadMoreRunHistory(sessions, NOW, 12), false);
+});
+
+test("widens the window by doubling and clamps when exhausted", () => {
+  const sessions = [
+    session(NOW - 1 * HOUR),
+    session(NOW - 10 * HOUR),
+  ];
+  assert.equal(nextRunHistoryVisibleHours(sessions, NOW, 3), 6);
+  assert.equal(nextRunHistoryVisibleHours(sessions, NOW, 6), 12);
+  // Everything is inside 12 hours -> stays put.
+  assert.equal(nextRunHistoryVisibleHours(sessions, NOW, 12), 12);
 });
 
 test("filters sessions to a configured agent source", () => {

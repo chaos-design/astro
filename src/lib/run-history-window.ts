@@ -8,28 +8,32 @@ import type { TraceSession } from "@/types/trace";
 export const OTHERS_AGENT_ID = "others";
 
 /**
- * RUN HISTORY loads on demand: the most recent {@link DEFAULT_RUN_HISTORY_DAYS}
- * day(s) are visible first, and scrolling further reveals one additional day
- * at a time instead of loading every historical run up front.
+ * RUN HISTORY shows a rolling time window instead of a calendar page: the most
+ * recent {@link DEFAULT_RUN_HISTORY_HOURS} hours are visible first and the
+ * window widens only when the user asks for more.
+ *
+ * The default lives in Settings (`appDefaults.historyRange`); this constant is
+ * the fallback the window helpers use when a caller has no preference at hand.
+ * Hours — not days — because "最近 3 小时" is a span, not a date: the previous
+ * day-based window silently changed length at midnight and could show nothing
+ * at all on the first login of a new day.
  */
-export const DEFAULT_RUN_HISTORY_DAYS = 1;
+export const DEFAULT_RUN_HISTORY_HOURS = 3;
 
-const DAY_MS = 86_400_000;
-
-/** Start-of-day (local midnight) for a timestamp. */
-export function getCalendarDayStart(timestamp: number): number {
-  const day = new Date(timestamp);
-  day.setHours(0, 0, 0, 0);
-  return day.getTime();
-}
+const HOUR_MS = 3_600_000;
 
 /**
- * The day the visible window is anchored to: the most recent day that
- * actually has data for the filtered agent, falling back to today while
- * nothing has been recorded yet.
+ * The moment the visible window ends: the newest message in the pool, falling
+ * back to `now` while nothing has been recorded.
+ *
+ * Anchoring to the newest message rather than to the wall clock is what keeps
+ * the panel useful after an idle night — "the last 3 hours" of a machine whose
+ * last message arrived 14 hours ago are the three hours leading up to it, not
+ * an empty list. A live run is newer than every finished one, so the anchor
+ * follows the message that is executing right now.
  */
-export function getRunHistoryAnchorDayStart(
-  sessions: readonly TraceSession[],
+export function getRunHistoryAnchorTime(
+  sessions: readonly Pick<TraceSession, "start">[],
   now: number,
 ): number {
   let latest = 0;
@@ -38,63 +42,125 @@ export function getRunHistoryAnchorDayStart(
       latest = session.start;
     }
   }
-  return latest > 0 ? getCalendarDayStart(latest) : getCalendarDayStart(now);
+  return latest > 0 ? latest : now;
 }
 
 /**
- * Lower bound of the visible window: `visibleDays` calendar days ending at
- * the anchor day (the most recent day with data). With one day this shows
- * only the anchor day; scrolling back reveals one earlier day at a time.
+ * Lower bound of the visible window: `visibleHours` back from the anchor.
+ * Widening the window (the panel's "load earlier" control) moves this bound
+ * further into the past without moving the anchor.
  */
 export function getRunHistoryWindowStart(
-  sessions: readonly TraceSession[],
+  sessions: readonly Pick<TraceSession, "start">[],
   now: number,
-  visibleDays: number,
+  visibleHours: number = DEFAULT_RUN_HISTORY_HOURS,
 ): number {
   return (
-    getRunHistoryAnchorDayStart(sessions, now) -
-    Math.max(0, visibleDays - 1) * DAY_MS
+    getRunHistoryAnchorTime(sessions, now) -
+    Math.max(0, visibleHours) * HOUR_MS
   );
 }
+
+const NO_LIVE_RUNS: ReadonlySet<string> = new Set();
 
 /**
  * The runs to render: sessions that started within the window, newest first
  * (input is already sorted that way).
+ *
+ * A run that is still executing is always visible, window or not. A resumed
+ * session keeps the `start` of its first prompt, so a message sent into a
+ * two-day-old thread would otherwise be filtered out mid-execution — exactly
+ * when the user is watching it.
  */
 export function selectVisibleRunHistory(
   sessions: readonly TraceSession[],
   now: number,
-  visibleDays: number,
+  visibleHours: number = DEFAULT_RUN_HISTORY_HOURS,
+  liveKeys: ReadonlySet<string> = NO_LIVE_RUNS,
 ): TraceSession[] {
-  const from = getRunHistoryWindowStart(sessions, now, visibleDays);
-  return sessions.filter((session) => session.start >= from);
+  const from = getRunHistoryWindowStart(sessions, now, visibleHours);
+  return sessions.filter(
+    (session) => session.start >= from || liveKeys.has(session.key),
+  );
 }
 
 /**
- * Whether loading one more day would reveal additional runs. True when at
+ * Pin the executing messages to the top of RUN HISTORY. Ordering strictly by
+ * `start` buries a resumed run: the session began hours or days ago, so the
+ * prompt that is executing *right now* would sort below every session that
+ * merely started later. Pinned rows are ordered by their latest activity
+ * (`end` — the moment the new prompt arrived), so the run that just received
+ * a message is the first row; finished rows keep their newest-first order
+ * underneath.
+ */
+export function pinLiveRunHistory<
+  T extends { key: string; start: number; end: number },
+>(sessions: readonly T[], liveKeys: ReadonlySet<string>): T[] {
+  if (liveKeys.size === 0) {
+    return [...sessions];
+  }
+  const live: T[] = [];
+  const finished: T[] = [];
+  for (const session of sessions) {
+    (liveKeys.has(session.key) ? live : finished).push(session);
+  }
+  live.sort(
+    (left, right) => right.end - left.end || right.start - left.start,
+  );
+  return [...live, ...finished];
+}
+
+/**
+ * The Live filter's rows: exactly the messages whose run is executing right now.
+ *
+ * The pool is the agent's *whole* history, not the time window — a session
+ * resumed a minute ago still carries the `start` of its first prompt, so a
+ * windowed pool would drop precisely the message the user is waiting on.
+ *
+ * Zero live runs is a legitimate result and the caller must render it as
+ * such ("nothing is executing"): falling back to the full list would turn a
+ * filter the user armed into "show everything", which is the opposite of what
+ * the `N LIVE` chip promises.
+ */
+export function selectLiveRunHistory<
+  T extends { key: string; start: number; end: number },
+>(sessions: readonly T[], liveKeys: ReadonlySet<string>): T[] {
+  if (liveKeys.size === 0) {
+    return [];
+  }
+  return pinLiveRunHistory(
+    sessions.filter((session) => liveKeys.has(session.key)),
+    liveKeys,
+  );
+}
+
+/**
+ * Whether widening the window would reveal additional runs. True when at
  * least one session started before the current window.
  */
-export function canLoadMoreRunHistoryDays(
-  sessions: readonly TraceSession[],
+export function canLoadMoreRunHistory(
+  sessions: readonly Pick<TraceSession, "start">[],
   now: number,
-  visibleDays: number,
+  visibleHours: number = DEFAULT_RUN_HISTORY_HOURS,
 ): boolean {
-  const from = getRunHistoryWindowStart(sessions, now, visibleDays);
+  const from = getRunHistoryWindowStart(sessions, now, visibleHours);
   return sessions.some((session) => session.start < from);
 }
 
 /**
- * Advance the window by exactly one day, but only while older runs remain.
- * Keeps `current` unchanged once every run is already within the window.
+ * Widen the window by doubling it, but only while older runs remain.
+ *
+ * Doubling rather than adding one more base range keeps the gesture
+ * logarithmic: reaching a week of history from the 3-hour default takes four
+ * "load earlier" steps instead of fifty-six. Keeps `current` unchanged once
+ * every run is already inside the window.
  */
-export function nextRunHistoryVisibleDays(
-  sessions: readonly TraceSession[],
+export function nextRunHistoryVisibleHours(
+  sessions: readonly Pick<TraceSession, "start">[],
   now: number,
   current: number,
 ): number {
-  return canLoadMoreRunHistoryDays(sessions, now, current)
-    ? current + 1
-    : current;
+  return canLoadMoreRunHistory(sessions, now, current) ? current * 2 : current;
 }
 
 /**

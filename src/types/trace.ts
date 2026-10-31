@@ -38,7 +38,10 @@ export type TracePayload = {
   command?: string;
   content?: unknown;
   cwd?: string;
+  denial_reason?: string;
   error?: unknown;
+  error_message?: string;
+  error_type?: string;
   exitCode?: number;
   hook_event_name?: string;
   last_assistant_message?: string;
@@ -202,7 +205,6 @@ export type PlatformId =
   | "claude"
   | "codex"
   | "deepseek"
-  | "gpt"
   | "llama"
   | "pi"
   | "opencode"
@@ -333,6 +335,20 @@ export type TraceRunStatus =
   | "terminated"
   | "waiting";
 
+/**
+ * Why a run stopped. `timeout` is derived at render time (a live run whose
+ * duration passed the active-run timeout); every other value comes from a
+ * recorded event, so a `terminated` row can say what actually ended it
+ * instead of leaving the reader to guess.
+ */
+export type RunTerminalReason =
+  | "aborted"
+  | "completed"
+  | "error"
+  | "interrupted"
+  | "session-end"
+  | "timeout";
+
 export type TraceSession = {
   key: string;
   id: string;
@@ -345,6 +361,9 @@ export type TraceSession = {
   end: number;
   duration: number;
   status: TraceRunStatus;
+  terminalReason?: RunTerminalReason | null;
+  /** Short recorded cause (payload reason / error text) for failed runs. */
+  statusDetail?: string | null;
   toolCount: number;
 };
 
@@ -364,5 +383,7 @@ export type TracePromptRun = {
   end: number;
   duration: number;
   status: TraceRunStatus;
+  terminalReason?: RunTerminalReason | null;
+  statusDetail?: string | null;
   toolCount: number;
 };

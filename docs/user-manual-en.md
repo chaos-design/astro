@@ -1,6 +1,6 @@
 # ASTRO User Manual
 
-> Default URL: `http://127.0.0.1:4318`
+> Default URL: `http://127.0.0.1:5678`
 >
 > Default data root: `~/.astrox` for all clients
 >
@@ -41,7 +41,7 @@ contains the complete legend.
 - A current Node.js LTS release with native ESM support;
 - `pnpm` activated through Corepack;
 - A browser with ES modules, Web Workers, SSE, ResizeObserver, and modern CSS;
-- An available loopback port, starting with `127.0.0.1:4318`.
+- An available loopback port, starting with `127.0.0.1:5678`.
 
 ## 3. Install and Start
 
@@ -55,14 +55,14 @@ pnpm build
 pnpm start
 ```
 
-The server prints its actual URL and data root. If port `4318` is occupied, it
+The server prints its actual URL and data root. If port `5678` is occupied, it
 automatically tries later ports, up to 20 additional values. This path runs the
 production build or supports manual service management. Direct hook installation
 starts and opens the dashboard immediately; `SessionStart` ensures it is open
 for each new Agent session.
 
 Development mode uses separate API and Vite processes. Vite reads the same
-`ASTRO_HOST/ASTRO_PORT` environment and defaults to `127.0.0.1:4318`:
+`ASTRO_HOST/ASTRO_PORT` environment and defaults to `127.0.0.1:5678`:
 
 ```bash
 # Terminal 1: API
@@ -197,7 +197,7 @@ in Trae, then start a new Agent conversation. Events are appended to
 By default, installation starts and opens the dashboard immediately. After a
 client reload or restart, `SessionStart` records the current Agent session,
 checks `<data-root>/dashboard-<port>.pid`, starts the service only when needed,
-and opens the selected session. If `4318` is occupied, the browser opens the
+and opens the selected session. If `5678` is occupied, the browser opens the
 selected later port.
 
 To manage the process manually, disable automatic startup and use either
@@ -232,18 +232,28 @@ migration or `--astro-home=/path/to/.astrox` to change the data root.
   - `accepted`: SSE connected;
   - `offline`: API or SSE unavailable;
   - `demo`: development/test mode is using embedded events because the real count is zero.
+- The icons on the right read, left to right: settings (gear), theme, GitHub.
+  GitHub is always the right-most one, because it is the only header control
+  that leaves the console.
+- GitHub icon: opens the project repository
+  (`https://github.com/chaos-design/astro`) in a new tab.
+- Settings icon (gear): opens the settings dialog for the default message range
+  and the Live filter.
 - Theme: light, dark, or system; stored in `ASTROX_THEME`.
 
 ### 5.2 Global History Search
 
 Open Search History from the header or press `Cmd/Ctrl + K`. It searches every
 event already loaded in the browser, not only the currently selected Prompt.
-The default time range is the last three hours.
+The dialog opens on the default time range from Settings — the last three hours
+unless changed; a range picked inside the dialog applies to that search only.
 
 Available filters include:
 
 - 3, 6, 12, or 24 hours, today, yesterday, seven days, or a custom date range;
-- one or more Agents;
+- one or more agents: the list contains configured agents only; every other
+  source (browser, generic, a custom HTTP collector) is grouped under the
+  trailing **Others** entry instead of getting a pseudo-agent of its own;
 - one or more run statuses;
 - one or more event categories.
 
@@ -259,10 +269,34 @@ remains a separate API.
 
 ### 5.3 Run History
 
-Run History is filtered to the selected agent and, by default, shows the most
-recent two days. Scroll to the bottom of the list to reveal one earlier day at
-a time; each reveal shows a brief bottom spinner. While the dashboard first
-loads events, the list shows a left-side loading indicator before runs appear.
+The list is narrowed to the selected agent and then windowed. The window length
+is the default time range from Settings (three hours unless changed), measured
+back from the **newest message** rather than from the wall clock: opening the
+console after a night away still shows the messages around the last session
+instead of an empty list. When older runs remain, `LOAD EARLIER` appears at the
+bottom; clicking it — or scrolling to the bottom — doubles the window
+(3 → 6 → 12 → 24 → 48 hours) until nothing older is left.
+
+Executing messages ignore the window: they are always listed and always pinned
+to the top.
+
+The `N LIVE` chip in the panel header toggles the Live filter:
+
+- Armed, it lists **only the messages whose run is executing right now**. The
+  filter reads the selected agent's whole history (the time window is dropped,
+  so a session that started days ago and was just prompted again qualifies),
+  but finished messages are not listed, and the chip turns into a dark filled
+  pill with light text while keeping its radar glyph (disarmed it is a light
+  outlined pill). Executing messages are pinned, expanded and scrolled into
+  view. When a message is sent, the run that newly
+  starts executing is located automatically — no hunting through the list.
+- With nothing executing the chip reads `0 LIVE` and the list is empty, with a
+  "nothing is executing right now" message and the way out. That is a normal
+  filter result; it never falls back to the full history.
+- Disarmed, the list returns to the default window and `LOAD EARLIER` returns.
+- The choice is stored in `ASTROX_RUN_HISTORY_LIVE_VIEW` and is off by default
+  (Settings can change that default): a filter may legitimately match nothing,
+  so arming it on load would open the console on an empty panel.
 
 The agent list comes from the toolbar platform dropdown: the configured agents
 are listed first and a trailing **Others** catch-all collects runs whose source
@@ -288,7 +322,8 @@ and abbreviated prompt event ID. A prompt run begins with one
 
 Click a child row to make that prompt run the active diagnostic scope. Clicking
 the parent selects its latest prompt. Only one session thread is expanded at a
-time; the child list is capped at 270 px, scrolls independently, and keeps the
+time. The child list is measured to its content (300 px ceiling; a two- or
+three-message thread expands in full), scrolls independently, and keeps the
 selected child visible. The left panel can collapse to a `RUNS` rail to give the
 topology more desktop workspace.
 The expanded state is stored in `ASTROX_HISTORY_OPEN` and restored after refresh.
@@ -323,7 +358,9 @@ The upper LOG area:
 - searches any serialized field in the selected prompt run;
 - selects or clears an event by clicking its row;
 - locates the mapped atom in the topology;
-- provides floating controls for top/bottom scrolling.
+- puts the top/bottom scroll controls in the panel header (only the edge that is
+  actually out of view shows a control), so no floating button ever covers the
+  first visible atom.
 
 The inspector provides:
 
@@ -378,6 +415,54 @@ The waiting child continues its own duration and can independently reach the
 timeout. A historical complete, failed, or terminated run keeps its recorded
 duration even when it is longer than the current limit.
 
+### 5.8 Settings
+
+The gear in the header opens the settings dialog. It is a two-pane card: a
+section rail on the left (Appearance, Run history, Canvas, Panels, About) and
+the active section's fields on the right. Every entry applies immediately, and
+the footer's **Done** button only closes the dialog — there is no Apply step:
+
+**Appearance**
+
+- **Theme**: light / dark / system — the same preference as the header switcher
+  (`ASTROX_THEME`).
+
+**Run history**
+
+- **Default time range**: hour choices on one row, day choices on the
+  next (eight total) — `1 hour`, `3 hours`
+  (default), `6 hours`, `12 hours`, `1 day`, `3 days`, `5 days`,
+  `7 days`. It drives RUN HISTORY's visible window (while the Live filter is
+  off) and the initial range of the global search dialog; the window is
+  measured back from the newest message, so opening the console the next
+  morning still shows the last session.
+- **Live filter**: off by default. When on, the console opens with the Live
+  filter armed (the same state as pressing the `N LIVE` chip), so RUN HISTORY
+  lists only the executing messages — and nothing at all while the machine is
+  idle. It ignores the time range above.
+
+**Canvas**
+
+- **Default view**: topology / trajectory (`ASTROX_ACTIVE_VIEW`).
+- **Runtime atoms only**: hide atoms that take no part in this execution
+  (`ASTROX_DEEP_VIEW`).
+
+**Panels**
+
+- **Expand RUN HISTORY** and **Expand EVENTS**: the two columns' expanded state
+  (`ASTROX_HISTORY_OPEN` / `ASTROX_CONSOLE_OPEN`).
+
+**About**
+
+- The console version (`v0.0.3`), where the preferences actually live (browser
+  localStorage under the `ASTROX_` prefix), and a note that settings only affect
+  presentation and never rewrite captured events.
+
+The values are written to `ASTROX_HISTORY_RANGE`, `ASTROX_RUN_HISTORY_LIVE_VIEW`
+and the other keys above. **Reset** restores every section at once (3 hours,
+Live off, dark, topology, runtime atoms only, and the width-based panel
+defaults).
+
 ## 6. Execution Topology
 
 ### 6.1 Nodes
@@ -417,7 +502,9 @@ Use all atoms for architecture, tool internals, or output-quality analysis. Use 
 
 ### 6.4 Atom Guide
 
-The question-mark control opens a guide with:
+The question-mark control slides a guide in from the right and dims the console
+behind it, so the drawer reads as a layer over the workspace instead of a fourth
+column:
 
 - edge semantics;
 - one tab per domain;
@@ -504,11 +591,13 @@ The action is destructive. Export any required sessions first.
 The page writes the current selection into:
 
 ```text
-?source=codex&session=<sessionId>&event=<eventId>
+?agent=codex&session=<sessionId>&event=<eventId>
 ```
 
-Opening the URL selects the matching source, session, containing prompt run,
-and event when that trace data exists in the target environment.
+`agent` mirrors the dropdown filter (a configured agent id or `others`).
+Opening the URL selects the matching agent, session, containing prompt run,
+and event when that trace data exists in the target environment. Legacy
+`?source=` links keep working.
 
 ## 11. Import Codex History
 
@@ -587,7 +676,7 @@ astrox logs [--lines N]        tail the dashboard log
 astrox path                    print ASTRO home, plugin dir, and CLI entry
 ```
 
-- `start` launches the dashboard daemon (default `127.0.0.1:4318`). It also
+- `start` launches the dashboard daemon (default `127.0.0.1:5678`). It also
   registers this entry as the global `astrox` command: on Unix it symlinks into
   the first writable of `/usr/local/bin`, `~/.local/bin`, or `~/bin`; on Windows
   it writes `%USERPROFILE%\.astrox\bin\astrox.cmd`. An existing symlink already
@@ -618,13 +707,13 @@ astrox path                    print ASTRO home, plugin dir, and CLI entry
 ### 13.1 Health
 
 ```bash
-curl http://127.0.0.1:4318/api/health
+curl http://127.0.0.1:5678/api/health
 ```
 
 ### 13.2 Ingest One Event
 
 ```bash
-curl -X POST http://127.0.0.1:4318/api/events \
+curl -X POST http://127.0.0.1:5678/api/events \
   -H 'Content-Type: application/json' \
   -H 'X-Astro-Source: custom-agent' \
   -d '{
@@ -713,7 +802,7 @@ await trace.agentMessage("Inspection finished");
 await trace.stop({ message: "Done" });
 ```
 
-The default endpoint is `http://127.0.0.1:4318/api/events`. Browser extension background processes must declare loopback host permission.
+The default endpoint is `http://127.0.0.1:5678/api/events`. Browser extension background processes must declare loopback host permission.
 
 ## 15. Configuration
 
@@ -734,7 +823,7 @@ The existing environment names remain supported as overrides:
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `ASTRO_HOST` | `127.0.0.1` | Bind address |
-| `ASTRO_PORT` | `4318` | Preferred port |
+| `ASTRO_PORT` | `5678` | Preferred port |
 | `ASTRO_HOME` | `~/.astrox` | Runtime, plugins, and source-specific event files |
 | `ASTRO_TRACE_DIR` | unset | Optional relative or absolute shared trace directory |
 | `ASTRO_PROJECT_DIR` | current working directory | Base for a relative `ASTRO_TRACE_DIR` |
@@ -776,10 +865,16 @@ only effective display state.
 | `ASTROX_PLATFORM` | `codex` / `claude` / `trae` | Platform context |
 | `ASTROX_HISTORY_OPEN` | `true` / `false` | Left History panel |
 | `ASTROX_CONSOLE_OPEN` | `true` / `false` | Right Events/Inspector panel |
+| `ASTROX_HISTORY_RANGE` | `1h` / `3h` / `6h` / `12h` / `1d` / `3d` / `5d` / `7d` | Default time range, `3h` unless changed |
+| `ASTROX_RUN_HISTORY_LIVE_VIEW` | `true` / `false` | Live filter armed by default, off unless changed |
+| `ASTROX_ACTIVE_VIEW` | `topology` / `trajectory` | Last canvas view |
+| `ASTROX_DEEP_VIEW` | `true` / `false` | Runtime-only atoms in the topology |
 
 Legacy `astro-theme` and `astro-platform` values migrate automatically and
 are removed after the new key is written. Invalid or unavailable storage falls
-back to defaults without affecting capture.
+back to defaults without affecting capture. The old
+`ASTROX_RUN_HISTORY_LIVE_FILTER` is not migrated: it meant "show every
+message", the opposite of the Live filter, so it is deleted on the next write.
 
 ### 15.2 Upgrade from the previous data layout
 
@@ -806,7 +901,7 @@ old imported data:
 
 ```bash
 find ~/.astrox -type f -name events.jsonl -print
-curl http://127.0.0.1:4318/api/health
+curl http://127.0.0.1:5678/api/health
 ```
 
 ## 16. Data Safety and Backup
@@ -830,8 +925,8 @@ A production empty state remains empty. Demo in production usually means the pag
 is using a Vite development server or a stale build.
 
 ```bash
-curl http://127.0.0.1:4318/api/health
-curl http://127.0.0.1:4318/api/events
+curl http://127.0.0.1:5678/api/health
+curl http://127.0.0.1:5678/api/events
 ```
 
 ### Connection State Is Offline

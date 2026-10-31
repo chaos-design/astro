@@ -1,10 +1,19 @@
+import { isLiveRunStatus } from "./run-history-state.ts";
+
 export type AtomSelection = string | null | undefined;
 
+/**
+ * Whether the run the studio is looking at is still in flight. Both live
+ * states count: a run waiting for a permission answer is still the run the
+ * user is watching, so the footer's Live button must not go dark on it. This
+ * delegates to {@link isLiveRunStatus} on purpose — the RUN HISTORY capsule,
+ * the `N LIVE` set, and the Live button have to agree on one definition.
+ */
 export function isPromptExecuting(
   status: string | undefined,
   isDemo: boolean,
 ): boolean {
-  return !isDemo && status === "active";
+  return !isDemo && isLiveRunStatus(status);
 }
 
 export function isFollowingLive(

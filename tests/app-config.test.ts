@@ -5,8 +5,14 @@ import test from "node:test";
 import {
   appDefaults,
   appLayout,
+  appRepository,
   appTimings,
   appVersion,
+  defaultHistoryRange,
+  getHistoryRangeHours,
+  historyRangeOptions,
+  isHistoryRangeId,
+  retiredStorageKeys,
   shouldShowDemo,
   storageKeys,
 } from "../src/config/app-config.ts";
@@ -16,11 +22,64 @@ test("keeps user preference defaults and storage keys in app config", () => {
   assert.equal(appDefaults.theme, "dark");
   assert.equal(appDefaults.activeView, "topology");
   assert.equal(appTimings.activeRunTimeoutMs, 24 * 60 * 60 * 1_000);
-  assert.equal(appLayout.historyPromptListMaxHeight, 270);
+  // The ceiling of the measured Prompt thread; short threads may overshoot it
+  // by 1.25x and are still shown whole (see RunHistoryItem).
+  assert.equal(appLayout.historyPromptListMaxHeight, 300);
   assert.ok(appLayout.historyPromptRowEstimate > 0);
   assert.ok(
     Object.values(storageKeys).every((key) => key.startsWith("ASTROX_")),
   );
+});
+
+test("defaults the loaded message range to the last three hours", () => {
+  // The preference is shared by RUN HISTORY and the search dialog, so its
+  // default is asserted once, here.
+  assert.equal(appDefaults.historyRange, "3h");
+  assert.equal(defaultHistoryRange, "3h");
+  assert.equal(getHistoryRangeHours("3h"), 3);
+  assert.equal(storageKeys.historyRange, "ASTROX_HISTORY_RANGE");
+});
+
+test("opens RUN HISTORY unfiltered", () => {
+  // The Live filter can legitimately match nothing, so it must not be armed
+  // on first load: an empty panel would read as broken rather than as "idle".
+  assert.equal(appDefaults.liveView, false);
+  assert.equal(storageKeys.runHistoryLiveView, "ASTROX_RUN_HISTORY_LIVE_VIEW");
+  // The old key meant "show the whole history" — the opposite of the filter —
+  // so it is retired rather than migrated.
+  assert.equal(
+    retiredStorageKeys.runHistoryLiveFilter,
+    "ASTROX_RUN_HISTORY_LIVE_FILTER",
+  );
+  assert.ok(!Object.values(storageKeys).includes("ASTROX_RUN_HISTORY_LIVE_FILTER"));
+});
+
+test("lists history ranges in ascending order with matching spans", () => {
+  const ids = historyRangeOptions.map((option) => option.id);
+  // Four per row in the settings dialog: the hour choices read as one row, the
+  // day choices as the next.
+  assert.deepEqual(ids, ["1h", "3h", "6h", "12h", "1d", "3d", "5d", "7d"]);
+
+  const hours = historyRangeOptions.map((option) => option.hours);
+  assert.deepEqual([...hours].sort((left, right) => left - right), hours);
+  assert.ok(
+    historyRangeOptions.every((option) => option.label && option.shortLabel),
+  );
+  assert.equal(getHistoryRangeHours("1h"), 1);
+  assert.equal(getHistoryRangeHours("1d"), 24);
+  assert.equal(getHistoryRangeHours("3d"), 72);
+  assert.equal(getHistoryRangeHours("5d"), 120);
+  assert.equal(getHistoryRangeHours("7d"), 168);
+
+  assert.equal(isHistoryRangeId("3h"), true);
+  assert.equal(isHistoryRangeId("9h"), false);
+  assert.equal(isHistoryRangeId(null), false);
+});
+
+test("points the header link at the project repository", () => {
+  assert.equal(appRepository.url, "https://github.com/chaos-design/astro");
+  assert.match(appRepository.url, /^https:\/\/github\.com\/[^/]+\/[^/]+$/);
+  assert.ok(appRepository.title.length > 0);
 });
 
 test("keeps the header version in sync with the release version", () => {

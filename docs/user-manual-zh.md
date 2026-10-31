@@ -1,6 +1,6 @@
 # ASTRO 使用手册
 
-> 默认地址：`http://127.0.0.1:4318`
+> 默认地址：`http://127.0.0.1:5678`
 >
 > 所有客户端的默认数据根目录：`~/.astrox`
 >
@@ -40,7 +40,7 @@ ASTRO 用于在本机采集、查看和回放编码智能体的运行事件。�
 - Node.js：支持当前依赖和原生 ESM 的当前 LTS 版本；
 - 包管理器：通过 Corepack 激活的 `pnpm`；
 - 浏览器：支持 ES Module、Web Worker、SSE、ResizeObserver 和现代 CSS；
-- 端口：默认使用 `127.0.0.1:4318`。
+- 端口：默认使用 `127.0.0.1:5678`。
 
 ## 3. 安装与启动
 
@@ -55,12 +55,12 @@ pnpm start
 ```
 
 启动成功后终端会输出实际访问地址和数据根目录。若默认端口被占用，服务会从
-`4318` 开始自动尝试后续端口，最多继续尝试 20 个端口。该流程用于运行生产构建
+`5678` 开始自动尝试后续端口，最多继续尝试 20 个端口。该流程用于运行生产构建
 或手动管理服务；直接安装 Hook 后会立即启动并打开控制台，后续新建 Agent
 会话时由 `SessionStart` 确保监听页已打开。
 
 开发模式需要同时运行 API 服务和 Vite。Vite 会读取同一组
-`ASTRO_HOST/ASTRO_PORT` 环境变量，默认代理到 `127.0.0.1:4318`：
+`ASTRO_HOST/ASTRO_PORT` 环境变量，默认代理到 `127.0.0.1:5678`：
 
 ```bash
 # 终端 1：API
@@ -188,7 +188,7 @@ pnpm install-plugins -- \
 默认情况下，安装器会立即启动并打开控制台。重载或重启客户端后，
 `SessionStart` 会先记录当前 Agent 会话，再检查
 `<data-root>/dashboard-<port>.pid`；仅在控制台未运行时后台启动服务，并打开已选中
-当前会话的实际地址。若 `4318` 已占用，浏览器会打开自动选择的后续端口。
+当前会话的实际地址。若 `5678` 已占用，浏览器会打开自动选择的后续端口。
 
 需要手动管理进程时，关闭自动启动并任选一种方式运行：
 
@@ -218,17 +218,24 @@ node ~/.astrox/plugins/astro/server/server.mjs
   - `accepted`：已连接 SSE；
   - `offline`：API/SSE 不可用；
   - `demo`：development/test 且无真实事件时使用内置演示数据。
+- 右侧图标自左向右依次是设置（齿轮）、主题、GitHub：GitHub 始终在最右端，因为它是
+  顶栏里唯一会离开控制台的入口。
+- GitHub 图标：在新标签页打开本项目的 GitHub 仓库
+  （`https://github.com/chaos-design/astro`）。
+- 设置图标（齿轮）：打开设置，配置默认时间范围和 Live 筛选。
 - 主题：浅色、深色、跟随系统；选择保存在 `ASTROX_THEME`。
 
 ### 5.2 全局历史搜索
 
 点击顶栏 Search History 或按 `Cmd/Ctrl + K`，可以搜索浏览器已经加载的全部事件，
-而不只限于当前 Prompt。默认时间范围为最近 3 小时。
+而不只限于当前 Prompt。初始时间范围取设置里的「默认时间范围」，默认最近 3 小时；
+在弹窗内改动只影响本次搜索。
 
 筛选条件包括：
 
-- 最近 3、6、12、24 小时、今天、昨天、最近 7 天或自定义日期；
-- 一个或多个 Agent；
+- 最近 1、3、6、12 小时、最近 1 天、今天、昨天、最近 3、5、7 天或自定义日期；
+- 一个或多个智能体：列表只包含已配置的智能体，其他来源（browser、generic、自定义
+  HTTP 采集器等）统一归入末尾的 **Others**，不再各自占一项；
 - 一个或多个运行状态；
 - 一个或多个事件分类。
 
@@ -240,6 +247,29 @@ node ~/.astrox/plugins/astro/server/server.mjs
 History 搜索只覆盖浏览器已加载数据，与服务端 `/api/search` 是两个独立入口。
 
 ### 5.3 左侧 Run History
+
+列表先按所选智能体收窄，再套时间窗口。窗口长度取设置里的「默认时间范围」（默认
+最近 3 小时，可选 1 小时到 7 天），起点以**最近一条消息**为终点向前推：隔夜或长
+时间空闲后打开控制台，看到的仍是上一次会话前后的消息，而不是空列表。窗口放不下更早
+的记录时，底部出现 `LOAD EARLIER`，点击或滚动到底部会把窗口翻倍（3 → 6 → 12 → 24
+→ 48 小时），直到没有更早的消息。
+
+正在执行的消息不受窗口限制，始终显示并置顶。
+
+面板头部右侧的 `N LIVE` 胶囊是一个可切换的 Live 筛选：
+
+- 开启时列表**只保留正在执行的消息**：筛选范围是所选智能体的全部历史，**不受默认
+  时间范围限制**——即使在设置里把范围改成 1 小时，几天前开始、刚刚又被追问的会话
+  同样会出现；已完成的消息不再列出。开启时面板标题第二行会变成「全部历史」标签，
+  胶囊也转为深色实心（浅紫文字），雷达图标保留；未开启时是浅色描边胶囊。两种状态
+  一眼可分，用来区分「筛选已开启」和「只是有消息在跑」。
+  执行中的消息置顶、自动展开并滚动定位；发送新消息时，新进入执行状态的那条消息会被
+  自动定位，不需要再翻列表。
+- 没有正在执行的消息时胶囊显示 `0 LIVE`，列表为空，并提示「当前没有正在执行的消息」
+  以及如何退出筛选。这是筛选的正常结果，不会退回到完整历史。
+- 关闭时回到默认时间窗口，`LOAD EARLIER` 恢复可用。
+- 选择保存在 `ASTROX_RUN_HISTORY_LIVE_VIEW`，默认关闭（也可在设置里改默认值）：
+  筛选可能一条都匹配不到，所以默认不开启，避免打开控制台就看到空列表。
 
 每个父行代表一个会话，显示：
 
@@ -258,7 +288,8 @@ History 搜索只覆盖浏览器已加载数据，与服务端 `/api/search` 是
 `UserPromptSubmit` 开始，到下一条 Prompt 之前结束。
 
 点击子行会把它设为当前诊断范围；点击父行会选择最新 Prompt。界面同时只展开一个
-会话层级，子列表最高 270 px 并独立滚动，选中项会自动保持在可见区域。左侧面板可
+会话层级，子列表按实际内容测量高度（上限 300 px，两条消息这类短线程会完整展开），
+超出后独立滚动，选中项会自动保持在可见区域。左侧面板可
 收起为 `RUNS` 轨道，为中央拓扑释放更多桌面空间。
 展开状态写入 `ASTROX_HISTORY_OPEN`，刷新后恢复。
 
@@ -290,7 +321,8 @@ History 搜索只覆盖浏览器已加载数据，与服务端 `/api/search` 是
 - 可搜索当前 Prompt 子运行事件的任意序列化字段；
 - 点击事件可选择，再次点击同一事件可取消；
 - 定位按钮会切回拓扑并聚焦当前映射原子；
-- 浮动箭头可快速滚动到日志顶部或底部。
+- 头部右侧的上/下箭头分别回到最新事件、滚动到最底部，只在对应方向还有内容时出现；
+  这两个控件在头部而不是浮在列表上，因此不会遮住列表顶部的原子。
 
 下半部分是检查器：
 
@@ -338,6 +370,44 @@ History 搜索只覆盖浏览器已加载数据，与服务端 `/api/search` 是
 Prompt 为 waiting 时父行冻结。waiting 子行仍继续计算自身时长，并可独立达到超时。
 历史 complete、failed 或 terminated 运行即使长于当前阈值，也保留其已记录时长。
 
+### 5.8 设置
+
+顶栏的齿轮图标打开设置弹窗。弹窗是一个两栏卡片：左侧分区栏列出外观、运行历史、
+画布、面板、关于，右侧只显示当前分区的配置；每一条都是浏览器本地偏好，改完立即
+生效，底部的「完成」只关闭弹窗，不需要「应用」。
+
+**外观**
+
+- **主题**：浅色 / 深色 / 跟随系统，与顶栏主题切换器是同一个偏好（`ASTROX_THEME`）。
+
+**运行历史**
+
+- **默认时间范围**：小时一行、天一行，共 8 个选项——`1 小时`、`3 小时`（默认）、`6 小时`、
+  `12 小时`、`1 天`、`3 天`、`5 天`、`7 天`。它驱动 RUN HISTORY 的可见窗口
+  （Live 筛选关闭时）和全局历史搜索弹窗的初始范围；窗口终点取最近一条消息，隔夜打开
+  仍能看到上次的会话。
+- **Live 筛选**：默认关闭。开启后打开控制台即进入 Live 筛选（等价于按下面板头部的
+  `N LIVE`），RUN HISTORY 只显示正在执行的消息，且不受上面的时间范围限制。
+
+**画布**
+
+- **默认视图**：执行拓扑 / 运行轨迹（`ASTROX_ACTIVE_VIEW`）。
+- **仅显示运行时原子**：拓扑图只保留运行时路径（`ASTROX_DEEP_VIEW`）。
+
+**面板**
+
+- **展开 RUN HISTORY**、**展开 EVENTS**：左右两列的展开状态
+  （`ASTROX_HISTORY_OPEN` / `ASTROX_CONSOLE_OPEN`）。
+
+**关于**
+
+- 当前控制台版本（`v0.0.3`）、偏好实际存放的位置（浏览器 localStorage，键前缀
+  `ASTROX_`），以及「设置只影响展示、不写回事件」的说明。
+
+偏好分别写入 `ASTROX_HISTORY_RANGE` 与 `ASTROX_RUN_HISTORY_LIVE_VIEW` 等键；
+「恢复默认」把这些分区的值一起还原（3 小时、Live 关闭、深色、拓扑、仅运行时原子、
+按窗口宽度决定左右面板是否展开）。
+
 ## 6. 执行拓扑操作
 
 ### 6.1 读取节点
@@ -375,7 +445,8 @@ Prompt 为 waiting 时父行冻结。waiting 子行仍继续计算自身时长�
 
 ### 6.4 原子指南
 
-点击问号按钮打开指南：
+点击问号按钮打开指南。指南从右侧滑出，同时给整个控制台压一层蒙层，画布与日志退到
+背景，避免把抽屉误当成第四列：
 
 - “连线”页解释各类链路；
 - 每个领域单独一页；
@@ -461,11 +532,12 @@ astro-<source>-<sessionId>-prompt-<number>.jsonl
 页面会把当前定位写入查询参数：
 
 ```text
-?source=codex&session=<sessionId>&event=<eventId>
+?agent=codex&session=<sessionId>&event=<eventId>
 ```
 
-打开该 URL 时，页面会优先选择匹配来源、会话、包含该事件的 Prompt 子运行并定位
-事件。深链依赖目标环境中已存在对应 Trace 数据。
+`agent` 与下拉选择保持一致（已配置的智能体 ID 或 `others`）。打开该 URL 时，
+页面会优先选择匹配的智能体、会话、包含该事件的 Prompt 子运行并定位事件。
+深链依赖目标环境中已存在对应 Trace 数据，旧的 `?source=` 链接仍然可用。
 
 ## 11. 导入 Codex 历史
 
@@ -540,7 +612,7 @@ astrox logs [--lines N]        查看仪表盘日志尾部
 astrox path                   打印 ASTRO home、插件目录与 CLI 入口
 ```
 
-- `start` 启动仪表盘守护进程（默认 `127.0.0.1:4318`）。它会同时把当前入口注册为全局 `astrox` 命令——在 Unix 下软链到 `/usr/local/bin`、`~/.local/bin` 或 `~/bin` 中第一个可写目录，在 Windows 下写入 `%USERPROFILE%\.astrox\bin\astrox.cmd`。已存在的同名软链若指向本入口则复用，指向其他文件则保留不动。`--no-global` 跳过注册，`--bin-dir DIR` 指定候选目录，`--open` 在启动后自动打开浏览器。
+- `start` 启动仪表盘守护进程（默认 `127.0.0.1:5678`）。它会同时把当前入口注册为全局 `astrox` 命令——在 Unix 下软链到 `/usr/local/bin`、`~/.local/bin` 或 `~/bin` 中第一个可写目录，在 Windows 下写入 `%USERPROFILE%\.astrox\bin\astrox.cmd`。已存在的同名软链若指向本入口则复用，指向其他文件则保留不动。`--no-global` 跳过注册，`--bin-dir DIR` 指定候选目录，`--open` 在启动后自动打开浏览器。
 - 守护进程启动后写入 `<ASTRO_HOME>/dashboard-<port>.pid`（含 `pid` 与 `url`），运行日志落在 `<ASTRO_HOME>/dashboard.log`。`logs [--lines N]` 默认查看末尾 40 行。
 - `stop` 向守护进程发送 `SIGTERM`（必要时 `SIGKILL`）并结束进程，不触发额外清理；`restart` 等价于先 `stop` 再 `start`。
 - `status` 汇总插件配置（config.yaml / .env 的 OK、WARN、MISSING）、global cli 状态、仪表盘运行状态，以及各客户端 Hook 集成（codex、claude、workbuddy、trae、deepseek）。`--json` 输出机器可读报告。
@@ -554,13 +626,13 @@ astrox path                   打印 ASTRO home、插件目录与 CLI 入口
 ### 13.1 健康检查
 
 ```bash
-curl http://127.0.0.1:4318/api/health
+curl http://127.0.0.1:5678/api/health
 ```
 
 ### 13.2 写入单个事件
 
 ```bash
-curl -X POST http://127.0.0.1:4318/api/events \
+curl -X POST http://127.0.0.1:5678/api/events \
   -H 'Content-Type: application/json' \
   -H 'X-Astro-Source: custom-agent' \
   -d '{
@@ -646,7 +718,7 @@ await trace.agentMessage("Inspection finished");
 await trace.stop({ message: "Done" });
 ```
 
-默认写入端点是 `http://127.0.0.1:4318/api/events`。浏览器扩展后台进程需要在 Manifest 中声明对应的回环地址权限。
+默认写入端点是 `http://127.0.0.1:5678/api/events`。浏览器扩展后台进程需要在 Manifest 中声明对应的回环地址权限。
 
 ## 15. 配置
 
@@ -666,7 +738,7 @@ await trace.stop({ message: "Done" });
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
 | `ASTRO_HOST` | `127.0.0.1` | 服务监听地址 |
-| `ASTRO_PORT` | `4318` | 首选端口 |
+| `ASTRO_PORT` | `5678` | 首选端口 |
 | `ASTRO_HOME` | `~/.astrox` | 运行时、插件和按来源、时间及 session 拆分的事件文件 |
 | `ASTRO_TRACE_DIR` | 未设置 | 可选的相对或绝对共享 Trace 目录 |
 | `ASTRO_PROJECT_DIR` | 当前工作目录 | 相对 `ASTRO_TRACE_DIR` 的解析基准 |
@@ -704,9 +776,15 @@ astro-trace doctor
 | `ASTROX_PLATFORM` | `codex` / `claude` / `trae` | 平台上下文 |
 | `ASTROX_HISTORY_OPEN` | `true` / `false` | 左侧 History 展开状态 |
 | `ASTROX_CONSOLE_OPEN` | `true` / `false` | 右侧 Events/Inspector 展开状态 |
+| `ASTROX_HISTORY_RANGE` | `1h` / `3h` / `6h` / `12h` / `1d` / `3d` / `5d` / `7d` | 默认时间范围，默认 `3h` |
+| `ASTROX_RUN_HISTORY_LIVE_VIEW` | `true` / `false` | Live 筛选是否默认开启，默认 `false` |
+| `ASTROX_ACTIVE_VIEW` | `topology` / `trajectory` | 上次使用的画布视图 |
+| `ASTROX_DEEP_VIEW` | `true` / `false` | 拓扑是否只显示运行时原子 |
 
 旧 `astro-theme` 和 `astro-platform` 会自动迁移并在新键写入后删除。Storage
-不可用或值非法时使用默认值，不影响 Trace 采集。
+不可用或值非法时使用默认值，不影响 Trace 采集。旧的
+`ASTROX_RUN_HISTORY_LIVE_FILTER` 不迁移：它的含义是「显示全部消息」，与现在的
+Live 筛选相反，新偏好写入时会直接清掉该键。
 
 ### 15.2 从旧数据目录升级
 
@@ -729,7 +807,7 @@ node bin/astro.mjs migrate /path/to/events.jsonl
 
 ```bash
 find ~/.astrox -type f -name events.jsonl -print
-curl http://127.0.0.1:4318/api/health
+curl http://127.0.0.1:5678/api/health
 ```
 
 ## 16. 数据安全与备份
@@ -753,8 +831,8 @@ Demo 只应出现在 development/test 且真实事件数为 0 的场景。produc
 检查：
 
 ```bash
-curl http://127.0.0.1:4318/api/health
-curl http://127.0.0.1:4318/api/events
+curl http://127.0.0.1:5678/api/health
+curl http://127.0.0.1:5678/api/events
 ```
 
 ### 状态显示 offline

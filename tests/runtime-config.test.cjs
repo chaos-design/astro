@@ -75,6 +75,74 @@ test("preserves active files when configuration is initialized again", (t) => {
   assert.equal(fs.readFileSync(paths.envFile, "utf8"), "PRIVATE_TOKEN=kept\n");
 });
 
+test("migrates the retired default port in an installed configuration", (t) => {
+  const { astroHome, paths } = createFixture(t);
+  writeConfiguration(
+    paths,
+    [
+      "# hand-written comment",
+      "version: 1",
+      "server:",
+      "  host: 127.0.0.1",
+      "  port: 4318",
+      "  maxBodyBytes: 5242880",
+      "runtime:",
+      "  autoOpen: true",
+      "",
+    ].join("\n"),
+  );
+
+  const initialized = initializeRuntimeConfig({
+    astroHome,
+    environment: {},
+    templateDir: projectDir,
+  });
+  const text = fs.readFileSync(paths.configFile, "utf8");
+
+  assert.equal(initialized.configCreated, false);
+  assert.equal(initialized.configMigrated, true);
+  assert.match(text, /^ {2}port: 5678$/m);
+  assert.match(text, /^# hand-written comment$/m);
+  assert.match(text, /^ {2}maxBodyBytes: 5242880$/m);
+
+  // Same scenario on a fresh fixture: a load that initializes migrates before
+  // the file is read, reports it, and still resolves the port from the file.
+  const reload = createFixture(t);
+  writeConfiguration(
+    reload.paths,
+    ["version: 1", "server:", "  port: 4318", ""].join("\n"),
+  );
+  const result = loadRuntimeConfig({
+    astroHome: reload.astroHome,
+    environment: { ASTRO_HOME: reload.astroHome },
+    initialize: true,
+    templateDir: projectDir,
+  });
+  assert.equal(result.config.server.port, 5678);
+  assert.equal(result.sources.ASTRO_PORT, "config");
+  assert.equal(result.files.config.valid, true);
+  assert.ok(
+    result.diagnostics.some((item) => item.code === "CONFIG_PORT_MIGRATED"),
+  );
+});
+
+test("leaves an explicitly configured port alone", (t) => {
+  const { astroHome, paths } = createFixture(t);
+  writeConfiguration(
+    paths,
+    ["version: 1", "server:", "  port: 4400", ""].join("\n"),
+  );
+
+  const initialized = initializeRuntimeConfig({
+    astroHome,
+    environment: {},
+    templateDir: projectDir,
+  });
+
+  assert.equal(initialized.configMigrated, false);
+  assert.match(fs.readFileSync(paths.configFile, "utf8"), /port: 4400/);
+});
+
 test("loads YAML, interpolates private values, and applies precedence", (t) => {
   const { astroHome, paths } = createFixture(t);
   writeConfiguration(
@@ -178,7 +246,7 @@ test("ignores invalid values and reports names without secret values", (t) => {
   });
   const diagnostics = JSON.stringify(result.diagnostics);
 
-  assert.equal(result.config.server.port, 4318);
+  assert.equal(result.config.server.port, 5678);
   assert.equal(result.paths.astroHome, astroHome);
   assert.match(diagnostics, /CONFIG_KEY_UNKNOWN/);
   assert.match(diagnostics, /CONFIG_VALUE_INVALID/);
@@ -201,7 +269,7 @@ test("falls back safely when YAML is malformed", (t) => {
     environment: { ASTRO_HOME: astroHome },
   });
 
-  assert.equal(result.config.server.port, 4318);
+  assert.equal(result.config.server.port, 5678);
   assert.equal(result.files.config.valid, false);
   assert.ok(
     result.diagnostics.some(
