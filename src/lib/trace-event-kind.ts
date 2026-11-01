@@ -35,6 +35,7 @@ const traceEventKeys: Readonly<Record<string, string>> = {
   SubagentStart: "subagent.start",
   SubagentStop: "subagent.finish",
   Stop: "reply.final",
+  StopFailure: "reply.failure",
 };
 
 function normalizeIdentifier(value: unknown) {

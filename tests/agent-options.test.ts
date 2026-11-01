@@ -3,15 +3,29 @@ import test from "node:test";
 import { appDefaults } from "../src/config/app-config.ts";
 import { agentOptions, atomPlatformOptions } from "../src/config/atom-platforms.ts";
 
-test("the agent dropdown lists high-frequency agents first", () => {
+test("the agent dropdown pins high-frequency agents, then sorts the rest", () => {
   const ids = agentOptions.map((option) => option.id);
-  for (const id of ["claude", "gpt", "gemini", "llama", "pi"]) {
-    assert.equal(ids.includes(id), true, `missing agent ${id}`);
-  }
-  // The agents switched between most often stay at the top of the dropdown.
-  assert.deepEqual(ids.slice(0, 4), ["claude", "codex", "deepseek", "zcode"]);
+  const labels = agentOptions.map((option) => option.label);
+  // The agents switched between most often keep this exact order.
+  assert.deepEqual(ids.slice(0, 9), [
+    "claude",
+    "codex",
+    "deepseek",
+    "workbuddy",
+    "zcode",
+    "opencode",
+    "pi",
+    "qwen",
+    "trae",
+  ]);
+  // GPT has no capture adapter of its own; Codex covers the OpenAI runtime.
+  assert.equal((ids as string[]).includes("gpt"), false);
   assert.equal(ids[0], "claude");
   assert.equal(new Set(ids).size, ids.length);
+  // Every remaining agent follows alphabetically by label.
+  const tail = labels.slice(9);
+  assert.deepEqual(tail, [...tail].sort((a, b) => a.localeCompare(b, "en")));
+  assert.equal(ids.length, atomPlatformOptions.length);
 });
 
 test("the default agent is the first dropdown option", () => {

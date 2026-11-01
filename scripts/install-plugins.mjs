@@ -65,6 +65,7 @@ const eventDefinitions = {
     ["PostToolUse", "*"],
     ["PostToolUseFailure", "*"],
     ["PermissionRequest", "*"],
+    ["PermissionDenied", "*"],
     ["Notification", "*"],
     ["SubagentStart", "*"],
     ["SubagentStop", "*"],

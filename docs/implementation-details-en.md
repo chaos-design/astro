@@ -162,23 +162,114 @@ changing domain geometry, node positions, or orthogonal routes.
 The executing message is marked in three places so locating it never depends on
 scrolling:
 
-- the panel header keeps an `N LIVE` chip: clicking it scrolls the first live
-  message to the middle of the list **and filters the loaded list down to the
-  live runs**; clicking again clears the filter. The armed state reads as a
-  solid status border (`.is-filtering`). The filter only ever narrows the
-  *loaded* sessions — it never loads more history. The live set is derived
-  from the currently loaded sessions via `filterSessionsByLiveKeys`, so when
-  every live run settles the chip hides and the filter drops by itself;
+- the panel header keeps an `N LIVE` chip that is both the count and the Live
+  filter toggle (persisted in `ASTROX_RUN_HISTORY_LIVE_VIEW`, off by default and
+  editable in Settings). Armed, the list keeps **only the messages whose run is
+  executing**: the pool is the selected agent's whole history — the time window
+  is dropped, so a session resumed after days still qualifies — while finished
+  messages are not listed. Live runs are pinned, expanded and scrolled into
+  view; a message that newly starts executing is located automatically by
+  diffing the live set. Zero live rows leaves an empty list with the "nothing is
+  executing" state rather than the full history. Disarmed, the list returns to
+  the default window. The chip always renders — a light outlined pill when
+  disarmed, a dark filled pill when armed (the radar glyph stays in both states
+  and inherits the pill colour) — using an idle variant for `0 LIVE`;
 - a live row draws an `inset 2px` status accent, purple for `active` and amber
   for `waiting`;
 - the tag row gains a pulsing `RUNNING` / `WAITING` capsule next to `STATUS`.
 
-`isLiveRunStatus` owns the live definition (`active` and `waiting`). Selection
-wins over the accent, so a selected live row keeps its selection border.
-Finished messages (`complete` / `failed` / `terminated`) no longer locate the
-last atom automatically: `getPromptAtomSelection` returns `null` for every
-non-live status, leaving the topology unselected until an atom is picked by
-hand.
+`isLiveRunStatus` owns the live definition (`active` and `waiting`); the live
+index additionally requires recent activity (`isFreshLiveRun`: 10 minutes for
+`active`, 60 for `waiting`) so a crashed recorder's `active` row cannot occupy
+`N LIVE`. Selection wins over the accent, so a selected live row keeps its
+selection border. Finished messages (`complete` / `failed` / `terminated`) no
+longer locate the last atom automatically: `getPromptAtomSelection` returns
+`null` for every non-live status, leaving the topology unselected until an atom
+is picked by hand.
+
+The agent filter is the **outer** filter, and the live index follows it:
+`collectLiveRunKeys` answers only "who is running on this machine", and
+`scopeLiveRunIndex` intersects that with the selected agent's sessions to
+produce the `liveSessionKeys` the list actually uses — so the count, the pin,
+the window exemption and the Live filter always describe one list. The previous
+implementation merged other agents' live sessions into `historySessions`, which
+is how a Codex view showed the Claude message that was executing at the time,
+pinned on top; that path is gone. A neighbour that is running is signalled by
+the agent picker instead: `scopeLiveRunIndex` also returns the machine-wide
+`sources`, and `AgentSelect` marks those entries with a `--status-running`
+pulsing dot. Switching agents clears the open selection (`activeSessionKey`
+and friends) so the canvas, the log and the list all move to the new agent's
+newest message; a `?session=` deep link that names another agent's run moves
+the dropdown and the address bar's `agent` with it, so the open run is always a
+row of the list.
+
+### Sync budget
+
+The console and the local service share one SSE connection (`/api/stream`,
+resumed with a `since` cursor after a drop). The longer the page stays open the
+more `liveEvents` it holds, and every batch re-derives sessions, runs and flows,
+so syncing has a ceiling:
+
+- `appDefaults.maxSync` (eight hours by default, the "Max sync time" setting)
+  arms `syncStopped`; the stream effect's cleanup then closes the `EventSource`,
+  so nothing is appended, derived or retained any more;
+- the budget is a single `setTimeout` (`getSyncStopDelay`): no timer at all when
+  the limit is `off`, and no polling;
+- the header marker turns from `synced` into an amber `paused` button, and the
+  service card says the stream stopped on purpose instead of reporting a lost
+  connection;
+- recovery has two equivalent paths: clicking `paused` (`resumeSync`) or
+  restarting the local service. Both reset `syncStartedAt` and pull a **fresh
+  snapshot** (`handleReloadLatestEvents`) rather than replaying the missed tail —
+  a replay would regrow the array the budget just capped. Staying `paused` after
+  a successful restart is a bug.
+
+### Run History time window
+
+The list is narrowed to the agent, then filtered by an hour window (the
+`Default time range` setting, `3h` unless changed; the alternatives are `1h`,
+`6h`, `12h`, `1d`, `3d`, `5d`, `7d`):
+
+- the window ends at the **newest message** (`getRunHistoryAnchorTime`), not at
+  `Date.now()`, so opening the console the next morning never shows an empty
+  list;
+- live runs are exempt from the window (`selectVisibleRunHistory`'s `liveKeys`);
+- `LOAD EARLIER` doubles the window (3 → 6 → 12 → 24 → 48 hours) and disappears
+  once `canLoadMoreRunHistory` is false;
+- switching agent or changing the default range resets the width to the
+  preference.
+
+### Settings and header
+
+The settings dialog (`src/components/settings-dialog.tsx`) holds browser-local
+preferences only; changes apply immediately and are written to `localStorage`.
+It is a two-pane card: a `.settings-nav` rail on the left (appearance, run
+history, canvas, panels, about) and a `.settings-pane` on the right that renders
+only the active section, carried by a vertical Radix `Tabs` so arrow keys work.
+Header and footer are fixed and only the pane scrolls; the footer's Done button
+merely closes the dialog. The reset restores every section at once. The range
+drives both the RUN HISTORY window and the search dialog's initial range, so the
+two defaults cannot drift. The header carries settings, theme, and the GitHub
+anchor (`appRepository.url`, opened in a new tab), all 28 px icon controls
+sharing the theme switcher's height and radius.
+
+The uptime chip opens a `LOCAL SERVICE` card split into four groups: **version**
+(console = this page's `appVersion`; service = `build` from `/api/health`, read
+from `package.json` or the installed runtime's `plugin.json`), **process**
+(start time, boot cost, restart count, SSE clients), **data** (event count,
+trace files, data root) and **sessions** (`active` / `waiting` / `complete` /
+`failed` / `terminated`). A console/service version mismatch is called out; an
+unreadable manifest reports "not reported" with the reason instead of a bare
+`unknown`.
+
+### Guide and log controls
+
+Opening the Flow Guide dims the console with a flat scrim
+(`.atom-guide__overlay`, 58% on dark, 34% on light) instead of a backdrop blur:
+the canvas repaints continuously and would recompute the blur every frame. The
+LOG header carries the top/bottom scroll controls
+(`.atomic-log__scroll-controls`), rendered only while that edge is out of view;
+they used to float over the list and cover the first visible atom.
 
 ### Mobile layout
 

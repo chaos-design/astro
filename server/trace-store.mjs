@@ -106,6 +106,11 @@ export class TraceStore extends EventEmitter {
     return [...this.events];
   }
 
+  /** Event count without copying the array (health checks poll this often). */
+  getEventCount() {
+    return this.events.length;
+  }
+
   getEvent(eventId) {
     return this.events.find((event) => event.id === eventId) || null;
   }

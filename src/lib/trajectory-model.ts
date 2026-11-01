@@ -47,6 +47,35 @@ export type TrajectorySegmentPosition = {
   width: number;
 };
 
+/**
+ * The trajectory list, newest first. RUN TRAJECTORY mirrors RUN HISTORY: the
+ * turn and atom that are executing right now are the first rows, so following
+ * a live run never means scrolling past its own start, and an older turn can
+ * simply be collapsed out of the way.
+ */
+export type TrajectoryDisplay = {
+  /** The run preamble, newest first; it renders after every turn. */
+  context: TrajectoryAtom[];
+  turns: TrajectoryTurn[];
+};
+
+/**
+ * Reverse the model for display. The model itself stays chronological —
+ * selection lookups, the "latest atom" test, and the lane timeline all depend
+ * on that order — only the rendered list flips.
+ */
+export function orderTrajectoryNewestFirst(
+  model: TrajectoryModel,
+): TrajectoryDisplay {
+  return {
+    context: [...model.context].reverse(),
+    turns: [...model.turns].reverse().map((turn) => ({
+      ...turn,
+      atoms: [...turn.atoms].reverse(),
+    })),
+  };
+}
+
 type MutableTrajectoryAtom = TrajectoryAtom & {
   lastOccurredAt: string;
 };
@@ -61,6 +90,109 @@ export function getTrajectorySegmentPosition(
     left: (slot / slotCount) * 100,
     width: (1 / slotCount) * 100,
   };
+}
+
+/**
+ * One drawable slot on the lane overview. A long run can produce thousands of
+ * flow nodes; rendering one segment per node mounts thousands of DOM elements
+ * and turns every selection into a multi-hundred-millisecond paint. Slots
+ * aggregate consecutive nodes of the same lane so the map stays a *timeline*
+ * (a bounded number of marks) and remains clickable.
+ */
+export type TrajectoryMapSlot = {
+  key: string;
+  lane: number;
+  /** First and last global node index this slot stands for. */
+  start: number;
+  end: number;
+  count: number;
+  status: "active" | "complete" | "failed" | "idle";
+  tone: string;
+};
+
+type MapSlotNode = {
+  id: string;
+  data: {
+    index: number;
+    meta: { lane: number; tone: string };
+    status: string;
+  };
+};
+
+const MAP_SLOT_STATUS_PRIORITY: Record<TrajectoryMapSlot["status"], number> = {
+  failed: 4,
+  active: 3,
+  idle: 2,
+  complete: 1,
+};
+
+function normalizeSlotStatus(status: string): TrajectoryMapSlot["status"] {
+  if (status === "failed") {
+    return "failed";
+  }
+  if (status === "active" || status === "running") {
+    return "active";
+  }
+  if (status === "complete" || status === "completed") {
+    return "complete";
+  }
+  return "idle";
+}
+
+/**
+ * Bucket the lane overview down to at most `maxSlotsPerLane` marks per lane.
+ * The bucket is derived from the lane's own node count, so a lane with a few
+ * nodes keeps one slot each while a 10k-node lane collapses into a readable
+ * sequence of ranges. Status and tone come from the bucket's most severe node
+ * (failed > running > waiting > complete), which keeps hot spots visible.
+ */
+export function buildTrajectoryMapSlots(
+  nodes: readonly MapSlotNode[],
+  maxSlotsPerLane = 96,
+): TrajectoryMapSlot[] {
+  const laneBuckets = new Map<number, MapSlotNode[]>();
+  nodes.forEach((node) => {
+    const lane = node.data.meta.lane;
+    const bucket = laneBuckets.get(lane);
+    if (bucket) {
+      bucket.push(node);
+    } else {
+      laneBuckets.set(lane, [node]);
+    }
+  });
+
+  const limit = Math.max(1, Math.floor(maxSlotsPerLane));
+  const slots: TrajectoryMapSlot[] = [];
+  for (const [lane, laneNodes] of laneBuckets) {
+    const size = Math.ceil(laneNodes.length / limit);
+    for (let start = 0; start < laneNodes.length; start += size) {
+      const chunk = laneNodes.slice(start, start + size);
+      const first = chunk[0];
+      const last = chunk[chunk.length - 1];
+      let status: TrajectoryMapSlot["status"] = "complete";
+      let tone = last.data.meta.tone;
+      for (const node of chunk) {
+        const nodeStatus = normalizeSlotStatus(node.data.status);
+        if (
+          MAP_SLOT_STATUS_PRIORITY[nodeStatus] >
+          MAP_SLOT_STATUS_PRIORITY[status]
+        ) {
+          status = nodeStatus;
+          tone = node.data.meta.tone;
+        }
+      }
+      slots.push({
+        count: chunk.length,
+        end: last.data.index,
+        key: `${lane}:${first.data.index}-${last.data.index}`,
+        lane,
+        start: first.data.index,
+        status,
+        tone,
+      });
+    }
+  }
+  return slots;
 }
 
 export function buildTraceTurnIndex(

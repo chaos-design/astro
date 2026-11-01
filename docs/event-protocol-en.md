@@ -118,6 +118,71 @@ atom. Their start and completion events open and close one waiting interaction.
 Persisted `eventName` and `nativeEventName` values remain unchanged for
 inspection.
 
+### 4.1 Error and Exception Events
+
+An exception is not one event but four different blast radii. The same fault
+must produce the same persisted status and derived run state on every client,
+so the contract fixes scope, event, trigger, and behavior together.
+
+| Scope | Event | Trigger | Persisted `status` | Derived state | Terminal |
+| --- | --- | --- | --- | --- | --- |
+| Tool | `PostToolUseFailure` | A tool call returned a failure; paired with `PreToolUse` by `toolUseId` | `failed` | `failed` | No |
+| Tool | `PostToolUse` | Success channel carried `tool_response.error` or `exitCode > 0` | producer value | `failed` | No |
+| Turn | `StopFailure` | A model or API fault prevented the turn from finishing | `failed` | `failed`; `waiting` when throttling evidence is present | Yes |
+| Turn | `Stop` + `status=failed` | The client folds the failure into its stop event (Codex `turn.failed`) | `failed` | `failed` | Yes |
+| Interaction | `PermissionDenied` | The auto-mode classifier denied a tool call, or the user rejected it | producer value | `failed`; `waiting` when `payload.retry=true` | No |
+| Session/Turn | `Interrupt` | The user aborted or cancelled, or the runtime was stopped | `interrupted` | `terminated` | Yes |
+| Session | `SessionEnd` | The session ended, including abnormal exits | producer value | `terminated` | Yes |
+
+Precedence is fixed: **termination > waiting > failure > stop > recovery**.
+Termination evidence is never rewritten by later progress. `waiting` and
+`failed` only return to `active` on execution progress while no terminal
+evidence has arrived.
+
+Five boundaries:
+
+1. **Tool failures do not escalate to terminal.** A tool failure marks the step
+   and the run `failed`, but later progress or a `Stop` supersedes it. Only a
+   turn-level failure is terminal.
+2. **Throttling is not a failure.** A `StopFailure` or `Notification` carrying
+   `rate_limit`, `overloaded`, `retry_after`, `backoff`, or `throttl` evidence
+   derives `waiting` instead of a crash.
+3. **Tool events never imply termination.** `Interrupt` and `SessionEnd`
+   terminate directly. Other events terminate when `status` is `aborted` /
+   `cancelled` / `interrupted` / `terminated`, or when the native name or
+   `payload.reason` carries abort semantics. `PreToolUse`, `PostToolUse`,
+   `PostToolUseFailure`, and any event carrying `tool_response` are excluded: a
+   tool error whose text mentions "terminated" stays a tool failure. A custom
+   producer naming its own event (`session.cancelled`) is still honored.
+4. **`PermissionDenied` is a user decision**, not a technical fault. It
+   participates as a recoverable failure without changing the persisted
+   `eventName`; `retry=true` derives `waiting`.
+5. **Producer status wins.** The recorder never overwrites an explicit
+   `status`. Only when it is absent does the recorder infer `failed`
+   (`PostToolUseFailure`, `StopFailure`) or `interrupted` (`Interrupt`) from the
+   canonical event name, so clients that deliver no payload reach the same
+   conclusion as clients that do.
+
+Exception capture entry points per client (`—` means the client produces none,
+not "not implemented yet"):
+
+| Exception | Claude | Codex | WorkBuddy | Trae | ZCode | DeepSeek | OpenCode | Pi |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Tool failure | `PostToolUseFailure` | folded into `PostToolUse` + `failed` | `PostToolUseFailure` | folded into `PostToolUse` | `PostToolUseFailure` | `tool/result` `isError` | `session.tool.failed` | `tool_result` `isError` |
+| Turn/model failure | `StopFailure` | folded into `Stop` + `failed` | `StopFailure` | `StopFailure` | — | `turn/end` `failed` / `blocked` | derived `session.step.failed` | `message_end.stopReason=error` |
+| User rejection | `PermissionDenied` (auto-mode classifier only) | — | `PermissionDenied` | `PermissionDenied` | — | — | `permission.replied` with `reply=reject` | — |
+| Abort/interrupt | — (only `Stop` / `StopFailure`) | `Interrupt` | — | `Interrupt` | — | `turn/end` `aborted` / `interrupted` | derived `session.execution.interrupted` | `message_end.stopReason=aborted` |
+
+Failure detail is read from `payload.error_message`, `payload.denial_reason`,
+`payload.reason`, `payload.error`, then `payload.message`, truncated to 120
+characters. `payload.error_type` keeps the native error class so throttling can
+be distinguished from a real fault.
+
+Exception hooks share the execution rules of every other hook: a 5 second
+timeout, exit code 0 on every path, and write or configuration failures
+reported on stderr with that single event dropped. **Observability must never
+block the agent.**
+
 ## 5. Codex Mapping
 
 | Codex record | ASTRO event |
@@ -288,12 +353,19 @@ Each physical line must be one complete JSON object. The reader isolates a malfo
 
 Every `GET /api/stream` connection receives this ordered sequence:
 
-1. `reset`: complete current snapshot;
+1. `reset`: complete current snapshot, or `resume`: only the events after the
+   `since` cursor when the client names an event the server still holds;
 2. `ready`: `eventCount` and `connectedAt`;
 3. `trace`: one newly appended event at a time;
 4. later `reset`: file truncation, newly discovered trace files, or repository resynchronization.
 
-The server advertises `retry: 1000`. A reconnect receives another full snapshot before live increments, so follow-up turns missed during disconnection are repaired. Clients should still deduplicate `trace` events by ID.
+The server advertises `retry: 1000`. A plain reconnect receives another full
+snapshot before live increments, so follow-up turns missed during disconnection
+are repaired. A console that suspended a hidden tab reconnects with
+`?since=<eventId>` and receives a `resume` carrying just the missed tail, which
+keeps the refresh proportional to what was missed instead of to the whole
+history; an unknown cursor falls back to the full snapshot. Clients should
+still deduplicate `trace` events by ID.
 
 ## 14. Import, Export, and Compatibility
 

@@ -2,7 +2,11 @@ import React, { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./app";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { installPerfMetrics, setupPerfHud } from "@/lib/perf-metrics";
 import "./styles.css";
+
+installPerfMetrics();
+setupPerfHud();
 
 const root = document.getElementById("root");
 

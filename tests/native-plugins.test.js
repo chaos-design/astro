@@ -153,6 +153,43 @@ test("native plugin hooks use portable plugin-root paths", () => {
   }
 });
 
+test("exception hooks are registered only where the capture contract claims", () => {
+  const claudeHooks = readJson("claude-plugin/hooks/hooks.json").hooks;
+  const codexHooks = readJson("codex-plugin/hooks/hooks.json").hooks;
+  const workbuddyHooks = readJson("workbuddy-plugin/hooks/hooks.json").hooks;
+  const zcodeHooks = readJson("zcode-plugin/hooks/hooks.json").hooks;
+
+  // Claude Code exposes tool-, turn- and rejection-level failure hooks. It
+  // has no interrupt hook: a cancelled turn only surfaces as Stop or
+  // StopFailure.
+  assert.ok(claudeHooks.PostToolUseFailure);
+  assert.ok(claudeHooks.StopFailure);
+  assert.ok(claudeHooks.PermissionDenied);
+  assert.equal(claudeHooks.Interrupt, undefined);
+
+  // StopFailure matches on error type, so the packaged plugin omits the
+  // matcher instead of relying on "*" being a valid error-type pattern.
+  assert.equal(claudeHooks.StopFailure[0].matcher, undefined);
+
+  // Codex folds tool and turn failures into PostToolUse / Stop with
+  // status=failed, and exposes an explicit Interrupt hook instead.
+  assert.equal(codexHooks.PostToolUseFailure, undefined);
+  assert.equal(codexHooks.StopFailure, undefined);
+  assert.ok(codexHooks.Interrupt);
+
+  // WorkBuddy reports the rejection decision as its own hook.
+  assert.ok(workbuddyHooks.PostToolUseFailure);
+  assert.ok(workbuddyHooks.StopFailure);
+  assert.ok(workbuddyHooks.PermissionDenied);
+  assert.equal(workbuddyHooks.Interrupt, undefined);
+
+  // ZCode fires exactly seven hooks; PostToolUseFailure is the only
+  // exception hook among them.
+  assert.ok(zcodeHooks.PostToolUseFailure);
+  assert.equal(zcodeHooks.StopFailure, undefined);
+  assert.equal(zcodeHooks.Interrupt, undefined);
+});
+
 test("ZCode plugin registers only the events ZCode supports", () => {
   const hooks = readJson("zcode-plugin/hooks/hooks.json").hooks;
   const zcode = readJson("zcode-plugin/.zcode-plugin/plugin.json");

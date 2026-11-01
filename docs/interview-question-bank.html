@@ -1003,7 +1003,7 @@
             "<b>ASTRO_HOME</b>（兼容别名 <code>AOT_HOME</code>）：数据根，<code>resolveAstroHome</code> 用 <code>path.resolve(expandHome(...))</code> 归一到绝对路径，默认 <code>~/.astrox</code>。它决定 trace 目录、<code>plugins/astro/config.yaml</code>、dashboard pid 文件位置。",
             "<b>ASTRO_TRACE_DIR</b>（别名 <code>AGENT_TRACE_DIR</code> / <code>TRAE_TRACE_DIR</code>）：把某个客户端的 trace 重定向到项目内，例如 <code>.agent-trace</code>。若是绝对路径直接使用；相对路径按 <code>ASTRO_PROJECT_DIR → AGENT_TRACE_PROJECT_DIR → TRAE_PROJECT_DIR → CLAUDE_PROJECT_DIR → payload.cwd → process.cwd()</code> 解析为基准目录。",
             "<b>ASTRO_PROJECT_DIR</b>：只作为上面相对路径的解析基准，本身不决定存储位置。存在的意义是「hook 进程 cwd 不一定是用户项目根」（例如全局 <code>settings.json</code> 的 hook 由别处触发）。",
-            "<b>ASTRO_PORT / ASTRO_HOST</b>：dashboard 监听端口与主机，pid 文件名带端口（<code>dashboard-4318.pid</code>），避免多实例互相覆盖。",
+            "<b>ASTRO_PORT / ASTRO_HOST</b>：dashboard 监听端口与主机，pid 文件名带端口（<code>dashboard-5678.pid</code>），避免多实例互相覆盖。",
             "<b>ASTRO_AUTO_OPEN</b>：由 <code>isEnabled</code> 解析，<code>0/false/no/off</code> 关闭。默认开启，仅对 <code>SessionStart</code> / <code>UserPromptSubmit</code> 触发（<code>launchDashboardForEvents</code> 里的 triggerEvent 判断），避免工具调用洪峰时反复开标签页。",
             "<b>为什么 ASTRO_HOME 不支持相对路径</b>：它是全局数据根，相对路径会让「同一台机器上不同 cwd 的两个 hook 进程」写到不同位置，直接破坏「多端共享一份数据」的模型；而 <code>ASTRO_TRACE_DIR</code> 的语义就是「项目内目录」，相对路径天然以项目为基准。"
           ],
@@ -1503,7 +1503,7 @@
           "answer": [
             "<b>触发时机</b>：<code>triggerEvent</code> 只在 <code>SessionStart</code> 或 <code>UserPromptSubmit</code> 命中。一次真实会话里工具调用上百次，但这两类事件每轮 prompt 各一次，因此效果是「每个会话自动打开一次，且只打开一次」。",
             "<b>防重判据</b>：pid 文件存 <code>{ pid, server }</code>；先用 <code>process.kill(pid, 0)</code> 判断进程存活，再用 <code>isCompatibleDashboard()</code> 比对 server 路径——允许 realpath 不同，但都须通过 <code>isAstroDashboardFile()</code> 结构校验（basename 为 <code>server.mjs</code>，且同级存在 <code>dist/index.html</code> 与 <code>plugin/trace-recorder.cjs</code>）。已存在则只打印提示，不再开新标签。",
-            "<b>pid 文件带端口</b>：端口来自 <code>ASTRO_PORT</code>（默认 4318）。同一机器可能同时跑多个 ASTRO（不同 <code>ASTRO_HOME</code> 或不同端口用于多项目对比），带端口才能共存而不互相覆盖。",
+            "<b>pid 文件带端口</b>：端口来自 <code>ASTRO_PORT</code>（默认 5678）。同一机器可能同时跑多个 ASTRO（不同 <code>ASTRO_HOME</code> 或不同端口用于多项目对比），带端口才能共存而不互相覆盖。",
             "<b>env 透传</b>：启动时注入 <code>ASTRO_HOME</code>、<code>ASTRO_OPEN_BROWSER=1</code>、<code>ASTRO_PID_FILE</code>、<code>ASTRO_OPEN_SOURCE</code>、<code>ASTRO_OPEN_SESSION</code>，让界面直接落到对应来源与会话——可观测工具的入口应该指向问题现场。",
             "<b>降级</b>：<code>ASTRO_AUTO_OPEN=0</code> 可关；<code>child.on(\"error\")</code> 清理 pid；启动失败只写 stderr（<code>ASTRO recorded the event, but the dashboard could not start (CODE)</code>），绝不影响事件记录。"
           ],

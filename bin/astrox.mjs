@@ -25,7 +25,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { homedir, platform } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 /**
  * The plugin runtime modules are heavyweight (config loader, installed-plugin
@@ -237,12 +237,16 @@ export function findGlobalCli({
 /**
  * Dashboard PID records live in `<ASTRO_HOME>/dashboard-<port>.pid` and are
  * written by the server itself, so any launcher can discover a running daemon.
+ * Every record is returned (not just the first) because several ASTRO builds
+ * can serve from the same home on different ports — a stale record left behind
+ * by another checkout must never make `stop` kill the wrong process, nor make
+ * `start` believe the configured port is already taken.
  */
-export function readDashboardState(astroHome) {
+export function readDashboardStates(astroHome) {
   if (!existsSync(astroHome)) {
-    return null;
+    return [];
   }
-  const records = readdirSync(astroHome)
+  return readdirSync(astroHome)
     .filter((name) => /^dashboard-.*\.pid$/.test(name))
     .map((name) => {
       const file = join(astroHome, name);
@@ -252,17 +256,63 @@ export function readDashboardState(astroHome) {
         return { file, record: null };
       }
     })
-    .filter(({ record }) => record && Number(record.pid) > 0);
-  if (!records.length) {
-    return null;
+    .filter(({ record }) => record && Number(record.pid) > 0)
+    .map(({ file, record }) => {
+      const filePort = Number(/^dashboard-(.*)\.pid$/.exec(basename(file))?.[1]);
+      const urlPort = Number(
+        typeof record.url === "string"
+          ? /:(\d+)(?:\/|$)/.exec(record.url)?.[1]
+          : Number.NaN,
+      );
+      return {
+        file,
+        pid: Number(record.pid),
+        url: typeof record.url === "string" ? record.url : "",
+        port: Number.isFinite(filePort) ? filePort : urlPort,
+        // Which bundle the daemon was launched from: the fastest way to see
+        // that an old copy is still serving a port.
+        server: typeof record.server === "string" ? record.server : "",
+        running: isProcessAlive(Number(record.pid)),
+      };
+    });
+}
+
+/**
+ * The dashboard record to act on. With a `port`, only that port's record
+ * counts — a daemon on another port belongs to a different bundle and must not
+ * be reported, stopped, or treated as "already started". Without a port the
+ * first running record is returned, which keeps the older call pattern working.
+ */
+export function readDashboardState(astroHome, port) {
+  const states = readDashboardStates(astroHome);
+  if (port) {
+    const requested = Number(port);
+    return states.find((state) => state.port === requested) ?? null;
   }
-  const states = records.map(({ file, record }) => ({
-    file,
-    pid: Number(record.pid),
-    url: typeof record.url === "string" ? record.url : "",
-    running: isProcessAlive(Number(record.pid)),
-  }));
-  return states.find((state) => state.running) ?? states[0];
+  return states.find((state) => state.running) ?? states[0] ?? null;
+}
+
+/**
+ * Version stamped into an installed runtime bundle by `astrox install` /
+ * `astrox update`. An empty string means the bundle predates the stamp.
+ */
+export function readInstalledBundleVersion(pluginDir) {
+  try {
+    const record = JSON.parse(
+      readFileSync(join(pluginDir, "plugin.json"), "utf8"),
+    );
+    return typeof record.version === "string" ? record.version : "";
+  } catch {
+    return "";
+  }
+}
+
+/** Bundle version of a running daemon, derived from its recorded server path. */
+function readBundleVersionForServer(serverFile) {
+  if (!serverFile) {
+    return "";
+  }
+  return readInstalledBundleVersion(resolve(dirname(serverFile), ".."));
 }
 
 function isProcessAlive(pid) {
@@ -278,10 +328,10 @@ function sleep(ms) {
   return new Promise((done) => setTimeout(done, ms));
 }
 
-async function waitForDashboard(astroHome, timeoutMs = 15_000) {
+async function waitForDashboard(astroHome, timeoutMs = 15_000, port) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    const state = readDashboardState(astroHome);
+    const state = readDashboardState(astroHome, port);
     if (state?.running) {
       return state;
     }
@@ -326,6 +376,12 @@ function buildStartEnvironment(environment, astroHome) {
   };
 }
 
+/** Port the dashboard binds: CLI flag first, then the resolved config/env. */
+function resolveDashboardPort(environment) {
+  const port = Number(getOption("port") || environment?.ASTRO_PORT || 5_678);
+  return Number.isFinite(port) && port > 0 ? port : 5_678;
+}
+
 async function startCommand() {
   const deps = await loadDependencies();
   const { environment } = await loadConfig();
@@ -336,6 +392,15 @@ async function startCommand() {
       `No installed ASTRO plugin found under ${runtime.pluginDir}. Run "astrox install" first.`,
     );
   }
+  const port = resolveDashboardPort(environment);
+  // The installed runtime is a *copy* of this package made by `astrox install`
+  // / `astrox update`. When the CLI moved on and the copy did not, the daemon
+  // serves the older UI no matter how new the checkout is — the exact case
+  // where a shipped feature looks "lost". Comparing the stamped versions makes
+  // the mismatch visible, and refreshing before start keeps it from lingering.
+  const cliVersion = getPackageVersion();
+  const bundleVersion = readInstalledBundleVersion(runtime.pluginDir);
+  const bundleStale = bundleVersion !== cliVersion;
 
   if (!hasFlag("no-global")) {
     const registered = registerGlobalCli({
@@ -344,13 +409,30 @@ async function startCommand() {
     printGlobalCli(registered);
   }
 
-  const existing = readDashboardState(astroHome);
+  const existing = readDashboardState(astroHome, port);
   if (existing?.running) {
+    if (bundleStale) {
+      console.log(
+        `Installed bundle is ${bundleVersion ? `v${bundleVersion}` : "unstamped"} but this CLI is v${cliVersion}.`,
+      );
+      console.log('Run "astrox restart" to serve the current build.');
+    }
     console.log(`Dashboard already running: ${existing.url || "unknown"}`);
     if (hasFlag("open") && existing.url) {
       openUrl(existing.url);
     }
     return;
+  }
+
+  if (bundleStale) {
+    console.log(
+      `Refreshing installed bundle ${bundleVersion ? `v${bundleVersion}` : "(unstamped)"} → v${cliVersion}…`,
+    );
+    deps.updateInstalledPlugins({
+      astroHome,
+      environment,
+      refreshDeepseek: false,
+    });
   }
 
   const logFile = getOption("log-file") || join(astroHome, "dashboard.log");
@@ -365,7 +447,7 @@ async function startCommand() {
   closeSync(logFd);
   child.unref();
 
-  const state = await waitForDashboard(astroHome);
+  const state = await waitForDashboard(astroHome, 15_000, port);
   if (!state) {
     throw new Error(
       `The dashboard did not report a PID within 15s. Check ${logFile}.`,
@@ -404,9 +486,20 @@ async function stopCommand() {
   const deps = await loadDependencies();
   const { environment } = await loadConfig();
   const astroHome = deps.resolveAstroHome(environment);
-  const state = readDashboardState(astroHome);
+  // Scoped to the configured port: a daemon on another port serves a different
+  // bundle and is not this command's business.
+  const port = resolveDashboardPort(environment);
+  const state = readDashboardState(astroHome, port);
   if (!state) {
+    const others = readDashboardStates(astroHome).filter(
+      (candidate) => candidate.running && candidate.port !== port,
+    );
     console.log("Dashboard is not running.");
+    for (const other of others) {
+      console.log(
+        `Another dashboard is running on port ${other.port}: ${other.url} (stop it with --port ${other.port}).`,
+      );
+    }
     return;
   }
   if (!state.running) {
@@ -450,7 +543,10 @@ async function statusCommand() {
   const globalCli = findGlobalCli({
     binDirs: (await getBinDirOption()) ?? getGlobalBinDirs(),
   });
-  const dashboard = readDashboardState(astroHome);
+  const dashboard = readDashboardState(astroHome, resolveDashboardPort(environment));
+  const otherDashboards = readDashboardStates(astroHome).filter(
+    (candidate) => candidate.running && candidate.url !== (dashboard?.url ?? ""),
+  );
   const codexHome = resolve(
     deps.expandHome(
       getOption("codex-home") || environment.CODEX_HOME || join(homedir(), ".codex"),
@@ -492,6 +588,10 @@ async function statusCommand() {
         .installed,
     ],
   ];
+  const cliVersion = getPackageVersion();
+  const bundleVersion = existsSync(runtime.pluginDir)
+    ? readInstalledBundleVersion(runtime.pluginDir)
+    : "";
   const report = {
     astroHome,
     plugin: {
@@ -511,6 +611,10 @@ async function statusCommand() {
       pluginDir: runtime.pluginDir,
       configPath: config.files.config.path,
       envPath: config.files.env.path,
+      // The copy actually served until `astrox restart`: an outdated value
+      // explains a UI that is missing features the checkout already ships.
+      version: bundleVersion,
+      stale: existsSync(runtime.pluginDir) && bundleVersion !== cliVersion,
     },
     globalCli: globalCli
       ? {
@@ -522,12 +626,21 @@ async function statusCommand() {
       running: Boolean(dashboard?.running),
       pid: dashboard?.pid ?? 0,
       url: dashboard?.url || "",
+      port: dashboard?.port ?? resolveDashboardPort(environment),
+      server: dashboard?.server || "",
+      version: readBundleVersionForServer(dashboard?.server),
     },
+    otherDashboards: otherDashboards.map(({ pid, port, url, server }) => ({
+      pid,
+      port,
+      url,
+      version: readBundleVersionForServer(server),
+    })),
     integrations: integrations.map(([id, installed]) => ({
       id,
       state: installed ? "OK" : "MISSING",
     })),
-    version: getPackageVersion(),
+    version: cliVersion,
   };
 
   if (hasFlag("json")) {
@@ -539,6 +652,15 @@ async function statusCommand() {
   console.log(`  home           ${report.astroHome}`);
   console.log(
     `  plugin         ${report.plugin.installed ? "INSTALLED" : "MISSING"} ${report.plugin.pluginDir}`,
+  );
+  console.log(
+    `  plugin build   ${
+      !report.plugin.installed
+        ? "MISSING"
+        : report.plugin.stale
+          ? `STALE v${report.plugin.version || "unversioned"} ≠ CLI v${report.version} — run "astrox update"`
+          : `OK v${report.plugin.version}`
+    }`,
   );
   console.log(
     `  recorder       ${report.plugin.recorder ? "OK" : "MISSING"} ${runtime.recorderFile}`,
@@ -554,10 +676,15 @@ async function statusCommand() {
   console.log(
     `  dashboard      ${
       report.dashboard.running
-        ? `RUNNING ${report.dashboard.url || ""} (pid ${report.dashboard.pid})`
+        ? `RUNNING ${report.dashboard.url || ""} (pid ${report.dashboard.pid}${report.dashboard.version ? `, v${report.dashboard.version}` : ""})`
         : "STOPPED"
     }`,
   );
+  for (const other of report.otherDashboards) {
+    console.log(
+      `  other          RUNNING ${other.url} (pid ${other.pid}${other.version ? `, v${other.version}` : ""}) — separate instance`,
+    );
+  }
   console.log(
     `  integrations   ${report.integrations
       .map(({ id, state }) => `${id}=${state}`)
@@ -647,6 +774,18 @@ async function updateCommand() {
     refreshDeepseek: !hasFlag("no-deepseek"),
   });
   console.log(`Updated ASTRO plugin runtime in ${runtime.pluginDir}`);
+  // A running daemon keeps its already-loaded server code and only serves the
+  // new files on reload, so say out loud that applying the update needs a
+  // restart instead of implying the update alone is enough.
+  const running = readDashboardStates(
+    astroHome || deps.resolveAstroHome(process.env),
+  ).filter((state) => state.running);
+  if (running.length) {
+    console.log(
+      `Restart to apply: astrox restart (running on ${running.map((state) => state.url).join(", ")})`,
+    );
+    return;
+  }
   console.log(`Manual start: astrox start (or node ${runtime.dashboardFile})`);
 }
 
@@ -739,7 +878,7 @@ Notes:
 
 Environment:
   ASTRO_HOME   Bootstrap runtime and trace root (default ~/.astrox)
-  ASTRO_PORT   Dashboard port (default 4318)
+  ASTRO_PORT   Dashboard port (default 5678)
   ASTRO_HOST   Dashboard host (default 127.0.0.1)`);
 }
 

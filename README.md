@@ -77,13 +77,19 @@ schedule tools, approve permissions, or alter agent decisions.
   answers with identical text.
 - Expandable prompt-run history within each session. `INITIAL` and numbered
   `FOLLOW-UP` rows isolate one prompt and all events before the next prompt.
-- Active session duration refreshes every second. It is capped at the shared
-  24-hour default and becomes `terminated` when that limit is reached.
+- The executing message is pinned to the top of the run list, ordered by its
+  latest activity. A resumed session keeps its original start, so its new
+  prompt would otherwise sort below every run that merely started later.
+- Active session duration refreshes every second and is timed on the executing
+  message: a session resumed days later shows the new prompt's elapsed time,
+  not the age of the session. It is capped at the shared 24-hour default and
+  becomes `terminated` when that limit is reached.
 - Historical replay with restart, previous, play/pause, next, seek, and
   `0.5x`/`1x`/`2x`/`4x` speed controls.
 - Two complementary views:
   - **Execution Topology** for semantic runtime structure.
-  - **Run Trajectory** for observed time-ordered steps and turns.
+  - **Run Trajectory** for observed steps and turns, newest first — the
+    executing atom is the first row, the run preamble (context) is last.
 - Six base topology domains, 27 stable atoms, and 28 defined edges.
 - Dynamic `Subagent Execute` layers derived from `SubagentStart` and
   `SubagentStop`.
@@ -131,7 +137,7 @@ event names are preserved instead of discarded.
 - Codex, Claude Code, DeepSeek Harness, Trae, or WorkBuddy only when installing that runtime integration.
 - A modern browser with ES modules, Web Workers, SSE, `ResizeObserver`, and
   modern CSS support.
-- An available loopback port. The server starts at `4318` and tries up to 20
+- An available loopback port. The server starts at `5678` and tries up to 20
   subsequent ports when the preferred port is occupied.
 
 ### Install and run
@@ -149,7 +155,7 @@ pnpm build
 pnpm start
 ```
 
-Open `http://127.0.0.1:4318`. The server prints the actual URL if it selects a
+Open `http://127.0.0.1:5678`. The server prints the actual URL if it selects a
 later port.
 
 In `pnpm dev` development mode, the console loads a built-in Demo when no real
@@ -404,7 +410,7 @@ in Trae, start a new Agent conversation, and submit a prompt. Session, prompt,
 tool, stop, and notification events are written to
 `~/.astrox/trae/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` by default.
 The sandbox must permit writes to that user-level root. The checked-in hooks and
-development API use the same `~/.astrox` root and port `4318` by default. If
+development API use the same `~/.astrox` root and port `5678` by default. If
 `ASTRO_PORT` is overridden, use the same value for Vite and the API process.
 Each follow-up prompt and response is recorded in the same session; `Stop`
 does not disable listening.
@@ -418,7 +424,7 @@ After reloading or restarting the client, `SessionStart` then:
 2. checks the dashboard PID for the preferred port;
 3. starts the installed `plugins/astro/server/server.mjs` only when needed;
 4. opens the actual URL only when starting the server, including a later port
-   when `4318` is occupied. If already running, it reports the current session's
+   when `5678` is occupied. If already running, it reports the current session's
    URL so you can switch to or refresh the existing tab without opening another.
 
 To manage the process manually, disable automatic startup and use either
@@ -469,7 +475,7 @@ pnpm install-plugins -- --no-migrate
 ### Development mode
 
 Vite resolves its `/api` proxy from `ASTRO_HOST/ASTRO_PORT`; the default is
-`http://127.0.0.1:4318`. Run the API and frontend separately:
+`http://127.0.0.1:5678`. Run the API and frontend separately:
 
 ```bash
 # Terminal 1
@@ -966,7 +972,7 @@ await trace.agentMessage("Inspection finished");
 await trace.stop({ message: "Done" });
 ```
 
-The SDK sends to `http://127.0.0.1:4318/api/events` by default. Browser
+The SDK sends to `http://127.0.0.1:5678/api/events` by default. Browser
 extensions must declare loopback host permission. Only ingestion enables CORS;
 read, search, and SSE endpoints remain same-origin.
 
@@ -985,7 +991,7 @@ read, search, and SSE endpoints remain same-origin.
 Ingest one event:
 
 ```bash
-curl -X POST http://127.0.0.1:4318/api/events \
+curl -X POST http://127.0.0.1:5678/api/events \
   -H 'Content-Type: application/json' \
   -H 'X-Astro-Source: custom-agent' \
   -d '{
@@ -1000,10 +1006,10 @@ curl -X POST http://127.0.0.1:4318/api/events \
 Read and search:
 
 ```bash
-curl http://127.0.0.1:4318/api/health
-curl 'http://127.0.0.1:4318/api/events?source=codex&session=s1'
-curl 'http://127.0.0.1:4318/api/search?q=readFile&source=codex'
-curl -N http://127.0.0.1:4318/api/stream
+curl http://127.0.0.1:5678/api/health
+curl 'http://127.0.0.1:5678/api/events?source=codex&session=s1'
+curl 'http://127.0.0.1:5678/api/search?q=readFile&source=codex'
+curl -N http://127.0.0.1:5678/api/stream
 ```
 
 ## Console Workflows
@@ -1015,6 +1021,19 @@ status, a title derived from the first prompt, start time, source, duration,
 prompt count, and an abbreviated session ID. A session with multiple prompts
 expands into `INITIAL` and numbered `FOLLOW-UP` rows. Each child row shows its
 own title, status, start time, duration, event count, and prompt event ID.
+
+Run History is scoped to the selected agent and then windowed by hours: three
+hours by default, changeable in Settings to 1, 6, 12, or 24 hours or 3, 7, or
+30 days.
+The window ends at the newest message, so opening the console the next morning
+still shows the session you left; executing messages ignore the window and stay
+pinned on top. `LOAD EARLIER` at the bottom doubles the window. The `N LIVE` chip
+in the panel header arms the Live filter, which keeps only the messages whose
+run is executing right now — filtered out of the agent's whole history, so a
+prompt sent into a thread that started days ago still qualifies — and locates
+them. With nothing running the list is empty and says so; the filter is off by
+default and Settings can change that default. The GitHub icon at the far right
+of the header opens the project repository.
 
 Selecting a child scopes topology, trajectory, log, inspector, replay, and
 export to the interval beginning at that `UserPromptSubmit` and ending before
@@ -1051,9 +1070,10 @@ result again from timestamps and current time.
 #### Global history search
 
 Use the header search control or `Cmd/Ctrl + K` to search all History data
-already loaded in the browser. The default range is the last three hours;
-presets cover 3, 6, 12, and 24 hours, today, yesterday, and seven days. Agent,
-run-status, event-category, and date filters can be combined.
+already loaded in the browser. The dialog opens on the default range from
+Settings — the last three hours unless changed; presets cover 3, 6, 12, and 24
+hours, today, yesterday, and 3, 7, or 30 days. Agent, run-status, event-category, and
+date filters can be combined.
 
 Search results include their Session and Prompt context. Selecting one switches
 the platform when supported, selects the exact run and event, exits replay,
@@ -1109,7 +1129,9 @@ transition, and selected inspector event.
 - Clear removes browser imports and calls `DELETE /api/events` outside demo
   mode.
 - Current selection is encoded as
-  `?source=<source>&session=<sessionId>&event=<eventId>`.
+  `?agent=<agent>&session=<sessionId>&event=<eventId>`; `agent` mirrors the
+  dropdown (a configured agent id or `others`), and legacy `?source=` links
+  still resolve.
 
 ## Configuration
 
@@ -1130,7 +1152,7 @@ settings:
 ```yaml
 server:
   host: 127.0.0.1
-  port: 4318
+  port: 5678
   maxBodyBytes: 5242880
 runtime:
   autoOpen: true
@@ -1342,8 +1364,8 @@ Production should remain empty; if it shows Demo, check for a Vite development
 page or stale build:
 
 ```bash
-curl http://127.0.0.1:4318/api/health
-curl http://127.0.0.1:4318/api/events
+curl http://127.0.0.1:5678/api/health
+curl http://127.0.0.1:5678/api/events
 ```
 
 ### Agent activity does not appear
@@ -1369,7 +1391,7 @@ startup is intentionally disabled when `ASTRO_AUTO_OPEN=0`.
 ### The console reports `offline`
 
 Verify the service URL and `/api/stream`. In development, Vite and the API
-must share `ASTRO_HOST/ASTRO_PORT`; the default port is `4318`.
+must share `ASTRO_HOST/ASTRO_PORT`; the default port is `5678`.
 
 ### The first turn appears but follow-ups do not
 

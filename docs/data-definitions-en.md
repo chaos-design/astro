@@ -57,7 +57,7 @@ The current `schemaVersion` is `2`. Field semantics and generation rules:
 | `toolUseId` | string \| null | yes | Correlation key between a tool start and its result. |
 | `toolName` | string \| null | yes | Tool, function, or source item type. |
 | `cwd` | string \| null | yes | Working directory or browser context URL when the event happened. |
-| `status` | string \| null | yes | Source status or the ASTRO-inferred `failed`. |
+| `status` | string \| null | yes | Source status; when absent, inferred from the canonical event name as `failed` (`PostToolUseFailure`, `StopFailure`) or `interrupted` (`Interrupt`). |
 | `sequence` | number \| null | yes | Optional source sequence, `null` when unreliable. |
 | `payload` | object | yes | Redacted source payload plus supplemental fields. |
 | `locator` | string | yes | Copyable reference: `trace://source/session/event`. |
@@ -119,6 +119,13 @@ The current `schemaVersion` is `2`. Field semantics and generation rules:
 | `failed` | Failure signal, held until progress, a new prompt, or terminal evidence. |
 | `complete` | `Stop` (ends the current answer only). |
 | `terminated` | `Interrupt`, `SessionEnd`, or equivalent termination evidence. |
+
+Exception precedence is **termination > waiting > failure > stop > recovery**:
+tool failures and user rejections are recoverable `failed` states, turn-level
+failures (`StopFailure`, `Stop` + `failed`) and aborts are terminal, and
+throttled failures derive `waiting`. Full boundaries, per-client entry points,
+and payload rules live in the event protocol reference §4.1; the read-model
+classifier is `src/lib/exception-events.ts`.
 
 ### 7.2 Prompt Sub-runs
 

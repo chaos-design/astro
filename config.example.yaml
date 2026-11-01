@@ -4,7 +4,7 @@ version: 1
 
 server:
   host: 127.0.0.1
-  port: 4318
+  port: 5678
   maxBodyBytes: 5242880
 
 runtime:

@@ -5,7 +5,7 @@ import { defineConfig } from "vite";
 import runtimeConfigLoader from "./plugin/runtime-config.cjs";
 
 const defaultAstroHost = "127.0.0.1";
-const defaultAstroPort = 4318;
+const defaultAstroPort = 5678;
 
 export function resolveAstroProxyTarget(
   environment: Record<string, string | undefined>,

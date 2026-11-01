@@ -141,18 +141,90 @@ Guide 的观测列表保留语义化 `ul` / `li`，使用原生 `disc` 标记。
 
 正在执行的消息在三处同时标识，使定位不依赖滚动：
 
-- 面板标题常驻 `N LIVE` 芯片：点击把首条活动消息滚动到列表中部，并**同时筛选**
-  当前已加载列表，只保留活动消息；再次点击取消筛选。芯片筛选时呈武装态
-  （`.is-filtering` 实心状态边框）；筛选范围仅限当前加载的消息，绝不触发加载
-  更早历史。筛选集合由 `filterSessionsByLiveKeys` 从已加载会话推导，一旦活动
-  消息全部结束，芯片隐藏且筛选自动解除；
+- 面板标题常驻 `N LIVE` 芯片：既是活动计数，也是 **Live 筛选开关**（状态保存在
+  `ASTROX_RUN_HISTORY_LIVE_VIEW`，默认关闭，设置弹窗可改默认值）。开启时列表**只
+  保留正在执行的消息**，筛选池是所选智能体的全部历史（丢弃时间窗口，因此几天前开始、
+  刚被追问的会话也在池内），已完成的消息不列出；活动消息置顶、自动展开并滚动定位；
+  新消息开始执行时按 live 集合差集自动定位，无需手动翻找。0 条 live 时列表为空并
+  显示「当前没有正在执行的消息」，不回退到完整历史。关闭时回到默认时间窗口。芯片
+  始终渲染：未选中是浅色描边胶囊，选中是深色实心胶囊（雷达图标两种状态都保留，
+  颜色随胶囊），`0 LIVE` 时使用更安静的 idle 变体；
 - 活动行使用 `inset 2px` 的状态色左缘，`active` 为紫色、`waiting` 为琥珀色；
 - 标签行额外渲染带脉冲圆点的 `RUNNING` / `WAITING` 胶囊，与 `STATUS` 标签并列。
 
-活动状态由 `isLiveRunStatus` 判定，覆盖 `active` 与 `waiting`。选中态优先于活动色，
-因此被选中的活动行仍保留选择边框。已完成的消息（`complete` / `failed` /
-`terminated`）不再自动定位到最后一个原子：`getPromptAtomSelection` 对非活动状态返回
-`null`，拓扑保持未选中，只有人工点击原子才会定位。
+活动状态由 `isLiveRunStatus` 判定，覆盖 `active` 与 `waiting`；实时索引另需
+`isFreshLiveRun` 的活跃度门槛（`active` 10 分钟、`waiting` 60 分钟），避免崩溃
+录制器留下的 `active` 记录长期占用 `N LIVE`。选中态优先于活动色，因此被选中的
+活动行仍保留选择边框。已完成的消息（`complete` / `failed` / `terminated`）不再
+自动定位到最后一个原子：`getPromptAtomSelection` 对非活动状态返回 `null`，拓扑
+保持未选中，只有人工点击原子才会定位。
+
+智能体筛选是**外层**，实时索引随之收窄：`collectLiveRunKeys` 只回答「这台机器上有
+谁在跑」，`scopeLiveRunIndex` 再把它与所选智能体的会话求交，得到列表真正使用的
+`liveSessionKeys`，计数、置顶、窗口豁免与 Live 筛选因此永远描述同一个列表。早期实现
+把别的智能体的 live 会话直接补进 `historySessions`，于是 Codex 视图里也能看到 Claude
+正在执行的那条消息，还被置顶——这条路径已经删掉。别的智能体是否在跑改由智能体下拉框
+提示：`scopeLiveRunIndex` 同时返回全机器的 `sources`，命中项的智能体在 `AgentSelect`
+里带一个 `--status-running` 呼吸圆点。切换智能体时清空当前选中（`activeSessionKey`
+等），画布、LOG 与列表一起落到新智能体的最新消息；`?session=` 深链指向别的智能体时，
+下拉框与地址栏的 `agent` 跟着该智能体，保证打开的运行一定在列表里。
+
+### 同步预算
+
+控制台与本地服务之间只有一条 SSE 连接（`/api/stream`，掉线时带 `since` 游标续传）。
+页面开得越久，`liveEvents` 越大，每次批次都要重新派生会话、运行与流程，所以同步有上限：
+
+- `appDefaults.maxSync`（默认 `8h`，设置项「最长同步时长」）到点后 `syncStopped` 置位，
+  流效果的清理函数关闭 `EventSource`，从此不再追加事件、不再派生、内存不再增长；
+- 计时只有一个 `setTimeout`（`getSyncStopDelay`），`off` 时压根不建计时器，不做轮询；
+- 顶栏 `synced` 变成琥珀色 `paused` 按钮，服务卡片同步说明「同步已按上限停止」而不是
+  「连接断开」；
+- 恢复有两条等价路径：点 `paused`（`resumeSync`）或重启本地服务。两者都重置
+  `syncStartedAt`，并拉一份**当前快照**（`handleReloadLatestEvents`）而不是补播错过的
+  增量——补播会让刚被截住的数组重新膨胀。重启后仍停在 `paused` 属于 bug。
+
+### 运行历史时间窗口
+
+列表先按智能体收窄，再按小时窗口过滤（设置项 `默认时间范围`，默认 `3h`，可选
+`1h` / `6h` / `12h` / `1d` / `3d` / `5d` / `7d`）：
+
+- 窗口终点取**最近一条消息**时间（`getRunHistoryAnchorTime`），不是 `Date.now()`，
+  因此隔夜打开不会得到空列表；
+- 活动消息不受窗口限制（`selectVisibleRunHistory` 的 `liveKeys` 参数为豁免集合）；
+- `LOAD EARLIER` 把窗口翻倍（3 → 6 → 12 → 24 → 48 小时），
+  `canLoadMoreRunHistory` 为 `false` 时按钮消失；
+- 切换智能体或修改默认范围时，窗口宽度回到设置的默认值。
+
+### 设置与顶栏
+
+设置弹窗（`src/components/settings-dialog.tsx`）只承载浏览器本地偏好，改动立即
+生效并写入 `localStorage`。它是一个两栏卡片：左侧 `.settings-nav` 分区栏、右侧
+`.settings-pane` 只渲染当前分区；两栏由 Radix `Tabs orientation="vertical"` 承载，
+方向键可切换。头部与底部固定，只有右侧面板滚动，底部的「完成」只关闭弹窗：
+
+- 外观：主题（与顶栏切换器同一偏好）；
+- 运行历史：默认时间范围（一行 4 个，共 8 个选项）、Live 筛选与最长同步时长；
+- 画布：默认视图、仅显示运行时原子；
+- 面板：左右两列是否默认展开；
+- 关于：控制台版本、偏好实际位置（localStorage + `ASTROX_` 前缀）、只读说明。
+
+「恢复默认」一次性还原全部分区。时间范围同时驱动 RUN HISTORY 窗口与全局搜索弹窗的
+初始范围，避免两处默认值漂移。顶栏依次是设置、主题、GitHub（锚点，
+`appRepository.url`，新标签页打开），都是 28 px 图标控件，与主题切换器同高同圆角。
+
+运行时长胶囊展开的 `LOCAL SERVICE` 卡片分四段：**版本**（控制台 = 当前页面构建
+`appVersion`；服务 = `/api/health` 的 `build`，来自 `package.json` 或安装目录的
+`plugin.json`）、**进程**（启动时间、启动耗时、重启次数、SSE 客户端数）、**数据**
+（事件数、轨迹文件数、数据根目录）、**会话**（`active` / `waiting` / `complete` /
+`failed` / `terminated` 五个计数）。两侧版本不一致会提示刷新或重启；`build` 读不到
+清单时为 `unknown`，卡片显示「未上报」并说明原因，而不是把 `unknown` 丢给用户。
+
+### 指南与日志控件
+
+Flow Guide 从右侧滑出时给整个控制台压一层纯色蒙层（`.atom-guide__overlay`，
+深色 58%、浅色 34%），不使用 `backdrop-filter`：画布持续重绘，模糊会在每一帧重新
+计算。LOG 的头/尾滚动按钮放在面板头部（`.atomic-log__scroll-controls`），只在对应
+方向还有内容时渲染；它们曾经是浮在列表上的胶囊，会压住第一条可见原子。
 
 ### 移动端布局
 

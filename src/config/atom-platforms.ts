@@ -565,13 +565,6 @@ const platformDefinitions: Record<PlatformId, PlatformDefinition> = {
     runtime: "Anthropic coding runtime",
     eventAtomMap: defaultEventAtomMap,
   },
-  gpt: {
-    id: "gpt",
-    label: "GPT",
-    source: "gpt",
-    runtime: "OpenAI GPT coding runtime",
-    eventAtomMap: defaultEventAtomMap,
-  },
   gemini: {
     id: "gemini",
     label: "Gemini",
@@ -588,7 +581,7 @@ const platformDefinitions: Record<PlatformId, PlatformDefinition> = {
   },
   pi: {
     id: "pi",
-    label: "Pi Agent",
+    label: "PI Agent",
     source: "pi",
     runtime: "Pi agent runtime",
     eventAtomMap: defaultEventAtomMap,
@@ -678,36 +671,36 @@ const platformDefinitions: Record<PlatformId, PlatformDefinition> = {
 export const atomPlatformOptions = Object.values(platformDefinitions);
 
 /**
- * Agent dropdown order. The agents switched between most often sit at the top
- * (Claude, Codex, DeepSeek, ZCode), followed by the remaining model agents and
- * coding runtimes; the first entry is the default selection.
+ * Agents pinned to the top of the dropdown, in display order. These are the
+ * ones switched between most often; the first entry is also the default
+ * selection (`appDefaults.platform`).
+ *
+ * Everything else follows alphabetically by label, so a newly configured
+ * platform joins the list without anyone having to decide where it goes.
  * `run-history-window.ts` appends the "Others" catch-all at render time, so it
  * always trails the list.
  */
-const agentOrder: readonly PlatformId[] = [
+const pinnedAgentOrder: readonly PlatformId[] = [
   "claude",
   "codex",
   "deepseek",
-  "zcode",
-  "gpt",
-  "gemini",
-  "llama",
-  "pi",
-  "opencode",
-  "trae",
   "workbuddy",
+  "zcode",
+  "opencode",
+  "pi",
   "qwen",
-  "copilot",
-  "cursor",
-  "cline",
-  "windsurf",
-  "iflow",
+  "trae",
 ];
 
+const pinnedAgents = new Set<PlatformId>(pinnedAgentOrder);
+
 /** Dropdown options in display order; the first option is the default agent. */
-export const agentOptions: readonly PlatformDefinition[] = agentOrder.map(
-  (id) => platformDefinitions[id],
-);
+export const agentOptions: readonly PlatformDefinition[] = [
+  ...pinnedAgentOrder.map((id) => platformDefinitions[id]),
+  ...atomPlatformOptions
+    .filter((platform) => !pinnedAgents.has(platform.id))
+    .sort((a, b) => a.label.localeCompare(b.label, "en")),
+];
 
 /**
  * Pending-signal configuration for a trace source. Unknown sources (browser,

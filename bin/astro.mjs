@@ -532,7 +532,7 @@ Environment:
   ASTRO_HOME            Bootstrap runtime and trace root (default ~/.astrox)
   ASTRO_TRACE_DIR       Optional shared trace directory override
   ASTRO_HOST            Dashboard host (default 127.0.0.1)
-  ASTRO_PORT            Dashboard port (default 4318)
+  ASTRO_PORT            Dashboard port (default 5678)
   ASTRO_AUTO_OPEN       Open dashboard during install or Agent startup (default 1)
   ASTRO_MAX_BODY_BYTES  Maximum ingestion body (default 5242880)
   DSH_HOME              DeepSeek Harness home (default ~/.dsh)

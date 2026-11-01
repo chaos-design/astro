@@ -4,6 +4,7 @@ import {
   buildHistorySearchIndex,
   filterHistorySearchEntries,
   getHistoryDateBounds,
+  getHistorySearchSnippet,
 } from "../src/lib/history-search.ts";
 import {
   buildSessionPromptRuns,
@@ -11,6 +12,7 @@ import {
   getMessageCategory,
   normalizeTraceEvent,
 } from "../src/lib/trace-model.ts";
+import { OTHERS_AGENT_ID } from "../src/lib/run-history-window.ts";
 import type {
   EventTone,
   MessageCategory,
@@ -37,7 +39,7 @@ function trace(
   } satisfies TraceEventInput);
 }
 
-function searchFixture() {
+function searchFixtureSources() {
   const events = [
     trace(
       "session-start-a",
@@ -91,11 +93,17 @@ function searchFixture() {
   const promptRuns = new Map(
     sessions.map((session) => [session.key, buildSessionPromptRuns(session)]),
   );
+  return { promptRuns, sessions };
+}
+
+function searchFixture() {
+  const { promptRuns, sessions } = searchFixtureSources();
   return buildHistorySearchIndex(sessions, promptRuns);
 }
 
 function filters(
   overrides: Partial<{
+    agentSources: ReadonlySet<string>;
     categories: ReadonlySet<EventTone>;
     from: number | null;
     messageCategories: ReadonlySet<MessageCategory>;
@@ -106,6 +114,7 @@ function filters(
   }> = {},
 ) {
   return {
+    agentSources: new Set<string>(),
     categories: new Set<EventTone>(),
     from: null,
     messageCategories: new Set<MessageCategory>(),
@@ -163,6 +172,48 @@ test("combines agent, status, and time filters", () => {
   );
 
   assert.deepEqual(matches.map((entry) => entry.eventId), ["wait-b"]);
+});
+
+test("keeps the agent filter to agents and folds every other source into Others", () => {
+  const entries = searchFixture();
+
+  // Only trae is configured here, so a source the console has no agent for
+  // (claude in this fixture) is what the catch-all covers.
+  const others = filterHistorySearchEntries(
+    entries,
+    filters({
+      agentSources: new Set(["trae"]),
+      sources: new Set([OTHERS_AGENT_ID]),
+    }),
+  );
+  assert.ok(others.length > 0);
+  assert.equal(
+    others.every((entry) => entry.source === "claude"),
+    true,
+  );
+
+  // With every source configured, "Others" is legitimately empty instead of
+  // quietly meaning "everything".
+  assert.deepEqual(
+    filterHistorySearchEntries(
+      entries,
+      filters({
+        agentSources: new Set(["trae", "claude"]),
+        sources: new Set([OTHERS_AGENT_ID]),
+      }),
+    ),
+    [],
+  );
+
+  // A named agent and the catch-all combine as a union, not an intersection.
+  const named = filterHistorySearchEntries(
+    entries,
+    filters({
+      agentSources: new Set(["trae"]),
+      sources: new Set(["trae", OTHERS_AGENT_ID]),
+    }),
+  );
+  assert.equal(named.length, entries.length);
 });
 
 test("filters by event category without fuzzy scoring", () => {
@@ -241,6 +292,11 @@ test("returns no matches for invalid or reversed time bounds", () => {
 
 test("builds inclusive preset and custom date bounds", () => {
   const now = Date.parse("2026-09-10T12:00:00.000Z");
+  assert.deepEqual(getHistoryDateBounds("1h", now), {
+    from: now - 60 * 60 * 1_000,
+    to: now,
+    valid: true,
+  });
   assert.deepEqual(getHistoryDateBounds("3h", now), {
     from: now - 3 * 60 * 60 * 1_000,
     to: now,
@@ -256,8 +312,19 @@ test("builds inclusive preset and custom date bounds", () => {
     to: now,
     valid: true,
   });
-  assert.deepEqual(getHistoryDateBounds("24h", now), {
+  assert.deepEqual(getHistoryDateBounds("1d", now), {
     from: now - 86_400_000,
+    to: now,
+    valid: true,
+  });
+  // The multi-day presets are the same ids the RUN HISTORY preference uses.
+  assert.deepEqual(getHistoryDateBounds("3d", now), {
+    from: now - 3 * 86_400_000,
+    to: now,
+    valid: true,
+  });
+  assert.deepEqual(getHistoryDateBounds("5d", now), {
+    from: now - 5 * 86_400_000,
     to: now,
     valid: true,
   });
@@ -304,5 +371,45 @@ test("builds inclusive preset and custom date bounds", () => {
   assert.equal(
     getHistoryDateBounds("custom", now, "invalid", "2026-09-10").valid,
     false,
+  );
+});
+
+test("indexes only the events inside the requested window", () => {
+  const { promptRuns, sessions } = searchFixtureSources();
+
+  const onlySeptemberTenth = buildHistorySearchIndex(
+    sessions,
+    promptRuns,
+    {
+      from: Date.parse("2026-09-10T00:00:00.000Z"),
+      to: Date.parse("2026-09-10T23:59:59.999Z"),
+    },
+  );
+  assert.deepEqual(
+    onlySeptemberTenth.map((entry) => entry.eventId).sort(),
+    ["prompt-a", "stop-a", "tool-a"],
+  );
+
+  const emptyWindow = buildHistorySearchIndex(sessions, promptRuns, {
+    from: Date.parse("2026-09-20T00:00:00.000Z"),
+    to: Date.parse("2026-09-21T00:00:00.000Z"),
+  });
+  assert.deepEqual(emptyWindow, []);
+});
+
+test("builds a snippet around the field that matched", () => {
+  const entries = searchFixture();
+  const toolEntry = entries.find((entry) => entry.eventId === "tool-a");
+  assert.ok(toolEntry);
+
+  // "src/app.tsx" lives in the tool payload, not in the summary.
+  assert.match(
+    getHistorySearchSnippet(toolEntry, "app.tsx"),
+    /src\/app\.tsx/,
+  );
+  // A query with no hit falls back to the summary.
+  assert.equal(
+    getHistorySearchSnippet(toolEntry, "zzzzz"),
+    toolEntry.summary,
   );
 });

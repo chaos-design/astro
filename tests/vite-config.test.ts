@@ -3,7 +3,7 @@ import test from "node:test";
 import { resolveAstroProxyTarget } from "../vite.config.ts";
 
 test("proxies development API requests to the default ASTRO server", () => {
-  assert.equal(resolveAstroProxyTarget({}), "http://127.0.0.1:4318");
+  assert.equal(resolveAstroProxyTarget({}), "http://127.0.0.1:5678");
 });
 
 test("uses configured ASTRO host and port for the development proxy", () => {
@@ -21,6 +21,6 @@ test("falls back to the default port when ASTRO_PORT is invalid", () => {
     resolveAstroProxyTarget({
       ASTRO_PORT: "not-a-port",
     }),
-    "http://127.0.0.1:4318",
+    "http://127.0.0.1:5678",
   );
 });

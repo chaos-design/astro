@@ -5,5 +5,7 @@ import { validateClaudeHooks } from "../scripts/validate-claude-hooks.mjs";
 test("executes every Claude plugin hook through the packaged recorder", () => {
   const result = validateClaudeHooks();
 
-  assert.equal(result.eventCount, 16);
+  // 17 hooks: the 16 lifecycle hooks plus the auto-mode PermissionDenied
+  // rejection hook that reports the fourth exception scope.
+  assert.equal(result.eventCount, 17);
 });

@@ -18,8 +18,29 @@ import storagePaths from "../plugin/storage-paths.cjs";
 import { TraceRepository } from "./trace-repository.mjs";
 
 const serverDir = dirname(fileURLToPath(import.meta.url));
+const serverFile = fileURLToPath(import.meta.url);
 const projectDir = resolve(serverDir, "..");
 const publicDir = join(projectDir, "dist");
+// Reported by /api/health so the UI can compare the running service with the
+// bundle it was built from. The installed runtime ships `plugin.json` instead
+// of a package manifest (scripts/install-plugins.mjs copies only the runtime
+// directories), so both manifests are read before reporting "unknown" — the
+// console otherwise had to explain a version the service could have known.
+const appBuild = (() => {
+  for (const manifest of ["package.json", "plugin.json"]) {
+    try {
+      const { version } = JSON.parse(
+        readFileSync(join(projectDir, manifest), "utf8"),
+      );
+      if (typeof version === "string" && version.trim()) {
+        return version.trim();
+      }
+    } catch {
+      // Missing or unreadable manifest: try the next one.
+    }
+  }
+  return "unknown";
+})();
 const runtimeConfig = runtimeConfigLoader.loadRuntimeConfig({
   environment: process.env,
   initialize: true,
@@ -37,7 +58,7 @@ const requestedPort = Number(
   environment.ASTRO_PORT ||
     environment.AGENT_TRACE_PORT ||
     environment.TRAE_TRACE_PORT ||
-    4318,
+    5678,
 );
 const maxBodyBytes = Number(
   environment.ASTRO_MAX_BODY_BYTES ||
@@ -46,6 +67,7 @@ const maxBodyBytes = Number(
 );
 const clients = new Set();
 let dashboardUrl = "";
+let boundPort = requestedPort;
 const store = new TraceRepository(environment);
 const { createTraceEvent } = recorder;
 const { resolveAstroHome, resolveTraceDirectory } = storagePaths;
@@ -61,6 +83,17 @@ const pidFile =
 const shouldOpenBrowser = !["", "0", "false", "no", "off"].includes(
   String(environment.ASTRO_OPEN_BROWSER || "").trim().toLowerCase(),
 );
+// When set, an EADDRINUSE on the requested port is retried on the SAME port
+// instead of walking to the next one. A self-restart successor needs this so
+// it can take over the port the current process is about to release.
+const restartTakeover = String(environment.ASTRO_TAKEOVER || "").trim() === "1";
+// Process start (not module load): the health payload reports both the
+// startup cost and the time this instance has been serving.
+const processStartedAtMs = Date.now() - Math.round(process.uptime() * 1000);
+const restartCount = Number(environment.ASTRO_RESTART_COUNT || 0) || 0;
+const restartedAt = environment.ASTRO_RESTARTED_AT || null;
+let listenStartedAtMs = 0;
+let bootMs = 0;
 
 const mimeTypes = {
   ".css": "text/css; charset=utf-8",
@@ -360,14 +393,37 @@ async function handleRequest(request, response) {
   }
 
   if (request.method === "GET" && requestUrl.pathname === "/api/health") {
+    // Every field here is O(1): the repository caches the merged event list
+    // and keeps a running session index, so this endpoint can be polled.
     sendJson(response, 200, {
       status: "ok",
       pid: process.pid,
       url: dashboardUrl,
+      host,
+      port: boundPort || requestedPort,
+      startedAt: new Date(processStartedAtMs).toISOString(),
+      restartedAt,
+      restartCount,
+      bootMs,
+      uptimeMs: Date.now() - processStartedAtMs,
+      node: process.version,
       clientCount: clients.size,
-      eventCount: store.getEvents().length,
+      eventCount: store.getEventCount(),
+      sessionCounts: store.getSessionStateCounts(),
       dataRoot,
       traceFiles: store.getTraceFiles(),
+      build: appBuild,
+    });
+    return;
+  }
+
+  if (request.method === "GET" && requestUrl.pathname === "/api/sessions") {
+    const sessions = store.getSessionSummaries();
+    sendJson(response, 200, {
+      generatedAt: new Date().toISOString(),
+      eventCount: store.getEventCount(),
+      counts: store.getSessionStateCounts(),
+      sessions,
     });
     return;
   }
@@ -461,10 +517,22 @@ async function handleRequest(request, response) {
     clients.add(response);
     // Keep the snapshot and later events on one ordered connection, including reconnects.
     const events = store.getEvents();
-    sendSse(response, "reset", {
-      events,
-      git: gitMapForEvents(events),
-    });
+    // A client that resumes after a suspension names the last event it has, so
+    // the refresh costs only what was missed instead of the whole history. An
+    // unknown cursor (cleared events, a different process) falls back to the
+    // full snapshot, which keeps reconnects correct rather than fast.
+    const resumeCursor = requestUrl.searchParams.get("since") || "";
+    const resumeIndex = resumeCursor
+      ? events.findIndex((event) => event.id === resumeCursor)
+      : -1;
+    if (resumeIndex >= 0) {
+      const missed = events.slice(resumeIndex + 1);
+      sendSse(response, "resume", { events: missed, git: gitMapForEvents(missed) });
+    } else {
+      // One merged snapshot serves both messages: building the git map used to
+      // re-copy the whole event list a second time.
+      sendSse(response, "reset", { events, git: gitMapForEvents(events) });
+    }
     sendSse(response, "ready", {
       eventCount: events.length,
       connectedAt: new Date().toISOString(),
@@ -482,6 +550,57 @@ async function handleRequest(request, response) {
   if (request.method === "DELETE" && requestUrl.pathname === "/api/events") {
     store.clear();
     sendJson(response, 200, { status: "cleared" });
+    return;
+  }
+
+  // Restart the dashboard in place: spawn a successor that re-binds the SAME
+  // port (takeover mode), respond, then hand the port over by exiting. Open
+  // SSE clients and the browser tab reconnect to the successor automatically,
+  // so the running port is preserved instead of drifting to a new one.
+  if (
+    request.method === "POST" &&
+    requestUrl.pathname === "/api/restart"
+  ) {
+    let child;
+    try {
+      child = spawn(process.execPath, [serverFile], {
+        detached: true,
+        stdio: "ignore",
+        env: {
+          ...process.env,
+          ASTRO_PORT: String(boundPort),
+          ASTRO_TAKEOVER: "1",
+          ASTRO_OPEN_BROWSER: "0",
+          ASTRO_RESTART_COUNT: String(restartCount + 1),
+          ASTRO_RESTARTED_AT: new Date().toISOString(),
+        },
+      });
+      child.on("error", () => {});
+      child.unref();
+    } catch {
+      sendJson(response, 500, {
+        error: "Failed to start the restart process.",
+      });
+      return;
+    }
+    sendJson(response, 202, {
+      status: "restarting",
+      pid: child.pid,
+      previousPid: process.pid,
+      url: dashboardUrl,
+      startedAt: new Date().toISOString(),
+    });
+    // Flush the response, then release the port so the successor can take it.
+    setTimeout(() => {
+      console.log(
+        `[restart] successor pid ${child.pid} spawned; handing off port ${boundPort}`,
+      );
+      shutdown();
+      // Safety: SSE clients may reconnect during the hand-off and keep the
+      // server from closing. The successor owns the port now, so force-exit
+      // the outgoing process if it has not released in time.
+      setTimeout(() => process.exit(0), 3_000).unref();
+    }, 120);
     return;
   }
 
@@ -507,37 +626,59 @@ const server = createServer((request, response) => {
   });
 });
 
-function listen(port) {
-  const handleListening = () => {
-    const url = `http://${host}:${port}`;
-    dashboardUrl = url;
-    mkdirSync(dirname(pidFile), { recursive: true });
-    writeFileSync(
-      pidFile,
-      `${JSON.stringify({
-        pid: process.pid,
-        server: fileURLToPath(import.meta.url),
-        url,
-      })}\n`,
-      "utf8",
-    );
-    console.log(`ASTRO: ${url}`);
-    console.log(`Trace data root: ${dataRoot}`);
-    if (shouldOpenBrowser) {
-      openDashboard(createDashboardUrl(url));
-    }
-  };
+function handleListening(port) {
+  const url = `http://${host}:${port}`;
+  dashboardUrl = url;
+  boundPort = port;
+  listenStartedAtMs = Date.now();
+  // Startup cost = process start → the moment this instance accepted the
+  // port. It includes reading every trace file, which is the part that
+  // actually grows with the data set.
+  bootMs = listenStartedAtMs - processStartedAtMs;
+  mkdirSync(dirname(pidFile), { recursive: true });
+  writeFileSync(
+    pidFile,
+    `${JSON.stringify({
+      pid: process.pid,
+      server: serverFile,
+      url,
+    })}\n`,
+    "utf8",
+  );
+  console.log(`ASTRO: ${url}`);
+  console.log(`Trace data root: ${dataRoot}`);
+  if (shouldOpenBrowser) {
+    openDashboard(createDashboardUrl(url));
+  }
+}
 
-  server.once("listening", handleListening);
-  server.once("error", (error) => {
-    server.off("listening", handleListening);
-    if (error.code === "EADDRINUSE" && port < requestedPort + 20) {
-      listen(port + 1);
-      return;
+function listen(port, takeoverRetries = 0) {
+  const onListening = () => {
+    server.off("error", onError);
+    handleListening(port);
+  };
+  const onError = (error) => {
+    if (error.code === "EADDRINUSE") {
+      // A restart successor retries the SAME port so a single shared port
+      // never drifts to a new one; give the outgoing process a moment to
+      // release the socket before re-binding it. Cap the retries so a port
+      // held by a foreign process surfaces an error instead of spinning.
+      if (restartTakeover) {
+        if (takeoverRetries >= 20) {
+          throw error;
+        }
+        setTimeout(() => listen(port, takeoverRetries + 1), 250);
+        return;
+      }
+      if (port < requestedPort + 20) {
+        listen(port + 1, 0);
+        return;
+      }
     }
     throw error;
-  });
-
+  };
+  server.once("listening", onListening);
+  server.once("error", onError);
   server.listen(port, host);
 }
 

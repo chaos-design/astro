@@ -73,6 +73,72 @@ test("preserves retryable StopFailure events for waiting-state detection", () =>
   assert.equal(event.status, "failed");
 });
 
+test("infers exception status from the canonical event name without a payload", () => {
+  const hookEnvironment = {
+    CODEBUDDY_SESSION_ID: "wb-exception-session",
+    CODEBUDDY_PROJECT_DIR: "/tmp/wb-project",
+  };
+  const createWorkBuddyEvent = (eventName, payload = {}) =>
+    createTraceEvent(
+      payload,
+      {
+        source: "workbuddy",
+        eventName,
+        capturedAt: "2026-09-07T08:00:00.000Z",
+      },
+      undefined,
+      hookEnvironment,
+    );
+
+  const stopFailure = createWorkBuddyEvent("StopFailure");
+  assert.equal(stopFailure.eventName, "StopFailure");
+  assert.equal(stopFailure.status, "failed");
+
+  const toolFailure = createWorkBuddyEvent("PostToolUseFailure");
+  assert.equal(toolFailure.status, "failed");
+
+  const interrupt = createWorkBuddyEvent("Interrupt");
+  assert.equal(interrupt.status, "interrupted");
+
+  // Non-exception hooks keep an empty status so the read model decides.
+  assert.equal(createWorkBuddyEvent("Stop").status, null);
+  assert.equal(createWorkBuddyEvent("PostToolUse").status, null);
+});
+
+test("keeps an explicit payload status instead of the inferred one", () => {
+  const event = createTraceEvent(
+    {
+      session_id: "session-explicit-status",
+      hook_event_name: "StopFailure",
+      status: "rate_limited",
+    },
+    {
+      source: "claude",
+      capturedAt: "2026-09-07T08:00:00.000Z",
+    },
+  );
+
+  assert.equal(event.eventName, "StopFailure");
+  assert.equal(event.status, "rate_limited");
+});
+
+test("folds a Codex turn.failed record into Stop with a failed status", () => {
+  const event = createTraceEvent(
+    {
+      type: "turn.failed",
+      thread_id: "codex-thread",
+      payload: { type: "turn.failed", error: "upstream failure" },
+    },
+    {
+      source: "codex",
+      capturedAt: "2026-09-07T08:00:00.000Z",
+    },
+  );
+
+  assert.equal(event.eventName, "Stop");
+  assert.equal(event.status, "failed");
+});
+
 test("normalizes CodeBuddy input to the WorkBuddy source", () => {
   const event = createTraceEvent(
     {

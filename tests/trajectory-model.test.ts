@@ -3,8 +3,10 @@ import test from "node:test";
 import { projectTraceEvents } from "../src/lib/atomic-projection.ts";
 import {
   buildTraceTurnIndex,
+  buildTrajectoryMapSlots,
   buildTrajectoryModel,
   getTrajectorySegmentPosition,
+  orderTrajectoryNewestFirst,
 } from "../src/lib/trajectory-model.ts";
 import {
   buildHarnessFlow,
@@ -45,6 +47,43 @@ test("uses explicit turn metadata before inferring loop boundaries", () => {
   assert.equal(turnByEventId.get(testRun?.id || ""), 3);
 });
 
+test("orders the rendered trajectory newest first without touching the model", () => {
+  const events = createDemoEvents(2_000_000_000_000);
+  const projection = projectTraceEvents(events, "codex");
+  const topology = buildHarnessFlow(events, "codex");
+  const model = buildTrajectoryModel(events, projection.events, topology.nodes);
+
+  const display = orderTrajectoryNewestFirst(model);
+
+  // The newest turn leads, and its newest atom is the first row of the block:
+  // the executing atom is reachable without scrolling through the run.
+  assert.deepEqual(
+    display.turns.map((turn) => turn.turn),
+    [...model.turns].map((turn) => turn.turn).reverse(),
+  );
+  const newestTurn = model.turns.at(-1)!;
+  assert.deepEqual(
+    display.turns[0].atoms.map((atom) => atom.id),
+    [...newestTurn.atoms].map((atom) => atom.id).reverse(),
+  );
+  // The run preamble renders last, newest first.
+  assert.deepEqual(
+    display.context.map((atom) => atom.id),
+    [...model.context].map((atom) => atom.id).reverse(),
+  );
+  // The chronological model is what selection and "latest atom" lookups read.
+  assert.deepEqual(
+    model.turns.map((turn) => turn.turn),
+    [...model.turns.map((turn) => turn.turn)].sort((left, right) => left - right),
+  );
+  assert.deepEqual(
+    model.turns[0].atoms.map((atom) => atom.sequence),
+    [...model.turns[0].atoms.map((atom) => atom.sequence)].sort(
+      (left, right) => left - right,
+    ),
+  );
+});
+
 test("positions trajectory segments on distinct node slots", () => {
   assert.deepEqual(getTrajectorySegmentPosition(0, 4), {
     left: 0,
@@ -58,4 +97,49 @@ test("positions trajectory segments on distinct node slots", () => {
     left: 75,
     width: 25,
   });
+});
+
+test("aggregates a long lane overview into a bounded number of slots", () => {
+  const nodes = Array.from({ length: 1_000 }, (_, index) => ({
+    data: {
+      index,
+      meta: { lane: index % 2, tone: "tool" },
+      status: index === 500 ? "failed" : "complete",
+    },
+    id: `node-${index}`,
+  }));
+
+  const slots = buildTrajectoryMapSlots(nodes, 50);
+
+  // Two lanes, 50 marks each: the map stays a readable timeline instead of
+  // mounting one element per node.
+  assert.equal(slots.length, 100);
+  assert.equal(slots.reduce((sum, slot) => sum + slot.count, 0), 1_000);
+  // The failing node keeps its own slot severity instead of being averaged
+  // away by its completed neighbours.
+  assert.ok(slots.some((slot) => slot.status === "failed"));
+  // Ranges are contiguous and cover every node exactly once.
+  const laneZero = slots.filter((slot) => slot.lane === 0);
+  assert.equal(laneZero[0].start, 0);
+  assert.equal(laneZero.at(-1)?.end, 998);
+});
+
+test("keeps one slot per node when the lane is already short", () => {
+  const nodes = Array.from({ length: 5 }, (_, index) => ({
+    data: { index, meta: { lane: 0, tone: "agent" }, status: "complete" },
+    id: `node-${index}`,
+  }));
+
+  const slots = buildTrajectoryMapSlots(nodes, 96);
+  assert.equal(slots.length, 5);
+  assert.deepEqual(
+    slots.map((slot) => [slot.start, slot.end, slot.count]),
+    [
+      [0, 0, 1],
+      [1, 1, 1],
+      [2, 2, 1],
+      [3, 3, 1],
+      [4, 4, 1],
+    ],
+  );
 });
