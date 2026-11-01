@@ -210,7 +210,31 @@
   reader just scrolled to is the one they cannot read. Render a direction's
   control only while that edge is out of view.
 
-## 9. Keeping docs in sync
+## 9. Restart and snapshot reload
+
+- A local service restart means **the new process re-read the history from
+  disk**; it is not "the same history plus a few events". The console must drop
+  its resume cursor, ask for the full snapshot and re-apply the current filter
+  (agent → default range → Live filter). Keeping the cursor makes the server
+  answer an empty `resume`, so the list looks freshly loaded while showing the
+  previous process's data.
+- A snapshot is **only applied when it differs from the history on screen**. The
+  client names the key it holds (`?snapshot=<key>`; server-side
+  `getSnapshotKey` = event count + a rolling hash of every event id) and an
+  unchanged history is answered by `reset-same`, so the page transfers nothing
+  and parses nothing. Without a key (first load, older server)
+  `isSameEventSequence` decides after parsing, and `setLiveEvents` is skipped on
+  a match — replacing the array is exactly what forces a full session rebuild.
+- The key answers "is this the same history". It is not a dedup mechanism; event
+  deduplication stays with the per-connection `seenIds` set.
+- While a snapshot is expected (restarting, or a forced snapshot in flight) the
+  header reads `restarting` / `reloading`, never `offline`: a successful restart
+  is not a dropped connection.
+- After a restart the selection lands on the newest message the current filter
+  allows; a filter that matches nothing keeps an empty list rather than falling
+  back to another agent.
+
+## 10. Keeping docs in sync
 
 - Docs are published in pairs: `<name>-zh.md` / `<name>-en.md`; the docs site
   pairs the language switch by suffix.
@@ -223,7 +247,7 @@
 - Quote interface copy as it appears on screen; do not invent translations for
   key names.
 
-## 10. Verification checklist
+## 11. Verification checklist
 
 Before pushing:
 
@@ -247,7 +271,7 @@ ASTRO_HOME=/tmp/astro-check ASTRO_PORT=4401 node server/server.mjs
   outside it, and one executing message. Then `POST /api/events` to confirm a new
   prompt is located automatically.
 
-## 11. Common mistakes
+## 12. Common mistakes
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
@@ -259,3 +283,5 @@ ASTRO_HOME=/tmp/astro-check ASTRO_PORT=4401 node server/server.mjs
 | A new message has to be hunted for | Live filter never diffed the live set | see the auto-locate rule in §6 |
 | The armed Live filter shows an empty list | possibly nothing is running; possibly the window was not dropped | check `0 LIVE` first, then that the rows come from `selectLiveRunHistory` (no window) |
 | The setting changed but the list did not | window width was not reset with the range | keep `runHistoryHours` in step with `historyRangeHours` |
+| The list is stale after a service restart | the resume cursor was kept, so the server answered an empty `resume` | clear the cursor and force the snapshot, §9 |
+| A restart flashes `offline` first | "waiting for the next snapshot" was treated as a dropped connection | use `restarting` / `reloading`, §9 |

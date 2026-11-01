@@ -111,3 +111,40 @@ test("publishes a snapshot that includes newly discovered trace files", async ()
   repository.stop();
   rmSync(root, { recursive: true, force: true });
 });
+
+test("snapshot key identifies the history and changes with it", async () => {
+  const root = mkdtempSync(join(tmpdir(), "astro-snapshot-key-"));
+  const repository = new TraceRepository(
+    { ASTRO_HOME: root },
+    { discoveryInterval: 20, pollInterval: 20 },
+  );
+  await repository.initialize();
+
+  // Empty history still has a key: a restart with nothing recorded must be
+  // answered by `reset-same` instead of an empty snapshot.
+  const empty = repository.getSnapshotKey();
+  assert.match(empty, /^[0-9a-z]+-[0-9a-z]+$/);
+  assert.equal(repository.getSnapshotKey(), empty, "the key is cached");
+
+  const event = (id) => ({
+    id,
+    source: "codex",
+    sessionId: "session",
+    eventName: "SessionStart",
+    capturedAt: "2026-11-01T08:00:00.000Z",
+    payload: {},
+  });
+  await repository.append([event("a"), event("b")]);
+  const afterAppend = repository.getSnapshotKey();
+  assert.notEqual(afterAppend, empty);
+  assert.equal(repository.getSnapshotKey(), afterAppend);
+
+  // Appending a new event on top must produce a new key, otherwise a restart
+  // would be answered with a snapshot the client does not actually have.
+  const beforeAppend = repository.getSnapshotKey();
+  await repository.append([event("c")]);
+  assert.notEqual(repository.getSnapshotKey(), beforeAppend);
+
+  repository.stop();
+  rmSync(root, { recursive: true, force: true });
+});

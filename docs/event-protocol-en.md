@@ -354,10 +354,21 @@ Each physical line must be one complete JSON object. The reader isolates a malfo
 Every `GET /api/stream` connection receives this ordered sequence:
 
 1. `reset`: complete current snapshot, or `resume`: only the events after the
-   `since` cursor when the client names an event the server still holds;
-2. `ready`: `eventCount` and `connectedAt`;
+   `since` cursor when the client names an event the server still holds, or
+   `reset-same`: a one-line acknowledgement when the client's `snapshot` key
+   already describes the current history;
+2. `ready`: `eventCount`, `snapshot` (identity of the current history) and `connectedAt`;
 3. `trace`: one newly appended event at a time;
 4. later `reset`: file truncation, newly discovered trace files, or repository resynchronization.
+
+The `snapshot` key is "event count + rolling hash of every event id": it changes
+whenever the history does. After a service restart the console drops its resume
+cursor and asks for the whole snapshot while naming the key it already holds.
+An unchanged history is answered with `reset-same` (a few dozen bytes), so the
+page transfers nothing, parses nothing, and keeps its sessions, flows and list
+as they are; a changed history misses the key and gets the regular `reset`. The
+key only answers "is this the same history" and takes no part in event
+deduplication.
 
 The server advertises `retry: 1000`. A plain reconnect receives another full
 snapshot before live increments, so follow-up turns missed during disconnection
