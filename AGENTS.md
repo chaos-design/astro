@@ -275,7 +275,13 @@ use Node.js ES modules or CommonJS according to their existing file extension.
 - Brand glyphs are inline SVG components (`src/components/repo-link.tsx`).
   Lucide no longer ships brand icons, and a single path is not worth a
   dependency.
-- Every icon control has an `aria-label` and a tooltip that names the action.
+- Every icon control keeps an `aria-label`; a **tooltip is opt-in**. Add one
+  only when the glyph cannot carry the meaning on its own (the chevrons that
+  say *which* panel collapses, the action menu, the topology/trajectory
+  switches) or when it adds state or consequence the icon cannot show (the
+  `N LIVE` rules, the reload control while it is loading). A card that merely
+  restates a recognisable mark — GitHub, gear, sun/moon, copy — is noise: it
+  trails the pointer across the header icon row and covers the panel below.
 - Scroll controls for a list live in its panel header, never as a floating
   overlay: the overlay chevron covered the first visible atom. Each direction's
   control renders only while that edge is out of view.

@@ -636,35 +636,29 @@ function ThemeSwitcher({
   const ActiveIcon = activeTheme.icon;
 
   return (
-    <Tooltip>
-      <Select
-        value={theme}
-        onValueChange={(value) => onChange(value as Theme)}
+    // Sun/moon glyph plus a menu: no hover card. The `aria-label` still names
+    // the current theme, which is the only part the icon cannot show.
+    <Select value={theme} onValueChange={(value) => onChange(value as Theme)}>
+      <SelectTrigger
+        size="sm"
+        className="theme-select"
+        aria-label={`颜色主题：${activeTheme.label}`}
       >
-        <TooltipTrigger asChild>
-          <SelectTrigger
-            size="sm"
-            className="theme-select"
-            aria-label={`颜色主题：${activeTheme.label}`}
-          >
-            <SelectValue>
-              <ActiveIcon />
-            </SelectValue>
-          </SelectTrigger>
-        </TooltipTrigger>
-        <SelectContent position="popper" align="end">
-          <SelectGroup>
-            {themeOptions.map(({ id, label, icon: Icon }) => (
-              <SelectItem key={id} value={id}>
-                <Icon />
-                {label}
-              </SelectItem>
-            ))}
-          </SelectGroup>
-        </SelectContent>
-      </Select>
-      <TooltipContent side="bottom">切换主题</TooltipContent>
-    </Tooltip>
+        <SelectValue>
+          <ActiveIcon />
+        </SelectValue>
+      </SelectTrigger>
+      <SelectContent position="popper" align="end">
+        <SelectGroup>
+          {themeOptions.map(({ id, label, icon: Icon }) => (
+            <SelectItem key={id} value={id}>
+              <Icon />
+              {label}
+            </SelectItem>
+          ))}
+        </SelectGroup>
+      </SelectContent>
+    </Select>
   );
 }
 
@@ -5656,44 +5650,40 @@ export default function App() {
               <strong>{selectedAtom?.label || "Live execution"}</strong>
             </div>
             <div className="toolbar-actions flex min-w-0 items-center gap-1.5">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <div>
-                    <AgentSelect
-                      liveAgents={liveAgentIds}
-                      value={agentId}
-                      onChange={(nextAgent) => {
-                        // Switching agents re-filters run history and
-                        // re-projects the whole flow for large sessions; keep
-                        // the picker responsive by treating the derived work
-                        // as a transition.
-                        startTransition(() => {
-                          setAgentId(nextAgent);
-                          // Another agent starts at the configured default
-                          // range: keeping a window the previous agent needed
-                          // would silently load a different amount of history.
-                          setRunHistoryHours(historyRangeHours);
-                          if (nextAgent !== OTHERS_AGENT_ID) {
-                            setPlatformId(nextAgent);
-                          }
-                          // The open run belongs to the scope that was just
-                          // left. Dropping the selection lands the canvas, the
-                          // log and the list on the new agent's newest message
-                          // instead of leaving another agent's run on screen
-                          // with no row to point at.
-                          setActiveSessionKey("");
-                          setActivePromptRunKey("");
-                          setSelectedEventId("");
-                          setSelectedAtomId(undefined);
-                          setReplayMode(false);
-                          setPlaying(false);
-                        });
-                      }}
-                    />
-                  </div>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">切换智能体平台</TooltipContent>
-              </Tooltip>
+              {/* The picker shows the agent name and a chevron, so "切换智能体平台"
+                  was a hover card that only restated the control. */}
+              <div>
+                <AgentSelect
+                  liveAgents={liveAgentIds}
+                  value={agentId}
+                  onChange={(nextAgent) => {
+                    // Switching agents re-filters run history and re-projects
+                    // the whole flow for large sessions; keep the picker
+                    // responsive by treating the derived work as a transition.
+                    startTransition(() => {
+                      setAgentId(nextAgent);
+                      // Another agent starts at the configured default range:
+                      // keeping a window the previous agent needed would
+                      // silently load a different amount of history.
+                      setRunHistoryHours(historyRangeHours);
+                      if (nextAgent !== OTHERS_AGENT_ID) {
+                        setPlatformId(nextAgent);
+                      }
+                      // The open run belongs to the scope that was just left.
+                      // Dropping the selection lands the canvas, the log and
+                      // the list on the new agent's newest message instead of
+                      // leaving another agent's run on screen with no row to
+                      // point at.
+                      setActiveSessionKey("");
+                      setActivePromptRunKey("");
+                      setSelectedEventId("");
+                      setSelectedAtomId(undefined);
+                      setReplayMode(false);
+                      setPlaying(false);
+                    });
+                  }}
+                />
+              </div>
               <div className="canvas-view-switch" role="group" aria-label="画布视图">
                 <IconAction
                   label="拓扑视图"
