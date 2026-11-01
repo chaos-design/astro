@@ -290,6 +290,34 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   manifest renders "未上报" with the reason — never a bare `unknown`.
 
 
+## First Paint, Rendering, Feedback
+
+- Build `Intl.DateTimeFormat` / `Intl.NumberFormat` instances at module scope.
+  `Date#toLocaleString(locale, options)` constructs a formatter per call; the
+  search dialog called it once per result row per keystroke, and profiling put
+  that construction above every other cost of typing. Parse timestamps through
+  `getEventTimestamp` (cached per event object), never `Date.parse` inline.
+- Per-event predicates (`getTraceRunState`, `isWaitingTraceEvent`,
+  `getExceptionOutcome`, `isUserQuestionToolEvent`) may only consult
+  module-level `Set`s. A `[...].includes(...)` inside them allocates once per
+  event per pass, and a load runs two passes over every event.
+- A count that is not known yet is not reported as zero: while the first
+  snapshot is in flight RUN HISTORY renders skeleton rows with a `loading…`
+  subtitle, and the header marker reads `connecting`. `offline` means a
+  connection was established and dropped (`everConnected`); using it for the
+  first connection made every reload look like a failure.
+- Panels that only appear after an explicit action (`HistorySearch`) live in
+  their own chunk, loaded with `lazy()` and preloaded during the first idle
+  window (`requestIdleCallback`, timer fallback). The Suspense fallback reuses
+  the real panel's class names, so opening never flashes an unstyled frame.
+- Action feedback goes through `ConsoleNotices`, never `window.alert`:
+  import/clear/reload report success, failure, and "nothing to import" with the
+  cause, and the pause that ends the sync budget announces itself once with the
+  way back.
+- Performance work lands with numbers from the same fixture and script before
+  and after (script time, long tasks, chunk size); "feels faster" is not a
+  verification.
+
 ## Run Trajectory Order
 
 - The trajectory list renders newest first: turns descending, the atoms inside

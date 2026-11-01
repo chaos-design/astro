@@ -157,7 +157,30 @@
 - 列表内的滚动控件放在面板头部，不做浮层：浮动箭头会压住第一条可见原子，读者刚滚到
   的那一行反而看不全。只在对应方向还有内容时才渲染该方向的控件。
 
-## 9. 文档同步
+## 9. 首屏、渲染与反馈
+
+- **格式化器只建一次**：`Intl.DateTimeFormat` / `Intl.NumberFormat` 放在模块作用域，
+  不要在渲染函数或行组件里 `toLocaleString(...)`——构造格式化器的代价远高于格式化
+  本身，结果列表每敲一个键就会为每一行重建一次。时间戳解析同理，统一走
+  `getEventTimestamp`（按事件对象缓存），不要直接 `Date.parse(event.capturedAt)`。
+- **热路径不分配**：按事件逐个判断的地方（`getTraceRunState`、`isWaitingTraceEvent`、
+  `getExceptionOutcome`、`isUserQuestionToolEvent`）只查模块级 `Set`，不在循环里
+  写 `[...].includes(...)`。一次加载要为每个事件跑两遍这些判定，临时数组会直接变成
+  主线程长任务。
+- **首屏不按"0"报数**：数据没到之前，RUN HISTORY 头部写 `loading…` 并画骨架行，
+  顶栏连接标记写 `connecting`。`0 runs` 与 `offline` 都是关于"已经确认的事实"的陈述，
+  在快照还没到时不成立。
+- **按需功能走独立 chunk**：只在明确动作后才出现的界面（历史搜索）不进入首屏包，
+  由 `lazy()` + 空闲预取（`requestIdleCallback`，退化到定时器）加载；首次打开前
+  已完成预取的机器上，行为与同步导入一致。Suspense 兜底复用真实面板的类名，避免
+  打开瞬间闪一个无样式面板。
+- **反馈走控制台提示条**（`ConsoleNotices`），不用 `window.alert`：原生弹窗会阻塞
+  页面、无法样式化、也无法忽略。成功、失败、空结果都要有明确文案；失败要给出原因
+  而不只是一句"失败"。
+- **结论必须可测**：性能改动前后用同一份数据夹具、同一台机器、同一个采样脚本对比，
+  PR 里写清指标（脚本时间、长任务、chunk 体积），不写"更快了"。
+
+## 10. 文档同步
 
 - 文档成对发布：`<name>-zh.md` / `<name>-en.md`；文档站按后缀自动配对语言切换。
 - 行为变化必须同步四处：
@@ -168,7 +191,7 @@
 - 文档描述当前行为，不承诺未实现的能力；规划项必须显式标注。
 - 引用界面文案时使用界面里的原文（中英文各自对应），不要自行翻译键名。
 
-## 10. 验证清单
+## 11. 验证清单
 
 提交前至少执行：
 
@@ -190,7 +213,7 @@ ASTRO_HOME=/tmp/astro-check ASTRO_PORT=4401 node server/server.mjs
 - 至少覆盖三种数据：窗口内的已完成消息、窗口外的旧消息、正在执行的消息；再验证
   一次 `POST /api/events` 触发新 Prompt 后的自动定位。
 
-## 11. 常见错误
+## 12. 常见错误
 
 | 现象 | 原因 | 处理 |
 | --- | --- | --- |
@@ -202,3 +225,7 @@ ASTRO_HOME=/tmp/astro-check ASTRO_PORT=4401 node server/server.mjs
 | 新消息发出后要手动翻找 | Live 筛选没有做 live 集合差集 | 见 §6 的自动定位 |
 | Live 筛选开着但列表是空的 | 可能确实没有执行中的消息；也可能是窗口没被丢弃 | 先看 `0 LIVE`，再确认走的是 `selectLiveRunHistory`（不套时间窗口） |
 | 设置改了但列表没变 | 窗口宽度没随范围重置 | `runHistoryHours` 跟随 `historyRangeHours` |
+| 列表先闪一下 `0 runs` 再跳成真实条数 | 首屏把"还没加载"当成"已经确认为 0" | 未加载时走骨架 + `loading…`，见 §9 |
+| 刷新页面时顶栏先报 `offline` | 首次连接用"断开"的文案 | 区分 `connecting` 与 `offline`（`everConnected`） |
+| 搜索框每敲一个键都卡一下 | 行内 `toLocaleString(...)` 每次重建格式化器 | 模块级 `Intl.DateTimeFormat`，见 §9 |
+| 大历史首次加载主线程长任务明显 | 事件级判定里反复分配临时数组 | 模块级 `Set` + `getEventTimestamp` 缓存 |
