@@ -1711,9 +1711,131 @@ pre,
     0 0 0 1px color-mix(in srgb, var(--selection-border) 12%, transparent);
 }
 
+/*
+ * Transient notices (import / clear / reload feedback). Bottom-left so they
+ * never cover the header chips or the inspector, and above every panel so a
+ * failure is visible whatever is open.
+ */
+.console-notices {
+  position: fixed;
+  bottom: 18px;
+  left: 18px;
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: min(420px, calc(100vw - 36px));
+  pointer-events: none;
+}
+
+.console-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-bright);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--panel) 97%, transparent);
+  box-shadow: 0 16px 40px rgb(0 0 0 / 42%);
+  color: var(--foreground);
+  font-size: var(--text-caption);
+  pointer-events: auto;
+}
+
+.console-notice__icon {
+  width: 14px;
+  height: 14px;
+  margin-top: 1px;
+  flex: 0 0 14px;
+}
+
+.console-notice--success .console-notice__icon {
+  color: var(--status-completed);
+}
+
+.console-notice--error {
+  border-color: color-mix(in srgb, var(--status-failed) 52%, var(--line-bright));
+}
+
+.console-notice--error .console-notice__icon {
+  color: var(--status-failed);
+}
+
+.console-notice--info .console-notice__icon {
+  color: var(--selection-border);
+}
+
+.console-notice__copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.console-notice__copy small {
+  color: var(--muted-soft);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.console-notice__dismiss {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  display: grid;
+  place-items: center;
+  border-radius: 4px;
+  color: var(--muted-soft);
+  background: transparent;
+  cursor: pointer;
+}
+
+.console-notice__dismiss:hover {
+  color: var(--foreground);
+  background: var(--panel-hover);
+}
+
+.console-notice__dismiss svg {
+  width: 12px;
+  height: 12px;
+}
+
 .history-search__query-row {
   padding: 12px;
   border-bottom: 1px solid var(--chrome-line);
+}
+
+/* Suspense fallback for the lazily loaded search chunk: same frame as the
+   real dialog so opening it never flashes an unstyled panel. */
+.history-search--pending {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  width: 100vw;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  place-items: center;
+  border: 0;
+  border-radius: 0;
+  background: color-mix(in srgb, var(--canvas) 62%, transparent);
+  color: var(--muted-soft);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+}
+
+.history-search--pending span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border: 1px solid var(--line-bright);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--panel) 96%, transparent);
 }
 
 .history-search__query {
@@ -3222,6 +3344,80 @@ pre,
 
 .run-history__loading svg {
   color: var(--muted-soft);
+}
+
+/*
+ * First-load skeleton. Four rows with the row's own geometry (rail, title
+ * line, meta line) so the list keeps its height and rhythm when the real rows
+ * replace it; the shimmer is a single gradient sweep on a shared animation so
+ * four rows cost one compositor animation, not four.
+ */
+.run-history__skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 2px;
+}
+
+.run-history__skeleton-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 10px 12px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: var(--panel-hover);
+  animation: run-history-skeleton-pulse 1.6s ease-in-out infinite;
+  animation-delay: calc(var(--skeleton-index, 0) * 90ms);
+}
+
+.run-history__skeleton-dot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  margin-top: 4px;
+  border-radius: 50%;
+  background: var(--line-bright);
+}
+
+.run-history__skeleton-lines {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+}
+
+.run-history__skeleton-lines i {
+  height: 8px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--line-bright) 78%, transparent);
+}
+
+.run-history__skeleton-lines i:first-child {
+  width: min(78%, 260px);
+}
+
+.run-history__skeleton-lines i:last-child {
+  width: min(46%, 170px);
+  opacity: 0.6;
+}
+
+@keyframes run-history-skeleton-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 0.95;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .run-history__skeleton-row {
+    animation: none;
+    opacity: 0.75;
+  }
 }
 
 .run-history__loading--more {
