@@ -123,7 +123,10 @@ import {
   defaultThemeOption,
   getHistoryRangeHours,
   getHistoryRangeOption,
+  getMaxSyncHours,
+  getMaxSyncLabel,
   isHistoryRangeId,
+  isMaxSyncId,
   legacyStorageKeys,
   panelHeaderClass,
   panelHeaderCopyClass,
@@ -136,6 +139,7 @@ import {
   trajectoryLanes,
   type ActiveView,
   type HistoryRangeId,
+  type MaxSyncId,
   type Theme,
 } from "./config/app-config";
 import {
@@ -190,6 +194,7 @@ import {
   selectLiveRunHistory,
   selectVisibleRunHistory,
 } from "./lib/run-history-window";
+import { getSyncStopDelay } from "./lib/sync-budget";
 import { atomLevel, projectTraceEvents } from "./lib/atomic-projection";
 import {
   buildTraceTurnIndex,
@@ -729,12 +734,15 @@ function ServiceStatus({
   onRestart,
   restarting,
   service,
+  syncPaused,
 }: {
   connected: boolean;
   error: string;
   onRestart: () => void;
   restarting: boolean;
   service: ServiceHealth | null;
+  /** The sync budget is spent: the stream is closed on purpose, not dropped. */
+  syncPaused: boolean;
 }) {
   const [now, setNow] = useState(() => Date.now());
   // The uptime reads as a clock, but a suspended tab has nothing to advance:
@@ -821,9 +829,11 @@ function ServiceStatus({
               <strong>
                 {error
                   ? "服务不可达"
-                  : connected
-                    ? "运行中 · 事件流已连接"
-                    : "运行中 · 事件流未连接"}
+                  : syncPaused
+                    ? "运行中 · 同步已按上限停止"
+                    : connected
+                      ? "运行中 · 事件流已连接"
+                      : "运行中 · 事件流未连接"}
               </strong>
             </div>
           </div>
@@ -938,7 +948,9 @@ function ServiceStatus({
         <div className="service-card__footer">
           {error ? <p className="service-card__error">{error}</p> : null}
           <p className="service-card__hint">
-            重启会保留当前端口，页面与事件流会自动重连。
+            {syncPaused
+              ? "已按「最长同步时长」停止接收新事件；重启服务或点击顶部 paused 标记即可继续同步。"
+              : "重启会保留当前端口，页面与事件流会自动重连。"}
           </p>
           <Button
             type="button"
@@ -3999,6 +4011,25 @@ export default function App() {
       appDefaults.liveView,
     ),
   );
+  // Sync budget: the console stops consuming the event stream once it has been
+  // syncing for this long. Eight hours by default — a console left open
+  // overnight would otherwise keep appending every captured event and
+  // re-deriving sessions from an ever-growing list. `off` disables the limit.
+  const [maxSync, setMaxSync] = useState<MaxSyncId>(() => {
+    const stored = readStorageValue(
+      window.localStorage,
+      storageKeys.maxSync,
+      appDefaults.maxSync,
+    );
+    return isMaxSyncId(stored) ? stored : appDefaults.maxSync;
+  });
+  const maxSyncHours = getMaxSyncHours(maxSync);
+  // When the current sync window began. Reset by every resume and by a service
+  // restart, so the budget always describes the connection that is open now.
+  const [syncStartedAt, setSyncStartedAt] = useState(() => Date.now());
+  // The budget is spent: the stream is closed and no new event is accepted.
+  // Distinct from `connected === false`, which merely says the socket dropped.
+  const [syncStopped, setSyncStopped] = useState(false);
   const [theme, setTheme] = useState<Theme>(
     () =>
       readStorageValue(
@@ -4128,6 +4159,10 @@ export default function App() {
   }, [liveFilter]);
 
   useEffect(() => {
+    writeStorageValue(window.localStorage, storageKeys.maxSync, maxSync);
+  }, [maxSync]);
+
+  useEffect(() => {
     const media = window.matchMedia("(prefers-color-scheme: dark)");
     const applyTheme = () => {
       const resolved =
@@ -4192,6 +4227,12 @@ export default function App() {
     // missed — a full snapshot is reserved for the first load and for a
     // cursor the server no longer recognises.
     if (pageSuspended) {
+      return undefined;
+    }
+    // The sync budget is spent: keep the connection closed until the user
+    // resumes. Re-subscribing here would silently undo the whole point of the
+    // limit (a capped array that keeps growing).
+    if (syncStopped) {
       return undefined;
     }
     // A manual reload demands the full snapshot regardless of any trace
@@ -4333,7 +4374,7 @@ export default function App() {
       source.close();
       setConnected(false);
     };
-  }, [pageSuspended, streamEpoch]);
+  }, [pageSuspended, streamEpoch, syncStopped]);
 
   const allEvents = useMemo(
     () =>
@@ -4351,6 +4392,31 @@ export default function App() {
   );
   const isDemo = shouldShowDemo(allEvents.length, import.meta.env);
   const visibleEvents = isDemo ? demoEvents : allEvents;
+  /*
+   * Sync budget. One timeout, re-armed only when the setting or the start of
+   * the current sync window changes — no interval, so an idle console costs
+   * nothing. When it fires, the stream effect above closes its EventSource,
+   * which is what stops the appending, the re-derivation and the memory
+   * growth; the header chip then offers to resume (`resumeSync`).
+   */
+  useEffect(() => {
+    if (isDemo) {
+      return undefined;
+    }
+    const delay = getSyncStopDelay(syncStartedAt, maxSyncHours, Date.now());
+    if (delay === null) {
+      // No limit configured: make sure a previously armed stop is lifted.
+      setSyncStopped(false);
+      return undefined;
+    }
+    if (delay <= 0) {
+      setSyncStopped(true);
+      return undefined;
+    }
+    const timer = window.setTimeout(() => setSyncStopped(true), delay);
+    return () => window.clearTimeout(timer);
+  }, [isDemo, maxSyncHours, syncStartedAt]);
+
   // Session objects are rebuilt incrementally: a streaming batch only touches
   // the sessions it actually extended, so every other RUN HISTORY row keeps
   // its identity (and its cached Prompt runs) instead of re-rendering.
@@ -5090,6 +5156,11 @@ export default function App() {
       // New process, new stream: drop the old connection explicitly instead
       // of trusting EventSource to reconnect at the right moment.
       setStreamEpoch((current) => current + 1);
+      // A restart is also the documented way out of a spent sync budget: the
+      // new process serves a fresh snapshot, so the clock starts over here
+      // instead of leaving the console stopped after a successful restart.
+      setSyncStartedAt(Date.now());
+      setSyncStopped(false);
     } catch (error) {
       window.alert(
         `Restart failed: ${error instanceof Error ? error.message : String(error)}`,
@@ -5303,6 +5374,19 @@ export default function App() {
     setStreamEpoch((current) => current + 1);
   }, [reloadingEvents]);
 
+  /*
+   * Resume after the sync budget stopped the stream. The missed tail is pulled
+   * as a fresh snapshot rather than replayed event by event: appending hours of
+   * deltas would grow the very array the budget capped, while the snapshot is
+   * the current state the list wants anyway. Restarting the local service does
+   * the same reset from the other side.
+   */
+  const resumeSync = useCallback(() => {
+    setSyncStartedAt(Date.now());
+    setSyncStopped(false);
+    handleReloadLatestEvents();
+  }, [handleReloadLatestEvents]);
+
   const headerNavActions: ReadonlyArray<HeaderNavAction> = [
     {
       id: "import",
@@ -5414,28 +5498,43 @@ export default function App() {
             <span>Search history</span>
             <kbd aria-hidden="true">⌘ + K</kbd>
           </Button>
-          <span
-            className={cn(
-              "run-status",
-              connected ? "status-complete" : "status-offline",
-            )}
-            title={
-              connected
-                ? `事件流已连接 · 最新事件 ${
-                    lastEventAt ? formatRunDate(lastEventAt) : "尚无"
-                  }`
-                : "事件流已断开，列表可能不是最新的"
-            }
-          >
-            <i />
-            {connected
-              ? lastEventAt
-                ? `synced ${formatClock(lastEventAt).slice(0, 8)}`
-                : "accepted"
-              : isDemo
-                ? "demo"
-                : "offline"}
-          </span>
+          {syncStopped ? (
+            // Spent budget, not a dropped socket: the chip becomes the way
+            // back in, and says what happened in its tooltip. The restart
+            // button in the service card does the same thing from its side.
+            <button
+              type="button"
+              className="run-status status-paused"
+              onClick={resumeSync}
+              title={`已达最长同步时长（${getMaxSyncLabel(maxSync)}），已停止接收新事件 · 点击继续同步`}
+            >
+              <i />
+              paused
+            </button>
+          ) : (
+            <span
+              className={cn(
+                "run-status",
+                connected ? "status-complete" : "status-offline",
+              )}
+              title={
+                connected
+                  ? `事件流已连接 · 最新事件 ${
+                      lastEventAt ? formatRunDate(lastEventAt) : "尚无"
+                    }`
+                  : "事件流已断开，列表可能不是最新的"
+              }
+            >
+              <i />
+              {connected
+                ? lastEventAt
+                  ? `synced ${formatClock(lastEventAt).slice(0, 8)}`
+                  : "accepted"
+                : isDemo
+                  ? "demo"
+                  : "offline"}
+            </span>
+          )}
           {/* Not rendered — not just hidden — below the header breakpoint: a
               CSS-hidden trigger would leave its open popover orphaned on a
               resize. The nav panel keeps the restart action. */}
@@ -5445,6 +5544,7 @@ export default function App() {
               connected={connected}
               error={serviceError}
               restarting={restarting}
+              syncPaused={syncStopped}
               onRestart={() => {
                 void restartDashboard();
               }}
@@ -5462,6 +5562,7 @@ export default function App() {
               historyOpen={historyOpen}
               historyRange={historyRange}
               liveView={liveFilter}
+              maxSync={maxSync}
               theme={theme}
               onActiveViewChange={(view) => {
                 setActiveView(view);
@@ -5474,6 +5575,7 @@ export default function App() {
               onHistoryOpenChange={setHistoryOpen}
               onHistoryRangeChange={setHistoryRange}
               onLiveViewChange={setLiveFilter}
+              onMaxSyncChange={setMaxSync}
               onThemeChange={setTheme}
             />
             <ThemeSwitcher theme={theme} onChange={setTheme} />

@@ -32,10 +32,12 @@ import {
   appVersion,
   defaultHistoryRange,
   historyRangeOptions,
+  maxSyncOptions,
   storageKeys,
   themeOptions,
   type ActiveView,
   type HistoryRangeId,
+  type MaxSyncId,
   type Theme,
 } from "@/config/app-config";
 import { cn } from "@/lib/utils";
@@ -62,7 +64,7 @@ const settingsSections = [
     hint: "范围与实时筛选",
     title: "运行历史",
     description:
-      "RUN HISTORY 的默认加载范围，以及只显示正在执行消息的 Live 筛选。",
+      "RUN HISTORY 的默认加载范围、只显示正在执行消息的 Live 筛选，以及控制台接收事件流的最长时间。",
     icon: History,
   },
   {
@@ -193,6 +195,7 @@ export function SettingsDialog({
   historyOpen,
   historyRange,
   liveView,
+  maxSync,
   theme,
   onActiveViewChange,
   onConsoleOpenChange,
@@ -200,6 +203,7 @@ export function SettingsDialog({
   onHistoryOpenChange,
   onHistoryRangeChange,
   onLiveViewChange,
+  onMaxSyncChange,
   onThemeChange,
 }: {
   activeView: ActiveView;
@@ -208,6 +212,7 @@ export function SettingsDialog({
   historyOpen: boolean;
   historyRange: HistoryRangeId;
   liveView: boolean;
+  maxSync: MaxSyncId;
   theme: Theme;
   onActiveViewChange: (view: ActiveView) => void;
   onConsoleOpenChange: (open: boolean) => void;
@@ -215,6 +220,7 @@ export function SettingsDialog({
   onHistoryOpenChange: (open: boolean) => void;
   onHistoryRangeChange: (range: HistoryRangeId) => void;
   onLiveViewChange: (liveView: boolean) => void;
+  onMaxSyncChange: (maxSync: MaxSyncId) => void;
   onThemeChange: (theme: Theme) => void;
 }) {
   const [section, setSection] = useState<SettingsSectionId>("appearance");
@@ -225,6 +231,7 @@ export function SettingsDialog({
   const isDefault =
     historyRange === defaultHistoryRange &&
     liveView === appDefaults.liveView &&
+    maxSync === appDefaults.maxSync &&
     theme === appDefaults.theme &&
     activeView === appDefaults.activeView &&
     deepView === appDefaults.deepView &&
@@ -234,6 +241,7 @@ export function SettingsDialog({
   const restoreDefaults = () => {
     onHistoryRangeChange(defaultHistoryRange);
     onLiveViewChange(appDefaults.liveView);
+    onMaxSyncChange(appDefaults.maxSync);
     onThemeChange(appDefaults.theme);
     onActiveViewChange(appDefaults.activeView);
     onDeepViewChange(appDefaults.deepView);
@@ -356,6 +364,26 @@ export function SettingsDialog({
                 value={liveView}
                 onChange={onLiveViewChange}
               />
+              <div className="settings-field">
+                <div className="settings-field__copy">
+                  <strong>最长同步时长</strong>
+                  <span>
+                    控制台连续接收事件流的上限，默认 8 小时。到点后自动断开事件流、不再
+                    接收新消息以控制内存；顶部 synced 标记会变成 paused，点击它或重启本地
+                    服务即可继续同步。
+                  </span>
+                </div>
+                <ChoiceGroup
+                  label="最长同步时长"
+                  value={maxSync}
+                  columns={3}
+                  onChange={onMaxSyncChange}
+                  options={maxSyncOptions.map((option) => ({
+                    id: option.id,
+                    label: option.label,
+                  }))}
+                />
+              </div>
             </TabsContent>
 
             <TabsContent className="settings-section" value="canvas">

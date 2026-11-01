@@ -203,6 +203,27 @@ newest message; a `?session=` deep link that names another agent's run moves
 the dropdown and the address bar's `agent` with it, so the open run is always a
 row of the list.
 
+### Sync budget
+
+The console and the local service share one SSE connection (`/api/stream`,
+resumed with a `since` cursor after a drop). The longer the page stays open the
+more `liveEvents` it holds, and every batch re-derives sessions, runs and flows,
+so syncing has a ceiling:
+
+- `appDefaults.maxSync` (eight hours by default, the "Max sync time" setting)
+  arms `syncStopped`; the stream effect's cleanup then closes the `EventSource`,
+  so nothing is appended, derived or retained any more;
+- the budget is a single `setTimeout` (`getSyncStopDelay`): no timer at all when
+  the limit is `off`, and no polling;
+- the header marker turns from `synced` into an amber `paused` button, and the
+  service card says the stream stopped on purpose instead of reporting a lost
+  connection;
+- recovery has two equivalent paths: clicking `paused` (`resumeSync`) or
+  restarting the local service. Both reset `syncStartedAt` and pull a **fresh
+  snapshot** (`handleReloadLatestEvents`) rather than replaying the missed tail —
+  a replay would regrow the array the budget just capped. Staying `paused` after
+  a successful restart is a bug.
+
 ### Run History time window
 
 The list is narrowed to the agent, then filtered by an hour window (the

@@ -168,6 +168,21 @@
   write instead of migrated. The Live filter is the example: its stored `true`
   meant "show every message", which would arm the new filter on a machine where
   nothing runs.
+- **Max sync time is a preference and a hard cap.** `ASTROX_MAX_SYNC` (`1h` /
+  `4h` / `8h` / `12h` / `24h` / `off`, default `8h`). The budget is **one**
+  `setTimeout` from `getSyncStopDelay`; with `off` no timer exists at all. When
+  it fires, `syncStopped` closes the `EventSource`, which stops the appending,
+  the re-derivation and the memory growth. Never implement it as a per-second
+  poll.
+- A spent budget has two equivalent ways out, and both must work: the header
+  marker (`synced` → clickable `paused`, `resumeSync`) and the service card's
+  restart. Both reset `syncStartedAt`; resuming pulls a **fresh snapshot**
+  (`handleReloadLatestEvents`) instead of replaying the missed tail, which would
+  regrow the very array the budget capped. Still `paused` after a successful
+  restart is a bug.
+- `syncStopped` is not `connected === false`: the latter is a dropped socket
+  that `EventSource` retries, the former is a deliberate stop that only a user
+  action lifts.
 
 ## 8. Header controls
 

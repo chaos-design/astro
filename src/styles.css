@@ -633,9 +633,23 @@ pre,
   min-width: 92px;
   align-items: center;
   gap: 6px;
+  /* Also rendered as a <button> once the sync budget is spent (the paused
+   * state is the way back in), so the box must not depend on the element. */
+  padding: 0;
+  border: 0;
   color: var(--muted-soft);
+  text-align: left;
+  background: transparent;
   font-size: 10px;
   text-transform: uppercase;
+}
+
+.run-status.status-paused {
+  color: var(--status-waiting);
+}
+
+.run-status.status-paused:hover {
+  color: var(--text);
 }
 
 .run-status i {
@@ -656,6 +670,14 @@ pre,
 .run-status.status-offline i {
   color: var(--red);
   background: var(--red);
+}
+
+/* Spent sync budget: the stream is closed on purpose, so the dot reads as a
+ * pause (amber) rather than as a failure (red). */
+.run-status.status-paused i {
+  color: var(--status-waiting);
+  background: var(--status-waiting);
+  box-shadow: none;
 }
 
 /*

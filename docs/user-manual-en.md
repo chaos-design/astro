@@ -303,6 +303,18 @@ The `N LIVE` chip in the panel header toggles the Live filter:
   (Settings can change that default): a filter may legitimately match nothing,
   so arming it on load would open the console on an empty panel.
 
+The status marker in the header describes the event stream itself:
+
+- `synced HH:MM:SS` — connected, followed by the capture time of the newest
+  event; `accepted` means connected with no events yet;
+- `offline` — the connection dropped and the list may be stale; the browser
+  keeps retrying;
+- `paused` — the **max sync time** has been reached (eight hours by default,
+  Settings → Run history), so the console has deliberately stopped accepting
+  new events to keep a long-open page from accumulating memory. Clicking the
+  marker reloads the current snapshot and restarts the clock; restarting the
+  local service does the same.
+
 The agent list comes from the toolbar platform dropdown: the configured agents
 are listed first and a trailing **Others** catch-all collects runs whose source
 is not a configured agent. Selecting a configured agent also switches the
@@ -445,6 +457,12 @@ the footer's **Done** button only closes the dialog — there is no Apply step:
   filter armed (the same state as pressing the `N LIVE` chip), so RUN HISTORY
   lists only the executing messages of the selected agent — and nothing at all
   while that agent is idle. It ignores the time range above.
+- **Max sync time**: how long the console keeps consuming the event stream —
+  `8 hours` by default (`1` / `4` / `8` / `12` / `24 hours`, or `No limit`).
+  When it runs out the stream is closed and no new event is accepted; the header
+  marker turns from `synced` to `paused`. Clicking that marker, or restarting
+  the local service from its card, reloads the current snapshot and restarts
+  the clock.
 
 **Canvas**
 
@@ -463,10 +481,10 @@ the footer's **Done** button only closes the dialog — there is no Apply step:
   localStorage under the `ASTROX_` prefix), and a note that settings only affect
   presentation and never rewrite captured events.
 
-The values are written to `ASTROX_HISTORY_RANGE`, `ASTROX_RUN_HISTORY_LIVE_VIEW`
-and the other keys above. **Reset** restores every section at once (3 hours,
-Live off, dark, topology, runtime atoms only, and the width-based panel
-defaults).
+The values are written to `ASTROX_HISTORY_RANGE`, `ASTROX_RUN_HISTORY_LIVE_VIEW`,
+`ASTROX_MAX_SYNC` and the other keys above. **Reset** restores every section at
+once (3 hours, Live off, an 8-hour sync window, dark, topology, runtime atoms
+only, and the width-based panel defaults).
 
 ## 6. Execution Topology
 
@@ -872,6 +890,7 @@ only effective display state.
 | `ASTROX_CONSOLE_OPEN` | `true` / `false` | Right Events/Inspector panel |
 | `ASTROX_HISTORY_RANGE` | `1h` / `3h` / `6h` / `12h` / `1d` / `3d` / `5d` / `7d` | Default time range, `3h` unless changed |
 | `ASTROX_RUN_HISTORY_LIVE_VIEW` | `true` / `false` | Live filter armed by default, off unless changed |
+| `ASTROX_MAX_SYNC` | `1h` / `4h` / `8h` / `12h` / `24h` / `off` | Longest sync window, `8h` unless changed; `off` never stops |
 | `ASTROX_ACTIVE_VIEW` | `topology` / `trajectory` | Last canvas view |
 | `ASTROX_DEEP_VIEW` | `true` / `false` | Runtime-only atoms in the topology |
 

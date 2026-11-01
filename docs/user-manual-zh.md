@@ -274,6 +274,15 @@ History 搜索只覆盖浏览器已加载数据，与服务端 `/api/search` 是
 - 选择保存在 `ASTROX_RUN_HISTORY_LIVE_VIEW`，默认关闭（也可在设置里改默认值）：
   筛选可能一条都匹配不到，所以默认不开启，避免打开控制台就看到空列表。
 
+顶栏的状态标记说明事件流本身的状态：
+
+- `synced HH:MM:SS`：事件流已连接，后面是最新事件的采集时间；`accepted` 表示已连接但
+  还没有事件；
+- `offline`：连接已断开，列表可能不是最新的，浏览器会自动重连；
+- `paused`：已到「最长同步时长」（默认 8 小时，见设置 → 运行历史），控制台**主动停止**
+  接收新事件，以限制长时间挂着的页面不断累积内存。点击这个标记会用当前快照重新同步
+  并重新计时，`重启本地服务` 同样有效。
+
 每个父行代表一个会话，显示：
 
 - 状态：运行中、完成或失败；
@@ -392,6 +401,10 @@ Prompt 为 waiting 时父行冻结。waiting 子行仍继续计算自身时长�
 - **Live 筛选**：默认关闭。开启后打开控制台即进入 Live 筛选（等价于按下面板头部的
   `N LIVE`），RUN HISTORY 只显示当前智能体正在执行的消息，且不受上面的时间范围限制；
   该智能体没有消息在执行时列表为空。
+- **最长同步时长**：控制台连续接收事件流的上限，默认 `8 小时`（可选 `1` / `4` / `8` /
+  `12` / `24 小时` 或 `不限制`）。到点后自动断开事件流、不再接收新消息，顶部状态从
+  `synced` 变成 `paused`；点击 `paused` 标记，或在服务卡片里重启本地服务，都会重新
+  加载当前数据并重新计时。
 
 **画布**
 
@@ -408,9 +421,9 @@ Prompt 为 waiting 时父行冻结。waiting 子行仍继续计算自身时长�
 - 当前控制台版本（`v0.0.3`）、偏好实际存放的位置（浏览器 localStorage，键前缀
   `ASTROX_`），以及「设置只影响展示、不写回事件」的说明。
 
-偏好分别写入 `ASTROX_HISTORY_RANGE` 与 `ASTROX_RUN_HISTORY_LIVE_VIEW` 等键；
-「恢复默认」把这些分区的值一起还原（3 小时、Live 关闭、深色、拓扑、仅运行时原子、
-按窗口宽度决定左右面板是否展开）。
+偏好分别写入 `ASTROX_HISTORY_RANGE`、`ASTROX_RUN_HISTORY_LIVE_VIEW` 与
+`ASTROX_MAX_SYNC` 等键；「恢复默认」把这些分区的值一起还原（3 小时、Live 关闭、
+最长同步 8 小时、深色、拓扑、仅运行时原子、按窗口宽度决定左右面板是否展开）。
 
 ## 6. 执行拓扑操作
 
@@ -782,6 +795,7 @@ astro-trace doctor
 | `ASTROX_CONSOLE_OPEN` | `true` / `false` | 右侧 Events/Inspector 展开状态 |
 | `ASTROX_HISTORY_RANGE` | `1h` / `3h` / `6h` / `12h` / `1d` / `3d` / `5d` / `7d` | 默认时间范围，默认 `3h` |
 | `ASTROX_RUN_HISTORY_LIVE_VIEW` | `true` / `false` | Live 筛选是否默认开启，默认 `false` |
+| `ASTROX_MAX_SYNC` | `1h` / `4h` / `8h` / `12h` / `24h` / `off` | 最长同步时长，默认 `8h`；`off` 不限制 |
 | `ASTROX_ACTIVE_VIEW` | `topology` / `trajectory` | 上次使用的画布视图 |
 | `ASTROX_DEEP_VIEW` | `true` / `false` | 拓扑是否只显示运行时原子 |
 

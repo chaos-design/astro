@@ -221,6 +221,26 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   dialog, the §15.1 table in `docs/user-manual-*.md`, and
   `tests/app-config.test.ts`.
 
+## Sync Budget
+
+- `appDefaults.maxSync` (8 hours) is the longest the console keeps consuming
+  the event stream. A page left open otherwise appends every captured event and
+  re-derives sessions, runs and flows from an ever-growing list.
+- The budget is a single `setTimeout`, armed by `getSyncStopDelay`
+  (`src/lib/sync-budget.ts`). No interval, no polling: with the limit set to
+  `off` there is no timer at all. Do not turn this into a per-second check.
+- When it fires, `syncStopped` closes the `EventSource`; that is what stops the
+  appending, the re-derivation and the memory growth. The header marker turns
+  from `synced` to `paused` (amber, a `<button>`), and the service card says the
+  stream stopped on purpose rather than reporting a dropped connection.
+- Recovery is `resumeSync`: reset `syncStartedAt`, lift `syncStopped`, and
+  reload a fresh snapshot (`handleReloadLatestEvents`) instead of replaying the
+  missed tail — appending hours of deltas would grow the very array the budget
+  capped. Restarting the local service performs the same reset, so a restart
+  after a spent budget never leaves the console stuck in `paused`.
+- `syncStopped` is not `connected === false`: a dropped socket is retried by
+  `EventSource`; a spent budget is deliberate and only a user action lifts it.
+
 ## Run History Prompt Thread
 
 - The expanded Prompt list is **measured**, not estimated: a `ResizeObserver` in

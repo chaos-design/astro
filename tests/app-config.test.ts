@@ -10,8 +10,12 @@ import {
   appVersion,
   defaultHistoryRange,
   getHistoryRangeHours,
+  getMaxSyncHours,
+  getMaxSyncLabel,
   historyRangeOptions,
   isHistoryRangeId,
+  isMaxSyncId,
+  maxSyncOptions,
   retiredStorageKeys,
   shouldShowDemo,
   storageKeys,
@@ -52,6 +56,25 @@ test("opens RUN HISTORY unfiltered", () => {
     "ASTROX_RUN_HISTORY_LIVE_FILTER",
   );
   assert.ok(!Object.values(storageKeys).includes("ASTROX_RUN_HISTORY_LIVE_FILTER"));
+});
+
+test("caps the console's sync window at eight hours by default", () => {
+  // A console left open overnight must stop appending events on its own; eight
+  // hours covers a working day and the setting can raise it or remove it.
+  assert.equal(appDefaults.maxSync, "8h");
+  assert.equal(getMaxSyncHours("8h"), 8);
+  assert.equal(getMaxSyncLabel("8h"), "8 小时");
+  assert.equal(storageKeys.maxSync, "ASTROX_MAX_SYNC");
+
+  // `off` disables the limit instead of scheduling a zero-length window.
+  assert.deepEqual(
+    maxSyncOptions.map((option) => option.hours),
+    [1, 4, 8, 12, 24, 0],
+  );
+  assert.equal(getMaxSyncHours("off"), 0);
+  assert.equal(isMaxSyncId("8h"), true);
+  assert.equal(isMaxSyncId("2h"), false);
+  assert.equal(isMaxSyncId(null), false);
 });
 
 test("lists history ranges in ascending order with matching spans", () => {

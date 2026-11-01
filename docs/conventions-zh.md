@@ -128,6 +128,17 @@
   的 §15.1 表格，以及 `tests/app-config.test.ts`。
 - 语义变化的旧键不迁移、直接退役并删除（`retiredStorageKeys`）。Live 筛选就是例子：
   旧值 `true` 表示“显示全部消息”，迁移过来会变成“开着筛选却看不到东西”。
+- **最长同步时长是一项本地偏好，也是一个硬上限**：`ASTROX_MAX_SYNC`
+  （`1h` / `4h` / `8h` / `12h` / `24h` / `off`，默认 `8h`）。预算只用**一个**
+  `setTimeout`（`getSyncStopDelay`）实现，`off` 时不建任何计时器；到点后
+  `syncStopped` 关闭 `EventSource`，停止追加事件、停止派生、停止内存增长。不要改成
+  每秒轮询或 `setInterval`。
+- 停止后的恢复入口有两个且必须等价：顶栏 `synced` 变成 `paused`（可点击，
+  `resumeSync`），以及服务卡片里的「重启本地服务」。两者都会重置 `syncStartedAt`，
+  重新同步时拉**当前快照**（`handleReloadLatestEvents`）而不是补播错过的增量——补播
+  恰好会把预算刚截住的数组重新撑大。重启服务后仍停在 `paused` 属于 bug。
+- `syncStopped` 与 `connected === false` 是两件事：后者是掉线（`EventSource` 会自动
+  重连），前者是主动停止，只能由用户动作解除。
 
 ## 8. 顶栏控件
 

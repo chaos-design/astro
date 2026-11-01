@@ -13,6 +13,13 @@ export type HistoryRangeId =
   | "7d";
 export type Theme = "dark" | "light" | "system";
 
+/**
+ * How long the console keeps its event stream open before it stops syncing.
+ * `off` means "no limit". Measured in hours because the console is expected to
+ * survive a working day, not a calendar date.
+ */
+export type MaxSyncId = "1h" | "4h" | "8h" | "12h" | "24h" | "off";
+
 type AppDefaults = {
   activeView: ActiveView;
   consoleOpenMinWidth: number;
@@ -31,6 +38,13 @@ type AppDefaults = {
    * "nothing is running".
    */
   liveView: boolean;
+  /**
+   * How long the console keeps consuming the event stream. A console left open
+   * overnight keeps every captured event and re-derives sessions from it; after
+   * this budget it stops syncing and offers to resume. Eight hours covers a
+   * working day, and the setting can be raised or removed.
+   */
+  maxSync: MaxSyncId;
   menuOpen: boolean;
   /**
    * Fallback agent when no preference is stored. This mirrors the first entry
@@ -56,6 +70,7 @@ export const appDefaults: AppDefaults = {
   historyRange: "3h",
   historyOpenMinWidth: 900,
   liveView: false,
+  maxSync: "8h",
   menuOpen: false,
   platform: "claude",
   replayCursor: 0,
@@ -124,6 +139,46 @@ export function getHistoryRangeHours(range: HistoryRangeId): number {
 }
 
 /**
+ * Length of the console's sync window, in the order Settings lists them: two
+ * rows of three. The default (eight hours) covers a working day; `off` leaves
+ * the stream open until the tab closes, which is only sane on a machine you are
+ * watching.
+ */
+export const maxSyncOptions: ReadonlyArray<{
+  id: MaxSyncId;
+  label: string;
+  /** 0 means "no limit". */
+  hours: number;
+}> = [
+  { id: "1h", label: "1 小时", hours: 1 },
+  { id: "4h", label: "4 小时", hours: 4 },
+  { id: "8h", label: "8 小时", hours: 8 },
+  { id: "12h", label: "12 小时", hours: 12 },
+  { id: "24h", label: "24 小时", hours: 24 },
+  { id: "off", label: "不限制", hours: 0 },
+];
+
+export function isMaxSyncId(
+  value: string | null | undefined,
+): value is MaxSyncId {
+  return maxSyncOptions.some((option) => option.id === value);
+}
+
+/** Hours until syncing stops; `0` means the stream is never stopped early. */
+export function getMaxSyncHours(id: MaxSyncId): number {
+  return (
+    maxSyncOptions.find((option) => option.id === id) ?? maxSyncOptions[0]
+  ).hours;
+}
+
+/** Human label of the sync window, for the status chip and the empty state. */
+export function getMaxSyncLabel(id: MaxSyncId): string {
+  return (
+    maxSyncOptions.find((option) => option.id === id) ?? maxSyncOptions[0]
+  ).label;
+}
+
+/**
  * Release string shown in the application header. Kept in sync with the
  * root package.json version and asserted by tests/app-config.test.ts.
  */
@@ -167,6 +222,7 @@ export const storageKeys = {
   historyOpen: "ASTROX_HISTORY_OPEN",
   historyRange: "ASTROX_HISTORY_RANGE",
   inspectorTab: "ASTROX_INSPECTOR_TAB",
+  maxSync: "ASTROX_MAX_SYNC",
   platform: "ASTROX_PLATFORM",
   runHistoryLiveView: "ASTROX_RUN_HISTORY_LIVE_VIEW",
   theme: "ASTROX_THEME",
