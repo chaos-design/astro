@@ -7047,3 +7047,19 @@ pre,
   font-size: var(--text-caption);
   text-align: center;
 }
+
+/* Marks a picker entry whose agent has a message executing right now. RUN
+ * HISTORY only ever lists the selected agent, so this dot is the one place the
+ * console can say "a neighbour is running" — the previous design said it by
+ * mixing that neighbour's live row into every agent's list. */
+.agent-select__live-dot {
+  width: 6px;
+  height: 6px;
+  min-width: 6px;
+  flex: none;
+  margin-left: auto;
+  overflow: visible;
+  border-radius: 999px;
+  background: var(--status-running);
+  animation: run-history-live-pulse 1.6s ease-in-out infinite;
+}

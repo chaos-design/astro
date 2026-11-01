@@ -9,6 +9,7 @@ import {
   getRunHistoryWindowStart,
   nextRunHistoryVisibleHours,
   pinLiveRunHistory,
+  scopeLiveRunIndex,
   selectLiveRunHistory,
   selectVisibleRunHistory,
 } from "../src/lib/run-history-window.ts";
@@ -243,3 +244,44 @@ test("Others keeps only unconfigured sources", () => {
     ["unknown-agent", "workbuddy"],
   );
 });
+
+test("the agent scope owns the live index, however the machine is running", () => {
+  // A live run of another agent is real, but it is not part of this list: the
+  // dropdown is the outer filter, and the window / pin / `N LIVE` count all
+  // read the scoped set. Mixing it in put a Claude message at the top of the
+  // Codex history.
+  const codex = session(NOW - HOUR, "codex");
+  const claudeLive = session(NOW - 2 * HOUR, "claude");
+  claudeLive.status = "active";
+  claudeLive.end = NOW;
+  const all = [codex, claudeLive];
+  const scoped = filterSessionsByAgent(all, "codex", new Set(["codex", "claude"]));
+
+  const index = scopeLiveRunIndex(all, new Set([claudeLive.key]), scoped);
+
+  assert.deepEqual([...index.keys], []);
+  // The neighbour's agent is still reported, which is what marks it in the
+  // picker.
+  assert.deepEqual([...index.sources], ["claude"]);
+
+  // Rows follow the scoped set: no window exemption for a foreign live key.
+  const rows = pinLiveRunHistory(
+    selectVisibleRunHistory(scoped, NOW, 6, index.keys),
+    index.keys,
+  );
+  assert.deepEqual(
+    rows.map((entry) => entry.source),
+    ["codex"],
+  );
+
+  // The same run inside its own scope is live, pinned and counted.
+  const ownScope = filterSessionsByAgent(
+    all,
+    "claude",
+    new Set(["codex", "claude"]),
+  );
+  const ownIndex = scopeLiveRunIndex(all, new Set([claudeLive.key]), ownScope);
+  assert.deepEqual([...ownIndex.keys], [claudeLive.key]);
+  assert.deepEqual([...ownIndex.sources], ["claude"]);
+});
+

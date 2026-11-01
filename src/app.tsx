@@ -186,6 +186,7 @@ import {
   filterSessionsByAgent,
   nextRunHistoryVisibleHours,
   pinLiveRunHistory,
+  scopeLiveRunIndex,
   selectLiveRunHistory,
   selectVisibleRunHistory,
 } from "./lib/run-history-window";
@@ -4377,24 +4378,20 @@ export default function App() {
     [],
   );
   // RUN HISTORY is narrowed to the selected agent first; the time window and
-  // the live pinning below are applied to that set.
+  // the live pinning below are applied to that set. The agent is the outer
+  // filter — the list is the selected agent's history, and a run of another
+  // agent never enters it, whatever state that run is in.
   const filteredSessions = useMemo(
     () => filterSessionsByAgent(sessions, agentId, configuredSources),
     [agentId, configuredSources, sessions],
   );
   /**
-   * Sessions whose message is executing right now. Derived once here because
-   * three things must agree on it: keeping the live run inside the visible
-   * window, pinning it to the top of the list, and the `N LIVE` chip / filter
-   * the panel derives from the same set.
-   *
-   * Deliberately *not* derived from the agent-scoped list: the live index
-   * answers "what is running on this machine", and the machine can run several
-   * agents at once. Scoping it to the dropdown made the chip report zero live
-   * runs while another agent was executing — exactly the "N LIVE is missing
-   * the message that is running" bug.
+   * Every session on the machine whose message is executing right now. Kept
+   * apart from the list's own live set on purpose: this one answers "which
+   * agent is running", which the agent picker needs in order to point at a
+   * neighbour without pulling that neighbour's rows into this list.
    */
-  const liveSessionKeys = useMemo(() => {
+  const machineLiveKeys = useMemo(() => {
     if (isDemo) {
       return new Set<string>();
     }
@@ -4405,22 +4402,34 @@ export default function App() {
       appTimings.activeRunTimeoutMs,
     );
   }, [isDemo, now, promptRunsBySession, sessions]);
-  // The history pool: the selected agent's sessions, plus live runs of other
-  // agents so the executing message stays reachable whatever the dropdown
-  // says. The pin below sorts those to the top either way.
-  const historySessions = useMemo(() => {
-    if (liveSessionKeys.size === 0) {
-      return filteredSessions;
+  /**
+   * Executing messages *inside the selected agent*. One set drives four things
+   * that must agree: the window exemption, the pin to the top of the list, the
+   * Live filter, and the `N LIVE` chip — a row that is pinned but not counted
+   * (or the reverse) reads as a bug.
+   *
+   * Scoped by the dropdown, not machine-wide. Counting or pinning a live run of
+   * another agent put that row at the top of every agent's history, which is
+   * how a Codex view ended up showing the Claude message that was executing at
+   * the time. The neighbour's run stays discoverable through
+   * {@link scopeLiveRunIndex}'s `sources` — the picker marks those agents — so
+   * nothing is lost by keeping this list honest.
+   */
+  const { keys: liveSessionKeys, sources: liveSources } = useMemo(
+    () => scopeLiveRunIndex(sessions, machineLiveKeys, filteredSessions),
+    [filteredSessions, machineLiveKeys, sessions],
+  );
+  /**
+   * Picker entries with something executing right now: a configured agent by
+   * its own id, an ad-hoc source under `Others`.
+   */
+  const liveAgentIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const source of liveSources) {
+      ids.add(configuredSources.has(source) ? source : OTHERS_AGENT_ID);
     }
-    const scoped = new Set(filteredSessions.map((session) => session.key));
-    const foreignLive = sessions.filter(
-      (session) =>
-        liveSessionKeys.has(session.key) && !scoped.has(session.key),
-    );
-    return foreignLive.length
-      ? [...filteredSessions, ...foreignLive]
-      : filteredSessions;
-  }, [filteredSessions, liveSessionKeys, sessions]);
+    return ids;
+  }, [configuredSources, liveSources]);
   // Runs shown in RUN HISTORY.
   //
   // Two readings of the same history, one derivation:
@@ -4434,14 +4443,16 @@ export default function App() {
   //   session is live *now* even though it started earlier.
   //
   // Both paths end in `pinLiveRunHistory` so the executing message is always
-  // the first row, and both are derived at render time.
+  // the first row, and both are derived at render time. Neither path may leave
+  // `filteredSessions`: the agent scope is applied first, the time window is
+  // measured inside it, and the result is the list.
   const visibleSessions = useMemo(() => {
     if (liveFilter && !isDemo) {
-      return selectLiveRunHistory(historySessions, liveSessionKeys);
+      return selectLiveRunHistory(filteredSessions, liveSessionKeys);
     }
     return pinLiveRunHistory(
       selectVisibleRunHistory(
-        historySessions,
+        filteredSessions,
         now,
         runHistoryHours,
         liveSessionKeys,
@@ -4449,7 +4460,7 @@ export default function App() {
       liveSessionKeys,
     );
   }, [
-    historySessions,
+    filteredSessions,
     isDemo,
     liveFilter,
     liveSessionKeys,
@@ -4526,26 +4537,22 @@ export default function App() {
       return;
     }
     const requested = initialLocation;
-    // The agent parameter scopes the fallback pool: `?agent=X` without a
-    // session opens agent X's newest run instead of whichever session happens
-    // to be newest overall. An unknown agent falls back to the full list.
-    const requestedAgent = requested?.agent;
-    const agentPool =
-      requestedAgent && requestedAgent !== OTHERS_AGENT_ID
-        ? sessions.filter((session) => session.source === requestedAgent)
-        : requestedAgent === OTHERS_AGENT_ID
-          ? sessions.filter((session) => !configuredSources.has(session.source))
-          : sessions;
-    const fallbackPool = agentPool.length ? agentPool : sessions;
+    // The dropdown owns the fallback pool: arriving without a session — or
+    // switching agents — opens the selected agent's newest run. The previous
+    // version fell back to `sessions[0]`, the newest run on the machine, which
+    // is how a Codex view kept a Claude run on the canvas with no row beside
+    // it. An agent with nothing recorded leaves the pool empty and the canvas
+    // empty; borrowing another agent's run is exactly the leak this prevents.
+    const fallbackPool = filteredSessions;
     // The session id wins over the agent scope: a shared link to a run of
-    // another agent (a foreign live row, say) must still land on that run.
+    // another agent must still land on that run.
     const deepLinkedSession =
       fallbackPool.find(
         (session) =>
           session.id === requested?.sessionId &&
-          (!requestedAgent ||
-            requestedAgent === OTHERS_AGENT_ID ||
-            session.source === requestedAgent),
+          (!requested?.agent ||
+            requested.agent === OTHERS_AGENT_ID ||
+            session.source === requested.agent),
       ) ??
       (requested?.sessionId
         ? sessions.find((session) => session.id === requested.sessionId)
@@ -4554,6 +4561,27 @@ export default function App() {
       (session) => session.key === activeSessionKey,
     );
     const nextSession = currentSession || deepLinkedSession || fallbackPool[0];
+    if (!nextSession) {
+      setInitialLocation(null);
+      return;
+    }
+    // A shared link that names a run of another agent drags the dropdown with
+    // it: the opened run and the list it came from must stay in one scope,
+    // otherwise the canvas shows a message no row in RUN HISTORY can point at.
+    if (deepLinkedSession && nextSession.key === deepLinkedSession.key) {
+      const linkedAgent = configuredSources.has(deepLinkedSession.source)
+        ? (deepLinkedSession.source as PlatformId)
+        : OTHERS_AGENT_ID;
+      if (linkedAgent !== agentId) {
+        setAgentId(linkedAgent);
+        if (linkedAgent !== OTHERS_AGENT_ID) {
+          setPlatformId(linkedAgent);
+        }
+        // Resolve again with the new scope so the atom projection below is
+        // built for the agent the run actually belongs to.
+        return;
+      }
+    }
     const promptRuns = promptRunsBySession.get(nextSession.key) ?? [];
     const linkedPromptRun = requested?.eventId
       ? promptRuns.find((run) =>
@@ -4585,16 +4613,24 @@ export default function App() {
   }, [
     activePromptRunKey,
     activeSessionKey,
+    agentId,
     configuredSources,
     eventsLoaded,
+    filteredSessions,
     initialLocation,
     platformId,
     promptRunsBySession,
     sessions,
   ]);
 
+  // The open run resolves inside the agent's scope: arriving without a
+  // selection, or switching agents, must not keep another agent's run on the
+  // canvas while its row is absent from the list beside it. An explicit deep
+  // link still wins — a shared link may name a run of another agent on
+  // purpose, and that one is written into `activeSessionKey` directly.
   const activeSession =
-    sessions.find((session) => session.key === activeSessionKey) || sessions[0];
+    sessions.find((session) => session.key === activeSessionKey) ||
+    filteredSessions[0];
   const activePromptRuns =
     promptRunsBySession.get(activeSession?.key || "") ?? [];
   const activePromptRun =
@@ -4743,9 +4779,9 @@ export default function App() {
       return;
     }
     const params = new URLSearchParams(window.location.search);
-    // `agent` mirrors the dropdown filter, not the open run: the dropdown and
-    // the address bar must agree even while the open run belongs to another
-    // agent (a foreign live row), whose identity lives in `session`.
+    // `agent` mirrors the dropdown filter, not the open run: a shared link may
+    // name a run of another agent (and still lands on it), so the two
+    // parameters are written independently.
     params.set("agent", agentId);
     // The renamed parameter replaces the legacy one instead of accumulating.
     params.delete("source");
@@ -5199,28 +5235,33 @@ export default function App() {
    * "Live" means "follow the execution I am looking at". When the open run is
    * itself live, resuming must stay on it (and jump to its newest event);
    * otherwise it has to land on the run that is executing right now — not on
-   * `sessions[0]`, which is the newest *start* and therefore never a resumed
-   * run, so a Live click used to dead-end on another finished run while the
-   * executing one kept running. Either way the atom selection is cleared,
-   * which is what puts the canvas pulse back on the executing atom.
+   * `filteredSessions[0]`, which is the newest *start* and therefore never a
+   * resumed run, so a Live click used to dead-end on another finished run
+   * while the executing one kept running. Either way the atom selection is
+   * cleared, which is what puts the canvas pulse back on the executing atom.
+   *
+   * The jump stays inside the selected agent: `liveSessionKeys` and the pool
+   * are both agent-scoped, so pressing Live with nothing running here must not
+   * open a run whose row this list does not show.
    */
   const handleReplayExit = useCallback(() => {
     startTransition(() => {
-      const liveSession = sessions.find((session) =>
+      const liveSession = filteredSessions.find((session) =>
         liveSessionKeys.has(session.key),
       );
       const targetSession =
         activeSession && promptExecuting
           ? activeSession
-          : liveSession ?? sessions[0];
+          : liveSession ?? filteredSessions[0];
+      if (!targetSession) {
+        return;
+      }
       const targetPromptRuns =
-        promptRunsBySession.get(targetSession?.key || "") ?? [];
+        promptRunsBySession.get(targetSession.key) ?? [];
       const targetPromptRun = targetPromptRuns.at(-1);
       const targetEvents =
-        targetPromptRun?.events ?? targetSession?.events ?? activeEvents;
-      if (targetSession && targetSession.key !== activeSession?.key) {
-        setActiveSessionKey(targetSession.key);
-      }
+        targetPromptRun?.events ?? targetSession.events ?? activeEvents;
+      setActiveSessionKey(targetSession.key);
       setActivePromptRunKey(targetPromptRun?.key || "");
       setSelectedEventId(targetEvents.at(-1)?.id || "");
       setSelectedAtomId(undefined);
@@ -5231,10 +5272,10 @@ export default function App() {
   }, [
     activeEvents,
     activeSession,
+    filteredSessions,
     liveSessionKeys,
     promptExecuting,
     promptRunsBySession,
-    sessions,
   ]);
 
   // Widening the window is pure filtering over already-loaded sessions, so it
@@ -5517,6 +5558,7 @@ export default function App() {
                 <TooltipTrigger asChild>
                   <div>
                     <AgentSelect
+                      liveAgents={liveAgentIds}
                       value={agentId}
                       onChange={(nextAgent) => {
                         // Switching agents re-filters run history and
@@ -5532,6 +5574,17 @@ export default function App() {
                           if (nextAgent !== OTHERS_AGENT_ID) {
                             setPlatformId(nextAgent);
                           }
+                          // The open run belongs to the scope that was just
+                          // left. Dropping the selection lands the canvas, the
+                          // log and the list on the new agent's newest message
+                          // instead of leaving another agent's run on screen
+                          // with no row to point at.
+                          setActiveSessionKey("");
+                          setActivePromptRunKey("");
+                          setSelectedEventId("");
+                          setSelectedAtomId(undefined);
+                          setReplayMode(false);
+                          setPlaying(false);
                         });
                       }}
                     />

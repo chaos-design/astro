@@ -83,10 +83,22 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   actually executing out of the picture. The row still reports the recorder
   status (RUNNING capsule + STALE marker); pin, count, and view use the fresh
   set.
-- The live index is machine-wide: `collectLiveRunKeys` runs over every session,
-  not the agent-scoped list, and live runs of other agents join the history
-  pool. The dropdown scopes the finished history; it must never hide the
-  message that is executing right now.
+- The live index is split in two: `collectLiveRunKeys` answers "what is
+  executing on this machine", and `scopeLiveRunIndex` intersects it with the
+  selected agent's sessions. RUN HISTORY only ever consumes the intersection.
+  The dropdown is the *outer* filter — agent first, then the time window — so a
+  neighbour's live run must not be merged into this list. It used to be, which
+  put the Claude message that was executing at the top of the Codex history.
+- A neighbouring agent that is running is signalled by a live dot in the agent
+  picker (`scopeLiveRunIndex().sources` → `AgentSelect liveAgents`). Cross-agent
+  messages are reached by switching the dropdown, never by adding their rows to
+  the open agent's history.
+- Switching agent clears the open selection (`activeSessionKey`,
+  `activePromptRunKey`, `selectedEventId`, `selectedAtomId`) so the canvas, the
+  log and the list all land on the new agent's newest message; the fallback run
+  is `filteredSessions[0]`, never `sessions[0]`. A `?session=` deep link that
+  names another agent's run moves the dropdown to that agent instead of leaving
+  the canvas on a run the list cannot show.
 - A live message is marked on the row (status accent plus a `RUNNING` /
   `WAITING` capsule) and in the panel header (`N LIVE` chip that scrolls the
   first live row into view), so the executing message is findable without
@@ -109,8 +121,9 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   `isPromptExecuting` delegates to `isLiveRunStatus` (so `waiting` keeps Live
   available), the button is lit only while the open run is executing *and* the
   selection still tracks its newest atom, and pressing it from a finished run
-  selects the executing run — never `sessions[0]`, which is the newest start
-  and therefore never a resumed run.
+  selects the executing run — never `filteredSessions[0]`, which is the newest
+  start and therefore never a resumed run. The jump stays inside the selected
+  agent, so it can never open a run whose row this list does not show.
 - Finished messages (`complete` / `failed` / `terminated`) do not auto-locate
   the last atom: `getPromptAtomSelection` returns `null` for every non-live
   status, and only an explicit atom pick locates the topology.

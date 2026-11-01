@@ -66,9 +66,17 @@ function renderAgentIcon(value: AgentValue) {
 export const AgentSelect = memo(function AgentSelect({
   value,
   onChange,
+  liveAgents,
 }: {
   value: AgentValue;
   onChange: (value: AgentValue) => void;
+  /**
+   * Picker entries that have a message executing right now. RUN HISTORY only
+   * ever lists the selected agent, so this dot is what tells the user that a
+   * neighbour is running — the one thing the old machine-wide list used to
+   * signal by mixing that neighbour's rows into every view.
+   */
+  liveAgents?: ReadonlySet<string>;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -226,6 +234,14 @@ export const AgentSelect = memo(function AgentSelect({
               >
                 {renderAgentIcon(option.id)}
                 <span>{option.label}</span>
+                {liveAgents?.has(option.id) ? (
+                  <span
+                    className="agent-select__live-dot"
+                    role="img"
+                    aria-label="有正在执行的消息"
+                    title="有正在执行的消息"
+                  />
+                ) : null}
               </button>
             ))}
           </div>

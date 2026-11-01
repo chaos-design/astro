@@ -71,7 +71,8 @@
 - The window **ends at the newest message**, not at `Date.now()`. Opened after a
   night away, the console still shows the messages around the last session.
 - Executing messages ignore the window: `selectVisibleRunHistory` takes
-  `liveKeys` as the window-exemption set.
+  `liveKeys` as the window-exemption set. That set is already agent-scoped, so a
+  neighbour's live session never enters the list through the exemption.
 - Loading earlier messages **doubles** the window (3 → 6 → 12 → 24 → 48 hours)
   until `canLoadMoreRunHistory` reports nothing older.
 - Switching agent or changing the default range resets the window width to the
@@ -122,9 +123,23 @@
 - The count, the pin, and the auto-locate must all come from the same
   `liveSessionKeys`. A row that is pinned but not counted (or the reverse) is a
   bug.
-- Live runs of other agents still enter the filtered list (`historySessions`
-  adds them): the dropdown scopes finished history, never the message that is
-  executing.
+- **The agent is the outer filter, and the live set follows it.**
+  `liveSessionKeys` is `scopeLiveRunIndex` intersecting the machine-wide live
+  index with the selected agent's sessions, so the `N LIVE` count, the pin, the
+  window exemption and the Live filter always describe the same list. A message
+  executing under another agent must not leak into this one's history: the old
+  `historySessions` merged foreign live sessions in, which is how a Codex view
+  showed — pinned, no less — the Claude message that was running at the time.
+- Whether a neighbour is running is signalled by the **live dot in the agent
+  picker**: `scopeLiveRunIndex` also returns the machine-wide `sources`, and
+  `AgentSelect` marks those entries with a `--status-running` dot. Cross-agent
+  messages are reached by switching the dropdown, not by adding their rows here.
+- Switching agent after opening a run clears the selection
+  (`activeSessionKey` / `activePromptRunKey` / `selectedEventId`), so the canvas,
+  the log and the list all land on the new agent's newest message. When a
+  `?session=` deep link names another agent's run, the dropdown follows it and
+  the address bar's `agent` is rewritten — the open run must always be a row of
+  the list beside it.
 
 ## 7. Settings and local preferences
 
@@ -221,7 +236,9 @@ ASTRO_HOME=/tmp/astro-check ASTRO_PORT=4401 node server/server.mjs
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
-| `N LIVE` misses an executing message | the live set was derived from the agent-scoped list | derive `liveSessionKeys` from every session |
+| `N LIVE` misses an executing message | the live set was narrowed without the list's own key set | intersect the machine index with `scopeLiveRunIndex`; one set for count, pin and filter |
+| Another agent's live row shows up under this agent | the live set was taken machine-wide | list only the intersected `liveSessionKeys`; neighbours are signalled by the picker dot |
+| The canvas keeps a neighbour's run after switching agents | selection fell back to `sessions[0]`, or was never cleared | fall back to `filteredSessions[0]` and clear `activeSessionKey` on switch |
 | A row says RUNNING but is missing from `N LIVE` | display state bypassed `isFreshLiveRun` | always go through `getRunDisplayState` |
 | The list is empty the morning after | window ended at `now` | anchor on `getRunHistoryAnchorTime` |
 | A new message has to be hunted for | Live filter never diffed the live set | see the auto-locate rule in §6 |

@@ -63,7 +63,7 @@
 - 窗口**终点是最近一条消息的时间**，不是 `Date.now()`。隔夜或长时间空闲后打开
   控制台，看到的仍是上次会话前后的消息。
 - 正在执行的消息不受窗口限制：`selectVisibleRunHistory` 接收 `liveKeys` 作为窗口
-  豁免集合。
+  豁免集合。该集合已经按智能体收窄，别的智能体的 live 会话不会因此进入列表。
 - 加载更早的消息用**翻倍**而不是逐日推进：3 → 6 → 12 → 24 → 48 小时，直到
   `canLoadMoreRunHistory` 为 false。
 - 切换智能体或修改默认范围时，窗口宽度回到设置的默认值。
@@ -99,8 +99,18 @@
   多一次渲染。
 - 计数、置顶、自动定位必须来自同一个 `liveSessionKeys`；出现“行被置顶但没被计数”
   这类现象就是 bug。
-- 其它智能体的 live 消息仍然进入筛选结果（`historySessions` 会补进来），下拉框只
-  收窄已完成的历史，不允许隐藏正在执行的消息。
+- **智能体是外层筛选，live 集合跟着收窄**：`liveSessionKeys` 由
+  `scopeLiveRunIndex` 拿全机器 live 索引与本智能体的会话求交得到。`N LIVE`、置顶、
+  窗口豁免、Live 筛选四个口径因此永远描述同一个列表。别的智能体正在执行的消息不得
+  混进本智能体的历史：旧实现用 `historySessions` 把其它智能体的 live 会话补进列表，
+  于是「Codex」视图里出现 Claude 正在跑的那条消息，还被置顶。
+- 别的智能体是否在跑由**下拉框的 live 圆点**提示：`scopeLiveRunIndex` 同时返回全
+  机器的 `sources`，命中项的智能体在 `AgentSelect` 里带一个 `--status-running`
+  圆点。跨智能体的消息靠切换下拉框查看，不靠塞进当前列表。
+- 打开运行后再切智能体，会清空当前选中（`activeSessionKey` / `activePromptRunKey` /
+  `selectedEventId`），画布、日志、列表一起落到新智能体的最新消息；深链
+  `?session=` 指向别的智能体时，下拉框跟着跳到该智能体，地址栏的 `agent` 同步重写，
+  保证“打开的运行一定在列表里”。
 
 ## 7. 设置与本地偏好
 
@@ -173,7 +183,9 @@ ASTRO_HOME=/tmp/astro-check ASTRO_PORT=4401 node server/server.mjs
 
 | 现象 | 原因 | 处理 |
 | --- | --- | --- |
-| `N LIVE` 少了一条正在执行的消息 | live 集合按智能体收窄了 | 从全量 session 派生 `liveSessionKeys` |
+| `N LIVE` 少了一条正在执行的消息 | live 集合没按智能体收窄，或列表没走同一个集合 | 用 `scopeLiveRunIndex` 从全量 live 索引求交，别另算一份 |
+| 别的智能体正在跑的消息出现在本智能体列表里 | live 集合取了全机器范围 | 列表只用求交后的 `liveSessionKeys`；对方在跑靠下拉框圆点提示 |
+| 切了智能体，画布还停在别的智能体的运行 | 选中回落到 `sessions[0]`，或切换时没清空选中 | 回落到 `filteredSessions[0]`，切换时清空 `activeSessionKey` |
 | 行显示 RUNNING 但不在 `N LIVE` 里 | 展示状态绕过了 `isFreshLiveRun` | 统一走 `getRunDisplayState` |
 | 隔夜打开列表是空的 | 窗口以 `now` 为终点 | 用 `getRunHistoryAnchorTime` 锚定最近消息 |
 | 新消息发出后要手动翻找 | Live 筛选没有做 live 集合差集 | 见 §6 的自动定位 |

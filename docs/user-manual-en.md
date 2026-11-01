@@ -269,16 +269,21 @@ remains a separate API.
 
 ### 5.3 Run History
 
-The list is narrowed to the selected agent and then windowed. The window length
-is the default time range from Settings (three hours unless changed), measured
-back from the **newest message** rather than from the wall clock: opening the
-console after a night away still shows the messages around the last session
-instead of an empty list. When older runs remain, `LOAD EARLIER` appears at the
-bottom; clicking it — or scrolling to the bottom — doubles the window
-(3 → 6 → 12 → 24 → 48 hours) until nothing older is left.
+The list is narrowed to the selected agent and then windowed — the agent is the
+outer filter, and the intersection of the two is what the list shows. The window
+length is the default time range from Settings (three hours unless changed),
+measured back from the **newest message** rather than from the wall clock:
+opening the console after a night away still shows the messages around the last
+session instead of an empty list. When older runs remain, `LOAD EARLIER`
+appears at the bottom; clicking it — or scrolling to the bottom — doubles the
+window (3 → 6 → 12 → 24 → 48 hours) until nothing older is left.
 
 Executing messages ignore the window: they are always listed and always pinned
-to the top.
+to the top — within the selected agent. A message executing under another agent
+is not part of this list; the agent picker signals it instead, with a pulsing
+dot on the agent that is running, and switching to it shows the message.
+Switching agents also moves the canvas, the log and the selection onto the new
+agent's newest message rather than leaving the previous run on screen.
 
 The `N LIVE` chip in the panel header toggles the Live filter:
 
@@ -438,8 +443,8 @@ the footer's **Done** button only closes the dialog — there is no Apply step:
   morning still shows the last session.
 - **Live filter**: off by default. When on, the console opens with the Live
   filter armed (the same state as pressing the `N LIVE` chip), so RUN HISTORY
-  lists only the executing messages — and nothing at all while the machine is
-  idle. It ignores the time range above.
+  lists only the executing messages of the selected agent — and nothing at all
+  while that agent is idle. It ignores the time range above.
 
 **Canvas**
 

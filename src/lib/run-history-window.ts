@@ -135,6 +135,45 @@ export function selectLiveRunHistory<
 }
 
 /**
+ * Everything RUN HISTORY knows about the machine's executing messages, split
+ * into the two questions the console asks:
+ *
+ * - `keys` — the live runs *inside the selected agent*. This is the only set
+ *   the panel sees, and it is what keeps the window exemption, the pin, the
+ *   Live filter and the `N LIVE` count from describing different lists.
+ * - `sources` — every source (agent) with a live run anywhere on the machine.
+ *   The agent picker marks those entries, which is how a message executing
+ *   under a neighbour stays discoverable without that neighbour's rows being
+ *   mixed into the open agent's history.
+ *
+ * Scoping is an intersection, never a second liveness rule: liveness comes from
+ * `collectLiveRunKeys`, and the agent filter decides which of those runs the
+ * list may show.
+ */
+export function scopeLiveRunIndex(
+  sessions: readonly Pick<TraceSession, "key" | "source">[],
+  machineLiveKeys: ReadonlySet<string>,
+  scopedSessions: readonly Pick<TraceSession, "key">[],
+): { keys: Set<string>; sources: Set<string> } {
+  const keys = new Set<string>();
+  const sources = new Set<string>();
+  if (machineLiveKeys.size === 0) {
+    return { keys, sources };
+  }
+  const inScope = new Set(scopedSessions.map((session) => session.key));
+  for (const session of sessions) {
+    if (!machineLiveKeys.has(session.key)) {
+      continue;
+    }
+    sources.add(session.source);
+    if (inScope.has(session.key)) {
+      keys.add(session.key);
+    }
+  }
+  return { keys, sources };
+}
+
+/**
  * Whether widening the window would reveal additional runs. True when at
  * least one session started before the current window.
  */

@@ -187,6 +187,22 @@ longer locate the last atom automatically: `getPromptAtomSelection` returns
 `null` for every non-live status, leaving the topology unselected until an atom
 is picked by hand.
 
+The agent filter is the **outer** filter, and the live index follows it:
+`collectLiveRunKeys` answers only "who is running on this machine", and
+`scopeLiveRunIndex` intersects that with the selected agent's sessions to
+produce the `liveSessionKeys` the list actually uses — so the count, the pin,
+the window exemption and the Live filter always describe one list. The previous
+implementation merged other agents' live sessions into `historySessions`, which
+is how a Codex view showed the Claude message that was executing at the time,
+pinned on top; that path is gone. A neighbour that is running is signalled by
+the agent picker instead: `scopeLiveRunIndex` also returns the machine-wide
+`sources`, and `AgentSelect` marks those entries with a `--status-running`
+pulsing dot. Switching agents clears the open selection (`activeSessionKey`
+and friends) so the canvas, the log and the list all move to the new agent's
+newest message; a `?session=` deep link that names another agent's run moves
+the dropdown and the address bar's `agent` with it, so the open run is always a
+row of the list.
+
 ### Run History time window
 
 The list is narrowed to the agent, then filtered by an hour window (the

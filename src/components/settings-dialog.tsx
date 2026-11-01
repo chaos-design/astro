@@ -352,7 +352,7 @@ export function SettingsDialog({
               </div>
               <SwitchField
                 label="Live 筛选"
-                description="只显示正在执行的消息，不受时间范围限制；没有消息在执行时列表为空。面板头部的 LIVE 胶囊可随时切换。"
+                description="只显示当前智能体正在执行的消息，不受时间范围限制；该智能体没有消息在执行时列表为空。面板头部的 LIVE 胶囊可随时切换。"
                 value={liveView}
                 onChange={onLiveViewChange}
               />
