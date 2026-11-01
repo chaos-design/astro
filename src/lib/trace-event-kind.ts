@@ -44,30 +44,49 @@ function normalizeIdentifier(value: unknown) {
     : "";
 }
 
-function getToolIdentifiers(event: TraceEvent) {
-  return [
-    event.toolName,
-    event.payload.llm_tool_name,
-    event.payload.tool_name,
-    event.payload.name,
-    event.payload.type,
-    event.payload.tool_input?.name,
-    event.payload.tool_input?.tool_name,
-    event.payload.payload?.type,
-  ]
-    .map(normalizeIdentifier)
-    .filter(Boolean);
-}
+const toolEventNames = new Set([
+  "PreToolUse",
+  "PostToolUse",
+  "PostToolUseFailure",
+]);
+
+/** Events that report a user question answer rather than a question. */
+const userQuestionAnswerEvents = new Set([
+  "ElicitationResult",
+  "PermissionDenied",
+  "PostToolUse",
+  "PostToolUseFailure",
+]);
 
 export function isUserQuestionToolEvent(event: TraceEvent) {
-  return (
-    ["PreToolUse", "PostToolUse", "PostToolUseFailure"].includes(
-      event.eventName,
-    ) &&
-    getToolIdentifiers(event).some((identifier) =>
-      userQuestionToolNames.has(identifier),
-    )
-  );
+  if (!toolEventNames.has(event.eventName)) {
+    return false;
+  }
+  // Every tool event runs through this on the state-machine path, so the
+  // identifiers are visited in place and the first match returns: building the
+  // full normalized list for all eight candidate fields (and the two arrays
+  // around it) dominated tool-heavy histories.
+  const payload = event.payload;
+  const candidates = [
+    event.toolName,
+    payload.llm_tool_name,
+    payload.tool_name,
+    payload.name,
+    payload.type,
+    payload.tool_input?.name,
+    payload.tool_input?.tool_name,
+    payload.payload?.type,
+  ];
+  for (const candidate of candidates) {
+    if (
+      typeof candidate === "string" &&
+      candidate &&
+      userQuestionToolNames.has(normalizeIdentifier(candidate))
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
 export function isUserQuestionEvent(event: TraceEvent) {
@@ -81,12 +100,7 @@ export function isUserQuestionStartEvent(event: TraceEvent) {
   if (!isUserQuestionEvent(event)) {
     return false;
   }
-  return ![
-    "ElicitationResult",
-    "PermissionDenied",
-    "PostToolUse",
-    "PostToolUseFailure",
-  ].includes(event.eventName);
+  return !userQuestionAnswerEvents.has(event.eventName);
 }
 
 export function getTraceEventKey(event?: TraceEvent | null) {

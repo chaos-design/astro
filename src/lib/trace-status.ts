@@ -6,6 +6,12 @@ const explicitWaitingEvents: readonly string[] = [
   "PermissionRequest",
 ];
 
+/** Events whose status/payload may carry a waiting signal. */
+const waitingSignalEvents = new Set(["Notification", "StopFailure"]);
+
+/** Statuses that mark the run as waiting rather than running. */
+const waitingStatuses = new Set(["waiting", "rate_limited", "rate-limit"]);
+
 const waitingSignalPattern =
   /waiting|awaiting|permission[_ -]?prompt|idle[_ -]?prompt|elicitation|rate[_ -]?limit|too many requests|overload|retry[_ -]?after|backoff|throttl|capacity/;
 
@@ -30,13 +36,14 @@ export function isWaitingTraceEvent(
   if (event.eventName === "PermissionDenied" && event.payload.retry === true) {
     return true;
   }
-  if (
-    !["Notification", "StopFailure"].includes(event.eventName) &&
-    !["waiting", "rate_limited", "rate-limit"].includes(
-      String(event.status || "").toLowerCase(),
-    )
-  ) {
-    return false;
+  // Either a signal event or a waiting status opens the payload scan. The
+  // name is checked first so the common event returns without lowercasing a
+  // status it would not look at anyway.
+  if (!waitingSignalEvents.has(event.eventName)) {
+    const status = String(event.status || "").toLowerCase();
+    if (!waitingStatuses.has(status)) {
+      return false;
+    }
   }
 
   const signal = [
