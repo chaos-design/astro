@@ -241,6 +241,32 @@ use Node.js ES modules or CommonJS according to their existing file extension.
 - `syncStopped` is not `connected === false`: a dropped socket is retried by
   `EventSource`; a spent budget is deliberate and only a user action lifts it.
 
+## Restart And Snapshot Reload
+
+- A service restart means **the new process re-read the files from scratch**, so
+  it is not "the same history with a newer tail". The console drops
+  `resumeCursorRef`, sets `forceSnapshotRef`, resets `runHistoryHours` to the
+  configured range and re-subscribes. Leaving the cursor in place turned a
+  restart into an empty `resume` replay: the list looked freshly loaded while
+  still showing the previous process's data.
+- The reload is scoped by the current filter — agent first, then the configured
+  default range, then the Live filter. The selection falls back through the same
+  pool (`filteredSessions`), so a restart lands on the newest message the list is
+  allowed to show.
+- While the console is deliberately between snapshots (restarting, or a forced
+  snapshot in flight) the header reads `restarting` / `reloading`. It must not
+  read `offline`: a successful restart is not a dropped connection.
+- A snapshot is only applied when it is **not the history already on screen**.
+  The client names the key it holds (`?snapshot=<key>`, see
+  `TraceRepository.getSnapshotKey`: event count plus a rolling hash of every id);
+  an unchanged history is answered by `reset-same` and the page skips the
+  transfer, the parse and the re-projection entirely. Without a key (first load,
+  an older server) `isSameEventSequence` in `src/lib/event-snapshot.ts` makes the
+  same decision after parsing, and `setLiveEvents` is skipped when it matches —
+  replacing the array is exactly what forces a full session rebuild.
+- The key answers "is this the same history"; it is not a dedup mechanism. Event
+  deduplication stays with the per-connection `seenIds` set.
+
 ## Run History Prompt Thread
 
 - The expanded Prompt list is **measured**, not estimated: a `ResizeObserver` in

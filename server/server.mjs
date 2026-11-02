@@ -525,9 +525,22 @@ async function handleRequest(request, response) {
     const resumeIndex = resumeCursor
       ? events.findIndex((event) => event.id === resumeCursor)
       : -1;
+    // A client that had to ask for the whole snapshot again (a restart, a
+    // manual reload) names the snapshot it already holds. When the history on
+    // disk is the one it has — the common case after restarting the service —
+    // re-sending and re-parsing megabytes of JSON would produce exactly the
+    // state the page is already showing. The signature covers every event id,
+    // so "same key" means "same history".
+    const snapshotKey = store.getSnapshotKey();
+    const clientSnapshot = requestUrl.searchParams.get("snapshot") || "";
     if (resumeIndex >= 0) {
       const missed = events.slice(resumeIndex + 1);
       sendSse(response, "resume", { events: missed, git: gitMapForEvents(missed) });
+    } else if (clientSnapshot && clientSnapshot === snapshotKey) {
+      sendSse(response, "reset-same", {
+        eventCount: events.length,
+        snapshot: snapshotKey,
+      });
     } else {
       // One merged snapshot serves both messages: building the git map used to
       // re-copy the whole event list a second time.
@@ -535,6 +548,7 @@ async function handleRequest(request, response) {
     }
     sendSse(response, "ready", {
       eventCount: events.length,
+      snapshot: snapshotKey,
       connectedAt: new Date().toISOString(),
     });
     request.on("close", () => clients.delete(response));

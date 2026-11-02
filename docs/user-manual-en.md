@@ -307,6 +307,9 @@ The status marker in the header describes the event stream itself:
 
 - `synced HH:MM:SS` — connected, followed by the capture time of the newest
   event; `accepted` means connected with no events yet;
+- `restarting` / `reloading` — a local service restart or a full snapshot reload
+  is in progress. Neither is a dropped connection: the marker returns to
+  `synced` on its own;
 - `offline` — the connection dropped and the list may be stale; the browser
   keeps retrying;
 - `paused` — the **max sync time** has been reached (eight hours by default,
@@ -314,6 +317,14 @@ The status marker in the header describes the event stream itself:
   new events to keep a long-open page from accumulating memory. Clicking the
   marker reloads the current snapshot and restarts the clock; restarting the
   local service does the same.
+
+**After a local service restart** the console drops its resume cursor, pulls the
+full snapshot again and applies the current filter to it — agent, default range
+and the Live filter — landing on that filter's newest message. Sessions written,
+removed or rewritten while the service was down show up in the list. When the
+history did not change, the service answers with a "same snapshot" confirmation
+instead of the body, so the page transfers no JSON, parses nothing, and keeps
+its list and canvas exactly as they were.
 
 The agent list comes from the toolbar platform dropdown: the configured agents
 are listed first and a trailing **Others** catch-all collects runs whose source
