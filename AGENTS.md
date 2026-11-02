@@ -82,11 +82,17 @@ use Node.js ES modules or CommonJS according to their existing file extension.
 - Times in the dataset are `offsetMs` from load time, never timestamps. RUN
   HISTORY is an hours-based window: absolute times age out of it within a day
   and the sample run silently disappears.
-- Loading is async, so `isDemo` needs both halves: the build must allow Demo
-  (`shouldShowDemo`: development/test and zero captured events) *and* the
-  dataset must have arrived. A failed load keeps the truthful empty state and
-  raises one `示例数据不可用` notice; it must never block or hide captured
-  events, and production must never request the dataset at all.
+- Loading is async, so `isDemo` needs three things: zero captured events, the
+  gate open, and the dataset having arrived. The gate (`isDemoGateOpen` in
+  `app-config.ts`) is automatic in development/test (`shouldShowDemo`) but, in a
+  production build, only when the reader explicitly opts in with `?demo=1`
+  (parsed by `isDemoPreviewEnabled`, `src/lib/demo-events.ts`) — a production
+  page keeps its truthful empty state otherwise and must never *implicitly*
+  fall back to the sample. When it does render, a persistent「示例数据」banner
+  (`studio-shell__sample-banner`) makes it unmistakable that the run is a
+  sample, not captured evidence. A failed load keeps the truthful empty state
+  and raises one `示例数据不可用` notice; it must never block or hide captured
+  events.
 - The Demo dataset is a rendering fixture only: it must stay out of health
   counts, `N LIVE`, the sync budget, and `DELETE /api/events`.
 
@@ -112,7 +118,9 @@ use Node.js ES modules or CommonJS according to their existing file extension.
 - A deployed page that never connects announces it once (「无法连接本地服务」
   with the base and the `ASTRO_CORS_ORIGINS` line to add). Do not turn that
   into per-retry noise, and do not silently fall back to demo data — a
-  deployment must never present sample runs as captured evidence.
+  deployment must never *implicitly* present sample runs as captured evidence.
+  The only path to the sample on a deployment is the reader's explicit `?demo=1`
+  (see Demo Dataset above).
 - Deployment outputs: `vercel.json` builds console + docs and merges them via
   `scripts/merge-deploy-output.mjs` (docs at the root, console at
   `/console/`); the console build uses a relative Vite `base` so it also works

@@ -358,3 +358,27 @@ export function shouldShowDemo(
     (environment.DEV || environment.MODE === "test")
   );
 }
+
+/**
+ * The full gate that decides whether the sample run is rendered *now*. It needs
+ * three things, and they are checked here so the rule has one definition:
+ *
+ *  - no captured events — the sample never overwrites real data;
+ *  - the build permitting Demo (dev/test) **or** the reader's explicit
+ *    `?demo=1` preview opt-in (production builds, the deployed preview page);
+ *  - the dataset itself is loaded separately in `app.tsx`; this gate only
+ *    says "are we allowed to", not "did it arrive".
+ *
+ * `demoOptIn` is the parsed result of the `?demo=1` param
+ * (`isDemoPreviewEnabled`), so a production console keeps its honest empty
+ * state unless the reader turns it on — the sample is an opt-in, never a
+ * silent fallback to captured evidence.
+ */
+export function isDemoGateOpen(
+  eventCount: number,
+  environment: Pick<ImportMetaEnv, "DEV" | "MODE">,
+  demoOptIn: boolean,
+) {
+  return eventCount === 0 && (shouldShowDemo(0, environment) || demoOptIn);
+}
+

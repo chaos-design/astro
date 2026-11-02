@@ -376,9 +376,43 @@ pre,
   height: 100dvh;
   min-width: 0;
   min-height: 0;
-  grid-template-rows: 64px minmax(0, 1fr);
+  grid-template-rows: 64px auto minmax(0, 1fr);
   overflow: hidden;
   background: var(--bg);
+}
+
+/* The sample-data banner only exists when a production page explicitly opted
+   in with ?demo=1. It sits in its own (row 2) track; the workspace is pinned
+   to row 3 so the banner's conditional presence never reflows the grid. */
+.studio-shell__sample-banner {
+  grid-row: 2;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--amber) 14%, var(--panel));
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.studio-shell__sample-banner__eyebrow {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--amber) 22%, transparent);
+  color: var(--amber);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.studio-shell__sample-banner code {
+  padding: 0 4px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--amber) 18%, transparent);
+  font-size: 12px;
 }
 
 .studio-header {
@@ -2392,6 +2426,7 @@ pre,
   display: grid;
   min-width: 0;
   min-height: 0;
+  grid-row: 3;
   grid-template-columns: var(--left-panel-width) minmax(0, 1fr) var(
       --right-panel-width
     );
@@ -6709,7 +6744,7 @@ pre,
  * appLayout.headerNavCollapseMaxWidth in src/config/app-config.ts. */
 @media (max-width: 900px) {
   .studio-shell {
-    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr);
     /* Overlay chrome (nav sheet, side panels) anchors here instead of
      * repeating the header height in several rules, so a taller header — a
      * wrapped observer banner, a wider safe area — cannot leave the panels

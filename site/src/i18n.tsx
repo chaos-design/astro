@@ -47,7 +47,7 @@ const STRINGS = {
     cardConsoleKicker: "实时预览",
     cardConsoleTitle: "控制台在线预览",
     cardConsoleBody:
-      "打开部署的控制台页面，连接本机 ASTRO 服务实时查看 Agent 运行（?api= 可指定服务地址）。",
+      "打开部署的控制台页面，连接本机 ASTRO 服务实时查看 Agent 运行（?api= 可指定服务地址）。本机暂无数据时可加 ?demo=1 查看示例会话。",
     decksSectionTitle: "演示与题库 (Decks)",
     decksSectionBlurb: "来自仓库 docs/，自包含、可离线打开",
     // Gallery

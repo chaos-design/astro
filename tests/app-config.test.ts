@@ -13,6 +13,7 @@ import {
   getMaxSyncHours,
   getMaxSyncLabel,
   historyRangeOptions,
+  isDemoGateOpen,
   isHistoryRangeId,
   isMaxSyncId,
   maxSyncOptions,
@@ -136,4 +137,18 @@ test("shows demo data only in development or test environments", () => {
   assert.equal(shouldShowDemo(0, { DEV: false, MODE: "test" }), true);
   assert.equal(shouldShowDemo(0, { DEV: false, MODE: "production" }), false);
   assert.equal(shouldShowDemo(1, { DEV: true, MODE: "development" }), false);
+});
+
+test("isDemoGateOpen: dev/test needs no opt-in; production needs ?demo=1", () => {
+  const dev = { DEV: true, MODE: "development" };
+  const prod = { DEV: false, MODE: "production" };
+  // Development permits the sample automatically, with or without the flag.
+  assert.equal(isDemoGateOpen(0, dev, false), true);
+  assert.equal(isDemoGateOpen(0, dev, true), true);
+  // Production stays empty unless the reader explicitly opts in.
+  assert.equal(isDemoGateOpen(0, prod, false), false);
+  assert.equal(isDemoGateOpen(0, prod, true), true);
+  // The flag never overrides real data: captured events always win.
+  assert.equal(isDemoGateOpen(5, prod, true), false);
+  assert.equal(isDemoGateOpen(5, dev, true), false);
 });

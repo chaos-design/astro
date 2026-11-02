@@ -275,6 +275,24 @@ events to the local JSONL files, the service pushes them over SSE, and RUN
 HISTORY, the topology and the trajectory update live; disconnects reconnect
 and repair with a snapshot.
 
+About the sample dataset: the `data/demo-events.json` file ships with the build
+output too (`deploy/console/data/demo-events.json`) and can be read by your
+local service over `GET /api/demo-events`. A deployment is a production build,
+so by default it does **not** render that sample as captured evidence
+(`shouldShowDemo` only auto-applies in development/test) — the preview page
+defaults to showing your machine's real agent runs.
+
+If your machine has no data yet and you want to try the console on the deployed
+page, append `?demo=1` (e.g. `https://<deployment-domain>/console/?demo=1`) to
+open the sample session: the page reads the sample through the configured
+local-data address (`?api=`, default `http://127.0.0.1:5678`), or falls back to
+the static copy shipped with the deployment when the service will not answer,
+and keeps a persistent "sample data" banner below the header so you always know
+you are viewing a sample, not captured evidence. It is an **explicit switch**,
+not an implicit fallback — drop the parameter and the page returns to its
+truthful empty state. The sample also only ever renders with zero captured
+events and never overrides real data.
+
 Security note: `ASTRO_CORS_ORIGINS` is the cross-origin read boundary for your
 local traces. List only deployment domains you control; do not set `*`. The
 page must be `https://` or a loopback address — browsers treat `127.0.0.1` /

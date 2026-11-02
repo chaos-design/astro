@@ -5,8 +5,10 @@ import {
   DemoDatasetError,
   buildDemoEvents,
   demoDatasetEndpoints,
+  isDemoPreviewEnabled,
   loadDemoEvents,
   parseDemoDataset,
+  staticDemoDatasetEndpoint,
   type DemoDataset,
 } from "../src/lib/demo-events.ts";
 import { createDemoEvents, readDemoDataset } from "./helpers/demo-fixture.ts";
@@ -262,6 +264,76 @@ test("reports a canceled load without fetching", async () => {
   assert.equal(result.status, "canceled");
   assert.deepEqual(calls, []);
 });
+
+test("the ?demo=1 preview flag is recognised, case-insensitively, on both input shapes", () => {
+  // Accepted spellings all turn the sample on.
+  for (const on of ["?demo=1", "?demo=true", "?demo=ON", "?demo=yes"]) {
+    assert.equal(isDemoPreviewEnabled(on), true, on);
+  }
+  // Anything else — absent, empty, or an unrecognised value — stays off, so a
+  // typo never silently turns the sample on.
+  for (const off of ["", "?api=http://127.0.0.1:5678", "?demo=", "?demo=0", "?demo=nope"]) {
+    assert.equal(isDemoPreviewEnabled(off), false, off);
+  }
+  // A URLSearchParams instance is accepted as-is (the app parses once).
+  assert.equal(
+    isDemoPreviewEnabled(new URLSearchParams({ demo: "1" })),
+    true,
+  );
+});
+
+test("staticDemoDatasetEndpoint resolves the copy next to the page, not the host root", () => {
+  // No document (Node) falls back to the root-relative path.
+  assert.equal(
+    withGlobalDocument(undefined, () => staticDemoDatasetEndpoint()),
+    "/data/demo-events.json",
+  );
+  // A page served from /console/ finds its own copy.
+  assert.equal(
+    withGlobalDocument("https://x.vercel.app/console/", () =>
+      staticDemoDatasetEndpoint(),
+    ),
+    "/console/data/demo-events.json",
+  );
+  // Vercel rewrites /console → /console/ but the address bar may stay slash-less;
+  // the path must still resolve inside the mount, not drop the segment.
+  assert.equal(
+    withGlobalDocument("https://x.vercel.app/console", () =>
+      staticDemoDatasetEndpoint(),
+    ),
+    "/console/data/demo-events.json",
+  );
+  // An explicit index.html names the document inside its directory.
+  assert.equal(
+    withGlobalDocument("https://x.vercel.app/console/index.html", () =>
+      staticDemoDatasetEndpoint(),
+    ),
+    "/console/data/demo-events.json",
+  );
+  // A root mount (the local service) lands the copy at /data/.
+  assert.equal(
+    withGlobalDocument("http://127.0.0.1:5678/index.html", () =>
+      staticDemoDatasetEndpoint(),
+    ),
+    "/data/demo-events.json",
+  );
+});
+
+/**
+ * `staticDemoDatasetEndpoint` reads `document.baseURI`; Node has no document, so
+ * temporarily install a stub carrying only that property, then restore the
+ * global so other tests are unaffected.
+ */
+function withGlobalDocument(baseUri: string | undefined, fn: () => unknown) {
+  const original = (globalThis as { document?: unknown }).document;
+  try {
+    (globalThis as { document?: unknown }).document =
+      baseUri === undefined ? undefined : { baseURI: baseUri };
+    return fn();
+  } finally {
+    (globalThis as { document?: unknown }).document = original;
+  }
+}
 
 function fixtureDocument() {
   const dataset = readDemoDataset();

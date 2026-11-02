@@ -51,6 +51,9 @@
 - 示例（Demo）数据只在 `data/demo-events.json`：服务通过 `server/demo-dataset.mjs`
   读取并由 `GET /api/demo-events` 提供，控制台只在 `src/lib/demo-events.ts` 解析。
   不要在组件、测试或服务里再写一份内联事件数组；测试需要示例会话时读取该文件。
+  渲染门禁只在 `src/config/app-config.ts` 的 `isDemoGateOpen`：dev/test 自动放行，
+  生产构建仅在读者显式带 `?demo=1`（`isDemoPreviewEnabled` 解析）时放行，且只在
+  无捕获事件时渲染——生产页默认绝不隐式回退示例。
 - 部署页面的服务地址只在 `src/lib/api-base.ts` 解析（`?api=` → `ASTROX_API_BASE` →
   同源/本机默认），请求一律走 `joinApi`；跨域边界只在服务端
   `ASTRO_CORS_ORIGINS`（默认关闭，显式允许列表，含 Private Network 预检应答）。

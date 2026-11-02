@@ -137,6 +137,7 @@ import {
   panelHeaderClass,
   panelHeaderCopyClass,
   retiredStorageKeys,
+  isDemoGateOpen,
   shouldShowDemo,
   storageKeys,
   themeOptions,
@@ -169,6 +170,8 @@ import {
 } from "./lib/trace-model";
 import {
   loadDemoEvents,
+  isDemoPreviewEnabled,
+  staticDemoDatasetEndpoint,
   type DemoLoadResult,
 } from "./lib/demo-events";
 import {
@@ -3948,10 +3951,19 @@ export default function App() {
   /*
    * The sample run is a local resource file (`data/demo-events.json`), read by
    * the service and fetched here — the bundle no longer carries synthetic
-   * events. It is requested once per mount and only where Demo is allowed, so
-   * a production console still never asks for it.
+   * events. Two gates decide whether it loads at all:
+   *
+   *  - dev/test builds: automatic when there are no captured events (the classic
+   *    Demo). Production builds keep their honest empty state unless the reader
+   *    explicitly opts in with `?demo=1` — the sample is an opt-in preview on a
+   *    deployment, never a silent fallback to captured data.
    */
-  const demoAllowed = shouldShowDemo(0, import.meta.env);
+  const buildDemo = shouldShowDemo(0, import.meta.env);
+  const demoOptIn = useMemo(
+    () => isDemoPreviewEnabled(window.location.search),
+    [],
+  );
+  const demoAllowed = buildDemo || demoOptIn;
   const [demoDataset, setDemoDataset] = useState<DemoDatasetState>(() => ({
     status: demoAllowed ? "loading" : "off",
     events: [],
@@ -3964,8 +3976,12 @@ export default function App() {
     setDemoDataset({ status: "loading", events: [] });
     void loadDemoEvents({
       // The service on the configured base first; the static copy next to the
-      // page itself is the fallback for a deployment without a service.
-      endpoints: [joinApi(apiBase, "/api/demo-events"), "/data/demo-events.json"],
+      // page itself (base-relative, so a `/console/` mount finds its own copy)
+      // is the fallback for a deployment whose service will not answer.
+      endpoints: [
+        joinApi(apiBase, "/api/demo-events"),
+        staticDemoDatasetEndpoint(),
+      ],
       signal: controller.signal,
       timeoutMs: appTimings.demoFetchTimeoutMs,
     }).then((result) => {
@@ -4672,12 +4688,18 @@ export default function App() {
         : liveEvents,
     [liveEvents, importedEvents],
   );
-  // Demo needs both halves: the build must allow it, and the dataset must have
-  // actually arrived. A failed load leaves the console on the real empty state
-  // rather than pinning a stale or synthetic run.
-  const isDemo =
-    demoDataset.status === "ready" &&
-    shouldShowDemo(allEvents.length, import.meta.env);
+  // Demo needs three things: no captured events (the sample never overwrites
+  // real data), the build or the reader permitting it, and the dataset having
+  // actually arrived. dev/test permits it automatically; a production build
+  // permits it only through the explicit `?demo=1` preview opt-in. A failed
+  // load leaves the console on the truthful empty state rather than pinning a
+  // stale or synthetic run.
+  const demoGateOpen = isDemoGateOpen(
+    allEvents.length,
+    import.meta.env,
+    demoOptIn,
+  );
+  const isDemo = demoDataset.status === "ready" && demoGateOpen;
   const visibleEvents = isDemo ? demoDataset.events : allEvents;
   /*
    * Sample data is a development convenience, never captured evidence. Only the
@@ -4686,8 +4708,7 @@ export default function App() {
    * load happens once per mount.
    */
   const demoError =
-    demoDataset.status === "error" &&
-    shouldShowDemo(allEvents.length, import.meta.env)
+    demoDataset.status === "error" && demoGateOpen
       ? demoDataset.error
       : null;
   useEffect(() => {
@@ -6004,6 +6025,21 @@ export default function App() {
           {navMenuOpen ? <X /> : <Menu />}
         </IconAction>
       </header>
+
+      {demoOptIn && isDemo ? (
+        /* A production build renders the sample run only because the reader
+           explicitly asked for it with ?demo=1 — make that unmistakable, or
+           the sample would look indistinguishable from captured evidence. */
+        <div className="studio-shell__sample-banner" role="status">
+          <span className="studio-shell__sample-banner__eyebrow">
+            示例数据
+          </span>
+          <span>
+            当前展示的是本地示例会话（<code>?demo=1</code>），不是捕获到的真实
+            Agent 运行。
+          </span>
+        </div>
+      ) : null}
 
       <section
         className={cn(

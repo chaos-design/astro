@@ -32,6 +32,62 @@ export const demoDatasetEndpoints = [
   "/data/demo-events.json",
 ] as const;
 
+/**
+ * The explicit opt-in query param that lets a *production* deployment render
+ * the sample run. A Vercel / GitHub Pages build keeps its honest empty state by
+ * default (`shouldShowDemo` is dev/test only); the sample is a documented
+ * opt-in, reached by appending `?demo=1` to the page URL. It is never an
+ * implicit fallback — a deployment must not present sample runs as captured
+ * evidence on its own.
+ */
+export const demoPreviewQueryParam = "demo";
+
+/** The flag values that count as "preview the sample run". */
+const demoPreviewFlagValues = new Set(["1", "true", "on", "yes"]);
+
+/**
+ * Is the explicit `?demo=1` preview switch present on this load? Accepted on a
+ * query string or parsed `URLSearchParams`; anything absent or unrecognised is
+ * "off", so a typo never silently turns the sample on.
+ */
+export function isDemoPreviewEnabled(
+  search: string | URLSearchParams,
+): boolean {
+  const params =
+    search instanceof URLSearchParams ? search : new URLSearchParams(search);
+  const value = params.get(demoPreviewQueryParam);
+  return value !== null && demoPreviewFlagValues.has(value.toLowerCase());
+}
+
+/**
+ * Same-origin path to the built static copy, resolved *next to the page* rather
+ * than at the host root. The console ships under a mount prefix (`/console/` on
+ * a merged deployment, `/` on the local service), so a hard-coded absolute
+ * `/data/demo-events.json` would miss the file when the page is served from
+ * `/console/`.
+ *
+ * The path is normalised to a directory (trailing slash) before joining, because
+ * Vercel rewrites `/console` → `/console/` internally and leaves the address bar
+ * without the slash — a plain relative resolution from `…/console` would drop
+ * the `console/` segment. Returned as a same-origin path (origin comes from the
+ * page, not from the configured `?api=` base, which is a different origin).
+ */
+export function staticDemoDatasetEndpoint(): string {
+  if (typeof document === "undefined" || !document.baseURI) {
+    return "/data/demo-events.json";
+  }
+  const base = new URL(document.baseURI);
+  let dir = base.pathname;
+  if (!dir.endsWith("/")) {
+    // An explicit `index.html` names the document inside its directory; any
+    // other trailing segment is the app root (the no-slash `/console`).
+    dir = dir.endsWith("index.html")
+      ? dir.slice(0, -"index.html".length)
+      : `${dir}/`;
+  }
+  return `${dir}data/demo-events.json`;
+}
+
 /** A stalled request must not leave the console on the loading skeleton. */
 export const demoDatasetTimeoutMs = 4_000;
 

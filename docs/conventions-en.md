@@ -59,7 +59,11 @@
   through `server/demo-dataset.mjs` and serves `GET /api/demo-events`, and the
   console parses it only in `src/lib/demo-events.ts`. Do not inline another
   event array in a component, test, or service; tests that need a sample run
-  read that file.
+  read that file. The render gate lives only in `isDemoGateOpen`
+  (`src/config/app-config.ts`): automatic in dev/test, and in a production
+  build only when the reader explicitly passes `?demo=1` (parsed by
+  `isDemoPreviewEnabled`) and there are zero captured events — a deployment
+  never *implicitly* falls back to the sample.
 - The deployed console's service address is resolved only in
   `src/lib/api-base.ts` (`?api=` → `ASTROX_API_BASE` → same-origin / local
   default) and requests go through `joinApi`; the cross-origin boundary lives
