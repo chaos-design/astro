@@ -225,6 +225,7 @@ import {
   resolveSelectedAtomId,
   toggleAtomSelection,
 } from "./lib/atom-selection";
+import { isSameEventSequence } from "./lib/event-snapshot";
 import {
   collectLiveRunKeys,
   ensureExpandedRun,
@@ -658,35 +659,29 @@ function ThemeSwitcher({
   const ActiveIcon = activeTheme.icon;
 
   return (
-    <Tooltip>
-      <Select
-        value={theme}
-        onValueChange={(value) => onChange(value as Theme)}
+    // Sun/moon glyph plus a menu: no hover card. The `aria-label` still names
+    // the current theme, which is the only part the icon cannot show.
+    <Select value={theme} onValueChange={(value) => onChange(value as Theme)}>
+      <SelectTrigger
+        size="sm"
+        className="theme-select"
+        aria-label={`颜色主题：${activeTheme.label}`}
       >
-        <TooltipTrigger asChild>
-          <SelectTrigger
-            size="sm"
-            className="theme-select"
-            aria-label={`颜色主题：${activeTheme.label}`}
-          >
-            <SelectValue>
-              <ActiveIcon />
-            </SelectValue>
-          </SelectTrigger>
-        </TooltipTrigger>
-        <SelectContent position="popper" align="end">
-          <SelectGroup>
-            {themeOptions.map(({ id, label, icon: Icon }) => (
-              <SelectItem key={id} value={id}>
-                <Icon />
-                {label}
-              </SelectItem>
-            ))}
-          </SelectGroup>
-        </SelectContent>
-      </Select>
-      <TooltipContent side="bottom">切换主题</TooltipContent>
-    </Tooltip>
+        <SelectValue>
+          <ActiveIcon />
+        </SelectValue>
+      </SelectTrigger>
+      <SelectContent position="popper" align="end">
+        <SelectGroup>
+          {themeOptions.map(({ id, label, icon: Icon }) => (
+            <SelectItem key={id} value={id}>
+              <Icon />
+              {label}
+            </SelectItem>
+          ))}
+        </SelectGroup>
+      </SelectContent>
+    </Select>
   );
 }
 
@@ -3913,6 +3908,14 @@ export default function App() {
     getInitialLocation,
   );
   const [liveEvents, setLiveEvents] = useState<TraceEvent[]>([]);
+  /**
+   * Mirror of {@link liveEvents} for the stream effect. The effect must not
+   * re-subscribe when the event list changes (it would tear down the
+   * connection on every batch), so the snapshot handler reads the list it has
+   * to compare against through this ref instead of through a stale closure.
+   */
+  const liveEventsRef = useRef<TraceEvent[]>([]);
+  liveEventsRef.current = liveEvents;
   // Working directory → git presentation (repo name + branch), resolved by the
   // server from the closest `.git` and delivered with the snapshot plus one
   // `git` message per newly seen directory.
@@ -3969,6 +3972,10 @@ export default function App() {
   // Last event the live stream delivered. A reconnect names it so the server
   // replays only the missed tail instead of re-sending the whole history.
   const resumeCursorRef = useRef("");
+  // Identity of the history on screen, as reported by the stream (`ready` /
+  // `reset`). A forced snapshot names it so a restart with unchanged data is
+  // answered by `reset-same` instead of megabytes of JSON.
+  const snapshotKeyRef = useRef("");
   const [service, setService] = useState<ServiceHealth | null>(null);
   const [serviceError, setServiceError] = useState("");
   const [restarting, setRestarting] = useState(false);
@@ -4349,10 +4356,20 @@ export default function App() {
     const resumeCursor = forceSnapshot
       ? ""
       : resumeCursorRef.current;
+    // A forced snapshot names the history already on screen: when the service
+    // was restarted but nothing was recorded in between, the server answers
+    // `reset-same` and the page skips the transfer, the parse and the
+    // re-projection entirely.
+    const knownSnapshot = forceSnapshot ? snapshotKeyRef.current : "";
+    const streamParams = new URLSearchParams();
+    if (resumeCursor) {
+      streamParams.set("since", resumeCursor);
+    } else if (knownSnapshot) {
+      streamParams.set("snapshot", knownSnapshot);
+    }
+    const streamQuery = streamParams.toString();
     const source = new EventSource(
-      resumeCursor
-        ? `/api/stream?since=${encodeURIComponent(resumeCursor)}`
-        : "/api/stream",
+      streamQuery ? `/api/stream?${streamQuery}` : "/api/stream",
     );
     // Ids seen so far: an O(1) set keeps per-event dedup linear in total
     // events instead of rescanning the accumulated array on every message.
@@ -4379,7 +4396,14 @@ export default function App() {
       // the current frame interactive and drop superseded batches.
       startTransition(() => setLiveEvents((current) => [...current, ...batch]));
     };
-    source.addEventListener("ready", () => {
+    source.addEventListener("ready", (message: MessageEvent<string>) => {
+      const payload = JSON.parse(message.data) as {
+        eventCount?: number;
+        snapshot?: string;
+      };
+      if (payload?.snapshot) {
+        snapshotKeyRef.current = payload.snapshot;
+      }
       setConnected(true);
       setEverConnected(true);
     });
@@ -4441,12 +4465,49 @@ export default function App() {
         setReloadingEvents(false);
       });
     });
+    // The server confirmed the history we already hold. Nothing to apply: the
+    // sessions, the flows and the list are all still valid, so the reload ends
+    // without touching a single event.
+    source.addEventListener("reset-same", (message: MessageEvent<string>) => {
+      const payload = JSON.parse(message.data) as {
+        eventCount?: number;
+        snapshot?: string;
+      };
+      if (payload?.snapshot) {
+        snapshotKeyRef.current = payload.snapshot;
+      }
+      if (flushTimer !== null) {
+        window.clearTimeout(flushTimer);
+        flushTimer = null;
+      }
+      pending = [];
+      startTransition(() => {
+        setEventsLoaded(true);
+        setReloadingEvents(false);
+      });
+    });
     source.addEventListener("reset", (message: MessageEvent<string>) => {
       const payload = JSON.parse(message.data) as {
         events: TraceEvent[];
         git?: Record<string, { repo: string; branch: string }>;
       };
-      const events = payload.events.map(normalizeTraceEvent);
+      /*
+       * A restart re-sends the whole history. When the snapshot describes the
+       * events already on screen (the common case: nothing was recorded while
+       * the service was down), re-applying it would re-normalize every event,
+       * rebuild every session and re-render the console for an identical
+       * result — measured at ~400 ms of script time on a 27k-event history.
+       * The ids are compared first, before anything is normalized.
+       */
+      const current = liveEventsRef.current;
+      const unchanged =
+        current.length === payload.events.length &&
+        isSameEventSequence(payload.events, current);
+      const events = unchanged
+        ? current
+        : payload.events.map(normalizeTraceEvent);
+      // The dedup set belongs to this connection: a resumed stream starts with
+      // an empty one, so it is refilled either way.
       for (const event of events) {
         seenIds.add(event.id);
       }
@@ -4464,7 +4525,12 @@ export default function App() {
       // the shell (header, panels, empty states) paints before the derived
       // topology/trajectory work for a large history lands.
       startTransition(() => {
-        setLiveEvents(events);
+        // Skipping the assignment is what makes the unchanged case free: the
+        // session projection caches by event-array identity, so replacing the
+        // array is exactly what would force a full rebuild.
+        if (!unchanged) {
+          setLiveEvents(events);
+        }
         setGitInfo(payload.git ?? {});
         setEventsLoaded(true);
         reloadingRef.current = false;
@@ -5314,6 +5380,19 @@ export default function App() {
       }
       // New process, new stream: drop the old connection explicitly instead
       // of trusting EventSource to reconnect at the right moment.
+      //
+      // A restart is not "the same history, newer tail": the new process reads
+      // the trace files from scratch, so a file added, removed or rewritten
+      // while the service was down only shows up if the console asks for the
+      // full snapshot. Reusing the cursor turned a restart into an empty
+      // `resume` replay, which left a stale list on screen that looked freshly
+      // loaded. The window snaps back to the configured range so the list
+      // describes the current filter (agent + range + Live) rather than a
+      // hand-widened window that the new process may not even contain.
+      resumeCursorRef.current = "";
+      forceSnapshotRef.current = true;
+      setReloadingEvents(true);
+      setRunHistoryHours(historyRangeHours);
       setStreamEpoch((current) => current + 1);
       // A restart is also the documented way out of a spent sync budget: the
       // new process serves a fresh snapshot, so the clock starts over here
@@ -5519,6 +5598,13 @@ export default function App() {
     );
   }, [filteredSessions, now]);
 
+  /**
+   * The console is deliberately between snapshots: a restart is waiting for
+   * the successor process to bind the port, or a forced snapshot is in flight.
+   * Neither is a dropped connection, so the header must not say `offline`.
+   */
+  const reconnecting = restarting || reloadingEvents;
+
   // Manual "load latest" for RUN HISTORY: drop the resume cursor and
   // re-subscribe the stream so the server answers with the full snapshot it
   // currently holds. A historical session that resumed execution but whose
@@ -5664,7 +5750,23 @@ export default function App() {
             <span>Search history</span>
             <kbd aria-hidden="true">⌘ + K</kbd>
           </Button>
-          {syncStopped ? (
+          {reconnecting ? (
+            // Between snapshots: the successor process is booting, or the
+            // forced snapshot is in flight. This is not a dropped connection —
+            // showing `offline` here made a successful restart look like a
+            // failure for the ~8 s the new process needs to answer.
+            <span
+              className="run-status status-waiting"
+              title={
+                restarting
+                  ? "正在重启本地服务，完成后会自动按当前筛选重新加载消息列表"
+                  : "正在重新加载事件快照…"
+              }
+            >
+              <i />
+              {restarting ? "restarting" : "reloading"}
+            </span>
+          ) : syncStopped ? (
             // Spent budget, not a dropped socket: the chip becomes the way
             // back in, and says what happened in its tooltip. The restart
             // button in the service card does the same thing from its side.
@@ -5830,44 +5932,40 @@ export default function App() {
               <strong>{selectedAtom?.label || "Live execution"}</strong>
             </div>
             <div className="toolbar-actions flex min-w-0 items-center gap-1.5">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <div>
-                    <AgentSelect
-                      liveAgents={liveAgentIds}
-                      value={agentId}
-                      onChange={(nextAgent) => {
-                        // Switching agents re-filters run history and
-                        // re-projects the whole flow for large sessions; keep
-                        // the picker responsive by treating the derived work
-                        // as a transition.
-                        startTransition(() => {
-                          setAgentId(nextAgent);
-                          // Another agent starts at the configured default
-                          // range: keeping a window the previous agent needed
-                          // would silently load a different amount of history.
-                          setRunHistoryHours(historyRangeHours);
-                          if (nextAgent !== OTHERS_AGENT_ID) {
-                            setPlatformId(nextAgent);
-                          }
-                          // The open run belongs to the scope that was just
-                          // left. Dropping the selection lands the canvas, the
-                          // log and the list on the new agent's newest message
-                          // instead of leaving another agent's run on screen
-                          // with no row to point at.
-                          setActiveSessionKey("");
-                          setActivePromptRunKey("");
-                          setSelectedEventId("");
-                          setSelectedAtomId(undefined);
-                          setReplayMode(false);
-                          setPlaying(false);
-                        });
-                      }}
-                    />
-                  </div>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">切换智能体平台</TooltipContent>
-              </Tooltip>
+              {/* The picker shows the agent name and a chevron, so "切换智能体平台"
+                  was a hover card that only restated the control. */}
+              <div>
+                <AgentSelect
+                  liveAgents={liveAgentIds}
+                  value={agentId}
+                  onChange={(nextAgent) => {
+                    // Switching agents re-filters run history and re-projects
+                    // the whole flow for large sessions; keep the picker
+                    // responsive by treating the derived work as a transition.
+                    startTransition(() => {
+                      setAgentId(nextAgent);
+                      // Another agent starts at the configured default range:
+                      // keeping a window the previous agent needed would
+                      // silently load a different amount of history.
+                      setRunHistoryHours(historyRangeHours);
+                      if (nextAgent !== OTHERS_AGENT_ID) {
+                        setPlatformId(nextAgent);
+                      }
+                      // The open run belongs to the scope that was just left.
+                      // Dropping the selection lands the canvas, the log and
+                      // the list on the new agent's newest message instead of
+                      // leaving another agent's run on screen with no row to
+                      // point at.
+                      setActiveSessionKey("");
+                      setActivePromptRunKey("");
+                      setSelectedEventId("");
+                      setSelectedAtomId(undefined);
+                      setReplayMode(false);
+                      setPlaying(false);
+                    });
+                  }}
+                />
+              </div>
               <div className="canvas-view-switch" role="group" aria-label="画布视图">
                 <IconAction
                   label="拓扑视图"

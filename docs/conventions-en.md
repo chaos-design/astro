@@ -203,8 +203,13 @@
   called out, and `build: "unknown"` renders as "not reported" plus the reason
   (started from source, or an older install without a manifest) instead of a
   bare `unknown` the reader has to interpret.
-- Every icon button needs an `aria-label` and a tooltip that describes the
-  action, not the glyph.
+- Every icon button keeps an `aria-label`, but a **tooltip is opt-in**: add one
+  only when the glyph cannot carry the action by itself (the chevrons that say
+  *which* panel collapses, the action menu, the topology/trajectory switches)
+  or when it adds state or consequence (the `N LIVE` rules, the reload control
+  while it is loading). A card that only translates a recognisable mark —
+  GitHub, gear, sun/moon, copy — is noise: it trails the pointer across the
+  header icon row and covers the panel underneath.
 - In-list scroll controls belong in the panel header, never as a floating
   overlay: a floating chevron sits on the first visible atom, so the row the
   reader just scrolled to is the one they cannot read. Render a direction's
@@ -240,7 +245,31 @@
   fixture, machine and sampling script, and put the numbers (script time, long
   tasks, chunk size) in the pull request instead of "faster now".
 
-## 10. Keeping docs in sync
+## 10. Restart and snapshot reload
+
+- A local service restart means **the new process re-read the history from
+  disk**; it is not "the same history plus a few events". The console must drop
+  its resume cursor, ask for the full snapshot and re-apply the current filter
+  (agent → default range → Live filter). Keeping the cursor makes the server
+  answer an empty `resume`, so the list looks freshly loaded while showing the
+  previous process's data.
+- A snapshot is **only applied when it differs from the history on screen**. The
+  client names the key it holds (`?snapshot=<key>`; server-side
+  `getSnapshotKey` = event count + a rolling hash of every event id) and an
+  unchanged history is answered by `reset-same`, so the page transfers nothing
+  and parses nothing. Without a key (first load, older server)
+  `isSameEventSequence` decides after parsing, and `setLiveEvents` is skipped on
+  a match — replacing the array is exactly what forces a full session rebuild.
+- The key answers "is this the same history". It is not a dedup mechanism; event
+  deduplication stays with the per-connection `seenIds` set.
+- While a snapshot is expected (restarting, or a forced snapshot in flight) the
+  header reads `restarting` / `reloading`, never `offline`: a successful restart
+  is not a dropped connection.
+- After a restart the selection lands on the newest message the current filter
+  allows; a filter that matches nothing keeps an empty list rather than falling
+  back to another agent.
+
+## 11. Keeping docs in sync
 
 - Docs are published in pairs: `<name>-zh.md` / `<name>-en.md`; the docs site
   pairs the language switch by suffix.
@@ -253,7 +282,7 @@
 - Quote interface copy as it appears on screen; do not invent translations for
   key names.
 
-## 11. Verification checklist
+## 12. Verification checklist
 
 Before pushing:
 
@@ -277,7 +306,7 @@ ASTRO_HOME=/tmp/astro-check ASTRO_PORT=4401 node server/server.mjs
   outside it, and one executing message. Then `POST /api/events` to confirm a new
   prompt is located automatically.
 
-## 12. Common mistakes
+## 13. Common mistakes
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
@@ -293,3 +322,5 @@ ASTRO_HOME=/tmp/astro-check ASTRO_PORT=4401 node server/server.mjs
 | A refresh briefly reports `offline` | the first connection used the disconnected wording | separate `connecting` from `offline` (`everConnected`) |
 | Every keystroke in search stutters | `toLocaleString(...)` rebuilt a formatter per row | module-level `Intl.DateTimeFormat`, see §9 |
 | A large history produces a long first-load task | per-event predicates allocated temporary arrays | module-level `Set`s plus the `getEventTimestamp` cache |
+| The list is stale after a service restart | the resume cursor was kept, so the server answered an empty `resume` | clear the cursor and force the snapshot, §10 |
+| A restart flashes `offline` first | "waiting for the next snapshot" was treated as a dropped connection | use `restarting` / `reloading`, §10 |
