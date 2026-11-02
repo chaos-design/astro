@@ -15,6 +15,7 @@ import { fileURLToPath } from "node:url";
 import recorder from "../plugin/trace-recorder.cjs";
 import runtimeConfigLoader from "../plugin/runtime-config.cjs";
 import storagePaths from "../plugin/storage-paths.cjs";
+import { createDemoDatasetReader } from "./demo-dataset.mjs";
 import { TraceRepository } from "./trace-repository.mjs";
 
 const serverDir = dirname(fileURLToPath(import.meta.url));
@@ -69,6 +70,10 @@ const clients = new Set();
 let dashboardUrl = "";
 let boundPort = requestedPort;
 const store = new TraceRepository(environment);
+// The console's sample dataset is a local file (`data/demo-events.json`), read
+// on demand and cached by mtime: editing it changes the next response without
+// a restart, and a missing file is a 404 the console degrades from.
+const demoDataset = createDemoDatasetReader({ projectDir, environment });
 const { createTraceEvent } = recorder;
 const { resolveAstroHome, resolveTraceDirectory } = storagePaths;
 const dataRoot =
@@ -436,6 +441,28 @@ async function handleRequest(request, response) {
       .filter((event) => !sessionId || event.sessionId === sessionId)
       .filter((event) => !source || event.source === source);
     sendJson(response, 200, { events, git: gitMapForEvents(events) });
+    return;
+  }
+
+  if (request.method === "GET" && requestUrl.pathname === "/api/demo-events") {
+    // The console's Demo dataset, read from the local resource file. The
+    // document is returned verbatim; the console applies the relative offsets
+    // itself, so the same file also works when it is fetched statically.
+    const result = demoDataset.read();
+    if (!result.ok) {
+      sendJson(response, result.status, {
+        error: result.error,
+        path: result.path,
+      });
+      return;
+    }
+    sendJson(response, 200, {
+      generatedAt: new Date().toISOString(),
+      path: result.path,
+      cached: result.cached,
+      eventCount: result.dataset.events.length,
+      dataset: result.dataset,
+    });
     return;
   }
 

@@ -77,9 +77,19 @@ pnpm dev
 ### 4.1 只查看演示数据
 
 在 `pnpm dev` 的 development 模式中，如果真实事件数为 0，控制台会展示一条
-内置演示会话，可直接体验拓扑、轨迹、检查器和回放。test 环境采用相同策略。
+示例会话，可直接体验拓扑、轨迹、检查器和回放。test 环境采用相同策略。
 
-`pnpm build` 生成的 production 控制台不会展示 Demo。没有真实事件时保持空状态，
+示例会话不在打包产物里，而是仓库内的本地资源文件 `data/demo-events.json`：
+后台服务读取该文件并通过 `GET /api/demo-events` 返回，控制台再把它转换成事件渲染。
+文件中的时间是相对加载时刻的偏移（毫秒），因此这条演示会话始终落在 RUN HISTORY
+的小时窗口内；修改文件后刷新页面即可生效，无需重新构建。需要指向别处时用
+`ASTRO_DEMO_EVENTS` 指定绝对路径或相对仓库的路径。
+
+服务不可用（例如纯静态部署没有本地服务）时，控制台回退到构建时复制到
+`/data/demo-events.json` 的同一份文件；两条来源都失败时保持真实的空状态，并提示
+「示例数据不可用」，不会用合成数据掩盖空结果。
+
+`pnpm build` 生成的 production 控制台不会请求、也不会展示 Demo。没有真实事件时保持空状态，
 避免把测试数据误认为业务 Trace。
 
 ### 4.2 采集当前项目中的智能体
@@ -220,7 +230,8 @@ node ~/.astrox/plugins/astro/server/server.mjs
   - `accepted`：已连接 SSE，但还没有事件；
   - `synced HH:MM:SS`：已连接，后面是最新事件的采集时间；
   - `offline`：连接曾建立后断开，列表可能不是最新的；
-  - `demo`：development/test 且无真实事件时使用内置演示数据。
+  - `demo`：development/test 且无真实事件时展示本地示例数据集
+    （`data/demo-events.json`，由服务读取后经 `GET /api/demo-events` 提供）。
 - 右侧图标自左向右依次是设置（齿轮）、主题、GitHub：GitHub 始终在最右端，因为它是
   顶栏里唯一会离开控制台的入口。
 - GitHub 图标：在新标签页打开本项目的 GitHub 仓库
@@ -864,12 +875,22 @@ curl http://127.0.0.1:5678/api/health
 Demo 只应出现在 development/test 且真实事件数为 0 的场景。production 页面空数据
 应保持空状态；如果 production 仍显示 Demo，通常是打开了 Vite 开发服务器或旧构建。
 
-检查：
+示例数据来自本地文件而不是打包产物，先确认服务读到了哪个文件：
 
 ```bash
 curl http://127.0.0.1:5678/api/health
 curl http://127.0.0.1:5678/api/events
+curl http://127.0.0.1:5678/api/demo-events
 ```
+
+`/api/demo-events` 返回体中的 `path` 是服务实际读取的文件（默认
+`data/demo-events.json`，可用 `ASTRO_DEMO_EVENTS` 覆盖），`eventCount` 是事件数。
+404 表示文件缺失，500 表示文件存在但不是合法数据集，`error` 字段会指出哪一段
+不符合（例如 `session.source` 为空、`events[2].offsetMs` 不是数字）。
+
+页面提示「示例数据不可用」表示两条来源都失败：服务接口与构建复制到
+`/data/demo-events.json` 的静态副本。此时控制台仍展示真实捕获事件，不会因为示例
+数据缺失而隐藏它们。
 
 ### 状态显示 offline
 

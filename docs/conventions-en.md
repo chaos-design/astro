@@ -27,6 +27,7 @@
 | `tests/` | Node test-runner suites | manual acceptance notes |
 | `docs/` | paired Chinese/English user, protocol, architecture, operations and convention docs | generated output |
 | `site/` | the docs site (reads `docs/*.md`) | copies of doc content |
+| `data/` | local resource files such as the console's sample dataset | captured traces, user preferences |
 
 ## 3. Branches, commits, and pull requests
 
@@ -54,6 +55,11 @@
     (`isLiveRunStatus` + `isFreshLiveRun` + `collectLiveRunKeys`);
   - the time window lives only in `src/lib/run-history-window.ts`.
   New consumers reuse those helpers; do not grow a second failure or live list.
+- Sample (Demo) data lives only in `data/demo-events.json`: the service reads it
+  through `server/demo-dataset.mjs` and serves `GET /api/demo-events`, and the
+  console parses it only in `src/lib/demo-events.ts`. Do not inline another
+  event array in a component, test, or service; tests that need a sample run
+  read that file.
 - Platform-specific mappings belong in `src/config/atom-platforms.ts` or the
   relevant adapter; domain helpers stay platform-neutral.
 - Prefer Lucide icons for interface actions. Brand glyphs (such as GitHub) ship

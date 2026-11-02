@@ -108,7 +108,9 @@ schedule tools, approve permissions, or alter agent decisions.
 - Recursive secret redaction before persistence.
 - Light, dark, and system themes; no CDN or remote font dependency.
 - Persisted History, Events, theme, and platform preferences under `ASTROX_*` keys.
-- Demo data only in development/test; production keeps a truthful empty state.
+- Demo data only in development/test, loaded from the local resource file
+  `data/demo-events.json` by the service; production keeps a truthful empty
+  state and never requests sample data.
 
 ## Supported Sources
 
@@ -158,9 +160,15 @@ pnpm start
 Open `http://127.0.0.1:5678`. The server prints the actual URL if it selects a
 later port.
 
-In `pnpm dev` development mode, the console loads a built-in Demo when no real
-events exist so topology, trajectory, inspection, and replay can be evaluated.
-Production builds never synthesize Demo events and preserve the real empty state.
+In `pnpm dev` development mode, the console loads a Demo when no real events
+exist so topology, trajectory, inspection, and replay can be evaluated. The
+sample data is not bundled: the service reads the local resource file
+`data/demo-events.json` and serves it as `GET /api/demo-events`, and the console
+turns it into events. Event times are offsets from load time, so the sample run
+stays inside the hours-based RUN HISTORY window. If the service is unavailable
+the console falls back to the build-time copy at `/data/demo-events.json`; if
+neither answers it keeps the truthful empty state and says so.
+Production builds never request or show Demo events.
 Direct hook installation starts and opens the dashboard automatically.
 
 ### Choose an integration
@@ -1277,7 +1285,8 @@ pagination or streaming history, authentication, and archival before use.
 | SSE disconnect | Display `offline`; reconnect and restore the full event snapshot before live updates |
 | Layout Worker unavailable | Dynamically load the same router on the main thread |
 | Router cannot find an optimal path | Return diagnostics and fallback routes where possible |
-| No events | Development/test shows Demo; production preserves the real empty state |
+| No events | Development/test renders the local sample dataset; production preserves the real empty state |
+| Sample dataset missing or malformed | The service answers 404/500, the console reports `示例数据不可用` and keeps captured events |
 | Hook parse or write failure | Report on stderr and exit successfully; Codex quiet mode preserves stdout compatibility |
 | Dashboard launch or browser open failure | Keep writing trace data and retry after a stale PID is detected |
 | Active or waiting Prompt reaches the timeout | Cap its advancing duration, derive `terminated`, and stop selected-run live effects without appending an event |
@@ -1313,7 +1322,9 @@ The automated suite covers:
 - initial SSE snapshots, live increments, and reconnect repair;
 - active duration refresh, 24-hour timeout, and `terminated` display state;
 - `ASTROX_` preference persistence and legacy-key migration;
-- production Demo isolation and Vite proxy environment resolution.
+- production Demo isolation and Vite proxy environment resolution;
+- sample-dataset delivery: service-side path resolution, mtime caching, 404/500
+  branches, and console-side parsing, fallback, and failure handling.
 
 The current suite contains 182 tests.
 
@@ -1361,12 +1372,20 @@ runtime npm dependencies. See the
 
 Demo is expected only in development/test when the real event count is zero.
 Production should remain empty; if it shows Demo, check for a Vite development
-page or stale build:
+page or stale build.
+
+The sample run is a local file, so also check which one the service read:
 
 ```bash
 curl http://127.0.0.1:5678/api/health
 curl http://127.0.0.1:5678/api/events
+curl http://127.0.0.1:5678/api/demo-events
 ```
+
+`path` in the last response is the file actually read (default
+`data/demo-events.json`, overridable with `ASTRO_DEMO_EVENTS`) and `eventCount`
+is its event count; 404 means the file is missing, 500 means it exists but is
+not a valid dataset and `error` names the field.
 
 ### Agent activity does not appear
 

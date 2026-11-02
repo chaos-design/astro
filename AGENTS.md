@@ -28,6 +28,9 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   the canonical recorder.
 - `scripts/`: installation, migration, validation, and packaging scripts.
 - `tests/`: Node test runner suites.
+- `data/`: local resource files served by the service, currently the console's
+  sample dataset (`data/demo-events.json`). Not captured traces, not user
+  preferences.
 - `site/`: the docs site; it reads `docs/*.md` at build time, so a new doc also
   needs a catalog entry in `site/src/docs.ts`.
 - `docs/`: English and Chinese architecture, protocol, operation, user, and
@@ -49,11 +52,43 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   `src/lib/exception-events.ts`, RUN HISTORY liveness only in
   `src/lib/run-history-state.ts`, and the visible time window only in
   `src/lib/run-history-window.ts`. Do not grow a second list of failure or live
-  event names.
+  event names. Sample (Demo) data lives only in `data/demo-events.json`.
 - Treat unrelated working-tree changes as user-owned and do not revert them.
 - A behavior change is only complete when `docs/user-manual-*.md`,
   `docs/conventions-*.md`, this file, `docs/index.md`, and `site/src/docs.ts`
   agree with it.
+
+## Demo Dataset
+
+- The sample run is a local resource file, `data/demo-events.json`, not a
+  bundle constant. `createDemoEvents` used to build it in code; that meant the
+  console carried synthetic events and the service could not answer for them.
+  Do not reintroduce an inline event array in a component, test, or route.
+- The service is the primary reader: `server/demo-dataset.mjs` resolves
+  `data/demo-events.json` (repository) or `dist/data/demo-events.json`
+  (installed runtime, static build), caches by mtime and size, and serves
+  `GET /api/demo-events`. `ASTRO_DEMO_EVENTS` overrides the path. The
+  repository `data/` directory wins whenever it exists, so deleting the file
+  reads as 404 instead of quietly serving the copy an older build left in
+  `dist/`; only a runtime without `data/` (the installed plugin) falls through.
+  A missing file is a 404 and an invalid one a 500 with the offending field;
+  neither may throw through the request handler.
+- The console is the primary validator: `src/lib/demo-events.ts` accepts both
+  the service envelope (`{ dataset, path, eventCount }`) and the bare document,
+  because the build also copies the file to `/data/demo-events.json` and the
+  loader falls back to it when no service answers. A static host that rewrites
+  unknown paths to `index.html` answers 200 with HTML — that is a parse failure
+  to report, not a dataset.
+- Times in the dataset are `offsetMs` from load time, never timestamps. RUN
+  HISTORY is an hours-based window: absolute times age out of it within a day
+  and the sample run silently disappears.
+- Loading is async, so `isDemo` needs both halves: the build must allow Demo
+  (`shouldShowDemo`: development/test and zero captured events) *and* the
+  dataset must have arrived. A failed load keeps the truthful empty state and
+  raises one `示例数据不可用` notice; it must never block or hide captured
+  events, and production must never request the dataset at all.
+- The Demo dataset is a rendering fixture only: it must stay out of health
+  counts, `N LIVE`, the sync budget, and `DELETE /api/events`.
 
 ## Run Timeout Invariant
 

@@ -93,7 +93,8 @@ ASTRO 只观察智能体执行，不负责调用模型、调度工具、批准�
 - 在持久化前递归脱敏敏感信息。
 - 支持浅色、深色和系统主题，不依赖 CDN 或远程字体。
 - History、Events、主题和平台偏好使用 `ASTROX_*` 本地键持久化。
-- Demo 仅用于 development/test；production 空数据保持真实空状态。
+- Demo 仅用于 development/test，数据来自本地资源文件 `data/demo-events.json`；
+  production 空数据保持真实空状态，也不会请求示例数据。
 
 ## 支持的数据来源
 
@@ -140,9 +141,12 @@ pnpm start
 
 打开 `http://127.0.0.1:5678`。如果服务选择了后续端口，终端会输出实际地址。
 
-在 `pnpm dev` 的 development 模式中，没有真实事件时会加载内置 Demo，可立即
-体验拓扑、轨迹、详情检查和回放控制。production 构建不会生成 Demo，空数据时保持
-真实空状态。安装 Hook 后无需预先执行 `pnpm start`，安装器会立即启动并打开控制台。
+在 `pnpm dev` 的 development 模式中，没有真实事件时会加载 Demo，可立即体验拓扑、
+轨迹、详情检查和回放控制。示例数据不在打包产物里：后台服务读取本地资源文件
+`data/demo-events.json` 并通过 `GET /api/demo-events` 提供，控制台再转换成事件；
+文件里用相对加载时刻的偏移表示时间，因此演示会话始终落在 RUN HISTORY 的小时窗口内。
+服务不可用时回退到构建复制到 `/data/demo-events.json` 的同一份文件，两条来源都失败
+则保持真实空状态并给出提示。production 构建不会请求或展示 Demo。安装 Hook 后无需预先执行 `pnpm start`，安装器会立即启动并打开控制台。
 
 ### 选择接入方式
 
@@ -1181,7 +1185,8 @@ Lucide 图标和本地打包的 Geist 字体。
 | SSE 断线 | 显示 `offline`，自动重连后先补齐完整事件快照，再接收实时更新 |
 | 布局 Worker 不可用 | 动态加载相同路由实现并在主线程执行 |
 | 路由器无法找到最优路径 | 尽量返回诊断信息与降级路径 |
-| 没有事件 | development/test 展示 Demo；production 保持真实空状态 |
+| 没有事件 | development/test 展示本地示例数据集；production 保持真实空状态 |
+| 示例数据集缺失或格式错误 | 服务返回 404/500，控制台提示「示例数据不可用」并保留真实事件 |
 | Hook 解析或写入失败 | stderr 输出诊断并正常退出；不阻断智能体，Codex quiet 模式保持 stdout 兼容 |
 | 控制台启动或浏览器打开失败 | Trace 仍正常写入；下次提示词会在 PID 失效后重试 |
 | active 或 waiting Prompt 到达超时阈值 | 封顶继续增加的时长，派生 `terminated`，停止当前选中运行的 Live 效果且不新增事件 |
@@ -1217,7 +1222,8 @@ pnpm build:native-plugins
 - SSE 首次快照、持续增量和断线重连补偿；
 - active 时长刷新、24 小时封顶及 `terminated` 显示状态；
 - `ASTROX_` 偏好持久化与旧键迁移；
-- production Demo 隔离与 Vite 代理环境解析。
+- production Demo 隔离与 Vite 代理环境解析；
+- 示例数据集的服务端读取（路径解析、mtime 缓存、404/500）与控制台侧解析、回退和容错。
 
 当前套件包含 182 项测试。
 
@@ -1261,12 +1267,19 @@ pnpm dlx /absolute/path/to/astro-plugin.tgz \
 ### UI 显示演示数据
 
 Demo 只应出现在 development/test 且真实事件数为 0 的场景。production 空数据应
-保持空状态；如果仍显示 Demo，检查是否打开了 Vite 开发页或旧构建：
+保持空状态；如果仍显示 Demo，检查是否打开了 Vite 开发页或旧构建。
+
+示例数据来自本地文件，先确认服务读到的是哪一份：
 
 ```bash
 curl http://127.0.0.1:5678/api/health
 curl http://127.0.0.1:5678/api/events
+curl http://127.0.0.1:5678/api/demo-events
 ```
+
+最后一个接口的 `path` 是实际读取的文件（默认 `data/demo-events.json`，可用
+`ASTRO_DEMO_EVENTS` 覆盖），`eventCount` 是事件数；404 表示文件缺失，500 表示文件
+存在但不是合法数据集（`error` 会指出具体字段）。
 
 ### 智能体活动没有出现
 

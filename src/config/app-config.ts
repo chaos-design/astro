@@ -191,6 +191,13 @@ export const appVersion = "0.0.3";
 export const appTimings = {
   activeRunTimeoutMs: 24 * 60 * 60 * 1_000,
   activeTransitionMs: 4_200,
+  /**
+   * How long the console waits for the local Demo dataset before giving up.
+   * The file is a few kilobytes on the same machine, so a slow answer means
+   * the service is down or wedged — the console reports it and keeps its
+   * empty state instead of waiting on the skeleton.
+   */
+  demoFetchTimeoutMs: 4_000,
   replayStepBaseMs: 900,
   sessionDurationRefreshMs: 1_000,
 } as const;
@@ -331,6 +338,11 @@ export const trajectoryKeyLabels: Readonly<Record<string, string>> = {
 /**
  * Demo data is allowed only during local development or automated test modes.
  * Production builds with no events must never present synthetic trace data.
+ *
+ * This is the *permission*, not the data: the sample run itself is a local
+ * resource file served by the service (`data/demo-events.json`), so the
+ * console also requires the dataset to have loaded before it renders (`isDemo`
+ * in `app.tsx`).
  */
 export function shouldShowDemo(
   eventCount: number,

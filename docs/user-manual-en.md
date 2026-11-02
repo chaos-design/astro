@@ -78,12 +78,26 @@ For another API port such as `4320`, set the same `ASTRO_PORT` for both processe
 
 ### 4.1 Explore the Demo
 
-In `pnpm dev` development mode, the console renders an embedded Demo session
-when the real event count is zero. This exercises topology, trajectory,
-inspection, and replay without installing hooks. Test mode follows the same policy.
+In `pnpm dev` development mode, the console renders a Demo session when the
+real event count is zero. This exercises topology, trajectory, inspection, and
+replay without installing hooks. Test mode follows the same policy.
 
-The production output from `pnpm build` never shows Demo data. With no real
-events it preserves a truthful empty state.
+The sample run is not part of the bundle: it is the local resource file
+`data/demo-events.json`. The service reads that file and serves it as
+`GET /api/demo-events`; the console turns it into events. Event times are
+offsets from the moment the dataset is loaded (milliseconds), so the sample
+always lands inside the hours-based RUN HISTORY window, and editing the file
+takes effect on the next page load without a rebuild. Set `ASTRO_DEMO_EVENTS`
+to point at a different file (absolute, or relative to the repository).
+
+When the service is unavailable — a purely static deployment, for example —
+the console falls back to the same document copied to
+`/data/demo-events.json` at build time. If neither source answers it keeps the
+truthful empty state and reports `示例数据不可用`; it never presents synthetic
+data as captured evidence.
+
+The production output from `pnpm build` never requests or shows Demo data. With
+no real events it preserves a truthful empty state.
 
 ### 4.2 Capture Agent Activity
 
@@ -234,7 +248,8 @@ migration or `--astro-home=/path/to/.astrox` to change the data root.
   - `accepted`: SSE connected but no event received yet;
   - `synced HH:MM:SS`: connected, followed by the capture time of the newest event;
   - `offline`: a connection was established and then dropped;
-  - `demo`: development/test mode is using embedded events because the real count is zero.
+  - `demo`: development/test mode is rendering the local sample dataset
+    (`data/demo-events.json`) because the real count is zero.
 - The icons on the right read, left to right: settings (gear), theme, GitHub.
   GitHub is always the right-most one, because it is the only header control
   that leaves the console.
@@ -975,10 +990,24 @@ Demo is expected only in development/test mode when the real event count is zero
 A production empty state remains empty. Demo in production usually means the page
 is using a Vite development server or a stale build.
 
+The sample data is a local file, not part of the bundle. Check which file the
+service actually read:
+
 ```bash
 curl http://127.0.0.1:5678/api/health
 curl http://127.0.0.1:5678/api/events
+curl http://127.0.0.1:5678/api/demo-events
 ```
+
+`path` in the last response is the file the service read (default
+`data/demo-events.json`, overridable with `ASTRO_DEMO_EVENTS`) and `eventCount`
+is its event count. A 404 means the file is missing; a 500 means it exists but
+is not a valid dataset, and `error` names the offending field (for example an
+empty `session.source` or a non-numeric `events[2].offsetMs`).
+
+A `示例数据不可用` notice means both sources failed: the service endpoint and
+the static copy at `/data/demo-events.json` that the build writes. The console
+still shows captured events; a missing sample never hides real ones.
 
 ### Connection State Is Offline
 

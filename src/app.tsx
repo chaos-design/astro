@@ -158,7 +158,6 @@ import {
   buildSessionPromptRuns,
   buildFlow,
   buildHarnessFlow,
-  createDemoEvents,
   createSessionProjection,
   eventMeta,
   formatDuration,
@@ -168,6 +167,10 @@ import {
   normalizeTraceEvent,
   parseImportedTrace,
 } from "./lib/trace-model";
+import {
+  loadDemoEvents,
+  type DemoLoadResult,
+} from "./lib/demo-events";
 import {
   readStorageBoolean,
   readStorageValue,
@@ -1759,6 +1762,7 @@ const RunHistory = memo(function RunHistory({
   activeKey,
   activePromptRunKey,
   canLoadMore,
+  demoError,
   gitInfo,
   initialLoading,
   isDemo,
@@ -1777,6 +1781,12 @@ const RunHistory = memo(function RunHistory({
   activeKey: string;
   activePromptRunKey: string;
   isDemo: boolean;
+  /**
+   * Why the sample dataset could not be loaded, when this console was supposed
+   * to show it. The empty state names the reason, because an empty list with no
+   * explanation reads as "this agent never ran anything".
+   */
+  demoError: string | null;
   /**
    * Armed live filter: the rows are the messages that are executing right
    * now, filtered out of the selected agent's *whole* history (the parent
@@ -2277,6 +2287,11 @@ const RunHistory = memo(function RunHistory({
               <>
                 <strong>当前没有正在执行的消息</strong>
                 <span>关闭 Live 筛选可回到最近 {rangeLabel}内的消息</span>
+              </>
+            ) : demoError ? (
+              <>
+                <strong>最近 {rangeLabel}内没有消息</strong>
+                <span>示例数据不可用：{demoError}</span>
               </>
             ) : (
               `最近 ${rangeLabel}内没有消息`
@@ -3890,6 +3905,15 @@ function getPlatformForSource(source: string | null | undefined) {
   return atomPlatformOptions.find((platform) => platform.source === source)?.id;
 }
 
+/**
+ * Demo lifecycle as the console sees it: `off` when this build never asks for
+ * sample data, `loading` while the request is in flight, and the loader's own
+ * `ready` / `empty` / `error` / `canceled` outcome afterwards.
+ */
+type DemoDatasetState =
+  | { status: "off" | "loading"; events: TraceEvent[] }
+  | DemoLoadResult;
+
 export default function App() {
   // A hidden tab must not keep the SSE stream, the duration clock, or the
   // health poll running. Suspension only starts after a long hidden period;
@@ -3897,13 +3921,35 @@ export default function App() {
   // stream from the last event we hold and reset the clock.
   const pageVisibility = usePageVisibility();
   const pageSuspended = pageVisibility.suspended;
-  const demoEvents = useMemo(
-    () =>
-      shouldShowDemo(0, import.meta.env)
-        ? createDemoEvents()
-        : [],
-    [],
-  );
+  /*
+   * The sample run is a local resource file (`data/demo-events.json`), read by
+   * the service and fetched here — the bundle no longer carries synthetic
+   * events. It is requested once per mount and only where Demo is allowed, so
+   * a production console still never asks for it.
+   */
+  const demoAllowed = shouldShowDemo(0, import.meta.env);
+  const [demoDataset, setDemoDataset] = useState<DemoDatasetState>(() => ({
+    status: demoAllowed ? "loading" : "off",
+    events: [],
+  }));
+  useEffect(() => {
+    if (!demoAllowed) {
+      return undefined;
+    }
+    const controller = new AbortController();
+    setDemoDataset({ status: "loading", events: [] });
+    void loadDemoEvents({
+      signal: controller.signal,
+      timeoutMs: appTimings.demoFetchTimeoutMs,
+    }).then((result) => {
+      // Unmounting aborts the request; that is not a state to render.
+      if (controller.signal.aborted) {
+        return;
+      }
+      setDemoDataset(result);
+    });
+    return () => controller.abort();
+  }, [demoAllowed]);
   const [initialLocation, setInitialLocation] = useState<ReturnType<typeof getInitialLocation> | null>(
     getInitialLocation,
   );
@@ -4575,8 +4621,30 @@ export default function App() {
         : liveEvents,
     [liveEvents, importedEvents],
   );
-  const isDemo = shouldShowDemo(allEvents.length, import.meta.env);
-  const visibleEvents = isDemo ? demoEvents : allEvents;
+  // Demo needs both halves: the build must allow it, and the dataset must have
+  // actually arrived. A failed load leaves the console on the real empty state
+  // rather than pinning a stale or synthetic run.
+  const isDemo =
+    demoDataset.status === "ready" &&
+    shouldShowDemo(allEvents.length, import.meta.env);
+  const visibleEvents = isDemo ? demoDataset.events : allEvents;
+  /*
+   * Sample data is a development convenience, never captured evidence. Only the
+   * empty console needs the explanation — with real events on screen a missing
+   * sample changes nothing — and it is one notice, not a repeated toast: the
+   * load happens once per mount.
+   */
+  const demoError =
+    demoDataset.status === "error" &&
+    shouldShowDemo(allEvents.length, import.meta.env)
+      ? demoDataset.error
+      : null;
+  useEffect(() => {
+    if (!demoError) {
+      return;
+    }
+    pushNotice("info", "示例数据不可用", demoError);
+  }, [demoError, pushNotice]);
   /*
    * Sync budget. One timeout, re-armed only when the setting or the start of
    * the current sync window changes — no interval, so an idle console costs
@@ -5901,6 +5969,7 @@ export default function App() {
               sessions={visibleSessions}
               activeKey={activeSession?.key || ""}
               activePromptRunKey={activePromptRun?.key || ""}
+              demoError={demoError}
               gitInfo={gitInfo}
               isDemo={isDemo}
               liveFilter={liveFilter}

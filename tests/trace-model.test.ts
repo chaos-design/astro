@@ -5,7 +5,6 @@ import {
   buildHarnessFlow,
   buildSessionPromptRuns,
   buildSessions,
-  createDemoEvents,
   formatDuration,
   getExecutionInstruction,
   getFlowNodeIdForEvent,
@@ -16,6 +15,7 @@ import {
   parseImportedTrace,
   searchTraceEvents,
 } from "../src/lib/trace-model.ts";
+import { createDemoEvents } from "./helpers/demo-fixture.ts";
 
 test("groups events by session and calculates duration", () => {
   const events = createDemoEvents(2_000_000_000_000);

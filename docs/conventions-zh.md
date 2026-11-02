@@ -25,6 +25,7 @@
 | `tests/` | Node 测试运行器套件 | 手工验收记录 |
 | `docs/` | 中英成对的使用、协议、架构、运维与约定文档 | 生成物 |
 | `site/` | 文档站（读取 `docs/*.md`） | 文档正文副本 |
+| `data/` | 控制台示例数据集等本地资源文件 | 采集数据、用户偏好 |
 
 ## 3. 分支、提交与 PR
 
@@ -47,6 +48,9 @@
     + `isFreshLiveRun` + `collectLiveRunKeys`）；
   - 时间窗口计算只在 `src/lib/run-history-window.ts`。
   新增消费方必须复用这些函数，不得再写一份“失败事件名单”或“live 名单”。
+- 示例（Demo）数据只在 `data/demo-events.json`：服务通过 `server/demo-dataset.mjs`
+  读取并由 `GET /api/demo-events` 提供，控制台只在 `src/lib/demo-events.ts` 解析。
+  不要在组件、测试或服务里再写一份内联事件数组；测试需要示例会话时读取该文件。
 - 平台相关的映射放到 `src/config/atom-platforms.ts` 或对应适配器，领域工具函数
   保持平台无关。
 - 界面动作优先使用 Lucide 图标；品牌图标（如 GitHub）以内联 SVG 组件提供，不额外
