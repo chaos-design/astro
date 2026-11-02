@@ -90,6 +90,37 @@ use Node.js ES modules or CommonJS according to their existing file extension.
 - The Demo dataset is a rendering fixture only: it must stay out of health
   counts, `N LIVE`, the sync budget, and `DELETE /api/events`.
 
+## Deployed Console
+
+- The console is a static page and may be served from a cloud origin (Vercel,
+  GitHub Pages, any static host) while its data is the service on the reader's
+  machine. `src/lib/api-base.ts` is the single definition of that address:
+  `?api=` (persisted to `ASTROX_API_BASE`) → stored value → same-origin when
+  the page itself is local → `http://127.0.0.1:5678` otherwise. Every request
+  goes through `joinApi(apiBase, path)`; do not hardcode `/api/...` in
+  components. The base is resolved once per mount and never changed
+  mid-session.
+- The service decides who may read. `ASTRO_CORS_ORIGINS` is an explicit
+  allowlist (comma-separated; `*` only when spelled out); with nothing set the
+  service emits no CORS headers and behaves exactly like a same-origin-only
+  install. Allowed origins get an echoed `Access-Control-Allow-Origin`,
+  `Access-Control-Allow-Private-Network: true` (Chrome's public→local
+  preflight), and the generic `OPTIONS /api/*` preflight answers allow
+  methods/headers. The headers attach to every `/api/*` response including the
+  SSE stream — EventSource cannot send custom headers, so response headers are
+  all a deployed page gets.
+- A deployed page that never connects announces it once (「无法连接本地服务」
+  with the base and the `ASTRO_CORS_ORIGINS` line to add). Do not turn that
+  into per-retry noise, and do not silently fall back to demo data — a
+  deployment must never present sample runs as captured evidence.
+- Deployment outputs: `vercel.json` builds console + docs and merges them via
+  `scripts/merge-deploy-output.mjs` (docs at the root, console at
+  `/console/`); the console build uses a relative Vite `base` so it also works
+  under GitHub Pages project paths. `.github/workflows/console-preview.yml`
+  uploads `console-dist` and deploys Pages only on `workflow_dispatch` — a
+  repository has one Pages site, so the docs and console must not fight over
+  it.
+
 ## Run Timeout Invariant
 
 - `appTimings.activeRunTimeoutMs` is the single frontend timeout policy.

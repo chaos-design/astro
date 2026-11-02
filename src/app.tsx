@@ -172,6 +172,10 @@ import {
   type DemoLoadResult,
 } from "./lib/demo-events";
 import {
+  joinApi,
+  resolveApiBase,
+} from "./lib/api-base";
+import {
   readStorageBoolean,
   readStorageValue,
   writeStorageValue,
@@ -3922,6 +3926,26 @@ export default function App() {
   const pageVisibility = usePageVisibility();
   const pageSuspended = pageVisibility.suspended;
   /*
+   * Where the data comes from. The local service answers same-origin; a
+   * deployed console (Vercel, GitHub Pages) names the service on the reader's
+   * machine instead — `?api=` wins and persists, then the stored override,
+   * then the same-origin/local-service heuristic. Resolved once per mount:
+   * mid-session changes would strand the open stream on the old base.
+   */
+  const apiBase = useMemo(() => {
+    const resolution = resolveApiBase({
+      search: window.location.search,
+      origin: window.location.origin,
+      stored: readStorageValue(window.localStorage, storageKeys.apiBase, ""),
+    });
+    // `?api=` is the user naming the service for this browser, not just this
+    // page view: keep it, including the explicit same-origin reset (`?api=`).
+    if (resolution.source === "param") {
+      writeStorageValue(window.localStorage, storageKeys.apiBase, resolution.base);
+    }
+    return resolution.base;
+  }, []);
+  /*
    * The sample run is a local resource file (`data/demo-events.json`), read by
    * the service and fetched here — the bundle no longer carries synthetic
    * events. It is requested once per mount and only where Demo is allowed, so
@@ -3939,6 +3963,9 @@ export default function App() {
     const controller = new AbortController();
     setDemoDataset({ status: "loading", events: [] });
     void loadDemoEvents({
+      // The service on the configured base first; the static copy next to the
+      // page itself is the fallback for a deployment without a service.
+      endpoints: [joinApi(apiBase, "/api/demo-events"), "/data/demo-events.json"],
       signal: controller.signal,
       timeoutMs: appTimings.demoFetchTimeoutMs,
     }).then((result) => {
@@ -3949,7 +3976,7 @@ export default function App() {
       setDemoDataset(result);
     });
     return () => controller.abort();
-  }, [demoAllowed]);
+  }, [apiBase, demoAllowed]);
   const [initialLocation, setInitialLocation] = useState<ReturnType<typeof getInitialLocation> | null>(
     getInitialLocation,
   );
@@ -3962,6 +3989,14 @@ export default function App() {
    */
   const liveEventsRef = useRef<TraceEvent[]>([]);
   liveEventsRef.current = liveEvents;
+  /**
+   * Whether the stream has ever connected, mirrored for the stream effect:
+   * the remote-service hint must fire only when a deployed page never managed
+   * to connect, not on every transient drop of an established stream.
+   */
+  const everConnectedRef = useRef(false);
+  // The same hint is announced once per page load, not once per retry.
+  const remoteConnectHintedRef = useRef(false);
   // Working directory → git presentation (repo name + branch), resolved by the
   // server from the closest `.git` and delivered with the snapshot plus one
   // `git` message per newly seen directory.
@@ -4415,7 +4450,7 @@ export default function App() {
     }
     const streamQuery = streamParams.toString();
     const source = new EventSource(
-      streamQuery ? `/api/stream?${streamQuery}` : "/api/stream",
+      joinApi(apiBase, streamQuery ? `/api/stream?${streamQuery}` : "/api/stream"),
     );
     // Ids seen so far: an O(1) set keeps per-event dedup linear in total
     // events instead of rescanning the accumulated array on every message.
@@ -4450,6 +4485,7 @@ export default function App() {
       if (payload?.snapshot) {
         snapshotKeyRef.current = payload.snapshot;
       }
+      everConnectedRef.current = true;
       setConnected(true);
       setEverConnected(true);
     });
@@ -4596,8 +4632,23 @@ export default function App() {
         reloadingRef.current = false;
         pushNotice("error", "重新加载失败，事件流会自动重试");
       }
+      // A deployed console reaches across origins to reach the local service.
+      // When that never connects, say why once — a silent offline chip reads
+      // like "no agents are running" when the actual blocker is a refused
+      // origin or a service that was never started.
+      if (apiBase && !everConnectedRef.current && !remoteConnectHintedRef.current) {
+        remoteConnectHintedRef.current = true;
+        pushNotice(
+          "error",
+          "无法连接本地服务",
+          `${apiBase || "同源"} — 确认服务已启动，并在服务端设置 ASTRO_CORS_ORIGINS 加入 ${window.location.origin}`,
+        );
+      }
     };
-    source.onopen = () => setConnected(true);
+    source.onopen = () => {
+      everConnectedRef.current = true;
+      setConnected(true);
+    };
     return () => {
       if (flushTimer !== null) {
         window.clearTimeout(flushTimer);
@@ -4605,7 +4656,7 @@ export default function App() {
       source.close();
       setConnected(false);
     };
-  }, [pageSuspended, streamEpoch, syncStopped]);
+  }, [apiBase, pageSuspended, streamEpoch, syncStopped]);
 
   const allEvents = useMemo(
     () =>
@@ -5344,7 +5395,9 @@ export default function App() {
     const importedIds = new Set(importedEvents.map((event) => event.id));
     try {
       if (!isDemo) {
-        const response = await fetch("/api/events", { method: "DELETE" });
+        const response = await fetch(joinApi(apiBase, "/api/events"), {
+          method: "DELETE",
+        });
         if (!response.ok) throw new Error(`Server returned ${response.status}`);
       }
       // The SSE reset is ordered with new traces; the HTTP response is not.
@@ -5372,7 +5425,9 @@ export default function App() {
     let active = true;
     const load = async () => {
       try {
-        const response = await fetch("/api/health", { cache: "no-store" });
+        const response = await fetch(joinApi(apiBase, "/api/health"), {
+          cache: "no-store",
+        });
         if (!response.ok) {
           throw new Error(`Server returned ${response.status}`);
         }
@@ -5401,7 +5456,7 @@ export default function App() {
       active = false;
       window.clearInterval(timer);
     };
-  }, [pageSuspended]);
+  }, [apiBase, pageSuspended]);
 
   // Restart the local dashboard service in place. The server spawns a
   // successor that re-binds the same port and then exits; this poll waits for
@@ -5421,7 +5476,9 @@ export default function App() {
     const previousPid = service?.pid ?? 0;
     setRestarting(true);
     try {
-      const response = await fetch("/api/restart", { method: "POST" });
+      const response = await fetch(joinApi(apiBase, "/api/restart"), {
+        method: "POST",
+      });
       if (!response.ok) {
         throw new Error(`Server returned ${response.status}`);
       }
@@ -5429,7 +5486,9 @@ export default function App() {
       for (;;) {
         await new Promise((resolve) => setTimeout(resolve, 400));
         try {
-          const health = await fetch("/api/health", { cache: "no-store" });
+          const health = await fetch(joinApi(apiBase, "/api/health"), {
+            cache: "no-store",
+          });
           const payload = (await health.json()) as Omit<
             ServiceHealth,
             "fetchedAt"

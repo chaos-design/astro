@@ -32,3 +32,15 @@ clients:
 #   example:
 #     apiKey: ${EXAMPLE_API_KEY}
 integrations: {}
+
+# The service also reads environment variables directly. Notable ones:
+#
+#   ASTRO_CORS_ORIGINS  comma-separated origins that a console page deployed to
+#                       Vercel / GitHub Pages may read from, e.g.
+#                       "https://astro-preview.vercel.app". Unset = same-origin
+#                       only (the historical behavior). "*" opts every origin
+#                       in, only when spelled out here.
+#   ASTRO_DEMO_EVENTS   path to an alternative sample dataset for
+#                       GET /api/demo-events.
+#
+# See docs/user-manual-*.md, section "部署预览页面" / "Deploy a preview page".

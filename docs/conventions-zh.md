@@ -51,6 +51,10 @@
 - 示例（Demo）数据只在 `data/demo-events.json`：服务通过 `server/demo-dataset.mjs`
   读取并由 `GET /api/demo-events` 提供，控制台只在 `src/lib/demo-events.ts` 解析。
   不要在组件、测试或服务里再写一份内联事件数组；测试需要示例会话时读取该文件。
+- 部署页面的服务地址只在 `src/lib/api-base.ts` 解析（`?api=` → `ASTROX_API_BASE` →
+  同源/本机默认），请求一律走 `joinApi`；跨域边界只在服务端
+  `ASTRO_CORS_ORIGINS`（默认关闭，显式允许列表，含 Private Network 预检应答）。
+  不要在组件里硬编码 `/api/...`，也不要让服务默认放开 `*`。
 - 平台相关的映射放到 `src/config/atom-platforms.ts` 或对应适配器，领域工具函数
   保持平台无关。
 - 界面动作优先使用 Lucide 图标；品牌图标（如 GitHub）以内联 SVG 组件提供，不额外

@@ -216,6 +216,45 @@ node ~/.astrox/plugins/astro/server/server.mjs
 命令；DeepSeek bundle 需通过 `--clients=deepseek` 显式安装。使用
 `--no-migrate` 跳过旧数据迁移，或使用 `--astro-home=/path/to/.astrox` 修改数据根目录。
 
+### 4.3 部署预览页面（Vercel / GitHub Pages）
+
+控制台是纯静态页面，可以部署到 Vercel 或 GitHub Pages，在浏览器里实时查看
+**本机**的 Agent 运行：页面本身在云端，数据始终来自你电脑上的 ASTRO 服务。
+
+部署方式：
+
+| 途径 | 做法 |
+| --- | --- |
+| Vercel | 仓库根目录的 `vercel.json` 已配置：构建控制台与文档站并合并输出（文档站在根路径，控制台在 `/console/`），导入仓库即可，无需额外设置 |
+| GitHub Actions | `.github/workflows/console-preview.yml` 在 push/PR 时构建控制台并上传 `console-dist` 构件；在 Actions 页面手动运行 "Deploy console preview to GitHub Pages" 可发布到 GitHub Pages |
+| 任意静态托管 | `pnpm build` 产出 `dist/`（相对资源路径），直接托管即可 |
+
+部署页默认连接 `http://127.0.0.1:5678`，也可以用 `?api=<地址>` 指定（会保存到
+浏览器本地 `ASTROX_API_BASE`，之后无需再带参数；传 `?api=` 空值可清除）。本机
+服务地址以启动时打印的 URL 为准，端口变化时同样用 `?api=` 指向。
+
+页面能连上本机服务需要两件事：
+
+1. **服务已启动**：插件安装后首轮问答会自动启动；或手动 `pnpm start`。
+2. **服务允许该页面来源**：默认关闭跨域（与历史版本行为一致）。在启动服务的
+   环境里设置允许列表后重启服务：
+
+   ```bash
+   ASTRO_CORS_ORIGINS="https://<你的部署域名>" pnpm start
+   ```
+
+   多个来源用逗号分隔；`/api/health` 返回的 `corsOrigins` 字段可确认当前配置。
+   Chrome 还要求服务应答 Private Network 预检（`Access-Control-Allow-Private-
+   Network`），服务在允许列表命中时自动返回。
+
+连上之后的行为与本机打开完全一致：Agent 问答产生新事件时，插件写入本地
+JSONL，服务通过 SSE 推送给页面，RUN HISTORY、拓扑与轨迹实时更新；断线自动
+重连并补齐快照。
+
+安全提示：`ASTRO_CORS_ORIGINS` 就是你本机轨迹数据的跨域读取边界，请只列自己
+控制的部署域名，不要写 `*`。页面地址必须是 `https://` 或本机地址；浏览器把
+`127.0.0.1` / `localhost` 视为可信来源，因此 HTTPS 页面可以读取本机 HTTP 服务。
+
 ## 5. 界面导览
 
 ### 5.1 顶栏
@@ -728,6 +767,7 @@ GET /api/events/<eventId>
 GET /api/search?q=<query>
 GET /api/search?q=<query>&source=codex&session=<sessionId>
 GET /api/stream
+GET /api/demo-events
 ```
 
 注意：服务端 `/api/search` 可跨嵌套字段搜索；当前 UI 的 LOG 搜索只过滤选中的
@@ -735,6 +775,11 @@ Prompt 子运行，无 Prompt 时才回退到完整会话，不直接调用服�
 
 `/api/stream` 每次初连或重连都先发送完整 `reset`，再发送 `ready`，之后发送
 新增 `trace`。服务声明 1 秒重连间隔，因此断线期间产生的后续问答会在重连快照中补齐。
+
+`/api/demo-events` 返回控制台示例数据集（`{ path, cached, eventCount, dataset }`），
+文件缺失 404、非法 500；`/api/health` 的 `corsOrigins` 字段报告当前跨域允许列表。
+两者都供「部署预览页面」使用：部署页默认连接 `http://127.0.0.1:5678`，允许列表
+见第 4.3 节。
 
 ## 14. Browser SDK
 
@@ -789,6 +834,8 @@ await trace.stop({ message: "Done" });
 | `ASTRO_TRACE_DIR` | 未设置 | 可选的相对或绝对共享 Trace 目录 |
 | `ASTRO_PROJECT_DIR` | 当前工作目录 | 相对 `ASTRO_TRACE_DIR` 的解析基准 |
 | `ASTRO_MAX_BODY_BYTES` | `5242880` | POST 请求体最大字节数 |
+| `ASTRO_CORS_ORIGINS` | 未设置（关闭跨域） | 允许读取本机 API 的部署页面来源（逗号分隔，`*` 显式全放行）；供「部署预览页面」使用 |
+| `ASTRO_DEMO_EVENTS` | 未设置 | `GET /api/demo-events` 读取的示例数据集路径 |
 | `ASTRO_AUTO_OPEN` | `1` | 安装或 Agent 启动时自动启动并打开控制台；设为 `0` 关闭 |
 | `DSH_HOME` | `~/.dsh` | DeepSeek Harness profile 与插件目录 |
 | `DSH_COMMAND` | `dsh` | DeepSeek Harness 启动器 |
@@ -891,6 +938,21 @@ curl http://127.0.0.1:5678/api/demo-events
 页面提示「示例数据不可用」表示两条来源都失败：服务接口与构建复制到
 `/data/demo-events.json` 的静态副本。此时控制台仍展示真实捕获事件，不会因为示例
 数据缺失而隐藏它们。
+
+### 部署页面连不上本机服务
+
+部署在 Vercel / GitHub Pages 的控制台页面提示「无法连接本地服务」时，按顺序检查：
+
+1. 本机服务是否运行：`curl http://127.0.0.1:5678/api/health`；
+2. 页面指向的地址是否正确：`?api=` 的值要与启动服务时打印的 URL 一致（端口变了就要改）；
+3. 来源是否在允许列表里：`/api/health` 返回的 `corsOrigins` 数组必须包含页面的
+   来源（协议 + 域名 + 端口），不匹配就在 `ASTRO_CORS_ORIGINS` 中补上并重启服务；
+4. 浏览器控制台若显示 CORS 报错，通常是第 3 条；若显示请求被取消/阻止，确认页面
+   是 `https://` 且服务绑定在 `127.0.0.1` 或 `localhost`（浏览器只允许 HTTPS 页面
+   读取这两类本机地址）。
+
+连上后如果长时间没有新事件，确认 Agent 确实产生了新的 Prompt（插件写入本地
+JSONL 后服务才会推送），以及页面是否处于暂停同步状态（顶栏会显示 `paused`）。
 
 ### 状态显示 offline
 

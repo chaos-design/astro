@@ -60,6 +60,12 @@
   console parses it only in `src/lib/demo-events.ts`. Do not inline another
   event array in a component, test, or service; tests that need a sample run
   read that file.
+- The deployed console's service address is resolved only in
+  `src/lib/api-base.ts` (`?api=` → `ASTROX_API_BASE` → same-origin / local
+  default) and requests go through `joinApi`; the cross-origin boundary lives
+  only in the service's `ASTRO_CORS_ORIGINS` (off by default, explicit
+  allowlist, Private-Network preflight answer). Do not hardcode `/api/...` in
+  components and do not default the service to `*`.
 - Platform-specific mappings belong in `src/config/atom-platforms.ts` or the
   relevant adapter; domain helpers stay platform-neutral.
 - Prefer Lucide icons for interface actions. Brand glyphs (such as GitHub) ship

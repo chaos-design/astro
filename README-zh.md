@@ -95,6 +95,9 @@ ASTRO 只观察智能体执行，不负责调用模型、调度工具、批准�
 - History、Events、主题和平台偏好使用 `ASTROX_*` 本地键持久化。
 - Demo 仅用于 development/test，数据来自本地资源文件 `data/demo-events.json`；
   production 空数据保持真实空状态，也不会请求示例数据。
+- 控制台可部署为预览页面（Vercel、GitHub Pages、任意静态托管）：页面读取访问者
+  本机的 ASTRO 服务（`?api=` / `ASTROX_API_BASE`，来源白名单 `ASTRO_CORS_ORIGINS`），
+  通过 SSE 实时跟随新事件。
 
 ## 支持的数据来源
 
@@ -165,6 +168,24 @@ pnpm start
 
 同一个 Codex、Claude Code 或 WorkBuddy 环境只能选择“原生插件”或“直接 Hook”中的一种。两者
 同时启用会让同一生命周期事件被采集两次。
+
+### 部署预览页面（Vercel / GitHub Pages）
+
+控制台是静态页面，可以部署在云端、数据留在本机：部署后的页面通过回环地址读取
+本机 ASTRO 服务，并通过 SSE 实时跟随新事件——每轮问答写入 JSONL 后服务即推送，
+RUN HISTORY 与拓扑实时更新。
+
+| 途径 | 做法 |
+| --- | --- |
+| Vercel | 仓库 `vercel.json` 已配置构建并合并：文档站在根路径，控制台预览在 `/console/`，导入仓库即可 |
+| GitHub Actions | `.github/workflows/console-preview.yml` 在 push/PR 时构建并上传 `console-dist` 构件；在 Actions 手动运行 "Deploy console preview to GitHub Pages" 可发布到 Pages |
+| 任意静态托管 | `pnpm build` 产出相对资源路径的 `dist/`，直接托管 |
+
+部署页默认连接 `http://127.0.0.1:5678`，可用 `?api=<地址>` 覆盖（持久化为
+`ASTROX_API_BASE`）。服务端需允许页面来源：`ASTRO_CORS_ORIGINS="https://<域名>" pnpm start`
+启动（多个来源逗号分隔，`/api/health` 的 `corsOrigins` 可确认）。该允许列表就是
+本机轨迹数据的跨域读取边界，请只列自己控制的域名。完整清单见使用手册
+「部署预览页面」一节。
 
 ### Codex、Claude Code 与 WorkBuddy 原生插件
 
@@ -1187,6 +1208,7 @@ Lucide 图标和本地打包的 Geist 字体。
 | 路由器无法找到最优路径 | 尽量返回诊断信息与降级路径 |
 | 没有事件 | development/test 展示本地示例数据集；production 保持真实空状态 |
 | 示例数据集缺失或格式错误 | 服务返回 404/500，控制台提示「示例数据不可用」并保留真实事件 |
+| 部署页面连不上本机服务 | 弹一次「无法连接本地服务」（含 `ASTRO_CORS_ORIGINS` 提示）后保持 `offline`；来源加入允许列表并重启服务即可恢复 |
 | Hook 解析或写入失败 | stderr 输出诊断并正常退出；不阻断智能体，Codex quiet 模式保持 stdout 兼容 |
 | 控制台启动或浏览器打开失败 | Trace 仍正常写入；下次提示词会在 PID 失效后重试 |
 | active 或 waiting Prompt 到达超时阈值 | 封顶继续增加的时长，派生 `terminated`，停止当前选中运行的 Live 效果且不新增事件 |

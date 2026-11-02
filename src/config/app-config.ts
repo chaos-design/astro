@@ -224,6 +224,11 @@ export const appLayout = {
  */
 export const storageKeys = {
   activeView: "ASTROX_ACTIVE_VIEW",
+  /**
+   * API base for a deployed console (`?api=` persists here). Empty means
+   * same-origin; see `src/lib/api-base.ts` for the resolution order.
+   */
+  apiBase: "ASTROX_API_BASE",
   consoleOpen: "ASTROX_CONSOLE_OPEN",
   deepView: "ASTROX_DEEP_VIEW",
   historyOpen: "ASTROX_HISTORY_OPEN",

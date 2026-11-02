@@ -111,6 +111,10 @@ schedule tools, approve permissions, or alter agent decisions.
 - Demo data only in development/test, loaded from the local resource file
   `data/demo-events.json` by the service; production keeps a truthful empty
   state and never requests sample data.
+- Deployable console preview (Vercel, GitHub Pages, any static host): the
+  page reads the ASTRO service on the visitor's machine (`?api=` /
+  `ASTROX_API_BASE`, origin allowlist via `ASTRO_CORS_ORIGINS`) and follows
+  new events live over SSE.
 
 ## Supported Sources
 
@@ -189,6 +193,26 @@ Direct hook installation starts and opens the dashboard automatically.
 Use either the native plugin or direct hooks for the same Codex, Claude Code,
 or WorkBuddy
 installation, not both. Enabling both records the same lifecycle event twice.
+
+### Deploy a preview page (Vercel / GitHub Pages)
+
+The console is a static page, so it can live in the cloud while the data stays
+on your machine: a deployed page reads the ASTRO service running locally over
+the loopback and follows new events live over SSE — every prompt writes the
+JSONL, the service pushes it, RUN HISTORY and the topology update in real time.
+
+| Path | How |
+| --- | --- |
+| Vercel | `vercel.json` builds the console and the docs site and merges them: docs at the root, the console preview at `/console/`. Import the repository — no extra settings. |
+| GitHub Actions | `.github/workflows/console-preview.yml` builds the console on push/PR and uploads a `console-dist` artifact; run "Deploy console preview to GitHub Pages" manually to publish it. |
+| Any static host | `pnpm build` produces `dist/` with relative asset URLs; serve it as-is. |
+
+A deployed page targets `http://127.0.0.1:5678` by default; override with
+`?api=<address>` (persisted as `ASTROX_API_BASE`). The service must allow the
+page's origin — start it with `ASTRO_CORS_ORIGINS="https://<domain>" pnpm start`
+(multiple origins comma-separated, `/api/health` reports the list). Origins are
+the read boundary for your local traces: list only domains you control.
+See the user manual's "部署预览页面" section for the full checklist.
 
 ### Native Codex, Claude Code, and WorkBuddy plugins
 
@@ -1287,6 +1311,7 @@ pagination or streaming history, authentication, and archival before use.
 | Router cannot find an optimal path | Return diagnostics and fallback routes where possible |
 | No events | Development/test renders the local sample dataset; production preserves the real empty state |
 | Sample dataset missing or malformed | The service answers 404/500, the console reports `示例数据不可用` and keeps captured events |
+| Deployed page cannot reach the local service | One `无法连接本地服务` notice (with the `ASTRO_CORS_ORIGINS` hint) and `offline`; add the page origin to the allowlist and restart the service |
 | Hook parse or write failure | Report on stderr and exit successfully; Codex quiet mode preserves stdout compatibility |
 | Dashboard launch or browser open failure | Keep writing trace data and retry after a stale PID is detected |
 | Active or waiting Prompt reaches the timeout | Cap its advancing duration, derive `terminated`, and stop selected-run live effects without appending an event |

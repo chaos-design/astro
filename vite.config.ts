@@ -78,6 +78,12 @@ export default defineConfig(() => {
 
   return {
     plugins: [react(), tailwindcss(), demoDatasetAsset()],
+    // Relative asset URLs, so the built console works wherever it is served
+    // from: the local service root (`/`), a Vercel deployment's `/console/`
+    // subdirectory, or a GitHub Pages project path. The console routes by
+    // query string (`?session=`), never by path, so relative base costs
+    // nothing; API paths stay absolute via `src/lib/api-base.ts`.
+    base: "./",
     resolve: {
       alias: {
         "@": path.resolve(import.meta.dirname, "./src"),

@@ -234,6 +234,53 @@ Install the hook-based clients in one operation with
 Existing hook commands are preserved. Use `--no-migrate` to skip legacy data
 migration or `--astro-home=/path/to/.astrox` to change the data root.
 
+### 4.3 Deploy a preview page (Vercel / GitHub Pages)
+
+The console is a static page, so it can be deployed to Vercel or GitHub Pages
+and watch agent runs happening **on your machine**: the page lives in the
+cloud, the data still comes from the ASTRO service on your computer.
+
+Deployment paths:
+
+| Path | How |
+| --- | --- |
+| Vercel | The repository's `vercel.json` is already wired: it builds the console and the docs site and merges them (docs at the root, the console at `/console/`). Import the repository — no extra settings. |
+| GitHub Actions | `.github/workflows/console-preview.yml` builds the console on push/PR and uploads a `console-dist` artifact; run "Deploy console preview to GitHub Pages" manually from the Actions tab to publish it to GitHub Pages. |
+| Any static host | `pnpm build` produces `dist/` with relative asset URLs; serve it as-is. |
+
+A deployed page defaults to `http://127.0.0.1:5678`; pass `?api=<address>` to
+point it elsewhere (the value is persisted as `ASTROX_API_BASE`, so later
+visits need no parameter; an empty `?api=` clears it). Use the URL the service
+prints at startup — if the port moved, point `?api=` at the actual one.
+
+Two things must hold before the page can connect:
+
+1. **The service is running**: installation starts it on the first prompt, or
+   run `pnpm start` manually.
+2. **The service allows the page's origin**: cross-origin reads are off by
+   default (same behavior as every earlier release). Start the service with an
+   allowlist:
+
+   ```bash
+   ASTRO_CORS_ORIGINS="https://<your-deployment-domain>" pnpm start
+   ```
+
+   Separate multiple origins with commas; `/api/health` reports the active
+   list as `corsOrigins`. Chrome additionally requires the service to answer
+   the Private-Network preflight (`Access-Control-Allow-Private-Network`),
+   which the service returns automatically for allowlisted origins.
+
+Once connected, behavior matches the local console: every prompt writes new
+events to the local JSONL files, the service pushes them over SSE, and RUN
+HISTORY, the topology and the trajectory update live; disconnects reconnect
+and repair with a snapshot.
+
+Security note: `ASTRO_CORS_ORIGINS` is the cross-origin read boundary for your
+local traces. List only deployment domains you control; do not set `*`. The
+page must be `https://` or a loopback address — browsers treat `127.0.0.1` /
+`localhost` as trustworthy, which is what lets an HTTPS page read the local
+HTTP service.
+
 ## 5. Console Tour
 
 ### 5.1 Header
@@ -828,6 +875,7 @@ GET /api/events/<eventId>
 GET /api/search?q=<query>
 GET /api/search?q=<query>&source=codex&session=<sessionId>
 GET /api/stream
+GET /api/demo-events
 ```
 
 The server search scans nested fields. The current UI LOG search filters only
@@ -838,6 +886,13 @@ Every initial or reconnected `/api/stream` connection receives a complete
 `reset`, then `ready`, and then new `trace` events. The server advertises a
 one-second retry, so follow-up turns emitted during disconnection are repaired by
 the reconnect snapshot.
+
+`/api/demo-events` serves the console's sample dataset
+(`{ path, cached, eventCount, dataset }`); a missing file answers 404 and a
+malformed one 500. `/api/health` reports the active cross-origin allowlist as
+`corsOrigins`. Both support the deployed preview page: it targets
+`http://127.0.0.1:5678` by default, and the allowlist is described in
+section 4.3.
 
 ## 14. Browser SDK
 
@@ -893,6 +948,8 @@ The existing environment names remain supported as overrides:
 | `ASTRO_TRACE_DIR` | unset | Optional relative or absolute shared trace directory |
 | `ASTRO_PROJECT_DIR` | current working directory | Base for a relative `ASTRO_TRACE_DIR` |
 | `ASTRO_MAX_BODY_BYTES` | `5242880` | Maximum POST body size |
+| `ASTRO_CORS_ORIGINS` | unset (cross-origin off) | Deployed-page origins allowed to read the local API (comma-separated; `*` only when explicit); see "Deploy a preview page" |
+| `ASTRO_DEMO_EVENTS` | unset | Dataset path read by `GET /api/demo-events` |
 | `ASTRO_AUTO_OPEN` | `1` | Start and open the dashboard during installation or Agent startup; set `0` to disable |
 | `DSH_HOME` | `~/.dsh` | DeepSeek Harness profiles and plugins |
 | `DSH_COMMAND` | `dsh` | DeepSeek Harness launcher |
@@ -1008,6 +1065,26 @@ empty `session.source` or a non-numeric `events[2].offsetMs`).
 A `示例数据不可用` notice means both sources failed: the service endpoint and
 the static copy at `/data/demo-events.json` that the build writes. The console
 still shows captured events; a missing sample never hides real ones.
+
+### A deployed page cannot reach the local service
+
+When a console deployed to Vercel / GitHub Pages reports `无法连接本地服务`,
+check in order:
+
+1. The local service runs: `curl http://127.0.0.1:5678/api/health`.
+2. The address the page uses: the `?api=` value must match the URL the service
+   printed at startup (update it when the port moved).
+3. The page's origin is allowlisted: the `corsOrigins` array in `/api/health`
+   must contain the page origin (scheme + host + port); otherwise add it to
+   `ASTRO_CORS_ORIGINS` and restart the service.
+4. A CORS error in the browser console means step 3; a blocked/canceled
+   request means the page is not `https://` or the service is not bound to
+   `127.0.0.1` / `localhost` (browsers only let an HTTPS page read those two
+   kinds of local addresses).
+
+If it connects but no new events arrive, confirm the agent actually started a
+new prompt (the plugin writes the JSONL first, then the service pushes), and
+check the header for a spent sync budget (`paused`).
 
 ### Connection State Is Offline
 

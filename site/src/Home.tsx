@@ -55,6 +55,15 @@ export function Home() {
           <div className="card-title">{t.cardSlidesTitle}</div>
           <div className="card-body">{t.cardSlidesBody}</div>
         </a>
+        {/* The console preview is a sibling directory of the deployment, not a
+            hash route: /console/ serves the built console page, which then
+            connects to the visitor's local ASTRO service. */}
+        <a href="console/" className="card">
+          <div className="card-accent cyan" />
+          <div className="card-kicker">{t.cardConsoleKicker}</div>
+          <div className="card-title">{t.cardConsoleTitle}</div>
+          <div className="card-body">{t.cardConsoleBody}</div>
+        </a>
       </div>
 
       {sections

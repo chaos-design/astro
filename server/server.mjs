@@ -92,6 +92,19 @@ const shouldOpenBrowser = !["", "0", "false", "no", "off"].includes(
 // instead of walking to the next one. A self-restart successor needs this so
 // it can take over the port the current process is about to release.
 const restartTakeover = String(environment.ASTRO_TAKEOVER || "").trim() === "1";
+// Deployment origins (Vercel, GitHub Pages) a console page may read from.
+// Empty by default: the service then talks same-origin only, exactly like
+// every release before the deployed preview existed. This list is also the
+// data-access boundary — traces are redacted but still private — so origins
+// are enumerated explicitly; `*` is accepted only when spelled out here.
+const corsOrigins = String(
+  environment.ASTRO_CORS_ORIGINS ||
+    environment.AGENT_TRACE_CORS_ORIGINS ||
+    "",
+)
+  .split(",")
+  .map((value) => value.trim())
+  .filter(Boolean);
 // Process start (not module load): the health payload reports both the
 // startup cost and the time this instance has been serving.
 const processStartedAtMs = Date.now() - Math.round(process.uptime() * 1000);
@@ -117,6 +130,35 @@ function sendJson(response, status, value, headers = {}) {
     ...headers,
   });
   response.end(JSON.stringify(value));
+}
+
+/**
+ * CORS headers for this request, or null when the origin is not allowed.
+ *
+ * A deployed console page (HTTPS) reads the service over the loopback; the
+ * browser treats loopback as trustworthy, but it still requires `Access-
+ * Control-Allow-Origin` for the page's origin and — Chrome — a preflight that
+ * answers `Access-Control-Allow-Private-Network` for public→local requests.
+ * With no allowlist configured nothing is emitted, so a default install is no
+ * more readable cross-origin than it ever was.
+ */
+function corsHeadersFor(request) {
+  if (!corsOrigins.length) {
+    return null;
+  }
+  const origin = String(request.headers.origin || "");
+  if (!origin) {
+    return null;
+  }
+  const wildcard = corsOrigins.includes("*");
+  if (!wildcard && !corsOrigins.includes(origin)) {
+    return null;
+  }
+  return {
+    "Access-Control-Allow-Origin": wildcard ? "*" : origin,
+    "Access-Control-Allow-Private-Network": "true",
+    Vary: "Origin",
+  };
 }
 
 function sendSse(response, eventName, value) {
@@ -385,14 +427,34 @@ store.on("error", (error) => {
 async function handleRequest(request, response) {
   const requestUrl = new URL(request.url || "/", `http://${host}`);
 
-  if (request.method === "OPTIONS" && requestUrl.pathname === "/api/events") {
-    response.writeHead(204, {
+  // CORS is per-request (the origin is echoed), so it is attached once here
+  // and composes with every writeHead below — including the SSE stream —
+  // instead of being threaded through each API branch.
+  if (requestUrl.pathname.startsWith("/api/")) {
+    const cors = corsHeadersFor(request);
+    if (cors) {
+      for (const [name, value] of Object.entries(cors)) {
+        response.setHeader(name, value);
+      }
+    }
+  }
+
+  if (
+    request.method === "OPTIONS" &&
+    requestUrl.pathname.startsWith("/api/")
+  ) {
+    // Preflight for a console page deployed to Vercel or GitHub Pages that
+    // reads this service on the reader's machine. The recorders POST from
+    // Node and never preflight; this path only matters to pages.
+    const cors = corsHeadersFor(request);
+    const preflight = {
+      "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
       "Access-Control-Allow-Headers":
+        request.headers["access-control-request-headers"] ||
         "Content-Type, X-Astro-Source, X-Agent-Trace-Source",
-      "Access-Control-Allow-Methods": "POST, OPTIONS",
-      "Access-Control-Allow-Origin": "*",
       "Access-Control-Max-Age": "86400",
-    });
+    };
+    response.writeHead(204, cors ? { ...cors, ...preflight } : preflight);
     response.end();
     return;
   }
@@ -418,6 +480,9 @@ async function handleRequest(request, response) {
       dataRoot,
       traceFiles: store.getTraceFiles(),
       build: appBuild,
+      // What a deployed console needs to know when its requests are refused:
+      // the allowlist is the service's decision, not the page's.
+      corsOrigins,
     });
     return;
   }

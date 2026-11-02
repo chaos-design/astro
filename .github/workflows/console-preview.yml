@@ -1,0 +1,102 @@
+# Builds the console preview (the static page that visualizes agent runs),
+# verifies the published output, and uploads it as a `console-dist` artifact
+# that can be published to any static host — Vercel and GitHub Pages included.
+#
+# The built page has no backend of its own: it reads the ASTRO service running
+# on the visitor's machine (default http://127.0.0.1:5678, overridable with
+# `?api=`). The service must allow the deployment's origin — see
+# `ASTRO_CORS_ORIGINS` in server/server.mjs and the user manual's "部署预览页
+# 面" section.
+#
+# Triggers:
+#   - push to `main`             -> build + verify + upload
+#   - pull request to `main`     -> build + verify + upload
+#   - workflow_dispatch          -> build + verify + upload + deploy to Pages
+#
+# The Pages job is manual on purpose: a repository has a single Pages site,
+# and this repo also documents a docs-site Pages path — deploy one or the
+# other, not both.
+
+name: Build console preview
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: console-preview-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Install, build and verify console preview
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build console
+        run: pnpm build
+
+      - name: Verify build output
+        run: |
+          test -f dist/index.html
+          test -f dist/data/demo-events.json
+          echo "Published output:"
+          ls dist
+          ls dist/data
+
+      - name: Upload console build
+        uses: actions/upload-artifact@v4
+        with:
+          name: console-dist
+          path: dist
+          retention-days: 7
+
+  deploy-pages:
+    name: Deploy console preview to GitHub Pages
+    needs: build
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Download console build
+        uses: actions/download-artifact@v4
+        with:
+          name: console-dist
+          path: dist
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
