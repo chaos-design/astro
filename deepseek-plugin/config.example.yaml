@@ -6,11 +6,22 @@ server:
   host: 127.0.0.1
   port: 5678
   maxBodyBytes: 5242880
+  # Origins (scheme + host + port) that a console page deployed to Vercel /
+  # GitHub Pages may read this local API from. Empty = same-origin only, the
+  # historical behavior. Example:
+  #   corsOrigins:
+  #     - https://chaos-design.github.io
+  # `ASTRO_CORS_ORIGINS` (comma-separated) overrides this list; "*" opts every
+  # origin in and only when spelled out.
+  corsOrigins: []
 
 runtime:
   autoOpen: true
 
 storage:
+  # Trace root: null = <ASTRO_HOME> (~/.astrox). The console's service card
+  # exposes this as "data directory → change", which writes ASTRO_TRACE_DIR to
+  # the plugin .env and restarts the service.
   traceDir: null
   projectDir: null
 
@@ -32,3 +43,15 @@ clients:
 #   example:
 #     apiKey: ${EXAMPLE_API_KEY}
 integrations: {}
+
+# The service also reads environment variables directly. Notable ones:
+#
+#   ASTRO_CORS_ORIGINS  comma-separated origins that a console page deployed to
+#                       Vercel / GitHub Pages may read from, e.g.
+#                       "https://astro-preview.vercel.app". Unset = same-origin
+#                       only (the historical behavior). "*" opts every origin
+#                       in, only when spelled out here.
+#   ASTRO_DEMO_EVENTS   path to an alternative sample dataset for
+#                       GET /api/demo-events.
+#
+# See docs/user-manual-*.md, section "部署预览页面" / "Deploy a preview page".

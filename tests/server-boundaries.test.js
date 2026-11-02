@@ -101,6 +101,50 @@ async function readStreamEvent(url, eventName) {
   }
 }
 
+async function readStreamSnapshot(url) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 5000);
+  const events = [];
+  let meta = null;
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) {
+        break;
+      }
+      buffer += decoder.decode(value, { stream: true });
+      let boundary;
+      while ((boundary = buffer.indexOf("\n\n")) >= 0) {
+        const block = buffer.slice(0, boundary);
+        buffer = buffer.slice(boundary + 2);
+        const name = /^event: (.*)$/m.exec(block)?.[1];
+        const data = /^data: (.*)$/m.exec(block)?.[1];
+        if (!name || !data) {
+          continue;
+        }
+        if (name === "reset") {
+          meta = JSON.parse(data);
+          events.push(...meta.events);
+        }
+        if (name === "trace") {
+          events.push(JSON.parse(data));
+        }
+        if (name === "ready") {
+          return { events, meta, ready: JSON.parse(data) };
+        }
+      }
+    }
+    throw new Error("stream ended before ready");
+  } finally {
+    clearTimeout(timer);
+    controller.abort();
+  }
+}
+
 test("a resume cursor replays only the missed tail", async (t) => {
   const url = await startServer(t);
   const append = async (eventName) => {
@@ -119,7 +163,9 @@ test("a resume cursor replays only the missed tail", async (t) => {
   };
 
   const firstId = await append("UserPromptSubmit");
-  const snapshot = await readStreamEvent(`${url}/api/stream`, "reset");
+  const snapshot = await readStreamSnapshot(`${url}/api/stream`);
+  assert.equal(snapshot.meta.streaming, true);
+  assert.deepEqual(snapshot.meta.events, []);
   assert.deepEqual(snapshot.events.map((event) => event.id), [firstId]);
 
   const secondId = await append("Stop");
@@ -130,9 +176,8 @@ test("a resume cursor replays only the missed tail", async (t) => {
   assert.deepEqual(resumed.events.map((event) => event.id), [secondId]);
 
   // A cursor the server cannot place falls back to the full snapshot.
-  const fallback = await readStreamEvent(
+  const fallback = await readStreamSnapshot(
     `${url}/api/stream?since=unknown-event`,
-    "reset",
   );
   assert.deepEqual(
     fallback.events.map((event) => event.id),

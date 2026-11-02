@@ -72,12 +72,23 @@
   `config.yaml` as the durable form for an installed runtime. Do not hardcode
   `/api/...` in components and do not default the service to `*`.
 - Files under `public/` are addressed through `assetUrl()` in
-  `src/lib/asset-url.ts`, never with an origin-root path such as
-  `/icons/...`: GitHub Pages mounts the page at `/astro/`, so a root path
-  escapes the project prefix and 404s (this broke the agent dropdown's brand
-  marks). `scripts/verify-console-build.mjs` re-checks the build in CI for
-  root-path assets and confirms the artifact is the console only, with no docs
-  site mixed in.
+  `src/lib/asset-url.ts`, never with an origin-root path such as `/icons/...`:
+  GitHub Pages mounts the page at `/astro/`, so a root path escapes the project
+  prefix and 404s (this broke the agent dropdown's brand marks).
+  `scripts/verify-console-build.mjs` re-checks the build in CI for root-path
+  assets and confirms the artifact is the console only, with no docs site mixed
+  in.
+- Event-stream snapshots are windowed by `hours` and streamed as a `reset`
+  frame (metadata) plus batched `trace` frames and a final `ready`. Do not go
+  back to one `JSON.stringify(allEvents)`: a single frame of a
+  multi-hundred-megabyte history blocks the event loop, so live events, health
+  checks and every other SSE client wait behind it. Older history outside the
+  window is reached by `truncated` + `LOAD EARLIER`, which re-subscribes with a
+  wider window after clearing the cursor and snapshot key.
+- The data-directory setting rewrites `ASTRO_TRACE_DIR` in `.env` only through
+  `server/runtime-settings.mjs` (other lines preserved, relative/missing paths
+  rejected); `POST /api/config/data-root` then restarts the service. Components
+  must not build config paths or write files themselves.
 - Platform-specific mappings belong in `src/config/atom-platforms.ts` or the
   relevant adapter; domain helpers stay platform-neutral.
 - Prefer Lucide icons for interface actions. Brand glyphs (such as GitHub) ship

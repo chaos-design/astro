@@ -980,6 +980,61 @@ pre,
   color: var(--muted-soft);
 }
 
+.service-card__path-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* Buttons are reset at the top of this file; a custom one has to spell out
+ * its border and ink or it renders as bare text. */
+.service-card__path-edit {
+  flex: none;
+  border: 1px solid var(--chrome-line);
+  border-radius: 4px;
+  padding: 1px 6px;
+  color: var(--muted);
+  background: transparent;
+  font: inherit;
+  font-size: 8px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+
+.service-card__path-edit:hover {
+  color: var(--text);
+  border-color: var(--muted);
+}
+
+.service-card__root-form {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.service-card__root-input {
+  min-width: 0;
+  flex: 1;
+  border: 1px solid var(--chrome-line);
+  border-radius: 4px;
+  padding: 4px 6px;
+  color: var(--text);
+  background: var(--panel);
+  font-family: var(--font-mono);
+  font-size: 9px;
+}
+
+.service-card__root-input:focus-visible {
+  outline: 1px solid var(--primary);
+  outline-offset: 1px;
+}
+
+.service-card__root-save {
+  flex: none;
+  font-size: 9px;
+}
+
 /* Two versions side by side: "which bundle am I looking at, and which bundle
  * is serving it?" was a single "0.0.3 · node v24" line that conflated the
  * console, the service, and the runtime. */

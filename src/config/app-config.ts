@@ -117,6 +117,15 @@ export const historyRangeOptions: ReadonlyArray<{
   { id: "7d", shortLabel: "7 天", label: "最近 7 天", hours: 7 * 24 },
 ];
 
+/**
+ * Longest history window the service will ship in one snapshot.
+ *
+ * The service caps the same number; the client needs it to stop offering
+ * "load earlier" once the window can no longer grow. One month is well past
+ * the 7-day preference and keeps a single snapshot bounded.
+ */
+export const maxStreamWindowHours = 24 * 31;
+
 /** Range used until the user picks another one in Settings. */
 export const defaultHistoryRange: HistoryRangeId = appDefaults.historyRange;
 

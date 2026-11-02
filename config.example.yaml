@@ -19,6 +19,9 @@ runtime:
   autoOpen: true
 
 storage:
+  # Trace root: null = <ASTRO_HOME> (~/.astrox). The console's service card
+  # exposes this as "data directory → change", which writes ASTRO_TRACE_DIR to
+  # the plugin .env and restarts the service.
   traceDir: null
   projectDir: null
 

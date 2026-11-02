@@ -285,7 +285,11 @@ Two things must hold before the page can connect:
 Once connected, behavior matches the local console: every prompt writes new
 events to the local JSONL files, the service pushes them over SSE, and RUN
 HISTORY, the topology and the trajectory update live; disconnects reconnect
-and repair with a snapshot.
+and repair with a snapshot. The first snapshot covers only the console's
+current range (three hours by default); older history is fetched by
+`LOAD EARLIER` with a wider window. A large local history therefore no longer
+forces the service to serialize everything before the first paint, and live
+events never queue behind one enormous transfer.
 
 About the sample dataset: the `data/demo-events.json` file ships with the build
 output too (`deploy/console/data/demo-events.json`) and can be read by your
@@ -335,6 +339,12 @@ HTTP service.
 - Settings icon (gear): opens the settings dialog for the default message range
   and the Live filter.
 - Theme: light, dark, or system; stored in `ASTROX_THEME`.
+- Service chip (the local service's uptime): opens the service card with the
+  console/service versions, process details, session counts, the data directory
+  and "restart local service". The "change" control next to the data directory
+  accepts another existing absolute path (or `~/…`); "save and restart" writes
+  it to the installed runtime's `.env` (`ASTRO_TRACE_DIR`) and restarts, so the
+  new process reads that directory and later recorder sessions write there too.
 
 ### 5.2 Global History Search
 
@@ -377,7 +387,11 @@ measured back from the **newest message** rather than from the wall clock:
 opening the console after a night away still shows the messages around the last
 session instead of an empty list. When older runs remain, `LOAD EARLIER`
 appears at the bottom; clicking it — or scrolling to the bottom — doubles the
-window (3 → 6 → 12 → 24 → 48 hours) until nothing older is left.
+window (3 → 6 → 12 → 24 → 48 hours) until nothing older is left. The service
+ships only the **requested window** (a live session keeps its full history), so
+a large history no longer transfers everything before the first paint;
+`LOAD EARLIER` re-subscribes with the wider window and replaces the loaded
+events instead of only widening a local filter.
 
 Executing messages ignore the window: they are always listed and always pinned
 to the top — within the selected agent. A message executing under another agent
@@ -975,7 +989,7 @@ The existing environment names remain supported as overrides:
 | `ASTRO_HOST` | `127.0.0.1` | Bind address |
 | `ASTRO_PORT` | `5678` | Preferred port |
 | `ASTRO_HOME` | `~/.astrox` | Runtime, plugins, and source-specific event files |
-| `ASTRO_TRACE_DIR` | unset | Optional relative or absolute shared trace directory |
+| `ASTRO_TRACE_DIR` | unset | Optional relative or absolute shared trace directory; the service card's "data directory → change" writes it to the plugin `.env` |
 | `ASTRO_PROJECT_DIR` | current working directory | Base for a relative `ASTRO_TRACE_DIR` |
 | `ASTRO_MAX_BODY_BYTES` | `5242880` | Maximum POST body size |
 | `ASTRO_CORS_ORIGINS` | unset (cross-origin off) | Deployed-page origins allowed to read the local API (comma-separated; `*` only when explicit); see "Deploy a preview page"; `server.corsOrigins` is the config-file equivalent |
@@ -1115,6 +1129,20 @@ check in order:
 If it connects but no new events arrive, confirm the agent actually started a
 new prompt (the plugin writes the JSONL first, then the service pushes), and
 check the header for a spent sync budget (`paused`).
+
+### An Agent Runs but the Page Does Not Update
+
+The service ships snapshots by time window (three hours by default) and splits
+them into small `trace` frames, so a large history no longer blocks live
+pushes. If updates still stop, check:
+
+1. The page and the service report the same version (service card).
+2. `clientCount` in `curl http://127.0.0.1:5678/api/health` is at least 1.
+3. The tab is not suspended by the browser (a background tab drops the stream
+   on purpose and resumes from its cursor when it returns).
+4. The header is not `paused` (the maximum sync duration was reached).
+5. The service's data directory is the one the recorders write to (service card
+   → data directory).
 
 ### Connection State Is Offline
 

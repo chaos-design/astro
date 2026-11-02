@@ -203,6 +203,18 @@ newest message; a `?session=` deep link that names another agent's run moves
 the dropdown and the address bar's `agent` with it, so the open run is always a
 row of the list.
 
+### Snapshot window and batched transfer
+
+The first snapshot covers only the console's current time window
+(`/api/stream?hours=`, three hours by default) plus the full history of sessions
+that are still executing; older history is fetched by `LOAD EARLIER` with a
+wider window, which replaces the list. The transfer itself is a `reset` frame
+(metadata, empty list), batches of 400 `trace` frames, and a final `ready`; the
+client commits once at `ready`. Serializing hundreds of thousands of events into
+one frame blocked the event loop, so live events and every other request had to
+wait behind it. `truncated` in `ready` decides whether "load earlier" is
+available, instead of inferring it from the sessions that happen to be loaded.
+
 ### Sync budget
 
 The console and the local service share one SSE connection (`/api/stream`,

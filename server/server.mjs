@@ -8,8 +8,17 @@ import {
   writeFileSync,
 } from "node:fs";
 import { createServer } from "node:http";
-import { dirname, extname, join, normalize, resolve, sep } from "node:path";
-import { platform } from "node:os";
+import { once } from "node:events";
+import {
+  dirname,
+  extname,
+  isAbsolute,
+  join,
+  normalize,
+  resolve,
+  sep,
+} from "node:path";
+import { homedir, platform } from "node:os";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import recorder from "../plugin/trace-recorder.cjs";
@@ -17,6 +26,7 @@ import runtimeConfigLoader from "../plugin/runtime-config.cjs";
 import storagePaths from "../plugin/storage-paths.cjs";
 import { createDemoDatasetReader } from "./demo-dataset.mjs";
 import { TraceRepository } from "./trace-repository.mjs";
+import { writeTraceDirectory } from "./runtime-settings.mjs";
 
 const serverDir = dirname(fileURLToPath(import.meta.url));
 const serverFile = fileURLToPath(import.meta.url);
@@ -73,6 +83,24 @@ const maxBodyBytes = Number(
     5_242_880,
 );
 const clients = new Set();
+/**
+ * Snapshot frames are written in small batches. One `JSON.stringify` of the
+ * whole history (95k events / 456MB on a real install) blocked the event loop
+ * for minutes: live events, `/api/health` and every other SSE client had to
+ * wait behind the transfer, which read as "the page does not update while an
+ * agent runs". `trace` frames are the same payload the live path already
+ * sends, so the client needs no second parser.
+ */
+const snapshotChunkSize = 400;
+/**
+ * Live runs must survive a time window even when they started before its
+ * cutoff, otherwise the row the console shows as running would lose its
+ * events. The client's `isFreshLiveRun` uses ten minutes; fifteen leaves the
+ * network round trip some room.
+ */
+const liveSessionWindowMs = 15 * 60_000;
+/** Upper bound for a requested window: a month, in hours. */
+const maxWindowHours = 24 * 31;
 let dashboardUrl = "";
 let boundPort = requestedPort;
 const store = new TraceRepository(environment);
@@ -170,6 +198,99 @@ function corsHeadersFor(request) {
 function sendSse(response, eventName, value) {
   response.write(`event: ${eventName}\n`);
   response.write(`data: ${JSON.stringify(value)}\n\n`);
+}
+
+function sseFrame(eventName, value) {
+  return `event: ${eventName}\ndata: ${JSON.stringify(value)}\n\n`;
+}
+
+function writeSseFrame(response, eventName, value) {
+  return response.write(sseFrame(eventName, value));
+}
+
+/** Wait until a slow client drains the socket, or give up if it left. */
+async function waitForDrain(response) {
+  if (response.destroyed || response.writableEnded) {
+    return false;
+  }
+  await Promise.race([once(response, "drain"), once(response, "close")]);
+  return !response.destroyed && !response.writableEnded;
+}
+
+/**
+ * Restrict a snapshot to the requested hour window, keeping every event of a
+ * session that still looks live so a running row never loses its history.
+ * `truncated` tells the console that more (older) events exist, which is what
+ * turns "load earlier" into a request for a wider window instead of a no-op.
+ */
+function selectSnapshotWindow(events, hours) {
+  if (!hours) {
+    return { events, hours: 0, truncated: false, anchor: "" };
+  }
+  const anchorMs = Date.parse(events.at(-1)?.capturedAt || "") || Date.now();
+  const cutoff = anchorMs - hours * 3_600_000;
+  const liveKeys = new Set(
+    store
+      .getSessionSummaries()
+      .filter(
+        (session) =>
+          (session.state === "active" || session.state === "waiting") &&
+          Date.now() - (Date.parse(session.lastEventAt || "") || 0) <=
+            liveSessionWindowMs,
+      )
+      .map(
+        (session) =>
+          `${session.source || "generic"}::${session.sessionId || "unknown-session"}`,
+      ),
+  );
+  const selected = events.filter((event) => {
+    const at = Date.parse(event.capturedAt || "");
+    if (Number.isFinite(at) && at >= cutoff) {
+      return true;
+    }
+    return liveKeys.has(
+      `${event.source || "generic"}::${event.sessionId || "unknown-session"}`,
+    );
+  });
+  return {
+    events: selected,
+    hours,
+    truncated: selected.length < events.length,
+    anchor: new Date(anchorMs).toISOString(),
+  };
+}
+
+/**
+ * Send a snapshot without ever holding the whole history in one string.
+ *
+ * The reset frame carries the metadata and an empty list; the events follow as
+ * ordinary `trace` frames in bounded batches, yielding to the event loop (and
+ * therefore to live broadcasts, health checks and other clients) between
+ * batches. A client that falls behind is waited on rather than buffered in
+ * memory forever.
+ */
+async function streamSnapshot(response, events, meta) {
+  writeSseFrame(response, "reset", {
+    events: [],
+    git: gitMapForEvents(events),
+    streaming: events.length > 0,
+    ...meta,
+  });
+  for (let index = 0; index < events.length; index += snapshotChunkSize) {
+    const end = Math.min(index + snapshotChunkSize, events.length);
+    for (let cursor = index; cursor < end; cursor += 1) {
+      if (response.destroyed || response.writableEnded) {
+        return false;
+      }
+      if (!writeSseFrame(response, "trace", events[cursor])) {
+        if (!(await waitForDrain(response))) {
+          return false;
+        }
+      }
+    }
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  return true;
 }
 
 function broadcast(eventName, value) {
@@ -430,6 +551,56 @@ store.on("error", (error) => {
   console.error(`[trace-store] ${error.message}`);
 });
 
+/**
+ * Spawn the successor on the same port, answer, then hand the socket over.
+ * Shared by the restart button and the data-directory setting so both paths
+ * keep one definition of "restart in place".
+ */
+function restartInPlace(response, extra = {}) {
+  let child;
+  try {
+    child = spawn(process.execPath, [serverFile], {
+      detached: true,
+      stdio: "ignore",
+      env: {
+        ...process.env,
+        ASTRO_PORT: String(boundPort),
+        ASTRO_TAKEOVER: "1",
+        ASTRO_OPEN_BROWSER: "0",
+        ASTRO_RESTART_COUNT: String(restartCount + 1),
+        ASTRO_RESTARTED_AT: new Date().toISOString(),
+      },
+    });
+    child.on("error", () => {});
+    child.unref();
+  } catch {
+    sendJson(response, 500, {
+      error: "Failed to start the restart process.",
+    });
+    return false;
+  }
+  sendJson(response, 202, {
+    status: "restarting",
+    pid: child.pid,
+    previousPid: process.pid,
+    url: dashboardUrl,
+    startedAt: new Date().toISOString(),
+    ...extra,
+  });
+  // Flush the response, then release the port so the successor can take it.
+  setTimeout(() => {
+    console.log(
+      `[restart] successor pid ${child.pid} spawned; handing off port ${boundPort}`,
+    );
+    shutdown();
+    // Safety: SSE clients may reconnect during the hand-off and keep the
+    // server from closing. The successor owns the port now, so force-exit
+    // the outgoing process if it has not released in time.
+    setTimeout(() => process.exit(0), 3_000).unref();
+  }, 120);
+  return true;
+}
+
 async function handleRequest(request, response) {
   const requestUrl = new URL(request.url || "/", `http://${host}`);
 
@@ -613,43 +784,64 @@ async function handleRequest(request, response) {
     });
     response.write("retry: 1000\n\n");
     clients.add(response);
-    // Keep the snapshot and later events on one ordered connection, including reconnects.
-    const events = store.getEvents();
+    request.on("close", () => clients.delete(response));
+    // Keep the snapshot and later events on one ordered connection, including
+    // reconnects. The browser asks for the window it is about to render, so a
+    // month of history no longer blocks the first paint.
+    const allEvents = store.getEvents();
+    const requestedHours = Number(requestUrl.searchParams.get("hours"));
+    const hours =
+      Number.isFinite(requestedHours) && requestedHours > 0
+        ? Math.min(requestedHours, maxWindowHours)
+        : 0;
+    const windowed = selectSnapshotWindow(allEvents, hours);
+    const events = windowed.events;
     // A client that resumes after a suspension names the last event it has, so
     // the refresh costs only what was missed instead of the whole history. An
     // unknown cursor (cleared events, a different process) falls back to the
     // full snapshot, which keeps reconnects correct rather than fast.
     const resumeCursor = requestUrl.searchParams.get("since") || "";
     const resumeIndex = resumeCursor
-      ? events.findIndex((event) => event.id === resumeCursor)
+      ? allEvents.findIndex((event) => event.id === resumeCursor)
       : -1;
     // A client that had to ask for the whole snapshot again (a restart, a
     // manual reload) names the snapshot it already holds. When the history on
     // disk is the one it has — the common case after restarting the service —
     // re-sending and re-parsing megabytes of JSON would produce exactly the
-    // state the page is already showing. The signature covers every event id,
-    // so "same key" means "same history".
-    const snapshotKey = store.getSnapshotKey();
+    // state the page is already showing. The signature covers the window too:
+    // the same history at 3h and at 6h are not interchangeable.
+    const snapshotKey = hours
+      ? `${store.getSnapshotKey()}@${hours}:${events.length}`
+      : store.getSnapshotKey();
     const clientSnapshot = requestUrl.searchParams.get("snapshot") || "";
+    const meta = {
+      eventCount: events.length,
+      totalEventCount: allEvents.length,
+      hours,
+      truncated: windowed.truncated,
+      anchor: windowed.anchor,
+      snapshot: snapshotKey,
+    };
     if (resumeIndex >= 0) {
-      const missed = events.slice(resumeIndex + 1);
-      sendSse(response, "resume", { events: missed, git: gitMapForEvents(missed) });
-    } else if (clientSnapshot && clientSnapshot === snapshotKey) {
-      sendSse(response, "reset-same", {
-        eventCount: events.length,
-        snapshot: snapshotKey,
+      const missed = allEvents.slice(resumeIndex + 1);
+      sendSse(response, "resume", {
+        events: missed,
+        git: gitMapForEvents(missed),
+        ...meta,
       });
+    } else if (clientSnapshot && clientSnapshot === snapshotKey) {
+      sendSse(response, "reset-same", meta);
     } else {
-      // One merged snapshot serves both messages: building the git map used to
-      // re-copy the whole event list a second time.
-      sendSse(response, "reset", { events, git: gitMapForEvents(events) });
+      const delivered = await streamSnapshot(response, events, meta);
+      if (!delivered) {
+        clients.delete(response);
+        return;
+      }
     }
     sendSse(response, "ready", {
-      eventCount: events.length,
-      snapshot: snapshotKey,
+      ...meta,
       connectedAt: new Date().toISOString(),
     });
-    request.on("close", () => clients.delete(response));
     return;
   }
 
@@ -665,54 +857,45 @@ async function handleRequest(request, response) {
     return;
   }
 
+  // Change the trace data directory, then restart so the new root is read.
+  if (
+    request.method === "POST" &&
+    requestUrl.pathname === "/api/config/data-root"
+  ) {
+    let body;
+    try {
+      body = await readJsonBody(request);
+    } catch (error) {
+      sendJson(response, 400, { error: error.message });
+      return;
+    }
+    let result;
+    try {
+      result = writeTraceDirectory({
+        envFile: runtimeConfig.paths.envFile,
+        defaultRoot: resolveAstroHome(runtimeConfig.environment),
+        value: body?.path,
+      });
+    } catch (error) {
+      sendJson(response, 500, {
+        error: `写入配置失败：${error.message}`,
+      });
+      return;
+    }
+    if (!result.ok) {
+      sendJson(response, 400, { error: result.error });
+      return;
+    }
+    restartInPlace(response, { dataRoot: result.dataRoot });
+    return;
+  }
+
   // Restart the dashboard in place: spawn a successor that re-binds the SAME
   // port (takeover mode), respond, then hand the port over by exiting. Open
   // SSE clients and the browser tab reconnect to the successor automatically,
   // so the running port is preserved instead of drifting to a new one.
-  if (
-    request.method === "POST" &&
-    requestUrl.pathname === "/api/restart"
-  ) {
-    let child;
-    try {
-      child = spawn(process.execPath, [serverFile], {
-        detached: true,
-        stdio: "ignore",
-        env: {
-          ...process.env,
-          ASTRO_PORT: String(boundPort),
-          ASTRO_TAKEOVER: "1",
-          ASTRO_OPEN_BROWSER: "0",
-          ASTRO_RESTART_COUNT: String(restartCount + 1),
-          ASTRO_RESTARTED_AT: new Date().toISOString(),
-        },
-      });
-      child.on("error", () => {});
-      child.unref();
-    } catch {
-      sendJson(response, 500, {
-        error: "Failed to start the restart process.",
-      });
-      return;
-    }
-    sendJson(response, 202, {
-      status: "restarting",
-      pid: child.pid,
-      previousPid: process.pid,
-      url: dashboardUrl,
-      startedAt: new Date().toISOString(),
-    });
-    // Flush the response, then release the port so the successor can take it.
-    setTimeout(() => {
-      console.log(
-        `[restart] successor pid ${child.pid} spawned; handing off port ${boundPort}`,
-      );
-      shutdown();
-      // Safety: SSE clients may reconnect during the hand-off and keep the
-      // server from closing. The successor owns the port now, so force-exit
-      // the outgoing process if it has not released in time.
-      setTimeout(() => process.exit(0), 3_000).unref();
-    }, 120);
+  if (request.method === "POST" && requestUrl.pathname === "/api/restart") {
+    restartInPlace(response);
     return;
   }
 

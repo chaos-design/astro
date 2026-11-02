@@ -232,11 +232,38 @@ use Node.js ES modules or CommonJS according to their existing file extension.
 - Live runs are exempt from the window (the `liveKeys` argument); a resumed
   session's `start` is older than the range by definition.
 - "Load earlier" **doubles** the window (`nextRunHistoryVisibleHours`) instead of
-  advancing one day at a time, and disappears when `canLoadMoreRunHistory` is
-  false. Switching agent or changing the default range resets the width to the
-  preference.
+  advancing one day at a time, and disappears when the control can no longer
+  grow. The service ships only the requested window, so widening past what is
+  loaded re-subscribes with a larger `hours` and replaces the event list;
+  `historyTruncated` keeps the control available even though the older sessions
+  are not in memory. Switching agent or changing the default range resets the
+  width to the preference.
 - The empty state names the configured range, so a short window never reads as
   "no history at all".
+
+## Snapshot Streaming
+
+- `GET /api/stream` accepts `hours` (capped at a month). The first snapshot
+  contains only that window plus the full history of sessions that are still
+  active/waiting within the live threshold — a running row must never lose the
+  events that made it a row. `ready` reports `eventCount`, `totalEventCount`,
+  `hours`, `truncated` and `snapshot`; the client uses `truncated` to keep
+  "load earlier" available and to request a wider window.
+- A snapshot is **streamed**, never one `JSON.stringify(events)`:
+  `reset` carries the metadata (and an empty list), the events follow as
+  ordinary `trace` frames in batches of 400, then `ready`. A single frame of a
+  95k-event / 456 MB history blocked the event loop for minutes, which made
+  live events, `/api/health` and every other SSE client wait behind it — the
+  console looked frozen while an agent was running. Keep the batch boundary;
+  the client buffers the frames and commits once at `ready`.
+- The snapshot key includes the window (`<historyKey>@<hours>:<count>`), so the
+  same history at 3h and 6h is never mistaken for the same snapshot. Widening
+  the window clears the cursor and the key before re-subscribing.
+- `POST /api/config/data-root` changes the service's trace root. The file
+  rewriting lives only in `server/runtime-settings.mjs` (it preserves every
+  other `.env` line and rejects missing/relative paths), then the service
+  restarts so the new root is read. The service card exposes it as
+  "data directory → change" and health reports the resulting `dataRoot`.
 
 ## Live View
 

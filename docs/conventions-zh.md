@@ -63,6 +63,13 @@
   `/icons/...` 这类根路径：GitHub Pages 把页面挂在 `/astro/`，根路径会逃出项目
   前缀并 404（智能体下拉的品牌图标踩过）。`scripts/verify-console-build.mjs` 在
   CI 里复查构建产物没有根路径资源，并确认产物只有控制台、没有混入文档站。
+- 事件流快照按 `hours` 窗口下发，并拆成 `reset`（元数据）+ 分批 `trace` + `ready`，
+  不得恢复成一次 `JSON.stringify` 全量事件：单帧几百 MB 会阻塞事件循环，实时事件、
+  健康检查和其它 SSE 客户端都排在它后面。窗口外的更早历史由 `truncated` 驱动
+  `LOAD EARLIER` 扩大窗口重新订阅；扩大时清游标与快照键。
+- 数据目录设置只经 `server/runtime-settings.mjs` 改写 `.env` 的 `ASTRO_TRACE_DIR`
+  （保留其它行、拒绝不存在的相对路径），`POST /api/config/data-root` 成功后重启
+  服务；不要在组件里拼接或直接写配置文件。
 - 平台相关的映射放到 `src/config/atom-platforms.ts` 或对应适配器，领域工具函数
   保持平台无关。
 - 界面动作优先使用 Lucide 图标；品牌图标（如 GitHub）以内联 SVG 组件提供，不额外

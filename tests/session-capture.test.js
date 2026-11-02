@@ -70,14 +70,18 @@ async function startServer(t, environment) {
   return `http://127.0.0.1:${port}`;
 }
 
-async function readHandshake(url, { onReady, traceCount = 0 } = {}) {
+async function readHandshake(url, { onReady, query = "", traceCount = 0 } = {}) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 5000);
   const messages = [];
   try {
-    const response = await fetch(`${url}/api/stream`, { signal: controller.signal });
+    const response = await fetch(
+      `${url}/api/stream${query ? `?${query}` : ""}`,
+      { signal: controller.signal },
+    );
     const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
     let text = "";
+    let readySeen = false;
     while (true) {
       const { value, done } = await reader.read();
       if (done) break;
@@ -90,12 +94,18 @@ async function readHandshake(url, { onReady, traceCount = 0 } = {}) {
         const name = lines.find((line) => line.startsWith("event: "))?.slice(7);
         const data = lines.find((line) => line.startsWith("data: "))?.slice(6);
         if (!name || !data) continue;
-        messages.push({ name, data: JSON.parse(data) });
+        messages.push({ name, data: JSON.parse(data), live: readySeen });
         if (name === "ready") {
+          readySeen = true;
           await onReady?.();
           if (!traceCount) return messages;
         }
-        if (traceCount && messages.filter((message) => message.name === "trace").length === traceCount) {
+        if (
+          traceCount &&
+          messages.filter(
+            (message) => message.name === "trace" && message.live,
+          ).length === traceCount
+        ) {
           return messages;
         }
       }
@@ -105,6 +115,15 @@ async function readHandshake(url, { onReady, traceCount = 0 } = {}) {
     clearTimeout(timeout);
     controller.abort();
   }
+}
+
+/** A chunked snapshot is a reset frame plus one `trace` frame per event. */
+function streamEvents(messages) {
+  return messages.flatMap((message) => {
+    if (message.name === "reset") return message.data.events;
+    if (message.name === "trace") return [message.data];
+    return [];
+  });
 }
 
 test("records repeated identical questions and answers after Stop in every hook client", async (t) => {
@@ -172,7 +191,9 @@ test("streams every followup prompt and answer on the same open connection", asy
       }
     },
   });
-  const events = messages.filter((message) => message.name === "trace").map((message) => message.data);
+  const events = messages
+    .filter((message) => message.name === "trace" && message.live)
+    .map((message) => message.data);
   assert.deepEqual(events.map((event) => event.eventName), names);
   assert.equal(new Set(events.map((event) => event.id)).size, names.length);
 });
@@ -187,8 +208,16 @@ test("sends a complete snapshot on first connection and after a missed followup 
   );
   const url = await startServer(t, environment);
   const first = await readHandshake(url);
-  assert.deepEqual(first.map((message) => message.name), ["reset", "ready"]);
-  assert.deepEqual(first[0].data.events.map((event) => event.id).sort(), firstTurn.map((event) => event.id).sort());
+  assert.deepEqual(
+    first.map((message) => message.name),
+    ["reset", "trace", "trace", "ready"],
+  );
+  assert.equal(first[0].data.streaming, true);
+  assert.equal(first[0].data.events.length, 0);
+  assert.deepEqual(
+    streamEvents(first).map((event) => event.id).sort(),
+    firstTurn.map((event) => event.id).sort(),
+  );
 
   const nextTurn = ["UserPromptSubmit", "Stop"].map((eventName) =>
     recorder.appendTraceEvent({
@@ -201,12 +230,52 @@ test("sends a complete snapshot on first connection and after a missed followup 
     assert.equal((await response.json()).eventCount, 4);
   });
   const second = await readHandshake(url);
-  assert.deepEqual(second.map((message) => message.name), ["reset", "ready"]);
-  assert.equal(second[1].data.eventCount, 4);
+  assert.equal(second.at(-1).name, "ready");
+  assert.equal(second.at(-1).data.eventCount, 4);
   assert.deepEqual(
-    second[0].data.events.map((event) => event.id).sort(),
+    streamEvents(second).map((event) => event.id).sort(),
     [...firstTurn, ...nextTurn].map((event) => event.id).sort(),
   );
   const traceFile = recorder.resolveTraceFile(firstTurn[0], environment, { source: "trae" });
   assert.equal(readFileSync(traceFile, "utf8").trim().split("\n").length, 4);
+});
+
+test("streams only the requested hour window and reports truncation", async (t) => {
+  const environment = createEnvironment(t);
+  const oldEvent = recorder.appendTraceEvent(
+    { session_id: "old-session", hook_event_name: "Stop" },
+    environment,
+    {
+      source: "trae",
+      capturedAt: new Date(Date.now() - 48 * 3_600_000).toISOString(),
+    },
+  );
+  const freshEvent = recorder.appendTraceEvent(
+    {
+      session_id: "fresh-session",
+      hook_event_name: "UserPromptSubmit",
+      prompt: "live",
+    },
+    environment,
+    { source: "trae" },
+  );
+  const url = await startServer(t, environment);
+
+  const windowed = await readHandshake(url, { query: "hours=1" });
+  assert.equal(windowed[0].name, "reset");
+  assert.equal(windowed[0].data.hours, 1);
+  assert.equal(windowed[0].data.truncated, true);
+  assert.equal(windowed.at(-1).data.eventCount, 1);
+  assert.equal(windowed.at(-1).data.totalEventCount, 2);
+  assert.deepEqual(
+    streamEvents(windowed).map((event) => event.id),
+    [freshEvent.id],
+  );
+
+  const all = await readHandshake(url);
+  assert.equal(all[0].data.truncated, false);
+  assert.deepEqual(
+    streamEvents(all).map((event) => event.id).sort(),
+    [oldEvent.id, freshEvent.id].sort(),
+  );
 });

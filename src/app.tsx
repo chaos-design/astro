@@ -53,6 +53,7 @@ import {
 import type {
   ComponentProps,
   CSSProperties,
+  FormEvent,
   PointerEvent as ReactPointerEvent,
   ReactNode,
   RefObject,
@@ -134,6 +135,7 @@ import {
   isHistoryRangeId,
   isMaxSyncId,
   legacyStorageKeys,
+  maxStreamWindowHours,
   panelHeaderClass,
   panelHeaderCopyClass,
   retiredStorageKeys,
@@ -758,6 +760,7 @@ function usePageVisibility() {
 function ServiceStatus({
   connected,
   error,
+  onChangeDataRoot,
   onRestart,
   restarting,
   service,
@@ -765,6 +768,7 @@ function ServiceStatus({
 }: {
   connected: boolean;
   error: string;
+  onChangeDataRoot: (path: string) => Promise<boolean>;
   onRestart: () => void;
   restarting: boolean;
   service: ServiceHealth | null;
@@ -772,6 +776,21 @@ function ServiceStatus({
   syncPaused: boolean;
 }) {
   const [now, setNow] = useState(() => Date.now());
+  const [editingRoot, setEditingRoot] = useState(false);
+  const [rootDraft, setRootDraft] = useState("");
+  const [savingRoot, setSavingRoot] = useState(false);
+  const submitRoot = async (event: FormEvent) => {
+    event.preventDefault();
+    if (savingRoot) {
+      return;
+    }
+    setSavingRoot(true);
+    const saved = await onChangeDataRoot(rootDraft);
+    setSavingRoot(false);
+    if (saved) {
+      setEditingRoot(false);
+    }
+  };
   // The uptime reads as a clock, but a suspended tab has nothing to advance:
   // the value is recomputed from `fetchedAt` the moment the console resumes.
   const { suspended } = usePageVisibility();
@@ -946,13 +965,47 @@ function ServiceStatus({
             </div>
           </dl>
           <div className="service-card__path">
-            <span className="service-card__path-label">数据目录</span>
-            <code title={service?.dataRoot}>
-              {service?.dataRoot || "--"}
-            </code>
+            <div className="service-card__path-head">
+              <span className="service-card__path-label">数据目录</span>
+              {service ? (
+                <button
+                  type="button"
+                  className="service-card__path-edit"
+                  onClick={() => {
+                    setRootDraft(service.dataRoot || "");
+                    setEditingRoot((current) => !current);
+                  }}
+                >
+                  {editingRoot ? "取消" : "更改"}
+                </button>
+              ) : null}
+            </div>
+            {editingRoot ? (
+              <form className="service-card__root-form" onSubmit={submitRoot}>
+                <input
+                  aria-label="数据目录路径"
+                  className="service-card__root-input"
+                  onChange={(event) => setRootDraft(event.currentTarget.value)}
+                  placeholder="/Users/you/.astrox"
+                  spellCheck={false}
+                  value={rootDraft}
+                />
+                <Button
+                  className="service-card__root-save"
+                  disabled={savingRoot || restarting}
+                  size="sm"
+                  type="submit"
+                  variant="outline"
+                >
+                  {savingRoot || restarting ? "保存中…" : "保存并重启"}
+                </Button>
+              </form>
+            ) : (
+              <code title={service?.dataRoot}>{service?.dataRoot || "--"}</code>
+            )}
             <em>
               各采集客户端（录制器）写入的会话事件 JSONL 保存在这里；轨迹文件按客户端与
-              会话分目录存放，是控制台全部读数的来源。
+              会话分目录存放，是控制台全部读数的来源。更改后服务会重启并重新读取该目录。
             </em>
           </div>
         </section>
@@ -4020,6 +4073,14 @@ export default function App() {
     Record<string, { repo: string; branch: string } | null>
   >({});
   const [eventsLoaded, setEventsLoaded] = useState(false);
+  // The server only ships the requested time window, so an older run may
+  // exist outside it. `truncated` is what keeps "load earlier" actionable:
+  // the list itself no longer contains the sessions that would prove it.
+  const [historyTruncated, setHistoryTruncated] = useState(false);
+  // Every event the service holds, not just the ones inside the current
+  // window. The demo gate must not treat a narrow window as "no captured
+  // events" and replace a real history with the sample.
+  const [capturedEventCount, setCapturedEventCount] = useState(0);
   const [importedEvents, setImportedEvents] = useState<TraceEvent[]>([]);
   // Transient action feedback (import, clear, reload). Replaces the blocking
   // `window.alert` calls, which could not be styled, dismissed or ignored.
@@ -4181,6 +4242,10 @@ export default function App() {
   // number driving the list and the "load earlier" affordance; switching the
   // range or the agent resets it to the preference.
   const [runHistoryHours, setRunHistoryHours] = useState(historyRangeHours);
+  // Hours of the newest snapshot this page asked for. The stream reads it at
+  // subscribe time; "load earlier" grows it and re-subscribes, so the service
+  // only ever ships the range the list is about to render.
+  const streamWindowHoursRef = useRef(historyRangeHours);
   // Live filter: RUN HISTORY narrowed to the messages that are executing right
   // now, drawn from the agent's whole history (no time window). Off by
   // default — the filter is allowed to match nothing, so arming it on load
@@ -4323,8 +4388,20 @@ export default function App() {
 
   // Changing the default range must be visible immediately: the existing
   // window may have been widened by hand, so it snaps back to the new default.
+  // A larger default also needs data the current snapshot never asked for, so
+  // the stream re-subscribes for that window instead of silently showing a
+  // short list under a wide range label.
   useEffect(() => {
     setRunHistoryHours(historyRangeHours);
+    if (historyRangeHours > streamWindowHoursRef.current) {
+      streamWindowHoursRef.current = historyRangeHours;
+      resumeCursorRef.current = "";
+      snapshotKeyRef.current = "";
+      forceSnapshotRef.current = true;
+      reloadingRef.current = true;
+      setReloadingEvents(true);
+      setStreamEpoch((current) => current + 1);
+    }
   }, [historyRangeHours]);
 
   useEffect(() => {
@@ -4459,6 +4536,10 @@ export default function App() {
     // re-projection entirely.
     const knownSnapshot = forceSnapshot ? snapshotKeyRef.current : "";
     const streamParams = new URLSearchParams();
+    const windowHours = streamWindowHoursRef.current;
+    if (windowHours > 0) {
+      streamParams.set("hours", String(windowHours));
+    }
     if (resumeCursor) {
       streamParams.set("since", resumeCursor);
     } else if (knownSnapshot) {
@@ -4468,6 +4549,11 @@ export default function App() {
     const source = new EventSource(
       joinApi(apiBase, streamQuery ? `/api/stream?${streamQuery}` : "/api/stream"),
     );
+    // A chunked snapshot arrives as a reset frame followed by ordinary `trace`
+    // frames. Collecting it here and committing once at `ready` keeps the
+    // array copy linear; appending each batch to state would be quadratic on a
+    // large history.
+    let snapshotEvents: TraceEvent[] | null = null;
     // Ids seen so far: an O(1) set keeps per-event dedup linear in total
     // events instead of rescanning the accumulated array on every message.
     const seenIds = new Set<string>();
@@ -4496,14 +4582,53 @@ export default function App() {
     source.addEventListener("ready", (message: MessageEvent<string>) => {
       const payload = JSON.parse(message.data) as {
         eventCount?: number;
+        totalEventCount?: number;
         snapshot?: string;
+        hours?: number;
+        truncated?: boolean;
       };
       if (payload?.snapshot) {
         snapshotKeyRef.current = payload.snapshot;
       }
+      if (typeof payload?.truncated === "boolean") {
+        setHistoryTruncated(payload.truncated);
+      }
+      const capturedTotal = payload?.totalEventCount ?? payload?.eventCount;
+      if (typeof capturedTotal === "number") {
+        setCapturedEventCount(capturedTotal);
+      }
       everConnectedRef.current = true;
       setConnected(true);
       setEverConnected(true);
+      if (snapshotEvents) {
+        const events = snapshotEvents;
+        snapshotEvents = null;
+        // Live broadcasts can interleave with the chunks; restore the same
+        // chronological order the single-frame snapshot used to guarantee.
+        events.sort((left, right) => {
+          const delta =
+            (Date.parse(left.capturedAt || "") || 0) -
+            (Date.parse(right.capturedAt || "") || 0);
+          return delta || String(left.id).localeCompare(String(right.id));
+        });
+        resumeCursorRef.current = events.at(-1)?.id ?? resumeCursorRef.current;
+        const newest = events.at(-1)?.capturedAt;
+        if (newest) {
+          setLastEventAt(Date.parse(newest) || 0);
+        }
+        startTransition(() => {
+          setLiveEvents(events);
+          setEventsLoaded(true);
+          reloadingRef.current = false;
+          setReloadingEvents(false);
+        });
+      } else {
+        // `reset` / `reset-same` already marked the list ready; this covers a
+        // resumed connection whose first frame was only a cursor replay.
+        setEventsLoaded(true);
+        reloadingRef.current = false;
+        setReloadingEvents(false);
+      }
     });
     // New working directories arrive with their git presentation before the
     // events that reference them, so run rows can name the repo and branch.
@@ -4528,6 +4653,11 @@ export default function App() {
       }
       seenIds.add(event.id);
       resumeCursorRef.current = event.id;
+      if (snapshotEvents) {
+        // Part of the chunked snapshot: committed once at `ready`.
+        snapshotEvents.push(event);
+        return;
+      }
       pending.push(event);
       flushTimer ??= window.setTimeout(flush, 120);
     });
@@ -4569,10 +4699,19 @@ export default function App() {
     source.addEventListener("reset-same", (message: MessageEvent<string>) => {
       const payload = JSON.parse(message.data) as {
         eventCount?: number;
+        totalEventCount?: number;
         snapshot?: string;
+        truncated?: boolean;
       };
       if (payload?.snapshot) {
         snapshotKeyRef.current = payload.snapshot;
+      }
+      if (typeof payload?.truncated === "boolean") {
+        setHistoryTruncated(payload.truncated);
+      }
+      const capturedTotal = payload?.totalEventCount ?? payload?.eventCount;
+      if (typeof capturedTotal === "number") {
+        setCapturedEventCount(capturedTotal);
       }
       if (flushTimer !== null) {
         window.clearTimeout(flushTimer);
@@ -4588,7 +4727,33 @@ export default function App() {
       const payload = JSON.parse(message.data) as {
         events: TraceEvent[];
         git?: Record<string, { repo: string; branch: string }>;
+        streaming?: boolean;
+        truncated?: boolean;
+        hours?: number;
+        totalEventCount?: number;
       };
+      if (typeof payload?.truncated === "boolean") {
+        setHistoryTruncated(payload.truncated);
+      }
+      if (typeof payload?.totalEventCount === "number") {
+        setCapturedEventCount(payload.totalEventCount);
+      }
+      if (payload.streaming) {
+        // A chunked snapshot: the reset frame is metadata plus (normally) an
+        // empty list, and the events follow as `trace` frames. Keep whatever
+        // is on screen until `ready` commits the new list once.
+        if (flushTimer !== null) {
+          window.clearTimeout(flushTimer);
+          flushTimer = null;
+        }
+        pending = [];
+        snapshotEvents = payload.events.map(normalizeTraceEvent);
+        for (const event of snapshotEvents) {
+          seenIds.add(event.id);
+        }
+        setGitInfo(payload.git ?? {});
+        return;
+      }
       /*
        * A restart re-sends the whole history. When the snapshot describes the
        * events already on screen (the common case: nothing was recorded while
@@ -4695,7 +4860,7 @@ export default function App() {
   // load leaves the console on the truthful empty state rather than pinning a
   // stale or synthetic run.
   const demoGateOpen = isDemoGateOpen(
-    allEvents.length,
+    Math.max(allEvents.length, capturedEventCount),
     import.meta.env,
     demoOptIn,
   );
@@ -4879,9 +5044,13 @@ export default function App() {
     runHistoryHours,
   ]);
   // The Live filter reads the whole history, so there is no window to widen.
+  // `historyTruncated` comes from the service: the snapshot only contains the
+  // requested window, so an older session cannot prove that more exists.
   const canLoadMoreHistory =
     !(liveFilter && !isDemo) &&
-    canLoadMoreRunHistory(filteredSessions, now, runHistoryHours);
+    runHistoryHours < maxStreamWindowHours &&
+    (historyTruncated ||
+      canLoadMoreRunHistory(filteredSessions, now, runHistoryHours));
   // Recomputed only when the inputs change instead of on every parent render.
   const hasAdvancingRun = useMemo(
     () =>
@@ -5483,6 +5652,61 @@ export default function App() {
   // successor that re-binds the same port and then exits; this poll waits for
   // a different pid to answer before re-subscribing the event stream, so the
   // UI never keeps consuming the dying process's stream.
+  /**
+   * Wait for the successor to answer with a different pid, then re-subscribe
+   * the stream from a fresh snapshot. Shared by the restart button and the
+   * data-directory setting: both replace the process, and the console must
+   * neither keep consuming the dying stream nor reuse its cursor.
+   */
+  const waitForServiceRestart = async (previousPid: number) => {
+    const deadline = Date.now() + 20_000;
+    for (;;) {
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      try {
+        const health = await fetch(joinApi(apiBase, "/api/health"), {
+          cache: "no-store",
+        });
+        const payload = (await health.json()) as Omit<
+          ServiceHealth,
+          "fetchedAt"
+        >;
+        if (payload?.pid && payload.pid !== previousPid) {
+          setService({ ...payload, fetchedAt: Date.now() });
+          setServiceError("");
+          break;
+        }
+      } catch {
+        // The outgoing process is still holding the port; keep waiting.
+      }
+      if (Date.now() > deadline) {
+        throw new Error("重启超时，请检查本地服务进程");
+      }
+    }
+    // New process, new stream: drop the old connection explicitly instead
+    // of trusting EventSource to reconnect at the right moment.
+    //
+    // A restart is not "the same history, newer tail": the new process reads
+    // the trace files from scratch, so a file added, removed or rewritten
+    // while the service was down only shows up if the console asks for the
+    // full snapshot. Reusing the cursor turned a restart into an empty
+    // `resume` replay, which left a stale list on screen that looked freshly
+    // loaded. The window snaps back to the configured range so the list
+    // describes the current filter (agent + range + Live) rather than a
+    // hand-widened window that the new process may not even contain.
+    resumeCursorRef.current = "";
+    forceSnapshotRef.current = true;
+    setReloadingEvents(true);
+    setRunHistoryHours(historyRangeHours);
+    streamWindowHoursRef.current = historyRangeHours;
+    setHistoryTruncated(false);
+    setStreamEpoch((current) => current + 1);
+    // A restart is also the documented way out of a spent sync budget: the
+    // new process serves a fresh snapshot, so the clock starts over here
+    // instead of leaving the console stopped after a successful restart.
+    setSyncStartedAt(Date.now());
+    setSyncStopped(false);
+  };
+
   const restartDashboard = async () => {
     if (isDemo) {
       return;
@@ -5503,56 +5727,55 @@ export default function App() {
       if (!response.ok) {
         throw new Error(`Server returned ${response.status}`);
       }
-      const deadline = Date.now() + 20_000;
-      for (;;) {
-        await new Promise((resolve) => setTimeout(resolve, 400));
-        try {
-          const health = await fetch(joinApi(apiBase, "/api/health"), {
-            cache: "no-store",
-          });
-          const payload = (await health.json()) as Omit<
-            ServiceHealth,
-            "fetchedAt"
-          >;
-          if (payload?.pid && payload.pid !== previousPid) {
-            setService({ ...payload, fetchedAt: Date.now() });
-            setServiceError("");
-            break;
-          }
-        } catch {
-          // The outgoing process is still holding the port; keep waiting.
-        }
-        if (Date.now() > deadline) {
-          throw new Error("重启超时，请检查本地服务进程");
-        }
-      }
-      // New process, new stream: drop the old connection explicitly instead
-      // of trusting EventSource to reconnect at the right moment.
-      //
-      // A restart is not "the same history, newer tail": the new process reads
-      // the trace files from scratch, so a file added, removed or rewritten
-      // while the service was down only shows up if the console asks for the
-      // full snapshot. Reusing the cursor turned a restart into an empty
-      // `resume` replay, which left a stale list on screen that looked freshly
-      // loaded. The window snaps back to the configured range so the list
-      // describes the current filter (agent + range + Live) rather than a
-      // hand-widened window that the new process may not even contain.
-      resumeCursorRef.current = "";
-      forceSnapshotRef.current = true;
-      setReloadingEvents(true);
-      setRunHistoryHours(historyRangeHours);
-      setStreamEpoch((current) => current + 1);
-      // A restart is also the documented way out of a spent sync budget: the
-      // new process serves a fresh snapshot, so the clock starts over here
-      // instead of leaving the console stopped after a successful restart.
-      setSyncStartedAt(Date.now());
-      setSyncStopped(false);
+      await waitForServiceRestart(previousPid);
     } catch (error) {
       pushNotice(
         "error",
         "重启本地服务失败",
         error instanceof Error ? error.message : String(error),
       );
+    } finally {
+      setRestarting(false);
+    }
+  };
+
+  /**
+   * Point the service at another trace root. The server persists it to the
+   * plugin `.env` (so hooks that start the service later use it too) and
+   * restarts; the page then reloads from the new directory.
+   */
+  const changeDataRoot = async (path: string): Promise<boolean> => {
+    if (isDemo) {
+      return false;
+    }
+    const previousPid = service?.pid ?? 0;
+    setRestarting(true);
+    try {
+      const response = await fetch(joinApi(apiBase, "/api/config/data-root"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path }),
+      });
+      const payload = (await response.json().catch(() => ({}))) as {
+        error?: string;
+      };
+      if (!response.ok) {
+        throw new Error(payload?.error || `Server returned ${response.status}`);
+      }
+      pushNotice(
+        "success",
+        "数据目录已更新",
+        "服务正在重启，完成后会重新读取该目录。",
+      );
+      await waitForServiceRestart(previousPid);
+      return true;
+    } catch (error) {
+      pushNotice(
+        "error",
+        "更新数据目录失败",
+        error instanceof Error ? error.message : String(error),
+      );
+      return false;
     } finally {
       setRestarting(false);
     }
@@ -5737,14 +5960,34 @@ export default function App() {
     promptRunsBySession,
   ]);
 
-  // Widening the window is pure filtering over already-loaded sessions, so it
-  // is synchronous: the previous implementation faked a 320ms "loading" state
-  // on top of instantaneous work, which made the list feel slower than it is.
+  // Widening the window is usually pure filtering over already-loaded
+  // sessions. When the service only shipped the previous window (or says it
+  // truncated older history), widening it also re-subscribes for a snapshot
+  // that reaches further back; the stream commits it in one transition.
   const handleLoadMoreRunHistory = useCallback(() => {
-    setRunHistoryHours((current) =>
-      nextRunHistoryVisibleHours(filteredSessions, now, current),
+    const next = Math.min(
+      historyTruncated && runHistoryHours < maxStreamWindowHours
+        ? runHistoryHours * 2
+        : nextRunHistoryVisibleHours(filteredSessions, now, runHistoryHours),
+      maxStreamWindowHours,
     );
-  }, [filteredSessions, now]);
+    if (next <= runHistoryHours) {
+      return;
+    }
+    setRunHistoryHours(next);
+    if (next > streamWindowHoursRef.current) {
+      // The next snapshot is a superset of what is on screen: drop the cursor
+      // (a tail replay would only add new events) and the snapshot key (the
+      // server must not answer `reset-same` for a narrower window).
+      streamWindowHoursRef.current = next;
+      resumeCursorRef.current = "";
+      snapshotKeyRef.current = "";
+      forceSnapshotRef.current = true;
+      reloadingRef.current = true;
+      setReloadingEvents(true);
+      setStreamEpoch((current) => current + 1);
+    }
+  }, [filteredSessions, historyTruncated, now, runHistoryHours]);
 
   /**
    * The console is deliberately between snapshots: a restart is waiting for
@@ -5817,7 +6060,11 @@ export default function App() {
   ];
 
   return (
-    <main className="studio-shell">
+    <main
+      className="studio-shell"
+      data-history-truncated={historyTruncated ? "true" : "false"}
+      data-history-window={runHistoryHours}
+    >
       <header className="studio-header">
         <div className="studio-brand">
           <span className="brand-mark">
@@ -5969,6 +6216,7 @@ export default function App() {
               error={serviceError}
               restarting={restarting}
               syncPaused={syncStopped}
+              onChangeDataRoot={changeDataRoot}
               onRestart={() => {
                 void restartDashboard();
               }}
