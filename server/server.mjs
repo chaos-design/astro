@@ -25,10 +25,16 @@ const publicDir = join(projectDir, "dist");
 // Reported by /api/health so the UI can compare the running service with the
 // bundle it was built from. The installed runtime ships `plugin.json` instead
 // of a package manifest (scripts/install-plugins.mjs copies only the runtime
-// directories), so both manifests are read before reporting "unknown" — the
-// console otherwise had to explain a version the service could have known.
+// directories), and the WorkBuddy plugin cache keeps that manifest one level
+// down in `.codebuddy-plugin/`. All three spellings are read before reporting
+// "unknown" — the console otherwise had to explain a version the service
+// could have known.
 const appBuild = (() => {
-  for (const manifest of ["package.json", "plugin.json"]) {
+  for (const manifest of [
+    "package.json",
+    "plugin.json",
+    join(".codebuddy-plugin", "plugin.json"),
+  ]) {
     try {
       const { version } = JSON.parse(
         readFileSync(join(projectDir, manifest), "utf8"),

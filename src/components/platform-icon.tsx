@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import { assetUrl } from "../lib/asset-url";
 import type { PlatformId } from "../types/trace";
 import {
   ClaudeIcon,
@@ -71,7 +72,7 @@ export function PlatformIcon({
         className={iconClassName}
         decoding="async"
         loading="lazy"
-        src="/icons/deepseek.svg"
+        src={assetUrl("icons/deepseek.svg")}
         {...props}
       />
     );
@@ -87,7 +88,7 @@ export function PlatformIcon({
       >
         <image
           height="560"
-          href="/icons/workbuddy-logo.png"
+          href={assetUrl("icons/workbuddy-logo.png")}
           preserveAspectRatio="xMinYMid slice"
           width="1620"
         />

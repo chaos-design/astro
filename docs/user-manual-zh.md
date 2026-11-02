@@ -243,6 +243,17 @@ node ~/.astrox/plugins/astro/server/server.mjs
    ASTRO_CORS_ORIGINS="https://<你的部署域名>" pnpm start
    ```
 
+   Hook 启动的已安装运行时没有终端可传变量，把允许列表写进
+   `~/.astrox/plugins/astro/config.yaml` 的 `server.corsOrigins`（或同一目录
+   `.env` 的 `ASTRO_CORS_ORIGINS`），再在「设置 → 关于」里重启本地服务；配置随
+   服务一起加载，之后每次启动都生效：
+
+   ```yaml
+   server:
+     corsOrigins:
+       - https://chaos-design.github.io
+   ```
+
    多个来源用逗号分隔；`/api/health` 返回的 `corsOrigins` 字段可确认当前配置。
    Chrome 还要求服务应答 Private Network 预检（`Access-Control-Allow-Private-
    Network`），服务在允许列表命中时自动返回。
@@ -846,7 +857,7 @@ await trace.stop({ message: "Done" });
 | `ASTRO_TRACE_DIR` | 未设置 | 可选的相对或绝对共享 Trace 目录 |
 | `ASTRO_PROJECT_DIR` | 当前工作目录 | 相对 `ASTRO_TRACE_DIR` 的解析基准 |
 | `ASTRO_MAX_BODY_BYTES` | `5242880` | POST 请求体最大字节数 |
-| `ASTRO_CORS_ORIGINS` | 未设置（关闭跨域） | 允许读取本机 API 的部署页面来源（逗号分隔，`*` 显式全放行）；供「部署预览页面」使用 |
+| `ASTRO_CORS_ORIGINS` | 未设置（关闭跨域） | 允许读取本机 API 的部署页面来源（逗号分隔，`*` 显式全放行）；供「部署预览页面」使用，等价配置项为 `server.corsOrigins` |
 | `ASTRO_DEMO_EVENTS` | 未设置 | `GET /api/demo-events` 读取的示例数据集路径 |
 | `ASTRO_AUTO_OPEN` | `1` | 安装或 Agent 启动时自动启动并打开控制台；设为 `0` 关闭 |
 | `DSH_HOME` | `~/.dsh` | DeepSeek Harness profile 与插件目录 |

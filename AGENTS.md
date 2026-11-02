@@ -114,7 +114,15 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   preflight), and the generic `OPTIONS /api/*` preflight answers allow
   methods/headers. The headers attach to every `/api/*` response including the
   SSE stream — EventSource cannot send custom headers, so response headers are
-  all a deployed page gets.
+  all a deployed page gets. The installed runtime is normally started by a
+  recorder hook with no shell to carry the variable, so the same list also
+  lives in `config.yaml` as `server.corsOrigins` (`plugin/runtime-config.cjs`),
+  which survives every later launch.
+- Files under `public/` are addressed through `assetUrl()` in
+  `src/lib/asset-url.ts`, never with an origin-root path such as `/icons/…`:
+  GitHub Pages mounts this console at `/astro/`, so a root path leaves the
+  project prefix and 404s (it broke the agent dropdown's brand marks).
+  `scripts/verify-console-build.mjs` fails the build on origin-root asset URLs.
 - A deployed page that never connects announces it once (「无法连接本地服务」
   with the base and the `ASTRO_CORS_ORIGINS` line to add). Do not turn that
   into per-retry noise, and do not silently fall back to demo data — a
@@ -129,7 +137,10 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   `workflow_dispatch` from *any* branch — the most recent dispatch publishes
   that branch's build over the single shared Pages site, so an in-flight
   feature branch gets a live preview URL without merging; the docs and
-  console still must not fight over the one Pages site.
+  console still must not fight over the one Pages site. The Pages artifact is
+  *only* the console: `scripts/verify-console-build.mjs` asserts the relative
+  asset shape, the shipped icons/sample dataset, and the absence of docs-site
+  markers before the artifact is uploaded.
 
 ## Run Timeout Invariant
 

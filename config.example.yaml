@@ -6,6 +6,14 @@ server:
   host: 127.0.0.1
   port: 5678
   maxBodyBytes: 5242880
+  # Origins (scheme + host + port) that a console page deployed to Vercel /
+  # GitHub Pages may read this local API from. Empty = same-origin only, the
+  # historical behavior. Example:
+  #   corsOrigins:
+  #     - https://chaos-design.github.io
+  # `ASTRO_CORS_ORIGINS` (comma-separated) overrides this list; "*" opts every
+  # origin in and only when spelled out.
+  corsOrigins: []
 
 runtime:
   autoOpen: true

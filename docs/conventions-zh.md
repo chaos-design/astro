@@ -56,8 +56,13 @@
   无捕获事件时渲染——生产页默认绝不隐式回退示例。
 - 部署页面的服务地址只在 `src/lib/api-base.ts` 解析（`?api=` → `ASTROX_API_BASE` →
   同源/本机默认），请求一律走 `joinApi`；跨域边界只在服务端
-  `ASTRO_CORS_ORIGINS`（默认关闭，显式允许列表，含 Private Network 预检应答）。
-  不要在组件里硬编码 `/api/...`，也不要让服务默认放开 `*`。
+  `ASTRO_CORS_ORIGINS`（默认关闭，显式允许列表，含 Private Network 预检应答），
+  已安装运行时的长期配置写在 `config.yaml` 的 `server.corsOrigins`。不要在组件里
+  硬编码 `/api/...`，也不要让服务默认放开 `*`。
+- `public/` 下的资源一律经 `src/lib/asset-url.ts` 的 `assetUrl()` 取地址，不得写
+  `/icons/...` 这类根路径：GitHub Pages 把页面挂在 `/astro/`，根路径会逃出项目
+  前缀并 404（智能体下拉的品牌图标踩过）。`scripts/verify-console-build.mjs` 在
+  CI 里复查构建产物没有根路径资源，并确认产物只有控制台、没有混入文档站。
 - 平台相关的映射放到 `src/config/atom-platforms.ts` 或对应适配器，领域工具函数
   保持平台无关。
 - 界面动作优先使用 Lucide 图标；品牌图标（如 GitHub）以内联 SVG 组件提供，不额外

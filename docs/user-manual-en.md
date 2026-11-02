@@ -265,6 +265,18 @@ Two things must hold before the page can connect:
    ASTRO_CORS_ORIGINS="https://<your-deployment-domain>" pnpm start
    ```
 
+   An installed runtime started by a hook has no terminal to carry that
+   variable, so put the allowlist in `~/.astrox/plugins/astro/config.yaml`
+   under `server.corsOrigins` (or `ASTRO_CORS_ORIGINS` in the `.env` next to
+   it), then restart the local service from Settings → About. The list loads
+   with the service and survives every later launch:
+
+   ```yaml
+   server:
+     corsOrigins:
+       - https://chaos-design.github.io
+   ```
+
    Separate multiple origins with commas; `/api/health` reports the active
    list as `corsOrigins`. Chrome additionally requires the service to answer
    the Private-Network preflight (`Access-Control-Allow-Private-Network`),
@@ -966,7 +978,7 @@ The existing environment names remain supported as overrides:
 | `ASTRO_TRACE_DIR` | unset | Optional relative or absolute shared trace directory |
 | `ASTRO_PROJECT_DIR` | current working directory | Base for a relative `ASTRO_TRACE_DIR` |
 | `ASTRO_MAX_BODY_BYTES` | `5242880` | Maximum POST body size |
-| `ASTRO_CORS_ORIGINS` | unset (cross-origin off) | Deployed-page origins allowed to read the local API (comma-separated; `*` only when explicit); see "Deploy a preview page" |
+| `ASTRO_CORS_ORIGINS` | unset (cross-origin off) | Deployed-page origins allowed to read the local API (comma-separated; `*` only when explicit); see "Deploy a preview page"; `server.corsOrigins` is the config-file equivalent |
 | `ASTRO_DEMO_EVENTS` | unset | Dataset path read by `GET /api/demo-events` |
 | `ASTRO_AUTO_OPEN` | `1` | Start and open the dashboard during installation or Agent startup; set `0` to disable |
 | `DSH_HOME` | `~/.dsh` | DeepSeek Harness profiles and plugins |

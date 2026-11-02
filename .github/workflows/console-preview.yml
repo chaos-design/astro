@@ -67,6 +67,7 @@ jobs:
           echo "Published output:"
           ls dist
           ls dist/data
+          node scripts/verify-console-build.mjs
 
       - name: Upload console build
         uses: actions/upload-artifact@v4
