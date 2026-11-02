@@ -204,7 +204,7 @@ JSONL, the service pushes it, RUN HISTORY and the topology update in real time.
 | Path | How |
 | --- | --- |
 | Vercel | `vercel.json` builds the console and the docs site and merges them: docs at the root, the console preview at `/console/`. Import the repository — no extra settings. |
-| GitHub Actions | `.github/workflows/console-preview.yml` builds the console on push/PR and uploads a `console-dist` artifact; run "Deploy console preview to GitHub Pages" manually to publish it. |
+| GitHub Actions | `.github/workflows/console-preview.yml` builds the console on push/PR and uploads a `console-dist` artifact; run "Deploy console preview to GitHub Pages" manually to publish the current branch's build (no main merge required). |
 | Any static host | `pnpm build` produces `dist/` with relative asset URLs; serve it as-is. |
 
 A deployed page targets `http://127.0.0.1:5678` by default; override with

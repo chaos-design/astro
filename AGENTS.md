@@ -125,9 +125,11 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   `scripts/merge-deploy-output.mjs` (docs at the root, console at
   `/console/`); the console build uses a relative Vite `base` so it also works
   under GitHub Pages project paths. `.github/workflows/console-preview.yml`
-  uploads `console-dist` and deploys Pages only on `workflow_dispatch` — a
-  repository has one Pages site, so the docs and console must not fight over
-  it.
+  uploads `console-dist` on every build, and the Pages deploy job runs on
+  `workflow_dispatch` from *any* branch — the most recent dispatch publishes
+  that branch's build over the single shared Pages site, so an in-flight
+  feature branch gets a live preview URL without merging; the docs and
+  console still must not fight over the one Pages site.
 
 ## Run Timeout Invariant
 

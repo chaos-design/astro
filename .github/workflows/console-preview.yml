@@ -11,11 +11,15 @@
 # Triggers:
 #   - push to `main`             -> build + verify + upload
 #   - pull request to `main`     -> build + verify + upload
-#   - workflow_dispatch          -> build + verify + upload + deploy to Pages
+#   - workflow_dispatch (any branch) -> build + verify + upload + deploy to
+#     Pages from that branch's tip
 #
 # The Pages job is manual on purpose: a repository has a single Pages site,
 # and this repo also documents a docs-site Pages path — deploy one or the
-# other, not both.
+# other, not both. It now publishes the *dispatched branch's* build (no
+# main-only gate), so an in-flight feature branch gets a live preview URL
+# without merging; dispatching from a different branch simply republishes
+# that branch over the same site.
 
 name: Build console preview
 
@@ -74,7 +78,10 @@ jobs:
   deploy-pages:
     name: Deploy console preview to GitHub Pages
     needs: build
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    # Any branch's manual dispatch publishes that branch's build. The Pages
+    # site is a single rolling target: the most recent dispatch wins, so a
+    # feature branch gets a live preview URL without merging to main.
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       pages: write
