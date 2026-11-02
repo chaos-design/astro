@@ -169,24 +169,44 @@ function normalizeSource(value: unknown, fallback = "generic") {
   return source.replace(/[^a-z0-9._-]+/g, "-") || fallback;
 }
 
+const eventOrderSet = new Set(eventOrder);
+
+/**
+ * Lookup tables for {@link canonicalizeEventName}. Canonicalization ran a
+ * `find` over `eventOrder` — two `toLowerCase` calls and a regex replace per
+ * candidate, per event — which cost more than the rest of normalization
+ * combined on a large snapshot. Both spellings ("PreToolUse", "pre_tool_use")
+ * are resolved from one map built once at module load.
+ */
+const canonicalEventNames = new Map<string, string>();
+for (const eventName of eventOrder) {
+  canonicalEventNames.set(eventName.toLowerCase(), eventName);
+  canonicalEventNames.set(
+    eventName.replace(/([a-z])([A-Z])/g, "$1_$2").toLowerCase(),
+    eventName,
+  );
+}
+const eventNameAliases = new Map<string, string>([
+  ["askuserquestion", "PermissionRequest"],
+  ["requestuserinput", "PermissionRequest"],
+  ["userquestion", "PermissionRequest"],
+]);
+
 function canonicalizeEventName(value: unknown) {
   const name = String(value || "Unknown");
-  const compactName = name.toLocaleLowerCase().replace(/[^a-z0-9]+/g, "");
-  if (
-    ["askuserquestion", "requestuserinput", "userquestion"].includes(
-      compactName,
-    )
-  ) {
-    return "PermissionRequest";
+  // The recorder already reports canonical names; that case must not allocate
+  // (it is the common one on every load and every live batch).
+  if (eventOrderSet.has(name)) {
+    return name;
   }
-  const match = eventOrder.find(
-    (eventName) =>
-      eventName.toLowerCase() === name.toLowerCase() ||
-      eventName
-        .replace(/([a-z])([A-Z])/g, "$1_$2")
-        .toLowerCase() === name.toLowerCase(),
+  const lower = name.toLowerCase();
+  const canonical = canonicalEventNames.get(lower);
+  if (canonical) {
+    return canonical;
+  }
+  return (
+    eventNameAliases.get(lower.replace(/[^a-z0-9]+/g, "")) ?? name
   );
-  return match || name;
 }
 
 export function createTraceLocator(event: TraceEvent) {
@@ -336,9 +356,25 @@ export function parseImportedTrace(text: string): TraceEvent[] {
     );
 }
 
+/**
+ * Parsed `capturedAt` cache. Every session build sorts its events (two
+ * comparisons per step) and every duration is derived from the same
+ * timestamps, so the same string used to be parsed hundreds of times per
+ * session — the dominant cost of projecting a long history on load. Keyed by
+ * event identity, so spreading an event into a new object simply re-parses it;
+ * the persisted event itself is never touched.
+ */
+const eventTimestamps = new WeakMap<TraceEvent, number>();
+
 export function getEventTimestamp(event: TraceEvent) {
+  const cached = eventTimestamps.get(event);
+  if (cached !== undefined) {
+    return cached;
+  }
   const parsed = Date.parse(event.capturedAt);
-  return Number.isFinite(parsed) ? parsed : 0;
+  const timestamp = Number.isFinite(parsed) ? parsed : 0;
+  eventTimestamps.set(event, timestamp);
+  return timestamp;
 }
 
 export function formatDuration(milliseconds: number) {
@@ -673,10 +709,9 @@ export function buildSessionPromptRuns(
   const runs = promptIndexes.map((startIndex, index): TracePromptRun => {
     const endIndex = promptIndexes[index + 1] ?? session.events.length;
     const promptWindow = session.events.slice(startIndex, endIndex);
-    const terminalIndex = promptWindow.findIndex((event) =>
-      ["Stop", "StopFailure", "SessionEnd", "Interrupt"].includes(
-        event.eventName,
-      ),
+    const terminalIndex = promptWindow.findIndex(
+      (event) =>
+        promptTerminalEvents.has(event.eventName),
     );
     const events =
       terminalIndex >= 0
@@ -921,16 +956,28 @@ export function createSessionProjection(): (
   };
 }
 
+/** Progress events that revive a waiting/failed run. Module-level so the hot
+ * loop never allocates a fresh array per event. */
+const executionProgressEvents = new Set([
+  "AgentMessage",
+  "ElicitationResult",
+  "PostToolUse",
+  "PreToolUse",
+  "Reasoning",
+  "SubagentStart",
+  "SubagentStop",
+]);
+
+/** Events that close a Prompt run. */
+const promptTerminalEvents = new Set([
+  "Stop",
+  "StopFailure",
+  "SessionEnd",
+  "Interrupt",
+]);
+
 function isExecutionProgressEvent(event: TraceEvent) {
-  return [
-    "AgentMessage",
-    "ElicitationResult",
-    "PostToolUse",
-    "PreToolUse",
-    "Reasoning",
-    "SubagentStart",
-    "SubagentStop",
-  ].includes(event.eventName);
+  return executionProgressEvents.has(event.eventName);
 }
 
 function getToolStatus(postEvent: TraceEvent | null) {

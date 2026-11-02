@@ -37,7 +37,9 @@ import {
   X,
 } from "lucide-react";
 import {
+  lazy,
   memo,
+  Suspense,
   useCallback,
   useDeferredValue,
   useEffect,
@@ -56,8 +58,12 @@ import type {
   RefObject,
 } from "react";
 import { JsonViewer } from "./components/json-viewer";
-import { HistorySearch } from "./components/history-search";
 import { AgentSelect } from "./components/agent-select";
+import {
+  ConsoleNotices,
+  type Notice,
+  type NoticeTone,
+} from "./components/console-notices";
 import { PromptContent } from "./components/prompt-content";
 import { RepositoryLink } from "./components/repo-link";
 import { RuntimeCanvas } from "./components/runtime-canvas";
@@ -258,6 +264,22 @@ import type {
 } from "@/types/trace";
 
 type InspectorTab = "input" | "output" | "raw";
+
+/**
+ * The history search dialog is ⌘K-only. Its chunk carries the calendar, the
+ * filter menus and the index UI — none of which the first frame needs — so it
+ * is loaded after the console paints instead of blocking it. The preload below
+ * makes the first open immediate in practice.
+ */
+const LazyHistorySearch = lazy(() =>
+  import("./components/history-search").then((module) => ({
+    default: module.HistorySearch,
+  })),
+);
+
+function preloadHistorySearch() {
+  return import("./components/history-search");
+}
 
 /**
  * Shared empty collections. Reusing one instance keeps memoized children from
@@ -2135,7 +2157,12 @@ const RunHistory = memo(function RunHistory({
             </strong>
           ) : (
             <strong>
-              {sessions.length} {sessions.length === 1 ? "run" : "runs"}
+              {/* Before the first snapshot there is no count to report; "0
+                  runs" would state a fact that is only true for half a second
+                  and reads as "nothing was captured". */}
+              {initialLoading
+                ? "loading…"
+                : `${sessions.length} ${sessions.length === 1 ? "run" : "runs"}`}
             </strong>
           )}
         </div>
@@ -2220,9 +2247,29 @@ const RunHistory = memo(function RunHistory({
           sessions={sessions}
         />
         {initialLoading ? (
-          <div className="run-history__loading" aria-busy="true">
-            <Loader2 className="size-4 animate-spin" />
-            <span>LOADING RUNS…</span>
+          // A skeleton carries the shape of the list that is about to land, so
+          // the panel does not read as "0 runs" for the half second (or, on a
+          // large history, the few seconds) the snapshot takes to arrive.
+          <div className="run-history__skeleton" role="status" aria-busy="true">
+            <span className="sr-only">正在载入运行记录…</span>
+            {[0, 1, 2, 3].map((index) => (
+              <span
+                aria-hidden="true"
+                className="run-history__skeleton-row"
+                key={index}
+                style={
+                  {
+                    "--skeleton-index": index,
+                  } as CSSProperties
+                }
+              >
+                <i className="run-history__skeleton-dot" />
+                <span className="run-history__skeleton-lines">
+                  <i />
+                  <i />
+                </span>
+              </span>
+            ))}
           </div>
         ) : sessions.length === 0 ? (
           <output className="run-history__empty">
@@ -3877,7 +3924,31 @@ export default function App() {
   >({});
   const [eventsLoaded, setEventsLoaded] = useState(false);
   const [importedEvents, setImportedEvents] = useState<TraceEvent[]>([]);
+  // Transient action feedback (import, clear, reload). Replaces the blocking
+  // `window.alert` calls, which could not be styled, dismissed or ignored.
+  const [notices, setNotices] = useState<Notice[]>([]);
+  const noticeSeqRef = useRef(0);
+  const dismissNotice = useCallback((id: number) => {
+    setNotices((current) => current.filter((notice) => notice.id !== id));
+  }, []);
+  const pushNotice = useCallback(
+    (tone: NoticeTone, message: string, detail?: string) => {
+      noticeSeqRef.current += 1;
+      const notice = { detail, id: noticeSeqRef.current, message, tone };
+      // Three at a time is enough to explain what happened without stacking a
+      // wall of toasts over the console.
+      setNotices((current) => [...current.slice(-2), notice]);
+    },
+    [],
+  );
   const [connected, setConnected] = useState(false);
+  /**
+   * Whether the stream has ever reported `ready`. Until it has, "not
+   * connected" means "still connecting" — the very first load used to paint
+   * the header as `offline`, which reads as a failure while the snapshot is
+   * still on its way.
+   */
+  const [everConnected, setEverConnected] = useState(false);
   // Capture time of the newest event the stream has delivered. Drives the
   // "are we already up to date?" indicator in RUN HISTORY.
   const [lastEventAt, setLastEventAt] = useState(0);
@@ -3890,6 +3961,9 @@ export default function App() {
   // events never arrived over a broken stream. The flag only spans the
   // re-subscribe: the snapshot handlers clear it once fresh data landed.
   const [reloadingEvents, setReloadingEvents] = useState(false);
+  // Mirrors `reloadingEvents` for the stream effect, which must not
+  // re-subscribe just because a reload started.
+  const reloadingRef = useRef(false);
   // Set together with the reload above and consumed once by the stream
   // effect: a trace message landing between the click and the re-subscribe
   // would otherwise re-fill the resume cursor and silently downgrade the
@@ -3940,6 +4014,9 @@ export default function App() {
   );
   const [guideOpen, setGuideOpen] = useState<boolean>(appDefaults.guideOpen);
   const [historySearchOpen, setHistorySearchOpen] = useState(false);
+  // The dialog chunk is requested on idle; the component is mounted the first
+  // time the dialog is opened, so its state survives close/reopen afterwards.
+  const [historySearchMounted, setHistorySearchMounted] = useState(false);
   const [menuOpen, setMenuOpen] = useState<boolean>(appDefaults.menuOpen);
   // Mobile-only: the header nav collapses into a disclosure below the same
   // breakpoint the stylesheet uses, so this state is meaningless on desktop.
@@ -4227,6 +4304,36 @@ export default function App() {
     markAppReady();
   }, []);
 
+  // Search is the only feature behind a chunk. Pulling it during the first
+  // idle window keeps the first paint free of it without ever making ⌘K wait
+  // on a request; a browser without idle callbacks falls back to a timeout.
+  useEffect(() => {
+    let cancelled = false;
+    const preload = () => {
+      if (!cancelled) {
+        void preloadHistorySearch();
+      }
+    };
+    if (typeof window.requestIdleCallback === "function") {
+      const handle = window.requestIdleCallback(preload, { timeout: 4000 });
+      return () => {
+        cancelled = true;
+        window.cancelIdleCallback(handle);
+      };
+    }
+    const timer = window.setTimeout(preload, 1500);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (historySearchOpen) {
+      setHistorySearchMounted(true);
+    }
+  }, [historySearchOpen]);
+
   useEffect(() => {
     // A suspended tab drops the stream instead of buffering it: the server
     // stops writing to a page nobody is reading. The reconnect on resume
@@ -4298,6 +4405,7 @@ export default function App() {
         snapshotKeyRef.current = payload.snapshot;
       }
       setConnected(true);
+      setEverConnected(true);
     });
     // New working directories arrive with their git presentation before the
     // events that reference them, so run rows can name the repo and branch.
@@ -4353,6 +4461,7 @@ export default function App() {
         if (fresh.length) {
           setLiveEvents((current) => [...current, ...fresh]);
         }
+        reloadingRef.current = false;
         setReloadingEvents(false);
       });
     });
@@ -4424,6 +4533,7 @@ export default function App() {
         }
         setGitInfo(payload.git ?? {});
         setEventsLoaded(true);
+        reloadingRef.current = false;
         setReloadingEvents(false);
       });
     });
@@ -4433,6 +4543,13 @@ export default function App() {
       // forever; EventSource keeps retrying and the next snapshot lands
       // whenever the server answers.
       setReloadingEvents(false);
+      // Only an explicit reload deserves a notice: the stream's own retry
+      // loop recovers on its own, and announcing every retry would turn a
+      // restarted service into a wall of toasts.
+      if (reloadingRef.current) {
+        reloadingRef.current = false;
+        pushNotice("error", "重新加载失败，事件流会自动重试");
+      }
     };
     source.onopen = () => setConnected(true);
     return () => {
@@ -4484,6 +4601,26 @@ export default function App() {
     const timer = window.setTimeout(() => setSyncStopped(true), delay);
     return () => window.clearTimeout(timer);
   }, [isDemo, maxSyncHours, syncStartedAt]);
+
+  // The budget expiring is a silent switch-over in the header; say it out loud
+  // once, together with the way back. `syncStopped` is also set on resume and
+  // restart, so the announcement is guarded by its own flag.
+  const announcedSyncPauseRef = useRef(false);
+  useEffect(() => {
+    if (!syncStopped) {
+      announcedSyncPauseRef.current = false;
+      return;
+    }
+    if (announcedSyncPauseRef.current) {
+      return;
+    }
+    announcedSyncPauseRef.current = true;
+    pushNotice(
+      "info",
+      `已达最长同步时长（${getMaxSyncLabel(maxSync)}），已暂停接收新事件`,
+      "点击顶部的 paused 按钮或重启服务可以继续同步",
+    );
+  }, [maxSync, pushNotice, syncStopped]);
 
   // Session objects are rebuilt incrementally: a streaming batch only touches
   // the sessions it actually extended, so every other RUN HISTORY row keeps
@@ -5092,11 +5229,26 @@ export default function App() {
     }
     try {
       const imported = parseImportedTrace(await file.text());
+      if (!imported.length) {
+        // A well-formed file with no events used to import "nothing" silently,
+        // which looks identical to a broken import.
+        pushNotice("info", `${file.name} 中没有可导入的事件`);
+        return;
+      }
       setImportedEvents((current) =>
         [...new Map([...current, ...imported].map((event) => [event.id, event])).values()],
       );
+      pushNotice(
+        "success",
+        `已导入 ${imported.length} 条事件`,
+        `${file.name} · 与本地历史合并显示`,
+      );
     } catch (error) {
-      window.alert(`Import failed: ${error instanceof Error ? error.message : String(error)}`);
+      pushNotice(
+        "error",
+        "导入失败：文件不是有效的 ASTRO trace",
+        error instanceof Error ? error.message : String(error),
+      );
     }
   };
 
@@ -5129,8 +5281,13 @@ export default function App() {
       }
       // The SSE reset is ordered with new traces; the HTTP response is not.
       setImportedEvents((current) => current.filter((event) => !importedIds.has(event.id)));
+      pushNotice("success", "已清空本地事件");
     } catch (error) {
-      window.alert(`Clear failed: ${error instanceof Error ? error.message : String(error)}`);
+      pushNotice(
+        "error",
+        "清空失败",
+        error instanceof Error ? error.message : String(error),
+      );
     }
   };
 
@@ -5243,8 +5400,10 @@ export default function App() {
       setSyncStartedAt(Date.now());
       setSyncStopped(false);
     } catch (error) {
-      window.alert(
-        `Restart failed: ${error instanceof Error ? error.message : String(error)}`,
+      pushNotice(
+        "error",
+        "重启本地服务失败",
+        error instanceof Error ? error.message : String(error),
       );
     } finally {
       setRestarting(false);
@@ -5456,6 +5615,7 @@ export default function App() {
     if (reloadingEvents) {
       return;
     }
+    reloadingRef.current = true;
     setReloadingEvents(true);
     resumeCursorRef.current = "";
     forceSnapshotRef.current = true;
@@ -5556,7 +5716,11 @@ export default function App() {
           <div>
             <span className="eyebrow">ASTRO EVENT STREAM</span>
             <strong>
-              {activeSession ? `Agent · ${activeSession.source} · ${activeEvents.length} events` : "No captured events"}
+              {activeSession
+                ? `Agent · ${activeSession.source} · ${activeEvents.length} events`
+                : !eventsLoaded && !isDemo
+                  ? "正在载入捕获事件…"
+                  : "No captured events"}
             </strong>
           </div>
         </div>
@@ -5619,14 +5783,20 @@ export default function App() {
             <span
               className={cn(
                 "run-status",
-                connected ? "status-complete" : "status-offline",
+                connected
+                  ? "status-complete"
+                  : everConnected || isDemo
+                    ? "status-offline"
+                    : "status-waiting",
               )}
               title={
                 connected
                   ? `事件流已连接 · 最新事件 ${
                       lastEventAt ? formatRunDate(lastEventAt) : "尚无"
                     }`
-                  : "事件流已断开，列表可能不是最新的"
+                  : everConnected
+                    ? "事件流已断开，列表可能不是最新的"
+                    : "正在连接事件流…"
               }
             >
               <i />
@@ -5636,7 +5806,9 @@ export default function App() {
                   : "accepted"
                 : isDemo
                   ? "demo"
-                  : "offline"}
+                  : everConnected
+                    ? "offline"
+                    : "connecting"}
             </span>
           )}
           {/* Not rendered — not just hidden — below the header breakpoint: a
@@ -5939,14 +6111,32 @@ export default function App() {
         platformId={platformId}
         onLocate={focusAtom}
       />
-      <HistorySearch
-        defaultRange={historyRange}
-        open={historySearchOpen}
-        onOpenChange={setHistorySearchOpen}
-        onSelect={selectHistorySearchResult}
-        promptRunsBySession={promptRunsBySession}
-        sessions={sessions}
-      />
+      {historySearchMounted ? (
+        <Suspense
+          fallback={
+            <div
+              aria-live="polite"
+              className="history-search history-search--pending"
+              role="status"
+            >
+              <span>
+                <Loader2 aria-hidden="true" className="size-4 animate-spin" />
+                正在打开搜索…
+              </span>
+            </div>
+          }
+        >
+          <LazyHistorySearch
+            defaultRange={historyRange}
+            open={historySearchOpen}
+            onOpenChange={setHistorySearchOpen}
+            onSelect={selectHistorySearchResult}
+            promptRunsBySession={promptRunsBySession}
+            sessions={sessions}
+          />
+        </Suspense>
+      ) : null}
+      <ConsoleNotices notices={notices} onDismiss={dismissNotice} />
     </main>
   );
 }

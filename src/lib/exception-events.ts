@@ -62,13 +62,13 @@ const failureEventDefinitions: Readonly<Record<string, FailureDefinition>> = {
 };
 
 /** Explicit statuses that mean "this run was stopped", not "it failed". */
-const terminationStatuses: readonly string[] = [
+const terminationStatuses = new Set([
   "aborted",
   "cancelled",
   "canceled",
   "interrupted",
   "terminated",
-];
+]);
 
 /**
  * Native names or payload reasons only end a run when the event can actually
@@ -77,25 +77,25 @@ const terminationStatuses: readonly string[] = [
  * producers that name their own event (`session.cancelled`) are still
  * recognized, because that name is the only evidence they can supply.
  */
-const toolLifecycleEvents: readonly string[] = [
+const toolLifecycleEvents = new Set([
   "PreToolUse",
   "PostToolUse",
   "PostToolUseFailure",
-];
+]);
 
-const terminationTokens: readonly string[] = [
-  "abort",
-  "cancel",
-  "interrupt",
-  "terminate",
-];
+/** One pass over a name/reason instead of four `includes` calls. */
+const terminationPattern = /abort|cancel|interrupt|terminate/i;
+
+const abortStatuses = new Set(["aborted", "cancelled", "canceled"]);
 
 function readStatus(event: TraceEvent) {
-  return String(event.status || event.payload?.status || "").toLowerCase();
+  const raw = event.status || event.payload?.status;
+  return typeof raw === "string" ? raw.toLowerCase() : "";
 }
 
 function readReason(event: TraceEvent) {
-  return String(event.payload?.reason || "").toLowerCase();
+  const raw = event.payload?.reason;
+  return typeof raw === "string" ? raw.toLowerCase() : "";
 }
 
 /** `tool_response` evidence that a tool call did not succeed. */
@@ -124,19 +124,18 @@ export function isTerminationEvent(event: TraceEvent) {
   if (event.eventName === "Interrupt" || event.eventName === "SessionEnd") {
     return true;
   }
-  if (terminationStatuses.includes(readStatus(event))) {
+  if (terminationStatuses.has(readStatus(event))) {
     return true;
   }
   if (
-    toolLifecycleEvents.includes(event.eventName) ||
+    toolLifecycleEvents.has(event.eventName) ||
     event.payload?.tool_response !== undefined
   ) {
     return false;
   }
-  const nativeName = event.nativeEventName.toLowerCase();
-  const reason = readReason(event);
-  return terminationTokens.some(
-    (token) => nativeName.includes(token) || reason.includes(token),
+  return (
+    terminationPattern.test(event.nativeEventName) ||
+    terminationPattern.test(readReason(event))
   );
 }
 
@@ -153,10 +152,7 @@ function getTerminationReason(event: TraceEvent): RunTerminalReason {
   if (event.eventName === "SessionEnd") {
     return "session-end";
   }
-  const status = readStatus(event);
-  return ["aborted", "cancelled", "canceled"].includes(status)
-    ? "aborted"
-    : "interrupted";
+  return abortStatuses.has(readStatus(event)) ? "aborted" : "interrupted";
 }
 
 /**

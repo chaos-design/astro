@@ -229,8 +229,11 @@ migration or `--astro-home=/path/to/.astrox` to change the data root.
 - `ASTRO EVENT STREAM`: current source and event count.
 - Search History: opens global search; `Cmd/Ctrl + K` is the keyboard shortcut.
 - Connection state:
-  - `accepted`: SSE connected;
-  - `offline`: API or SSE unavailable;
+  - `connecting`: the first stream connection is still being established; the
+    snapshot has not arrived yet, so this is not a failure;
+  - `accepted`: SSE connected but no event received yet;
+  - `synced HH:MM:SS`: connected, followed by the capture time of the newest event;
+  - `offline`: a connection was established and then dropped;
   - `demo`: development/test mode is using embedded events because the real count is zero.
 - The icons on the right read, left to right: settings (gear), theme, GitHub.
   GitHub is always the right-most one, because it is the only header control
@@ -268,6 +271,12 @@ Global History search covers loaded browser data. Server-side `/api/search`
 remains a separate API.
 
 ### 5.3 Run History
+
+On the first load (and on every refresh) the panel paints four placeholder rows
+and the header reads `loading…` instead of reporting `0 runs` and then jumping
+to the real count. On a large history the skeleton stays until the snapshot has
+been processed; during that time the list, the canvas and the log no longer
+flash an empty state first.
 
 The list is narrowed to the selected agent and then windowed — the agent is the
 outer filter, and the intersection of the two is what the list shows. The window
@@ -307,16 +316,16 @@ The status marker in the header describes the event stream itself:
 
 - `synced HH:MM:SS` — connected, followed by the capture time of the newest
   event; `accepted` means connected with no events yet;
-- `restarting` / `reloading` — a local service restart or a full snapshot reload
-  is in progress. Neither is a dropped connection: the marker returns to
-  `synced` on its own;
+- `connecting` — the first connection is still being established. Before the snapshot arrives the header no longer claims `offline`: "not connected yet" and "cannot connect" are different states;
+- `restarting` / `reloading` — a local service restart or a full snapshot reload is in progress. Neither is a dropped connection: the marker returns to `synced` on its own;
 - `offline` — the connection dropped and the list may be stale; the browser
   keeps retrying;
 - `paused` — the **max sync time** has been reached (eight hours by default,
   Settings → Run history), so the console has deliberately stopped accepting
   new events to keep a long-open page from accumulating memory. Clicking the
   marker reloads the current snapshot and restarts the clock; restarting the
-  local service does the same.
+  local service does the same. The pause is announced once with a notice that
+  names the cause and the way back.
 
 **After a local service restart** the console drops its resume cursor, pulls the
 full snapshot again and applies the current filter to it — agent, default range
@@ -598,6 +607,11 @@ Accepted formats:
 
 Imported events remain in browser memory and are not written to server JSONL. Duplicate IDs already imported into the page are ignored.
 
+The outcome is reported by a notice in the bottom-left corner: a success notice
+names the event count and the file, a failure notice names the reason (for
+example, the file is not valid JSON). A well-formed file that carries no events
+is reported too, instead of silently importing nothing.
+
 ### Export Run
 
 The selected prompt run is downloaded as:
@@ -618,7 +632,9 @@ After confirmation, the action:
 - sends `DELETE /api/events` outside demo mode;
 - truncates the server JSONL and resets live memory.
 
-The action is destructive. Export any required sessions first.
+The action is destructive. Export any required sessions first. Success and
+failure are both reported by a notice, so a failed clear no longer ends in a
+native browser alert.
 
 ## 10. Deep Links
 

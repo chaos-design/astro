@@ -215,7 +215,37 @@
   reader just scrolled to is the one they cannot read. Render a direction's
   control only while that edge is out of view.
 
-## 9. Restart and snapshot reload
+## 9. First paint, rendering, and feedback
+
+- **Build formatters once.** `Intl.DateTimeFormat` / `Intl.NumberFormat` belong at
+  module scope; never call `toLocaleString(...)` inside a render function or a
+  row component. Constructing the formatter costs more than formatting with it,
+  and a result list rebuilds one per row on every keystroke. Timestamp parsing
+  follows the same rule: go through `getEventTimestamp` (cached per event
+  object) instead of `Date.parse(event.capturedAt)`.
+- **No allocation on the hot path.** Per-event predicates — `getTraceRunState`,
+  `isWaitingTraceEvent`, `getExceptionOutcome`, `isUserQuestionToolEvent` — only
+  look at module-level `Set`s. A `[...].includes(...)` inside those loops runs
+  twice per event during a load and turns into a long main-thread task.
+- **Never report a count that is not known yet.** Until the snapshot lands RUN
+  HISTORY shows skeleton rows and a `loading…` subtitle, and the header marker
+  reads `connecting`. `0 runs` and `offline` are statements about confirmed
+  facts; neither is true while the snapshot is still on its way.
+- **On-demand UI gets its own chunk.** A panel that only appears after an explicit
+  action (history search) stays out of the first-paint bundle: `lazy()` plus an
+  idle preload (`requestIdleCallback`, falling back to a timer). On a machine
+  where the preload finished, opening it behaves exactly like a static import.
+  The Suspense fallback reuses the real panel's class names so opening never
+  flashes an unstyled frame.
+- **Feedback goes through the console notices** (`ConsoleNotices`), not
+  `window.alert`: a native alert blocks the page, cannot be styled and cannot be
+  ignored. Success, failure and an empty result each need their own wording, and
+  a failure must name the cause.
+- **Performance claims are measured.** Compare before and after on the same data
+  fixture, machine and sampling script, and put the numbers (script time, long
+  tasks, chunk size) in the pull request instead of "faster now".
+
+## 10. Restart and snapshot reload
 
 - A local service restart means **the new process re-read the history from
   disk**; it is not "the same history plus a few events". The console must drop
@@ -239,7 +269,7 @@
   allows; a filter that matches nothing keeps an empty list rather than falling
   back to another agent.
 
-## 10. Keeping docs in sync
+## 11. Keeping docs in sync
 
 - Docs are published in pairs: `<name>-zh.md` / `<name>-en.md`; the docs site
   pairs the language switch by suffix.
@@ -252,7 +282,7 @@
 - Quote interface copy as it appears on screen; do not invent translations for
   key names.
 
-## 11. Verification checklist
+## 12. Verification checklist
 
 Before pushing:
 
@@ -276,7 +306,7 @@ ASTRO_HOME=/tmp/astro-check ASTRO_PORT=4401 node server/server.mjs
   outside it, and one executing message. Then `POST /api/events` to confirm a new
   prompt is located automatically.
 
-## 12. Common mistakes
+## 13. Common mistakes
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
@@ -288,5 +318,9 @@ ASTRO_HOME=/tmp/astro-check ASTRO_PORT=4401 node server/server.mjs
 | A new message has to be hunted for | Live filter never diffed the live set | see the auto-locate rule in §6 |
 | The armed Live filter shows an empty list | possibly nothing is running; possibly the window was not dropped | check `0 LIVE` first, then that the rows come from `selectLiveRunHistory` (no window) |
 | The setting changed but the list did not | window width was not reset with the range | keep `runHistoryHours` in step with `historyRangeHours` |
-| The list is stale after a service restart | the resume cursor was kept, so the server answered an empty `resume` | clear the cursor and force the snapshot, §9 |
-| A restart flashes `offline` first | "waiting for the next snapshot" was treated as a dropped connection | use `restarting` / `reloading`, §9 |
+| The list flashes `0 runs` before the real count | first paint treated "not loaded" as "confirmed zero" | skeleton rows + `loading…`, see §9 |
+| A refresh briefly reports `offline` | the first connection used the disconnected wording | separate `connecting` from `offline` (`everConnected`) |
+| Every keystroke in search stutters | `toLocaleString(...)` rebuilt a formatter per row | module-level `Intl.DateTimeFormat`, see §9 |
+| A large history produces a long first-load task | per-event predicates allocated temporary arrays | module-level `Set`s plus the `getEventTimestamp` cache |
+| The list is stale after a service restart | the resume cursor was kept, so the server answered an empty `resume` | clear the cursor and force the snapshot, §10 |
+| A restart flashes `offline` first | "waiting for the next snapshot" was treated as a dropped connection | use `restarting` / `reloading`, §10 |
