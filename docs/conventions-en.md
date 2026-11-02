@@ -203,8 +203,13 @@
   called out, and `build: "unknown"` renders as "not reported" plus the reason
   (started from source, or an older install without a manifest) instead of a
   bare `unknown` the reader has to interpret.
-- Every icon button needs an `aria-label` and a tooltip that describes the
-  action, not the glyph.
+- Every icon button keeps an `aria-label`, but a **tooltip is opt-in**: add one
+  only when the glyph cannot carry the action by itself (the chevrons that say
+  *which* panel collapses, the action menu, the topology/trajectory switches)
+  or when it adds state or consequence (the `N LIVE` rules, the reload control
+  while it is loading). A card that only translates a recognisable mark —
+  GitHub, gear, sun/moon, copy — is noise: it trails the pointer across the
+  header icon row and covers the panel underneath.
 - In-list scroll controls belong in the panel header, never as a floating
   overlay: a floating chevron sits on the first visible atom, so the row the
   reader just scrolled to is the one they cannot read. Render a direction's

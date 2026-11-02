@@ -23,11 +23,6 @@ import {
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import {
   appDefaults,
   appVersion,
   defaultHistoryRange,
@@ -259,22 +254,19 @@ export function SettingsDialog({
 
   return (
     <Dialog>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <DialogTrigger asChild>
-            <Button
-              type="button"
-              variant="console"
-              size="console-icon"
-              className="settings-trigger"
-              aria-label="打开设置"
-            >
-              <Settings />
-            </Button>
-          </DialogTrigger>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">设置</TooltipContent>
-      </Tooltip>
+      {/* A gear is unambiguous, so the trigger keeps only its `aria-label`
+          instead of a hover card that repeats "设置". */}
+      <DialogTrigger asChild>
+        <Button
+          type="button"
+          variant="console"
+          size="console-icon"
+          className="settings-trigger"
+          aria-label="打开设置"
+        >
+          <Settings />
+        </Button>
+      </DialogTrigger>
       <DialogContent className="settings-dialog">
         <DialogHeader className="settings-dialog__header">
           <div className="settings-dialog__title">

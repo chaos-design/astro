@@ -1,4 +1,3 @@
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { appRepository } from "@/config/app-config";
 
 /**
@@ -24,22 +23,22 @@ function GitHubMark({ className }: { className?: string }) {
  * Header link to the source repository. It is an anchor, not a button: the
  * browser keeps middle-click, "copy link" and the status-bar preview, and the
  * console never intercepts the navigation.
+ *
+ * No hover card: the mark is the GitHub silhouette and the anchor's target is
+ * the whole message, so a tooltip repeating "view the source on GitHub" only
+ * adds a panel that follows the pointer across the header icon row. The action
+ * stays announced through `aria-label` for assistive tech.
  */
 export function RepositoryLink() {
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <a
-          className="repo-link"
-          href={appRepository.url}
-          target="_blank"
-          rel="noreferrer noopener"
-          aria-label={appRepository.title}
-        >
-          <GitHubMark />
-        </a>
-      </TooltipTrigger>
-      <TooltipContent side="bottom">{appRepository.title}</TooltipContent>
-    </Tooltip>
+    <a
+      className="repo-link"
+      href={appRepository.url}
+      target="_blank"
+      rel="noreferrer noopener"
+      aria-label={appRepository.title}
+    >
+      <GitHubMark />
+    </a>
   );
 }

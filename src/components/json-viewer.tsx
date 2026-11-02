@@ -1,11 +1,6 @@
 import { Check, Copy } from "lucide-react";
 import React, { Fragment, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 
 function parseJsonString(value: unknown): unknown {
   if (typeof value !== "string") {
@@ -133,23 +128,18 @@ export function JsonViewer({
 
   return (
     <div className="json-viewer">
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            type="button"
-            variant="console"
-            size="icon-xs"
-            className="json-viewer__copy"
-            onClick={copy}
-            aria-label={copied ? "JSON 已复制" : "复制 JSON"}
-          >
-            {copied ? <Check /> : <Copy />}
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="left">
-          {copied ? "已复制" : "复制 JSON"}
-        </TooltipContent>
-      </Tooltip>
+      {/* The glyph already is the action, and the button switches to a check
+          once the copy lands, so the hover card was repeating the aria-label. */}
+      <Button
+        type="button"
+        variant="console"
+        size="icon-xs"
+        className="json-viewer__copy"
+        onClick={copy}
+        aria-label={copied ? "JSON 已复制" : "复制 JSON"}
+      >
+        {copied ? <Check /> : <Copy />}
+      </Button>
       <pre>
         {normalizedValue === undefined ? (
           <span className="json-viewer__empty">{emptyLabel}</span>
