@@ -187,8 +187,11 @@ pnpm install-plugins -- \
 
 默认情况下，安装器会立即启动并打开控制台。重载或重启客户端后，
 `SessionStart` 会先记录当前 Agent 会话，再检查
-`<data-root>/dashboard-<port>.pid`；仅在控制台未运行时后台启动服务，并打开已选中
-当前会话的实际地址。若 `5678` 已占用，浏览器会打开自动选择的后续端口。
+`<data-root>/dashboard-<port>.pid`；控制台未运行时后台启动服务。是否自动打开
+页面取决于「预览页是否曾被打开过」——服务端在控制台页面接入事件流的瞬间把该
+状态记录到数据根目录的 `preview-state.json`：从未打开过则打开已选中当前会话的
+实际地址（服务已在运行时由 Hook 补开一次），打开过之后不再重复弹出标签页。
+若 `5678` 已占用，浏览器会打开自动选择的后续端口。
 
 需要手动管理进程时，关闭自动启动并任选一种方式运行：
 
@@ -881,7 +884,8 @@ curl http://127.0.0.1:5678/api/events
 `dist/index.html` 与 `server/server.mjs` 是否存在。所有客户端的安装包均位于
 `~/.astrox/plugins/astro`。
 若 PID 文件对应的进程已不存在，删除 `<data-root>/dashboard-<port>.pid` 后重新提交
-消息。设置
+消息。预览页打开过一次后不再自动弹出；想让它再次自动打开，删除数据根目录下的
+`preview-state.json`。设置
 `ASTRO_AUTO_OPEN=0` 会按预期关闭自动启动。
 
 ### 已运行 Agent 但没有事件

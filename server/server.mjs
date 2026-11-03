@@ -515,6 +515,13 @@ async function handleRequest(request, response) {
     });
     response.write("retry: 1000\n\n");
     clients.add(response);
+    // A console page attaching to the event stream is the one truthful signal
+    // that the preview page was actually opened — a local tab connects here
+    // right after booting, and a deployed console (which never fetches
+    // index.html from this service) connects through CORS. The hook flow
+    // reads this persisted state to decide whether the browser still owes
+    // the user a visit, so a service that runs headless stops re-opening it.
+    recorder.markPreviewOpened(resolveAstroHome(environment));
     // Keep the snapshot and later events on one ordered connection, including reconnects.
     const events = store.getEvents();
     // A client that resumes after a suspension names the last event it has, so

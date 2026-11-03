@@ -664,6 +664,63 @@ function readDashboardPid(pidFile) {
   }
 }
 
+/**
+ * Whether the dashboard preview page was ever opened, persisted next to the
+ * pid files. The service writes this when a console page attaches to the
+ * event stream — the one signal that a real page (a local tab or a deployed
+ * console, which never fetches index.html from this service) is actually
+ * viewing the data. The hook flow only reads it to decide whether a browser
+ * open is still owed to the user. A missing or unreadable file reads as
+ * "never opened", which errs toward showing the page one more time.
+ */
+function resolvePreviewStateFile(astroHome) {
+  return path.join(astroHome, "preview-state.json");
+}
+
+function readPreviewState(astroHome) {
+  try {
+    const value = JSON.parse(
+      fs.readFileSync(resolvePreviewStateFile(astroHome), "utf8"),
+    );
+    return {
+      opened: Boolean(value && (value.openedAt || value.lastOpenedAt)),
+      openedAt:
+        typeof value?.openedAt === "string" ? value.openedAt : null,
+      lastOpenedAt:
+        typeof value?.lastOpenedAt === "string" ? value.lastOpenedAt : null,
+      openCount:
+        Number.isInteger(value?.openCount) && value.openCount >= 0
+          ? value.openCount
+          : 0,
+    };
+  } catch {
+    return { opened: false, openedAt: null, lastOpenedAt: null, openCount: 0 };
+  }
+}
+
+function markPreviewOpened(astroHome) {
+  const openedAt = new Date().toISOString();
+  try {
+    const previous = readPreviewState(astroHome);
+    const state = {
+      openedAt: previous.openedAt || openedAt,
+      lastOpenedAt: openedAt,
+      openCount: previous.openCount + 1,
+    };
+    fs.mkdirSync(astroHome, { recursive: true });
+    const file = resolvePreviewStateFile(astroHome);
+    // Write-and-rename so a concurrent reader never sees a half-written file.
+    const temporary = `${file}.${process.pid}.tmp`;
+    fs.writeFileSync(temporary, `${JSON.stringify(state)}\n`, "utf8");
+    fs.renameSync(temporary, file);
+    return { ...state, persisted: true };
+  } catch {
+    // A read-only ASTRO home only costs one more browser open later; the
+    // state file is an optimization of the flow, never a hard requirement.
+    return { openedAt, lastOpenedAt: openedAt, openCount: 0, persisted: false };
+  }
+}
+
 function createDashboardUrl(baseUrl, event = {}) {
   try {
     const url = new URL(baseUrl);
@@ -710,11 +767,36 @@ function resolveDashboardFile() {
   return fs.existsSync(file) && fs.existsSync(indexFile) ? file : "";
 }
 
+/**
+ * Post-message automation for an installed plugin: after the Agent receives a
+ * message (SessionStart / UserPromptSubmit), make sure the observability
+ * service is up, then make sure the user has actually seen the preview page
+ * at least once. The steps run in a fixed order and each feeds the next:
+ *
+ *   1. Trigger gate — only SessionStart / UserPromptSubmit, and only while
+ *      ASTRO_AUTO_OPEN is enabled.
+ *   2. Runtime resolution — the dashboard needs server.mjs + dist/index.html;
+ *      a console-only install has nothing to launch.
+ *   3. Service detection — the pid file first, then a port probe (a stale or
+ *      foreign pid does not prove the port is free). Yields "running" with a
+ *      base URL, "occupied" (a foreign process owns the port), or "stopped".
+ *   4. Stopped → start the service. The child opens the browser only when
+ *      the preview page was never opened (first run after an install);
+ *      afterwards a restarted service stays headless and the notice carries
+ *      the news instead.
+ *   5. Running → check the preview state: never opened → open it now (this
+ *      also self-heals a start whose automatic browser open never produced a
+ *      page); opened before → stay quiet so every prompt does not spawn tabs.
+ *
+ * Every branch reports through `onNotice` (legacy alias: onAlreadyRunning).
+ * Failures degrade to notices — observability must never interrupt the Agent.
+ */
 function launchDashboardForEvents(
   events,
   environment = process.env,
   dependencies = {},
 ) {
+  // -- Step 1: trigger gate -------------------------------------------------
   const triggerEvent = events.find(
     (event) =>
       event.eventName === "SessionStart" ||
@@ -727,6 +809,7 @@ function launchDashboardForEvents(
     return false;
   }
 
+  // -- Step 2: runtime resolution ------------------------------------------
   const dashboardFile =
     dependencies.dashboardFile === undefined
       ? resolveDashboardFile()
@@ -735,33 +818,58 @@ function launchDashboardForEvents(
     return false;
   }
 
+  const notify =
+    dependencies.onNotice ||
+    dependencies.onAlreadyRunning ||
+    ((message) => {
+      process.stderr.write(`${message}\n`);
+    });
+  const open = dependencies.openDashboard || openDashboard;
   const astroHome = resolveAstroHome(environment);
   const requestedPort = Number(environment.ASTRO_PORT || 5678);
   const pidFile = path.join(astroHome, `dashboard-${requestedPort}.pid`);
   const processRunning = dependencies.isProcessRunning || isProcessRunning;
+  const previewState = readPreviewState(astroHome);
+  const openPreview = (baseUrl) => {
+    const url = createDashboardUrl(baseUrl, triggerEvent);
+    return { url, opened: Boolean(open(url)) };
+  };
+
+  // -- Step 5 (shared by both "running" routes): preview-page check ---------
+  const handleRunningService = (baseUrl) => {
+    // An explicit reopen request (the installer's "open the dashboard now")
+    // overrides the preview state: the caller asked for a tab.
+    if (dependencies.reopenExisting && baseUrl) {
+      return openPreview(baseUrl).opened;
+    }
+    if (!previewState.opened && baseUrl) {
+      const { url, opened } = openPreview(baseUrl);
+      notify(
+        opened
+          ? `ASTRO is running at ${url}, but its preview page had not been opened yet; it was just opened in your browser.`
+          : `ASTRO is running at ${url}, but its preview page has never been opened and could not be opened automatically. Visit ${url} to view it.`,
+      );
+      return opened;
+    }
+    const message = baseUrl
+      ? `ASTRO is already running at ${createDashboardUrl(baseUrl, triggerEvent)}. Switch to the existing dashboard tab or refresh it; no new tab was opened.`
+      : "ASTRO is already starting. Switch to the existing dashboard tab or refresh it when ready; no new tab was opened.";
+    notify(message);
+    return false;
+  };
+
+  // -- Step 3a: service detection via the pid file --------------------------
   const existing = readDashboardPid(pidFile);
   if (
     processRunning(existing.pid) &&
     isCompatibleDashboard(existing.server, dashboardFile)
   ) {
-    if (dependencies.reopenExisting && existing.url) {
-      const open = dependencies.openDashboard || openDashboard;
-      return open(createDashboardUrl(existing.url, triggerEvent));
-    }
-    const message = existing.url
-      ? `ASTRO is already running at ${createDashboardUrl(existing.url, triggerEvent)}. Switch to the existing dashboard tab or refresh it; no new tab was opened.`
-      : "ASTRO is already starting. Switch to the existing dashboard tab or refresh it when ready; no new tab was opened.";
-    if (dependencies.onAlreadyRunning) {
-      dependencies.onAlreadyRunning(message);
-    } else {
-      process.stderr.write(`${message}\n`);
-    }
-    return false;
+    return handleRunningService(existing.url);
   }
 
-  // A stale or foreign pid file does not prove the port is free. Probe the
-  // requested port before spawning so an already-running instance is reused
-  // instead of silently drifting to the next port.
+  // -- Step 3b: a stale or foreign pid file does not prove the port is free.
+  // Probe the requested port before spawning so an already-running instance
+  // is reused instead of silently drifting to the next port.
   const probePort = dependencies.probeDashboardPort || probeDashboardPort;
   const probeHost =
     environment.ASTRO_HOST ||
@@ -769,46 +877,36 @@ function launchDashboardForEvents(
     environment.TRAE_TRACE_HOST ||
     "127.0.0.1";
   const probe = probePort(requestedPort, { host: probeHost });
-  if (probe.state !== "free") {
-    const runningUrl = createDashboardUrl(
+  if (probe.state === "astro") {
+    if (!processRunning(existing.pid) && Number(probe.pid) > 0) {
+      // Refresh the stale pid record so later triggers skip the probe.
+      try {
+        fs.mkdirSync(astroHome, { recursive: true });
+        fs.writeFileSync(
+          pidFile,
+          `${JSON.stringify({
+            pid: Number(probe.pid),
+            server: existing.server || "",
+            url: probe.url || `http://${probeHost}:${requestedPort}`,
+          })}\n`,
+          "utf8",
+        );
+      } catch {
+        // A read-only ASTRO home only costs a repeated probe later.
+      }
+    }
+    return handleRunningService(
       probe.url || `http://${probeHost}:${requestedPort}`,
-      triggerEvent,
     );
-    if (probe.state === "astro") {
-      if (!processRunning(existing.pid) && Number(probe.pid) > 0) {
-        // Refresh the stale pid record so later triggers skip the probe.
-        try {
-          fs.mkdirSync(astroHome, { recursive: true });
-          fs.writeFileSync(
-            pidFile,
-            `${JSON.stringify({
-              pid: Number(probe.pid),
-              server: existing.server || "",
-              url: probe.url || `http://${probeHost}:${requestedPort}`,
-            })}\n`,
-            "utf8",
-          );
-        } catch {
-          // A read-only ASTRO home only costs a repeated probe later.
-        }
-      }
-      if (dependencies.reopenExisting && probe.url) {
-        const open = dependencies.openDashboard || openDashboard;
-        return open(runningUrl);
-      }
-    }
-    const message =
-      probe.state === "astro"
-        ? `ASTRO is already running at ${runningUrl}. Switch to the existing dashboard tab or refresh it; no new tab was opened.`
-        : `Port ${requestedPort} is already in use by another process; no new ASTRO dashboard was started.`;
-    if (dependencies.onAlreadyRunning) {
-      dependencies.onAlreadyRunning(message);
-    } else {
-      process.stderr.write(`${message}\n`);
-    }
+  }
+  if (probe.state === "occupied") {
+    notify(
+      `Port ${requestedPort} is already in use by another process; no new ASTRO dashboard was started.`,
+    );
     return false;
   }
 
+  // -- Step 4: stopped → start the service ---------------------------------
   fs.mkdirSync(astroHome, { recursive: true });
   fs.rmSync(pidFile, { force: true });
   const spawnProcess = dependencies.spawn || childProcess.spawn;
@@ -817,7 +915,10 @@ function launchDashboardForEvents(
     env: {
       ...environment,
       ASTRO_HOME: astroHome,
-      ASTRO_OPEN_BROWSER: "1",
+      // The service opens the preview page itself when it has never been
+      // opened (first run after an install); once the user has seen it, a
+      // restarted service stays headless and the notice points there.
+      ASTRO_OPEN_BROWSER: previewState.opened ? "0" : "1",
       ASTRO_PID_FILE: pidFile,
       ASTRO_OPEN_SOURCE: triggerEvent.source || "",
       ASTRO_OPEN_SESSION:
@@ -839,6 +940,11 @@ function launchDashboardForEvents(
     fs.rmSync(pidFile, { force: true });
   });
   child.unref();
+  if (previewState.opened) {
+    notify(
+      "ASTRO was not running and has been started in the background. Its preview page was opened before, so no new browser tab was opened.",
+    );
+  }
   return true;
 }
 
@@ -887,7 +993,7 @@ async function run() {
       process.stderr.write(`${formatRuntimeConfigDiagnostic(diagnostic)}\n`);
     }
     launchDashboardForEvents([event], runtimeConfig.environment, {
-      onAlreadyRunning: (message) => {
+      onNotice: (message) => {
         dashboardMessage = message;
       },
     });
@@ -926,8 +1032,10 @@ module.exports = {
   createWorkspaceId,
   inferCodexEventName,
   launchDashboardForEvents,
+  markPreviewOpened,
   normalizeSource,
   openDashboard,
+  readPreviewState,
   redactString,
   redactValue,
   resolveAstroHome,

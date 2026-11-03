@@ -196,8 +196,13 @@ in Trae, then start a new Agent conversation. Events are appended to
 
 By default, installation starts and opens the dashboard immediately. After a
 client reload or restart, `SessionStart` records the current Agent session,
-checks `<data-root>/dashboard-<port>.pid`, starts the service only when needed,
-and opens the selected session. If `5678` is occupied, the browser opens the
+checks `<data-root>/dashboard-<port>.pid`, and starts the service in the
+background when it is not running. Whether the browser opens follows the
+preview page's opened state, which the service records as
+`preview-state.json` under the data root the moment a console page attaches to
+its event stream: a page that was never opened gets opened with the current
+session selected (the hook opens it once if the service already runs), and
+afterwards no new tab pops up. If `5678` is occupied, the browser opens the
 selected later port.
 
 To manage the process manually, disable automatic startup and use either
@@ -990,7 +995,9 @@ Confirm hooks were installed after `pnpm build` or
 `pnpm build:native-plugins`, and verify the installed package contains
 `dist/index.html` and `server/server.mjs`. All clients use
 `~/.astrox/plugins/astro`. If the recorded process no longer exists, remove
-`<data-root>/dashboard-<port>.pid` and submit another prompt.
+`<data-root>/dashboard-<port>.pid` and submit another prompt. Once the preview
+page has been opened, no new tab pops up automatically; delete
+`preview-state.json` under the data root to offer it again.
 `ASTRO_AUTO_OPEN=0` intentionally disables automatic startup.
 
 ### Agent Runs but No Events Appear

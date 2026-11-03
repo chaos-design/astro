@@ -361,10 +361,13 @@ removed only after a successful rename or conflict-safe merge.
 
 The installer copies the dashboard into the persistent plugin runtime, starts
 it, and opens the page immediately. After reloading or restarting the client,
-`SessionStart` records the new Agent session, starts the dashboard when needed,
-and opens the actual URL with that source and session selected only on startup.
-If the dashboard is already running, the hook reports its URL and asks you to
-switch to or refresh the existing tab instead of opening a new one.
+`SessionStart` records the new Agent session and starts the dashboard when
+needed. Whether the browser opens is tied to the preview page's opened state:
+the service persists it as `preview-state.json` under the data root as soon as
+a console page attaches to its event stream. A running dashboard whose page
+was never opened gets opened once (with the source and session selected);
+afterwards the hook reports the URL and asks you to switch to or refresh the
+existing tab instead of opening a new one.
 
 A PID file at `<data-root>/dashboard-<port>.pid` prevents later prompts from
 starting duplicate processes. Every client defaults to `~/.astrox`. If the preferred port is

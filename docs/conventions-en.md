@@ -52,7 +52,12 @@
     `src/lib/exception-events.ts`;
   - RUN HISTORY liveness lives only in `src/lib/run-history-state.ts`
     (`isLiveRunStatus` + `isFreshLiveRun` + `collectLiveRunKeys`);
-  - the time window lives only in `src/lib/run-history-window.ts`.
+  - the time window lives only in `src/lib/run-history-window.ts`;
+  - the preview page's opened state lives only in `plugin/trace-recorder.cjs`
+    (`readPreviewState` / `markPreviewOpened`, persisted as
+    `preview-state.json` in `ASTRO_HOME`): the service marks it when a console
+    page attaches to `/api/stream`, and the hook launch flow consumes it to
+    decide whether the browser still gets opened.
   New consumers reuse those helpers; do not grow a second failure or live list.
 - Platform-specific mappings belong in `src/config/atom-platforms.ts` or the
   relevant adapter; domain helpers stay platform-neutral.

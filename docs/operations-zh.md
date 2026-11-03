@@ -193,10 +193,14 @@ pnpm build
 
 1. 检查 `ASTRO_AUTO_OPEN`；
 2. 查找同包的 `server/server.mjs` 和 `dist/index.html`；
-3. 读取 `dashboard-<requestedPort>.pid`；
-4. 若兼容服务已运行，只报告当前 URL，不重复打开标签页；
+3. 读取 `dashboard-<requestedPort>.pid`，PID 失效时改为探测端口；
+4. 若兼容服务已运行：预览页从未打开过则打开一次，否则只报告当前 URL，不重复打开标签页；
 5. 若 PID 失效或属于其他服务，清理 PID 并启动新的后台服务；
-6. 服务完成端口选择后写回实际 URL，并按来源和会话打开深链。
+6. 服务完成端口选择后写回实际 URL，并按来源和会话打开深链——但仅当预览页从未被打开过；之后的启动保持无头。
+
+预览页「是否打开过」持久化为 `ASTRO_HOME` 下的 `preview-state.json`：服务端在
+控制台页面接入 `/api/stream` 的瞬间打点（本地标签页与部署版控制台都算；拉取
+HTML 文档与健康探测不算）。删除该文件可让下一条消息重新提供页面。
 
 手动模式：
 

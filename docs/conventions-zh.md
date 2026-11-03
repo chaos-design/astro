@@ -45,7 +45,11 @@
   - 异常与错误判定只在 `src/lib/exception-events.ts`；
   - RUN HISTORY 的 live 判定只在 `src/lib/run-history-state.ts`（`isLiveRunStatus`
     + `isFreshLiveRun` + `collectLiveRunKeys`）；
-  - 时间窗口计算只在 `src/lib/run-history-window.ts`。
+  - 时间窗口计算只在 `src/lib/run-history-window.ts`；
+  - 预览页「是否打开过」的状态只在 `plugin/trace-recorder.cjs`
+    （`readPreviewState` / `markPreviewOpened`，持久化为 `ASTRO_HOME` 下的
+    `preview-state.json`）：服务端在控制台页面接入 `/api/stream` 时打点，
+    Hook 启动流程据此决定是否还需要为用户打开浏览器。
   新增消费方必须复用这些函数，不得再写一份“失败事件名单”或“live 名单”。
 - 平台相关的映射放到 `src/config/atom-platforms.ts` 或对应适配器，领域工具函数
   保持平台无关。
