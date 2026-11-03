@@ -60,10 +60,12 @@
     page attaches to `/api/stream`, and the hook launch flow consumes it to
     decide whether the browser still gets opened;
   - the run model (which LLM a prompt executed on) is read only in
-    `src/lib/trace-model.ts` (`extractRunModel`), which normalizes every
-    client's payload spelling (pi's `model`/`provider` keys, deepseek's model
-    object, opencode's step notification) into one display string; the UI
-    shows the `MODEL` tag only when a run reported a model.
+    `src/lib/trace-model.ts` (`extractRunModel` + the SessionStart fallback in
+    `buildSessionPromptRuns`), which normalizes every client's payload spelling
+    (pi's `model`/`provider` keys, deepseek's model object, opencode's step
+    notification, zcode's session-start model) into one display string; runs
+    without their own observation fall back to the session-start model, and
+    the UI shows the `MODEL` tag only when a value exists.
   New consumers reuse those helpers; do not grow a second failure or live list.
 - Sample (Demo) data lives only in `data/demo-events.json`: the service reads it
   through `server/demo-dataset.mjs` and serves `GET /api/demo-events`, and the

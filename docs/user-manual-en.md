@@ -470,7 +470,9 @@ message, and each child row shows its own message's model — when the client
 recorded the model the run executed on, the row adds a `MODEL` tag next to
 `AGENT` (and the hover card shows it too): pi and deepseek carry a structured
 `model`/`provider` on `AgentMessage`, opencode carries `model` on its step
-notification (older captures are read from the message text), and a mid-run
+notification (older captures are read from the message text), and ZCode
+reports its session's model on `SessionStart` — if the model is switched
+mid-session, later messages still show the session-start model. A mid-run
 model switch shows the last observation. Clients that do not report a model
 (for example the claude and codex hooks) show no tag — an unreported model is
 not rendered as "unknown". A prompt run begins with one

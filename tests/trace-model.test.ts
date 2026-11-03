@@ -415,6 +415,89 @@ test("reads legacy model messages from notifications", () => {
   );
 });
 
+test("reads the zcode session-start model as a per-run fallback", () => {
+  const base = {
+    source: "zcode",
+    workspaceId: "workspace",
+    cwd: "/tmp/workspace",
+    sessionId: "zcode-model",
+  };
+  // ZCode reports the model only on SessionStart; prompt runs carry none.
+  const session = buildSessions([
+    {
+      ...base,
+      id: "zcode-start",
+      eventName: "SessionStart",
+      capturedAt: "2026-09-08T08:00:00.000Z",
+      payload: { model: "account:bigmodel-start-plan/GLM-5.3-Flash" },
+    },
+    {
+      ...base,
+      id: "zcode-prompt",
+      eventName: "UserPromptSubmit",
+      capturedAt: "2026-09-08T08:00:01.000Z",
+      payload: { prompt: "Go" },
+    },
+    {
+      ...base,
+      id: "zcode-message",
+      eventName: "AgentMessage",
+      capturedAt: "2026-09-08T08:00:02.000Z",
+      payload: { message: "done" },
+    },
+    {
+      ...base,
+      id: "zcode-stop",
+      eventName: "Stop",
+      capturedAt: "2026-09-08T08:00:03.000Z",
+      payload: {},
+    },
+  ])[0];
+  const runs = buildSessionPromptRuns(session);
+  assert.equal(runs[0]?.model, "account:bigmodel-start-plan/GLM-5.3-Flash");
+});
+
+test("per-run model observations beat the session-start fallback", () => {
+  const base = {
+    source: "zcode",
+    workspaceId: "workspace",
+    cwd: "/tmp/workspace",
+    sessionId: "zcode-model",
+  };
+  const session = buildSessions([
+    {
+      ...base,
+      id: "zcode-start",
+      eventName: "SessionStart",
+      capturedAt: "2026-09-08T08:00:00.000Z",
+      payload: { model: "start-model" },
+    },
+    {
+      ...base,
+      id: "zcode-prompt",
+      eventName: "UserPromptSubmit",
+      capturedAt: "2026-09-08T08:00:01.000Z",
+      payload: { prompt: "Go" },
+    },
+    {
+      ...base,
+      id: "zcode-message",
+      eventName: "AgentMessage",
+      capturedAt: "2026-09-08T08:00:02.000Z",
+      payload: { model: "switched-model", message: "done" },
+    },
+    {
+      ...base,
+      id: "zcode-stop",
+      eventName: "Stop",
+      capturedAt: "2026-09-08T08:00:03.000Z",
+      payload: {},
+    },
+  ])[0];
+  const runs = buildSessionPromptRuns(session);
+  assert.equal(runs[0]?.model, "switched-model");
+});
+
 test("prompt runs without a recorded model show none", () => {
   const base = {
     source: "claude",

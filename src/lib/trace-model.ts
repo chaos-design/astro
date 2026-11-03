@@ -772,6 +772,30 @@ export function extractRunModel(
 }
 
 /**
+ * ZCode only reports the model at session start:
+ * `SessionStart.payload.model` (e.g. `account:bigmodel-start-plan/GLM-5.3-Flash`).
+ * That is a session-level value — if the user switches models mid-session the
+ * later prompts read the stale start model, but it is the only model data
+ * that client persists. `buildSessionPromptRuns` uses it as the fallback for
+ * runs whose own events carry no per-run observation.
+ */
+function extractSessionStartModel(
+  events: readonly TraceEvent[],
+): string | undefined {
+  let observed: string | undefined;
+  for (const event of events) {
+    if (event.eventName !== "SessionStart") {
+      continue;
+    }
+    const reported = event.payload?.model;
+    if (typeof reported === "string") {
+      observed = normalizeModelName(reported);
+    }
+  }
+  return observed;
+}
+
+/**
  * Prompt runs are a pure function of the session object. Sessions that a
  * streaming batch did not touch keep their identity (see
  * {@link createSessionProjection}), so this cache lets every untouched row in
@@ -789,6 +813,11 @@ export function buildSessionPromptRuns(
   const promptIndexes = session.events.flatMap((event, index) =>
     event.eventName === "UserPromptSubmit" ? [index] : [],
   );
+
+  // ZCode reports the model only on SessionStart, which sits before every
+  // prompt window — use it as the fallback for runs whose own events carry no
+  // per-run observation.
+  const sessionStartModel = extractSessionStartModel(session.events);
 
   const runs = promptIndexes.map((startIndex, index): TracePromptRun => {
     const endIndex = promptIndexes[index + 1] ?? session.events.length;
@@ -848,7 +877,7 @@ export function buildSessionPromptRuns(
       toolCount: events.filter(
         (event) => event.eventName === "PreToolUse",
       ).length,
-      model: extractRunModel(events),
+      model: extractRunModel(events) ?? sessionStartModel,
     };
   });
   promptRunsBySession.set(session, runs);
