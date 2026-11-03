@@ -1,7 +1,16 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+  copyFileSync,
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -48,6 +57,67 @@ test("health reports the release the service was started from", async (t) => {
     readFileSync(new URL("../package.json", import.meta.url), "utf8"),
   );
   assert.equal(health.build, version);
+});
+
+test("health reads the release from the zcode plugin cache manifest", async (t) => {
+  // The ZCode plugin cache ships the manifest one level down as
+  // `.zcode-plugin/plugin.json` and carries no package.json — a service
+  // started from that cache must still name its release, not "unknown".
+  const cache = mkdtempSync(join(tmpdir(), "astro-zcode-cache-"));
+  const home = mkdtempSync(join(tmpdir(), "astro-zcode-home-"));
+  mkdirSync(join(cache, ".zcode-plugin"), { recursive: true });
+  writeFileSync(
+    join(cache, ".zcode-plugin", "plugin.json"),
+    JSON.stringify({ name: "astro", version: "9.9.9-test" }),
+  );
+  mkdirSync(join(cache, "server"), { recursive: true });
+  cpSync(new URL("../server", import.meta.url), join(cache, "server"), {
+    recursive: true,
+  });
+  cpSync(new URL("../plugin", import.meta.url), join(cache, "plugin"), {
+    recursive: true,
+  });
+  // The runtime vendors dotenv/yaml at install time; the repository checkout
+  // resolves them from node_modules, so stage the same vendor layout here.
+  for (const dependency of ["dotenv", "yaml"]) {
+    cpSync(
+      new URL(`../node_modules/${dependency}`, import.meta.url),
+      join(cache, "plugin", "vendor", dependency),
+      { recursive: true },
+    );
+  }
+  const probe = createServer();
+  probe.listen(0, "127.0.0.1");
+  await once(probe, "listening");
+  const port = probe.address().port;
+  await new Promise((resolve) => probe.close(resolve));
+  const child = spawn(process.execPath, [join(cache, "server", "server.mjs")], {
+    env: {
+      ...process.env,
+      ASTRO_HOME: home,
+      ASTRO_PORT: String(port),
+      ASTRO_HOST: "127.0.0.1",
+      ASTRO_OPEN_BROWSER: "0",
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  const exited = once(child, "exit");
+  let stderr = "";
+  child.stderr.on("data", (chunk) => { stderr += chunk; });
+  t.after(async () => {
+    child.kill("SIGTERM");
+    await exited;
+    rmSync(cache, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
+  });
+  let output = "";
+  for await (const chunk of child.stdout) {
+    output += chunk;
+    if (output.includes("ASTRO:")) break;
+  }
+  assert.match(output, /ASTRO:/, stderr);
+  const health = await (await fetch(`http://127.0.0.1:${port}/api/health`)).json();
+  assert.equal(health.build, "9.9.9-test");
 });
 
 test("malformed percent encoding returns 400 without terminating the service", async (t) => {
