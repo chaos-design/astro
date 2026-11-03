@@ -386,4 +386,10 @@ export type TracePromptRun = {
   terminalReason?: RunTerminalReason | null;
   statusDetail?: string | null;
   toolCount: number;
+  /**
+   * LLM model the run executed on, read from the events that report it
+   * (`AgentMessage` `payload.model` / `payload.provider`, a `Notification`
+   * model message). Absent when no client recorded a model.
+   */
+  model?: string;
 };

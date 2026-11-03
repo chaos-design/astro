@@ -50,7 +50,11 @@
   - 预览页「是否打开过」的状态只在 `plugin/trace-recorder.cjs`
     （`readPreviewState` / `markPreviewOpened`，持久化为 `ASTRO_HOME` 下的
     `preview-state.json`）：服务端在控制台页面接入 `/api/stream` 时打点，
-    Hook 启动流程据此决定是否还需要为用户打开浏览器。
+    Hook 启动流程据此决定是否还需要为用户打开浏览器；
+  - 运行所用模型的读取只在 `src/lib/trace-model.ts`（`extractRunModel`）：
+    各客户端的 payload 形态（pi 的 `model`/`provider`、deepseek 的模型对象、
+    opencode 的 step 通知）在此归一成一个展示串，界面只在该 run 上报过模型
+    时显示 `MODEL` 标签。
   新增消费方必须复用这些函数，不得再写一份“失败事件名单”或“live 名单”。
 - 示例（Demo）数据只在 `data/demo-events.json`：服务通过 `server/demo-dataset.mjs`
   读取并由 `GET /api/demo-events` 提供，控制台只在 `src/lib/demo-events.ts` 解析。

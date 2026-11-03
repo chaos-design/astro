@@ -688,6 +688,90 @@ function getTraceRunStatus(
 }
 
 /**
+ * Clients are inconsistent about where they report the LLM model a run
+ * executed on: pi puts `model` / `provider` on the `AgentMessage` payload,
+ * deepseek reports the model *source* object on `AgentMessage.payload.model`,
+ * opencode and pi fold the id into a `Notification` message ("step started
+ * (…) " / "model → provider/id"). This is the single read-side rule that
+ * turns all of those spellings into one display string.
+ */
+const modelSelectMessagePattern = /^model\s*→\s*(.+)$/;
+const stepStartedMessagePattern = /^step started \((.+)\)$/;
+
+function normalizeModelName(value: string): string | undefined {
+  const trimmed = value.trim();
+  return trimmed && trimmed !== "unknown" ? trimmed : undefined;
+}
+
+/**
+ * The model a prompt run executed on, read from the events that report it.
+ * The most recent observation in the run wins — a mid-run model switch
+ * shows the model that produced the last answer. `undefined` when nothing
+ * was recorded; RUN HISTORY then shows no MODEL tag at all.
+ */
+export function extractRunModel(
+  events: readonly TraceEvent[],
+): string | undefined {
+  let observed: string | undefined;
+  for (const event of events) {
+    const payload = event.payload;
+    if (!payload) {
+      continue;
+    }
+    let candidate: string | undefined;
+    if (event.eventName === "AgentMessage") {
+      const reported = payload.model;
+      if (typeof reported === "string") {
+        candidate = normalizeModelName(reported);
+      } else if (reported && typeof reported === "object") {
+        // deepseek reports the model as a source object
+        // `{ kind: "model", provider, model }`.
+        const source = reported as { provider?: unknown; model?: unknown };
+        const modelId = normalizeModelName(
+          typeof source.model === "string" ? source.model : "",
+        );
+        if (modelId) {
+          candidate =
+            typeof source.provider === "string" && source.provider
+              ? `${source.provider}/${modelId}`
+              : modelId;
+        }
+      }
+      // pi reports the provider as a sibling key.
+      if (
+        candidate &&
+        typeof payload.provider === "string" &&
+        payload.provider.trim() &&
+        !candidate.startsWith(`${payload.provider.trim()}/`)
+      ) {
+        candidate = `${payload.provider.trim()}/${candidate}`;
+      }
+    } else if (event.eventName === "Notification") {
+      // Newer opencode captures carry the model as a structured key.
+      const reported = payload.model;
+      if (typeof reported === "string") {
+        candidate = normalizeModelName(reported);
+      }
+      if (!candidate) {
+        const message =
+          typeof payload.message === "string" ? payload.message.trim() : "";
+        if (payload.notification_type === "model_select") {
+          const match = modelSelectMessagePattern.exec(message);
+          candidate = match ? normalizeModelName(match[1]) : undefined;
+        } else {
+          const match = stepStartedMessagePattern.exec(message);
+          candidate = match ? normalizeModelName(match[1]) : undefined;
+        }
+      }
+    }
+    if (candidate) {
+      observed = candidate;
+    }
+  }
+  return observed;
+}
+
+/**
  * Prompt runs are a pure function of the session object. Sessions that a
  * streaming batch did not touch keep their identity (see
  * {@link createSessionProjection}), so this cache lets every untouched row in
@@ -764,6 +848,7 @@ export function buildSessionPromptRuns(
       toolCount: events.filter(
         (event) => event.eventName === "PreToolUse",
       ).length,
+      model: extractRunModel(events),
     };
   });
   promptRunsBySession.set(session, runs);

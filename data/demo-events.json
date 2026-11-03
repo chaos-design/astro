@@ -170,6 +170,7 @@
       "eventName": "AgentMessage",
       "payload": {
         "message": "The loop-aware execution trajectory is ready.",
+        "model": "gpt-5.1-codex",
         "turn": 3,
         "turn_id": "demo-turn-3"
       }

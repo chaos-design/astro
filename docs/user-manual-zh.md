@@ -26,7 +26,7 @@ ASTRO 用于在本机采集、查看和回放编码智能体的运行事件。�
 
 | 区域 | 显示内容 | 支持的操作 |
 | --- | --- | --- |
-| 左侧 `RUNS` | 来源、Session、初始 Prompt、后续 Prompt、事件数、状态与持续时间 | 展开 Prompt 子运行、切换历史会话、定位单轮执行 |
+| 左侧 `RUNS` | 来源、Session、初始 Prompt、后续 Prompt、事件数、状态、持续时间与模型（上报时） | 展开 Prompt 子运行、切换历史会话、定位单轮执行 |
 | 中央画布 | Execution Topology 或 Run Trajectory、原子状态、领域边界与连线路径 | 切换平台和视图、显示 Deep View、选择或定位原子、查看 Flow Guide |
 | 右侧 `EVENTS` | 按时间排序的事件日志，以及所选事件的 Overview、Input、Output、Raw JSON | 搜索事件、点击定位、检查工具参数与结果、查看原始载荷 |
 | 底部回放 | 当前事件位置、进度与 Live 状态 | 重新开始、上一步、播放/暂停、下一步、拖动定位、切换播放速度 |
@@ -396,7 +396,13 @@ Live 筛选）重新拉取完整快照，并把选中项落到这个筛选下的
 
 包含多条 Prompt 的会话在选中时自动展开，子行依次标记为 `INITIAL`、
 `FOLLOW-UP 01`、`FOLLOW-UP 02` 等。每个子行显示该 Prompt 的标题、状态、开始
-时间、持续时间、事件数和缩略 Prompt 事件 ID。一个 Prompt 子运行从对应
+时间、持续时间、事件数和缩略 Prompt 事件 ID；会话行显示最后一条消息所用的
+模型，子行各自显示本条消息的模型——客户端上报过运行所用模型时，对应行在
+`AGENT` 标签旁多一个 `MODEL` 标签（悬停卡片同步显示）：pi 与
+deepseek 的 `AgentMessage` 携带结构化 `model`/`provider`，opencode 的 step
+通知携带 `model`（更早的数据从消息文本解析），一条运行内切换过模型时显示
+最后一次。未上报的客户端（如 claude、codex 的 Hook）不显示该标签，与
+「没有模型」不加区分。一个 Prompt 子运行从对应
 `UserPromptSubmit` 开始，到下一条 Prompt 之前结束。
 
 点击子行会把它设为当前诊断范围；点击父行会选择最新 Prompt。界面同时只展开一个

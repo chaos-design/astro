@@ -58,6 +58,11 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   persisted as `preview-state.json` in `ASTRO_HOME`); the service marks it
   when a console page attaches to `/api/stream`, and the hook launch flow
   consumes it to decide whether the browser still gets opened.
+  The run model (which LLM a prompt executed on) is read only in
+  `src/lib/trace-model.ts` (`extractRunModel`), which normalizes every
+  client's payload spelling — pi's `model`/`provider` keys, deepseek's model
+  source object, opencode's step notification — into one display string; the
+  UI shows the tag only when a run reports a model.
 - Treat unrelated working-tree changes as user-owned and do not revert them.
 - A behavior change is only complete when `docs/user-manual-*.md`,
   `docs/conventions-*.md`, this file, `docs/index.md`, and `site/src/docs.ts`

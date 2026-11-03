@@ -255,6 +255,26 @@ test("events with unverified payloads stay unmapped", () => {
   }
 });
 
+test("a step start records the model it begins on", () => {
+  const [payload] = mapOpenCodeEvent({
+    type: "session.step.started",
+    data: { sessionID: session, model: { id: "gpt-5.1" } },
+  });
+  assert.equal(payload?.eventName, "Notification");
+  assert.equal(payload?.message, "step started (gpt-5.1)");
+  // The structured key is what the console reads; the message stays for logs.
+  assert.equal(payload?.model, "gpt-5.1");
+});
+
+test("a step start without a model falls back to the unknown marker", () => {
+  const [payload] = mapOpenCodeEvent({
+    type: "session.step.started",
+    data: { sessionID: session },
+  });
+  assert.equal(payload?.message, "step started (unknown)");
+  assert.equal(payload?.model, undefined);
+});
+
 test("terminal lifecycle events map to canonical names", () => {
   assert.deepEqual(
     mapOpenCodeEvent({ type: "session.reasoning.ended", data: { sessionID: session, text: "why" } }),

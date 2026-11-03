@@ -5,6 +5,7 @@ import {
   buildHarnessFlow,
   buildSessionPromptRuns,
   buildSessions,
+  extractRunModel,
   formatDuration,
   getExecutionInstruction,
   getFlowNodeIdForEvent,
@@ -299,6 +300,160 @@ test("splits every prompt into an isolated full-flow event range", () => {
       },
     ],
   );
+});
+
+test("reads the run model from every client payload shape", () => {
+  const base = {
+    source: "pi",
+    workspaceId: "workspace",
+    cwd: "/tmp/workspace",
+    sessionId: "model-run",
+  };
+  const runModel = (
+    ...events: Array<{
+      eventName?: string;
+      payload?: Record<string, unknown>;
+    }>
+  ) =>
+    buildSessionPromptRuns(
+      buildSessions([
+        {
+          ...base,
+          id: "model-prompt",
+          eventName: "UserPromptSubmit",
+          capturedAt: "2026-09-08T08:00:00.000Z",
+          payload: { prompt: "Go" },
+        },
+        ...events.map((event, index) => ({
+          ...base,
+          id: `model-event-${index}`,
+          eventName: "AgentMessage",
+          capturedAt: `2026-09-08T08:00:0${index + 1}.000Z`,
+          ...event,
+        })),
+        {
+          ...base,
+          id: "model-stop",
+          eventName: "Stop",
+          capturedAt: "2026-09-08T08:01:00.000Z",
+          payload: {},
+        },
+      ])[0],
+    )[0]?.model;
+
+  // pi reports the model and provider as sibling payload keys.
+  assert.equal(
+    runModel({
+      payload: { model: "claude-sonnet-4-5", provider: "anthropic" },
+    }),
+    "anthropic/claude-sonnet-4-5",
+  );
+  // deepseek reports the model as a source object.
+  assert.equal(
+    runModel({
+      payload: {
+        model: { kind: "model", provider: "deepseek", model: "v4" },
+      },
+    }),
+    "deepseek/v4",
+  );
+  // A mid-run model switch shows the newest observation.
+  assert.equal(
+    runModel(
+      { payload: { model: "gpt-5.1" } },
+      { payload: { model: "gpt-5.2" } },
+    ),
+    "gpt-5.2",
+  );
+});
+
+test("reads legacy model messages from notifications", () => {
+  const base = {
+    source: "opencode",
+    workspaceId: "workspace",
+    cwd: "/tmp/workspace",
+    sessionId: "model-run",
+  };
+  const runModel = (payload: Record<string, unknown>) =>
+    buildSessionPromptRuns(
+      buildSessions([
+        {
+          ...base,
+          id: "model-prompt",
+          eventName: "UserPromptSubmit",
+          capturedAt: "2026-09-08T08:00:00.000Z",
+          payload: { prompt: "Go" },
+        },
+        {
+          ...base,
+          id: "model-notification",
+          eventName: "Notification",
+          capturedAt: "2026-09-08T08:00:01.000Z",
+          payload,
+        },
+        {
+          ...base,
+          id: "model-stop",
+          eventName: "Stop",
+          capturedAt: "2026-09-08T08:01:00.000Z",
+          payload: {},
+        },
+      ])[0],
+    )[0]?.model;
+
+  // opencode's newer captures carry the model as a structured key.
+  assert.equal(runModel({ model: "gpt-5.1" }), "gpt-5.1");
+  // Older captures only have the human-readable message string.
+  assert.equal(runModel({ message: "step started (gpt-5.1)" }), "gpt-5.1");
+  // pi reports a model switch as a `model_select` notification.
+  assert.equal(
+    runModel({
+      message: "model → openai/gpt-5-mini",
+      notification_type: "model_select",
+    }),
+    "openai/gpt-5-mini",
+  );
+});
+
+test("prompt runs without a recorded model show none", () => {
+  const base = {
+    source: "claude",
+    workspaceId: "workspace",
+    cwd: "/tmp/workspace",
+    sessionId: "model-run",
+  };
+  const runModel = (payload: Record<string, unknown>) =>
+    buildSessionPromptRuns(
+      buildSessions([
+        {
+          ...base,
+          id: "model-prompt",
+          eventName: "UserPromptSubmit",
+          capturedAt: "2026-09-08T08:00:00.000Z",
+          payload: { prompt: "Go" },
+        },
+        {
+          ...base,
+          id: "model-message",
+          eventName: "AgentMessage",
+          capturedAt: "2026-09-08T08:00:01.000Z",
+          payload,
+        },
+        {
+          ...base,
+          id: "model-stop",
+          eventName: "Stop",
+          capturedAt: "2026-09-08T08:01:00.000Z",
+          payload: {},
+        },
+      ])[0],
+    )[0]?.model;
+
+  // Clients that do not report a model (claude/codex hooks) leave it out.
+  assert.equal(runModel({ message: "done" }), undefined);
+  // An "unknown" placeholder is the same as nothing recorded.
+  assert.equal(runModel({ message: "step started (unknown)" }), undefined);
+  assert.equal(extractRunModel([]), undefined);
 });
 
 test("formats run durations with second, minute, and hour precision", () => {

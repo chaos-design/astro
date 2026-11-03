@@ -58,7 +58,12 @@
     (`readPreviewState` / `markPreviewOpened`, persisted as
     `preview-state.json` in `ASTRO_HOME`): the service marks it when a console
     page attaches to `/api/stream`, and the hook launch flow consumes it to
-    decide whether the browser still gets opened.
+    decide whether the browser still gets opened;
+  - the run model (which LLM a prompt executed on) is read only in
+    `src/lib/trace-model.ts` (`extractRunModel`), which normalizes every
+    client's payload spelling (pi's `model`/`provider` keys, deepseek's model
+    object, opencode's step notification) into one display string; the UI
+    shows the `MODEL` tag only when a run reported a model.
   New consumers reuse those helpers; do not grow a second failure or live list.
 - Sample (Demo) data lives only in `data/demo-events.json`: the service reads it
   through `server/demo-dataset.mjs` and serves `GET /api/demo-events`, and the

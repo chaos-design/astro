@@ -1072,6 +1072,8 @@ type RunHistoryRowDetails = {
   start: number;
   status: "demo" | TraceSession["status"];
   title: string;
+  /** LLM model the prompt ran on, when a client recorded one. */
+  model?: string;
 };
 
 /**
@@ -1172,6 +1174,7 @@ function RunHistoryRowContent({
   extraValue,
   git,
   live = false,
+  model,
   reason,
   staleFor,
   source,
@@ -1200,6 +1203,11 @@ function RunHistoryRowContent({
           <span>
             AGENT <b>{source}</b>
           </span>
+          {model ? (
+            <span>
+              MODEL <b>{model}</b>
+            </span>
+          ) : null}
           <span>
             STATUS <b>{status}</b>
             {reason ? <em className="run-history__reason"> · {reason}</em> : null}
@@ -1224,6 +1232,7 @@ function RunHistoryDetailsCard({
   extraValue,
   fullCode,
   git,
+  model,
   reason,
   source,
   staleFor,
@@ -1260,6 +1269,10 @@ function RunHistoryDetailsCard({
   }
   if (git?.branch) {
     lines.splice(4, 0, ["BRANCH", git.branch]);
+  }
+  // After the other splices: MODEL sits right below AGENT in every case.
+  if (model) {
+    lines.splice(1, 0, ["MODEL", model]);
   }
   return (
     <div className="run-history__tooltip">
@@ -1591,6 +1604,9 @@ const RunHistoryItem = memo(function RunHistoryItem({
     start: firstPromptRun?.start ?? session.start,
     status: isDemo ? "demo" : status,
     title: session.title,
+    // The session row is the only row for single-prompt runs, so it carries
+    // the newest prompt's model; multi-prompt rows show it per sub-row.
+    model: lastPromptRun?.model,
   };
 
   return (
@@ -1693,6 +1709,7 @@ const RunHistoryItem = memo(function RunHistoryItem({
                 start: promptRun.start,
                 status: isDemo ? "demo" : displayState.status,
                 title: promptRun.title,
+                model: promptRun.model,
               };
               return (
                 <li key={promptRun.key}>

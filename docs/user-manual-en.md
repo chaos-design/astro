@@ -26,7 +26,7 @@ Both side panels are open in the screenshot. The four primary regions are:
 
 | Region | Visible information | Supported actions |
 | --- | --- | --- |
-| Left `RUNS` | Source, session, initial and follow-up prompt runs, event count, status, and duration | Expand prompt runs, switch sessions, and isolate one turn |
+| Left `RUNS` | Source, session, initial and follow-up prompt runs, event count, status, duration, and model (when reported) | Expand prompt runs, switch sessions, and isolate one turn |
 | Center canvas | Execution Topology or Run Trajectory, atom states, domain boundaries, and routed edges | Switch platform and view, enable Deep View, select or locate atoms, and open Flow Guide |
 | Right `EVENTS` | Time-ordered event log plus Overview, Input, Output, and Raw JSON for the selection | Search events, locate an event, inspect tool arguments and results, and read the normalized payload |
 | Replay footer | Current event position, progress, and Live state | Restart, step backward, play or pause, step forward, seek, and change playback speed |
@@ -465,7 +465,15 @@ Each parent row represents one session and shows:
 Sessions with multiple prompts expand automatically when selected. Their child
 rows are labeled `INITIAL` and `FOLLOW-UP 01`, `FOLLOW-UP 02`, and so on.
 Each child shows that prompt's title, status, start time, duration, event count,
-and abbreviated prompt event ID. A prompt run begins with one
+and abbreviated prompt event ID. The session row shows the model of its latest
+message, and each child row shows its own message's model — when the client
+recorded the model the run executed on, the row adds a `MODEL` tag next to
+`AGENT` (and the hover card shows it too): pi and deepseek carry a structured
+`model`/`provider` on `AgentMessage`, opencode carries `model` on its step
+notification (older captures are read from the message text), and a mid-run
+model switch shows the last observation. Clients that do not report a model
+(for example the claude and codex hooks) show no tag — an unreported model is
+not rendered as "unknown". A prompt run begins with one
 `UserPromptSubmit` and contains every following event before the next prompt.
 
 Click a child row to make that prompt run the active diagnostic scope. Clicking
