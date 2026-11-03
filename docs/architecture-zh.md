@@ -205,10 +205,13 @@ Hook 通过标准输入把原生事件传给 `plugin/trace-recorder.cjs`。采�
 事件不接受 `continue` 字段。所有客户端统一使用用户级 `~/.astrox` 数据与运行时根目录。
 
 标准化事件为 `SessionStart` 或 `UserPromptSubmit` 时，采集器还会检查
-`<data-root>/dashboard-<port>.pid`。如果控制台未运行且
+`<data-root>/dashboard-<port>.pid`（PID 失效时改为探测端口）。如果控制台未运行且
 `ASTRO_AUTO_OPEN` 未关闭，采集器以脱离 Hook 的后台进程启动同包内
-`server/server.mjs`。新启动的服务会打开已选中来源和会话的深链；兼容服务已运行
-时复用现有进程，只报告当前会话 URL，不重复打开标签页。服务完成端口回退并开始
+`server/server.mjs`。新启动的服务只在预览页从未被打开时打开已选中来源和会话的
+深链，之后一律无头启动。兼容服务已运行时复用现有进程：预览页从未打开过则由
+Hook 打开一次（自愈「启动时浏览器打开失败」的情况），否则只报告当前会话 URL，
+不重复打开标签页。「预览页已打开」由服务端在控制台页面接入 `/api/stream` 的瞬间
+持久化为 `ASTRO_HOME` 下的 `preview-state.json`。服务完成端口回退并开始
 监听后，才打开实际 URL。启动或打开失败都被隔离在观测路径内，不改变 Hook 的放行结果。
 
 ### 6.2 Codex 历史导入

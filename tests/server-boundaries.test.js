@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -36,13 +36,13 @@ async function startServer(t) {
     if (output.includes("ASTRO:")) break;
   }
   assert.match(output, /ASTRO:/, stderr);
-  return `http://127.0.0.1:${port}`;
+  return { url: `http://127.0.0.1:${port}`, root };
 }
 
 test("health reports the release the service was started from", async (t) => {
   // The installed runtime ships `plugin.json` instead of a package manifest,
   // so `build` must never regress to "unknown" for a normal start.
-  const url = await startServer(t);
+  const { url } = await startServer(t);
   const health = await (await fetch(`${url}/api/health`)).json();
   const { version } = JSON.parse(
     readFileSync(new URL("../package.json", import.meta.url), "utf8"),
@@ -51,7 +51,7 @@ test("health reports the release the service was started from", async (t) => {
 });
 
 test("malformed percent encoding returns 400 without terminating the service", async (t) => {
-  const url = await startServer(t);
+  const { url } = await startServer(t);
   for (const path of ["/api/events/%ZZ", "/%ZZ"]) {
     const response = await fetch(`${url}${path}`, { signal: AbortSignal.timeout(3000) });
     assert.equal(response.status, 400);
@@ -60,7 +60,7 @@ test("malformed percent encoding returns 400 without terminating the service", a
 });
 
 test("oversized requests return 413 and later requests still succeed", async (t) => {
-  const url = await startServer(t);
+  const { url } = await startServer(t);
   const response = await fetch(`${url}/api/events`, {
     method: "POST", body: JSON.stringify({ prompt: "x".repeat(1024) }),
     headers: { "Content-Type": "application/json" }, signal: AbortSignal.timeout(3000),
@@ -146,7 +146,7 @@ async function readStreamSnapshot(url) {
 }
 
 test("a resume cursor replays only the missed tail", async (t) => {
-  const url = await startServer(t);
+  const { url } = await startServer(t);
   const append = async (eventName) => {
     const response = await fetch(`${url}/api/events`, {
       method: "POST",
@@ -183,4 +183,27 @@ test("a resume cursor replays only the missed tail", async (t) => {
     fallback.events.map((event) => event.id),
     [firstId, secondId],
   );
+});
+
+test("a stream client marks the preview page as opened", async (t) => {
+  const { url, root } = await startServer(t);
+  const stateFile = join(root, "preview-state.json");
+
+  // Only a console page — an event-stream client — counts as "opened"; plain
+  // document fetches do not, so headless probes never fake a visit and the
+  // hook flow keeps owing the user their first look at the dashboard.
+  await fetch(`${url}/`, { signal: AbortSignal.timeout(3000) });
+  assert.equal(existsSync(stateFile), false);
+
+  await readStreamEvent(`${url}/api/stream`, "ready");
+  const state = JSON.parse(readFileSync(stateFile, "utf8"));
+  assert.match(state.openedAt, /^\d{4}-\d{2}-\d{2}T/);
+  assert.equal(state.openCount, 1);
+
+  // A later page load attaches again: the count grows while the first-open
+  // timestamp stays stable, so "was it ever opened" never flips back.
+  await readStreamEvent(`${url}/api/stream`, "ready");
+  const updated = JSON.parse(readFileSync(stateFile, "utf8"));
+  assert.equal(updated.openedAt, state.openedAt);
+  assert.equal(updated.openCount, 2);
 });

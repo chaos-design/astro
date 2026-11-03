@@ -10,11 +10,32 @@ const {
   createTraceEvent,
   createWorkspaceId,
   launchDashboardForEvents,
+  markPreviewOpened,
+  readPreviewState,
   redactValue,
   resolveAstroHome,
   resolveTraceFile,
 } = require("../plugin/hook-recorder.cjs");
 const { formatSessionPath } = require("../plugin/storage-paths.cjs");
+
+/**
+ * Seed the "preview page was opened before" state. The launch flow reads it
+ * from ASTRO_HOME; fixtures that exercise the quiet "already running" path
+ * need it so the flow does not open a browser tab for a page the user has
+ * already seen.
+ */
+function writePreviewState(astroHome, overrides = {}) {
+  fs.writeFileSync(
+    path.join(astroHome, "preview-state.json"),
+    `${JSON.stringify({
+      openedAt: "2026-11-01T08:00:00.000Z",
+      lastOpenedAt: "2026-11-01T08:00:00.000Z",
+      openCount: 1,
+      ...overrides,
+    })}\n`,
+    "utf8",
+  );
+}
 
 test("redacts sensitive keys and inline credentials", () => {
   const result = redactValue({
@@ -467,6 +488,7 @@ test("notifies instead of opening tabs for repeated prompts and new sessions", (
     url: "http://127.0.0.1:4402",
   });
   fs.writeFileSync(pidFile, record);
+  writePreviewState(astroHome);
 
   for (const sessionId of ["session-first", "session-next"]) {
     for (const eventName of ["SessionStart", "UserPromptSubmit"]) {
@@ -539,6 +561,7 @@ test("hook output reports the reused page and preserves quiet-mode stdout", (t) 
     server: dashboardFile,
     url: "http://127.0.0.1:4402",
   }));
+  writePreviewState(runtime);
 
   for (const quiet of [false, true]) {
     const result = spawnSync(
@@ -598,6 +621,7 @@ test("reuses a compatible dashboard from another ASTRO installation", (t) => {
       url: "http://127.0.0.1:4401",
     })}\n`,
   );
+  writePreviewState(astroHome);
   let notice = "";
 
   assert.equal(
@@ -660,6 +684,7 @@ test("skips launching when an ASTRO instance already owns the port", (t) => {
   const astroHome = fs.mkdtempSync(path.join(os.tmpdir(), "astro-port-"));
   t.after(() => fs.rmSync(astroHome, { recursive: true, force: true }));
   const pidFile = path.join(astroHome, "dashboard-4400.pid");
+  writePreviewState(astroHome);
   let notice = "";
 
   assert.equal(
@@ -720,6 +745,172 @@ test("skips launching when an unknown process occupies the port", (t) => {
     fs.existsSync(path.join(astroHome, "dashboard-4400.pid")),
     false,
   );
+});
+
+test("opens the preview page once while the service runs without a recorded view", (t) => {
+  const astroHome = fs.mkdtempSync(path.join(os.tmpdir(), "astro-preview-"));
+  t.after(() => fs.rmSync(astroHome, { recursive: true, force: true }));
+  const dashboardFile = "/tmp/astro/server/server.mjs";
+  fs.writeFileSync(
+    path.join(astroHome, "dashboard-4400.pid"),
+    `${JSON.stringify({
+      pid: 43210,
+      server: dashboardFile,
+      url: "http://127.0.0.1:4402",
+    })}\n`,
+    "utf8",
+  );
+  const openedUrls = [];
+  const notices = [];
+
+  const event = {
+    eventName: "UserPromptSubmit",
+    source: "trae",
+    sessionId: "session-preview",
+  };
+  assert.equal(
+    launchDashboardForEvents(
+      [event],
+      { ASTRO_HOME: astroHome, ASTRO_PORT: "4400" },
+      {
+        dashboardFile,
+        isProcessRunning: (pid) => pid === 43210,
+        openDashboard: (url) => {
+          openedUrls.push(url);
+          return true;
+        },
+        onNotice: (message) => notices.push(message),
+      },
+    ),
+    true,
+  );
+  assert.deepEqual(openedUrls, [
+    createDashboardUrl("http://127.0.0.1:4402", event),
+  ]);
+  assert.match(notices[0], /preview page had not been opened yet/);
+  assert.match(notices[0], /session=session-preview/);
+
+  // The service persists the state as soon as a page attaches to the stream;
+  // the next message therefore finds it "opened" and stays quiet.
+  writePreviewState(astroHome);
+  const quietNotices = [];
+  assert.equal(
+    launchDashboardForEvents(
+      [event],
+      { ASTRO_HOME: astroHome, ASTRO_PORT: "4400" },
+      {
+        dashboardFile,
+        isProcessRunning: (pid) => pid === 43210,
+        openDashboard: () => assert.fail("must not open another tab"),
+        onNotice: (message) => quietNotices.push(message),
+      },
+    ),
+    false,
+  );
+  assert.match(quietNotices[0], /ASTRO is already running/);
+});
+
+test("reports the URL when the automatic preview open fails", (t) => {
+  const astroHome = fs.mkdtempSync(path.join(os.tmpdir(), "astro-preview-"));
+  t.after(() => fs.rmSync(astroHome, { recursive: true, force: true }));
+  const dashboardFile = "/tmp/astro/server/server.mjs";
+  fs.writeFileSync(
+    path.join(astroHome, "dashboard-4400.pid"),
+    `${JSON.stringify({
+      pid: 43210,
+      server: dashboardFile,
+      url: "http://127.0.0.1:4402",
+    })}\n`,
+    "utf8",
+  );
+  const notices = [];
+  const event = { eventName: "SessionStart", source: "claude" };
+
+  assert.equal(
+    launchDashboardForEvents(
+      [event],
+      { ASTRO_HOME: astroHome, ASTRO_PORT: "4400" },
+      {
+        dashboardFile,
+        isProcessRunning: (pid) => pid === 43210,
+        openDashboard: () => false,
+        onNotice: (message) => notices.push(message),
+      },
+    ),
+    false,
+  );
+  assert.match(notices[0], /could not be opened automatically/);
+  assert.match(notices[0], /Visit http:\/\/127\.0\.0\.1:4402/);
+});
+
+test("starts the service headless when the preview page was opened before", (t) => {
+  const astroHome = fs.mkdtempSync(path.join(os.tmpdir(), "astro-headless-"));
+  t.after(() => fs.rmSync(astroHome, { recursive: true, force: true }));
+  writePreviewState(astroHome);
+  let spawnOptions;
+  const notices = [];
+
+  assert.equal(
+    launchDashboardForEvents(
+      [{
+        eventName: "UserPromptSubmit",
+        source: "trae",
+        sessionId: "session-headless",
+      }],
+      { ASTRO_HOME: astroHome, ASTRO_PORT: "4400" },
+      {
+        dashboardFile: "/tmp/astro/server/server.mjs",
+        isProcessRunning: () => false,
+        probeDashboardPort: () => ({ state: "free" }),
+        spawn: (_command, _arguments, options) => {
+          spawnOptions = options;
+          return { pid: 43211, unref() {} };
+        },
+        onNotice: (message) => notices.push(message),
+      },
+    ),
+    true,
+  );
+  assert.equal(spawnOptions.env.ASTRO_OPEN_BROWSER, "0");
+  assert.match(notices[0], /started in the background/);
+  assert.match(notices[0], /no new browser tab/);
+});
+
+test("preview state round-trips and tolerates a corrupt file", (t) => {
+  const astroHome = fs.mkdtempSync(path.join(os.tmpdir(), "astro-state-"));
+  t.after(() => fs.rmSync(astroHome, { recursive: true, force: true }));
+
+  assert.deepEqual(readPreviewState(astroHome), {
+    opened: false,
+    openedAt: null,
+    lastOpenedAt: null,
+    openCount: 0,
+  });
+
+  const first = markPreviewOpened(astroHome);
+  assert.equal(first.persisted, true);
+  assert.equal(first.openCount, 1);
+  const second = markPreviewOpened(astroHome);
+  assert.equal(second.openCount, 2);
+  assert.equal(second.openedAt, first.openedAt);
+
+  const stored = JSON.parse(
+    fs.readFileSync(path.join(astroHome, "preview-state.json"), "utf8"),
+  );
+  assert.equal(stored.openedAt, first.openedAt);
+  assert.equal(stored.openCount, 2);
+
+  fs.writeFileSync(
+    path.join(astroHome, "preview-state.json"),
+    "{not json",
+    "utf8",
+  );
+  assert.deepEqual(readPreviewState(astroHome), {
+    opened: false,
+    openedAt: null,
+    lastOpenedAt: null,
+    openCount: 0,
+  });
 });
 
 test("reopens the dashboard found by the port probe when requested", (t) => {

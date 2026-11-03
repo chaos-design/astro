@@ -53,6 +53,11 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   `src/lib/run-history-state.ts`, and the visible time window only in
   `src/lib/run-history-window.ts`. Do not grow a second list of failure or live
   event names. Sample (Demo) data lives only in `data/demo-events.json`.
+  The preview page's opened state lives only in
+  `plugin/trace-recorder.cjs` (`readPreviewState` / `markPreviewOpened`,
+  persisted as `preview-state.json` in `ASTRO_HOME`); the service marks it
+  when a console page attaches to `/api/stream`, and the hook launch flow
+  consumes it to decide whether the browser still gets opened.
 - Treat unrelated working-tree changes as user-owned and do not revert them.
 - A behavior change is only complete when `docs/user-manual-*.md`,
   `docs/conventions-*.md`, this file, `docs/index.md`, and `site/src/docs.ts`

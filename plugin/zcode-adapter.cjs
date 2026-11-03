@@ -106,7 +106,7 @@ async function run() {
       process.stderr.write(`${formatRuntimeConfigDiagnostic(diagnostic)}\n`);
     }
     recorder.launchDashboardForEvents(events, runtimeConfig.environment, {
-      onAlreadyRunning: (message) => {
+      onNotice: (message) => {
         dashboardMessage = message;
       },
     });
