@@ -261,6 +261,13 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   width to the preference.
 - The empty state names the configured range, so a short window never reads as
   "no history at all".
+- The sparse/dense row layout carries **hysteresis**
+  (`isSparseRunHistoryList` + `RUN_HISTORY_SPARSE_HYSTERESIS_ROWS`): the list
+  goes sparse at `appLayout.runHistorySparseListRows` but only returns to the
+  dense clamp two runs later. The window is a moving anchor — sessions age out
+  of it while a re-run enters — and a count hovering at the threshold would
+  otherwise re-clamp every row's title on each crossing, which read as the
+  whole list jumping while a run executed.
 
 ## Snapshot Streaming
 
@@ -412,6 +419,15 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   that row is the whole second message.
 - The estimate stays as the first-paint fallback only. `max-height` must not be
   re-added in CSS: it would clip the measured height again.
+- The thread is **always mounted** for multi-prompt rows and *animates* between
+  its measured height and 0 (`.run-history__prompt-scroll`, margins collapsing
+  with it; collapsed it is `visibility: hidden`). Unmounting it on collapse
+  made every expand a teleport — the executing row grew hundreds of pixels in
+  one commit and shoved the whole list, which read as the N LIVE view jumping.
+  A collapsed thread must take no more space than an unmounted one.
+- Only a multi-prompt session renders the thread (`hasPromptThread`): a
+  single-prompt live row shows the parent only. The armed Live filter used to
+  auto-expand one-prompt sessions too, rendering the same message twice.
 
 ## Agent Filter
 
@@ -487,6 +503,14 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   history + timed ingestion) and `pnpm perf:bench` (per-batch derive
   milliseconds per phase); client long tasks read off the `?perf=1` HUD via
   `window.__astroPerf.snapshot()`.
+- The `?perf=1` HUD is a floating, collapsible panel pinned to the **bottom
+  edge** of the page (`src/lib/perf-metrics.ts`): collapsed it is one pill
+  with two headline numbers (scroll fps, list render average); expanded it
+  documents every metric beside its live value, plus the usage notes
+  (`?perf=0` clears the stored choice, the console API, the benchmark
+  drivers). It stays pure DOM outside React so the tool measuring the app
+  never enters the app's render path — expansion is DOM state, not component
+  state.
 
 ## Run Trajectory Order
 

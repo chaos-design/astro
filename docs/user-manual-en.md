@@ -488,8 +488,10 @@ Click a child row to make that prompt run the active diagnostic scope. Clicking
 the parent selects its latest prompt. Only one session thread is expanded at a
 time. The child list is measured to its content (300 px ceiling; a two- or
 three-message thread expands in full), scrolls independently, and keeps the
-selected child visible. The left panel can collapse to a `RUNS` rail to give the
-topology more desktop workspace.
+selected child visible. Expanding and collapsing animate; a collapsed child
+list takes no space, and a single-prompt session has no child list at all (the
+parent row *is* that message). The left panel can collapse to a `RUNS` rail to
+give the topology more desktop workspace.
 The expanded state is stored in `ASTROX_HISTORY_OPEN` and restored after refresh.
 
 ### 5.4 Main Workspace
@@ -1120,6 +1122,25 @@ curl http://127.0.0.1:5678/api/health
 Do not expose the service through `0.0.0.0` or a public network without authentication and TLS.
 
 ## 17. Troubleshooting
+
+### The Performance Panel (?perf=1)
+
+Append `?perf=1` to the page address (for example
+`http://127.0.0.1:5678/?perf=1`) to float a performance panel at the **bottom
+edge** of the page. Collapsed it is one pill with two headline numbers (average
+scroll fps and the average list-render time); clicking it expands the panel,
+where every metric carries its value and an explanation — first paint
+(ready/fcp/lcp), scroll fps (sampled only while a list actually scrolls), RUN
+HISTORY render time, network requests (api and static assets counted
+separately), and main-thread long tasks. `?perf=0` turns it off and clears the
+stored choice, so the panel stays away after a refresh; either choice persists
+until explicitly changed.
+
+The panel reads the same numbers as `window.__astroPerf.snapshot()`, which you
+can call directly in the browser console; reproduce and compare performance
+issues with `pnpm perf:fixture` (synthetic history) + `pnpm perf:bench`
+(per-phase derive timings). When hunting jank, look at the long tasks' `max`
+first: its source is usually the derive pipeline, not the rendering.
 
 ### The UI Shows Demo
 

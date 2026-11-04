@@ -3104,6 +3104,27 @@ pre,
   overflow: hidden;
   border-left: 1px solid color-mix(in srgb, var(--blue) 48%, var(--line));
   background: color-mix(in srgb, var(--panel-raised) 46%, transparent);
+  /* The thread is always mounted for multi-prompt rows and animates between
+   * its measured height and 0: expand/collapse slides the rows below instead
+   * of teleporting them (the N LIVE list jumping). Margins join the
+   * transition so a collapsed thread takes no more space than an unmounted
+   * one; visibility stays visible while the collapse animates, then hides
+   * (unfocusable, unannounced) once the box is gone. */
+  transition:
+    height 180ms ease,
+    margin-top 180ms ease,
+    margin-bottom 180ms ease;
+}
+
+.run-history__prompt-scroll.is-collapsed {
+  visibility: hidden;
+  margin-top: 0;
+  margin-bottom: 0;
+  transition:
+    height 180ms ease,
+    margin-top 180ms ease,
+    margin-bottom 180ms ease,
+    visibility 0s linear 180ms;
 }
 
 .run-history__prompt-scroll [data-slot="scroll-area-viewport"] {

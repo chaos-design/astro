@@ -130,11 +130,27 @@
   trailing `Others` (`OTHERS_AGENT_ID` / `matchesAgentSourceFilter`). The old
   behaviour turned every source found in the data into a pseudo-agent, so the
   menu grew with the number of collectors and stopped meaning "agent".
+- The sparse/dense layout decision carries **hysteresis**
+  (`isSparseRunHistoryList` + `RUN_HISTORY_SPARSE_HYSTERESIS_ROWS`): the list
+  goes sparse at `appLayout.runHistorySparseListRows` (4) — titles relax to six
+  lines — but only returns to the dense clamp two runs later. The window anchor
+  moves with the newest message, so sessions age out of it while a follow-up
+  pulls an old one back in and the count hovers around the threshold; without
+  the buffer every crossing re-clamped every row's height at once, which read
+  as the list jumping while a run executed.
 - The expanded Prompt thread is **measured**, not estimated: a
   `ResizeObserver` sizes it to its content up to a 300 px ceiling, with a small
   overshoot tolerance (≤ 1.25×) so a two- or three-message thread expands in
   full. `rows × fixed estimate` clipped the last row whenever a title wrapped —
   exactly the short thread where that row is the whole second message.
+- For multi-prompt sessions the thread is **always mounted and animated**: it
+  transitions between the measured height and 0 (margins join the transition so
+  a collapsed thread leaves no gap; `visibility: hidden` keeps it unpainted,
+  unfocusable, and out of the a11y tree). Unmounting on collapse turned every
+  expand into a teleport — the executing row grew hundreds of pixels in one
+  commit and shoved the rows below, which read as the Live list jumping. A
+  single-prompt session renders no thread at all (the parent row *is* that
+  message), so the Live filter no longer paints the same message twice.
 
 ## 6. The Live filter
 

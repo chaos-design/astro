@@ -9,7 +9,9 @@
  * snapshot instead of ad-hoc console timing.
  *
  * The visible HUD is strictly opt-in (`?perf=1`, persisted; `?perf=0`
- * clears it) so regular usage never pays for HUD DOM updates.
+ * clears it) so regular usage never pays for HUD DOM updates. It floats at
+ * the bottom edge of the page: a collapsed pill carries two headline
+ * numbers, and expanding it documents every metric beside its live value.
  */
 
 const LIST_RENDER_SAMPLE_LIMIT = 200;
@@ -314,21 +316,132 @@ export function resolvePerfHudEnabled(
   return storedValue === "1";
 }
 
-function formatHudLine(snapshot: PerfSnapshot): string {
-  const list = snapshot.listRender;
-  return [
-    `ready ${snapshot.appReadyMs ?? "--"}ms · fcp ${snapshot.firstContentfulPaintMs ?? "--"}ms · lcp ${snapshot.largestContentfulPaintMs ?? "--"}ms`,
-    `fps last ${snapshot.scrollFps.last} · avg ${snapshot.scrollFps.average} · worst ${snapshot.scrollFps.worst} (${snapshot.scrollFps.samples} gestures)`,
-    `log render last ${list.lastMs.toFixed(1)}ms · avg ${list.averageMs.toFixed(1)}ms · max ${list.maxMs.toFixed(1)}ms · ${list.count} renders · ${list.lastRows} rows`,
-    `net ${snapshot.network.totalRequests} req (api ${snapshot.network.apiRequests} · assets ${snapshot.network.assetRequests}) · ${(snapshot.network.transferBytes / 1024).toFixed(0)}KB`,
-    `long tasks ${snapshot.longTasks.count} · total ${snapshot.longTasks.totalMs.toFixed(0)}ms · max ${snapshot.longTasks.maxMs}ms`,
-  ].join("\n");
+/** One headline number for the collapsed pill, e.g. `60fps · 0.8ms`. */
+export function formatHudHeadline(snapshot: PerfSnapshot): string {
+  const fps = snapshot.scrollFps.samples > 0 ? snapshot.scrollFps.average : snapshot.scrollFps.last;
+  return `${fps || "--"}fps · ${snapshot.listRender.averageMs.toFixed(1)}ms`;
 }
 
+const panelStyles: Partial<CSSStyleDeclaration> = {
+  position: "fixed",
+  right: "12px",
+  bottom: "12px",
+  zIndex: "2147483647",
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "flex-end",
+  gap: "6px",
+  pointerEvents: "none",
+  fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+};
+
+const pillStyles: Partial<CSSStyleDeclaration> = {
+  pointerEvents: "auto",
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "6px",
+  padding: "3px 10px",
+  borderRadius: "999px",
+  border: "1px solid rgba(148, 163, 184, 0.35)",
+  background: "rgba(7, 10, 16, 0.88)",
+  color: "#c9d6ea",
+  font: "inherit",
+  fontSize: "10px",
+  letterSpacing: "0.06em",
+  cursor: "pointer",
+  boxShadow: "0 4px 16px rgba(0, 0, 0, 0.45)",
+};
+
+const panelBodyStyles: Partial<CSSStyleDeclaration> = {
+  pointerEvents: "auto",
+  width: "330px",
+  maxHeight: "min(460px, calc(100vh - 96px))",
+  overflowY: "auto",
+  borderRadius: "10px",
+  border: "1px solid rgba(148, 163, 184, 0.28)",
+  background: "rgba(7, 10, 16, 0.94)",
+  color: "#c9d6ea",
+  fontSize: "11px",
+  lineHeight: "1.55",
+  padding: "10px 12px",
+  boxShadow: "0 12px 32px rgba(0, 0, 0, 0.55)",
+};
+
+const sectionTitleStyles: Partial<CSSStyleDeclaration> = {
+  margin: "8px 0 2px",
+  fontSize: "9px",
+  fontWeight: "700",
+  letterSpacing: "0.12em",
+  color: "#7f96b5",
+};
+
+const valueStyles: Partial<CSSStyleDeclaration> = {
+  margin: "0",
+  color: "#e8f0ff",
+  fontVariantNumeric: "tabular-nums",
+  whiteSpace: "pre-wrap",
+};
+
+const docStyles: Partial<CSSStyleDeclaration> = {
+  margin: "1px 0 0",
+  fontSize: "10px",
+  color: "#7f96b5",
+};
+
 /**
- * Mounts the opt-in HUD: a fixed, pointer-transparent overlay refreshed from
- * {@link getPerfSnapshot} every {@link HUD_UPDATE_MS}. Pure DOM on purpose —
- * React renders must not be influenced by the tool that measures them.
+ * Static documentation shown inside the expanded panel: what each metric
+ * measures and how to read it. Kept beside the values so the HUD explains
+ * itself instead of sending the reader to the manual.
+ */
+const metricSections: Array<{
+  title: string;
+  doc: string;
+  read: (snapshot: PerfSnapshot) => string;
+}> = [
+  {
+    title: "首屏 FIRST PAINT",
+    doc: "ready：导航开始到应用首次提交渲染；fcp / lcp：首次内容绘制与最大内容绘制。本地服务下通常都在 1s 内，明显偏大先看静态资源与首屏快照体积。",
+    read: (snapshot) =>
+      `ready ${snapshot.appReadyMs ?? "--"}ms · fcp ${snapshot.firstContentfulPaintMs ?? "--"}ms · lcp ${snapshot.largestContentfulPaintMs ?? "--"}ms`,
+  },
+  {
+    title: "滚动 SCROLL FPS",
+    doc: "只在列表真实滚动时采样（一个手势一个样本）。avg 是会话平均，worst 是最差的一次手势；低于 45 需要关注该手势期间的长任务。",
+    read: (snapshot) =>
+      `last ${snapshot.scrollFps.last} · avg ${snapshot.scrollFps.average} · worst ${snapshot.scrollFps.worst}（${snapshot.scrollFps.samples} 次手势）`,
+  },
+  {
+    title: "列表渲染 LIST RENDER",
+    doc: "RUN HISTORY 每次提交渲染的耗时与行数。avg 稳定在个位数毫秒属正常；max 反映最差的一次提交（通常是快照落地或大批量事件）。",
+    read: (snapshot) =>
+      `last ${snapshot.listRender.lastMs.toFixed(1)}ms · avg ${snapshot.listRender.averageMs.toFixed(1)}ms · max ${snapshot.listRender.maxMs.toFixed(1)}ms · ${snapshot.listRender.count} 次 · ${snapshot.listRender.lastRows} 行`,
+  },
+  {
+    title: "网络 NETWORK",
+    doc: "api 是 /api/*（事件流、快照、健康检查），assets 是静态资源；字节数为传输体积。流式会话下 api 请求随事件批次增长属预期。",
+    read: (snapshot) =>
+      `${snapshot.network.totalRequests} 请求（api ${snapshot.network.apiRequests} · 静态 ${snapshot.network.assetRequests}） · ${(snapshot.network.transferBytes / 1024).toFixed(0)}KB`,
+  },
+  {
+    title: "长任务 LONG TASKS",
+    doc: "阻塞主线程超过 50ms 的任务。total 反映累计卡顿，max 是最严重的一次；流式高负载下 max 的来源通常在派生管线而非渲染。",
+    read: (snapshot) =>
+      `${snapshot.longTasks.count} 次 · 累计 ${snapshot.longTasks.totalMs.toFixed(0)}ms · 最长 ${snapshot.longTasks.maxMs}ms`,
+  },
+];
+
+const usageCopy = [
+  "?perf=1 开启（记住选择），?perf=0 关闭并清除；关闭后刷新页面不再出现。",
+  "控制台可随时读取同样数据：window.__astroPerf.snapshot()。",
+  "性能改动需要前后数字：pnpm perf:fixture（合成历史）+ pnpm perf:bench（逐阶段派生耗时）。",
+].join("\n");
+
+/**
+ * Mounts the opt-in HUD: a floating, collapsible panel pinned to the bottom
+ * edge of the page. Collapsed it is one pill with two headline numbers;
+ * expanded it documents every metric beside its live value. Pure DOM on
+ * purpose — React renders must not be influenced by the tool that measures
+ * them — so expansion is ordinary DOM state, not component state.
  */
 export function mountPerfHud(
   getSnapshot: () => PerfSnapshot,
@@ -339,29 +452,76 @@ export function mountPerfHud(
   }
   const host = doc.createElement("div");
   host.id = "astro-perf-hud";
-  host.setAttribute("aria-hidden", "true");
-  Object.assign(host.style, {
-    background: "rgba(7, 10, 16, 0.85)",
-    border: "1px solid rgba(255, 255, 255, 0.18)",
-    borderRadius: "6px",
-    color: "#e8f0ff",
-    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-    fontSize: "11px",
-    lineHeight: "1.5",
-    padding: "6px 10px",
-    pointerEvents: "none",
-    position: "fixed",
-    right: "8px",
-    top: "8px",
-    whiteSpace: "pre",
-    zIndex: "2147483647",
-  } satisfies Partial<CSSStyleDeclaration>);
-  host.textContent = formatHudLine(getSnapshot());
+  Object.assign(host.style, panelStyles);
+
+  const pill = doc.createElement("button");
+  pill.type = "button";
+  pill.className = "astro-perf-hud__toggle";
+  pill.setAttribute("aria-expanded", "false");
+  pill.setAttribute("aria-controls", "astro-perf-hud-panel");
+  pill.title = "页面性能面板：点击展开各指标说明";
+  Object.assign(pill.style, pillStyles);
+
+  const panel = doc.createElement("div");
+  panel.id = "astro-perf-hud-panel";
+  panel.className = "astro-perf-hud__panel";
+  panel.hidden = true;
+  Object.assign(panel.style, panelBodyStyles);
+
+  const header = doc.createElement("div");
+  header.style.margin = "0 0 4px";
+  header.style.color = "#e8f0ff";
+  header.style.fontSize = "10px";
+  header.style.fontWeight = "700";
+  header.style.letterSpacing = "0.12em";
+  header.textContent = "页面性能 PERF";
+
+  const usage = doc.createElement("p");
+  Object.assign(usage.style, docStyles);
+  usage.style.marginTop = "10px";
+  usage.style.borderTop = "1px solid rgba(148, 163, 184, 0.22)";
+  usage.style.paddingTop = "8px";
+  usage.style.whiteSpace = "pre-wrap";
+  usage.textContent = usageCopy;
+
+  panel.append(header);
+  const valueNodes = metricSections.map(({ title, doc: sectionDoc }) => {
+    const heading = doc.createElement("div");
+    heading.textContent = title;
+    Object.assign(heading.style, sectionTitleStyles);
+    const value = doc.createElement("p");
+    Object.assign(value.style, valueStyles);
+    const note = doc.createElement("p");
+    Object.assign(note.style, docStyles);
+    note.textContent = sectionDoc;
+    panel.append(heading, value, note);
+    return value;
+  });
+  panel.append(usage);
+
+  const render = () => {
+    const snapshot = getSnapshot();
+    pill.textContent = `PERF ${formatHudHeadline(snapshot)}`;
+    metricSections.forEach(({ read }, index) => {
+      valueNodes[index].textContent = read(snapshot);
+    });
+  };
+  render();
+
+  let expanded = false;
+  const setExpanded = (next: boolean) => {
+    expanded = next;
+    panel.hidden = !next;
+    pill.setAttribute("aria-expanded", String(next));
+  };
+  pill.addEventListener("click", () => {
+    setExpanded(!expanded);
+  });
+
+  host.append(panel, pill);
   doc.body.appendChild(host);
 
-  const timer = window.setInterval(() => {
-    host.textContent = formatHudLine(getSnapshot());
-  }, HUD_UPDATE_MS);
+  const timer = window.setInterval(render, HUD_UPDATE_MS);
   window.addEventListener("pagehide", () => window.clearInterval(timer), {
     once: true,
   });

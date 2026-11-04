@@ -11,9 +11,11 @@ import {
   getRunHistoryDuration,
   getRunHistoryTerminalInfo,
   isLiveRunStatus,
+  isSparseRunHistoryList,
   quantizeTimestamp,
   RUN_HISTORY_COARSE_REFRESH_MS,
   RUN_HISTORY_LIVE_WINDOW_MS,
+  RUN_HISTORY_SPARSE_HYSTERESIS_ROWS,
   RUN_HISTORY_STALE_AFTER_MS,
   RUN_HISTORY_WAITING_LIVE_WINDOW_MS,
   RUN_HISTORY_WAITING_STALE_AFTER_MS,
@@ -432,6 +434,20 @@ test("quantizes timestamps down to the start of their bucket", () => {
   assert.equal(quantizeTimestamp(0, 30_000), 0);
   // The coarse refresh bucket matches the documented 30s granularity.
   assert.equal(RUN_HISTORY_COARSE_REFRESH_MS, 30_000);
+});
+
+test("sparse list decision carries hysteresis over the threshold", () => {
+  const threshold = 4;
+  // Entering sparse uses the plain threshold.
+  assert.equal(isSparseRunHistoryList(4, false, threshold), true);
+  assert.equal(isSparseRunHistoryList(5, false, threshold), false);
+  // Leaving it requires the count to clear the buffer: sessions aging out of
+  // the window while a re-run enters must not re-clamp the whole list on each
+  // crossing.
+  assert.equal(isSparseRunHistoryList(5, true, threshold), true);
+  assert.equal(isSparseRunHistoryList(6, true, threshold), true);
+  assert.equal(isSparseRunHistoryList(7, true, threshold), false);
+  assert.equal(RUN_HISTORY_SPARSE_HYSTERESIS_ROWS, 2);
 });
 
 test("marks an executing run as stale once its stream has been silent", () => {

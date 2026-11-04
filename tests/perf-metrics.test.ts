@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   attachScrollFpsTracker,
   computeFps,
+  formatHudHeadline,
   getPerfSnapshot,
   installPerfMetrics,
   isApiRequest,
@@ -74,6 +75,16 @@ test("resolvePerfHudEnabled prefers the query parameter over storage", () => {
   assert.equal(resolvePerfHudEnabled("?", "1"), true);
   assert.equal(resolvePerfHudEnabled("?", null), false);
   assert.equal(resolvePerfHudEnabled("", null), false);
+});
+
+test("formatHudHeadline condenses the collapsed pill to two numbers", () => {
+  recordScrollSample({ durationMs: 1_000, fps: 58.4, frames: 58 });
+  recordListRender(0.8, 12);
+  const headline = formatHudHeadline(getPerfSnapshot());
+  // The snapshot aggregates module-level samples from every test in this
+  // process, so the exact values are shared state; the pill's contract is the
+  // two-number shape: a rounded fps average and a one-decimal render average.
+  assert.match(headline, /^\d+(\.\d+)?fps · \d+\.\dms$/);
 });
 
 test("browser-only installers no-op outside the DOM", () => {

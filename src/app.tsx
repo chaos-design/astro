@@ -248,6 +248,7 @@ import {
   getRunHistoryDisplayState,
   getRunHistoryTerminalInfo,
   isLiveRunStatus,
+  isSparseRunHistoryList,
   RUN_HISTORY_COARSE_REFRESH_MS,
   runTerminalReasonLabels,
   quantizeTimestamp,
@@ -1659,11 +1660,21 @@ const RunHistoryItem = memo(function RunHistoryItem({
           <ChevronRight />
         </Button>
       ) : null}
-      {expanded ? (
+      {/* The thread stays mounted for every multi-prompt row and animates
+          between its measured height and 0. Unmounting it on collapse made
+          every expand a teleport: the executing row grew by hundreds of
+          pixels in one commit and shoved the whole list (the N LIVE jumping).
+          A collapsed thread is visibility-hidden, so it neither paints nor
+          participates in a11y or focus, and its margins collapse with it. */}
+      {hasPromptThread ? (
         <ScrollArea
           id={promptListId}
-          className="run-history__prompt-scroll"
-          style={{ height: threadHeight }}
+          className={cn(
+            "run-history__prompt-scroll",
+            !expanded && "is-collapsed",
+          )}
+          style={{ height: expanded ? threadHeight : 0 }}
+          aria-hidden={!expanded}
         >
           <ol className="run-history__prompts" ref={promptListRef}>
             {displayPromptRows.map(({ displayState, promptLive, promptRun }) => {
@@ -1893,6 +1904,17 @@ const RunHistory = memo(function RunHistory({
     () => new Set(),
   );
   const [hoverCard, setHoverCard] = useState<RunHistoryHoverCard | null>(null);
+  // Sparse/dense is a whole-list re-clamp (every title changes its line
+  // ceiling), so the decision carries hysteresis: a count hovering at the
+  // threshold — sessions aging out of the window while a re-run enters it —
+  // must not re-clamp the list on each crossing.
+  const sparseRef = useRef(false);
+  const sparseList = isSparseRunHistoryList(
+    sessions.length,
+    sparseRef.current,
+    appLayout.runHistorySparseListRows,
+  );
+  sparseRef.current = sparseList;
   const activePromptRunRef = useRef<HTMLDivElement | null>(null);
   const hoverCardRef = useRef<HTMLDivElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -2317,8 +2339,9 @@ const RunHistory = memo(function RunHistory({
           "run-history__list min-h-0 overflow-auto p-1.5",
           // A sparse list has the vertical room to show each message whole, so
           // the cards grow taller instead of cutting every title at two lines;
-          // a dense list keeps the compact clamp for scannability.
-          sessions.length <= appLayout.runHistorySparseListRows && "is-sparse",
+          // a dense list keeps the compact clamp for scannability. The
+          // decision is hysteresis-stable (see `sparseList`).
+          sparseList && "is-sparse",
         )}
         ref={listRef}
         onPointerLeave={handleListPointerLeave}
