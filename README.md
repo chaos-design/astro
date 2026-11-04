@@ -214,7 +214,9 @@ A deployed page targets `http://127.0.0.1:5678` by default; override with
 page's origin — start it with `ASTRO_CORS_ORIGINS="https://<domain>" pnpm start`
 (multiple origins comma-separated, `/api/health` reports the list). Origins are
 the read boundary for your local traces: list only domains you control.
-See the user manual's "部署预览页面" section for the full checklist.
+The full reference — local install, every environment variable, `astrox`
+service management, the CORS and data-directory details, and a troubleshooting
+quick table — is in `docs/deployment-en.md` (and `docs/deployment-zh.md`).
 
 ### Native Codex, Claude Code, and WorkBuddy plugins
 

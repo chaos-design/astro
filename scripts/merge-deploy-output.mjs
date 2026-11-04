@@ -14,7 +14,7 @@
  * in `server/server.mjs` for the allowlist that makes the cross-origin read
  * possible.
  */
-import { cpSync, existsSync, mkdirSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -38,6 +38,11 @@ for (const [label, source] of [
   }
 }
 
+// The output directory is this script's own artifact: rebuild it from
+// scratch every time. Copying on top of a previous run would leave stale
+// hashed assets behind (an old console build next to the new one), and a
+// verification scan of the directory would fail on the ghost files.
+rmSync(outputDir, { recursive: true, force: true });
 mkdirSync(outputDir, { recursive: true });
 cpSync(docsDist, outputDir, { recursive: true });
 cpSync(consoleDist, join(outputDir, "console"), { recursive: true });

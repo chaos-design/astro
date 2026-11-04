@@ -109,6 +109,11 @@ use Node.js ES modules or CommonJS according to their existing file extension.
 
 ## Deployed Console
 
+- The user-facing deployment reference is `docs/deployment-zh.md` /
+  `docs/deployment-en.md` (local install, full env-var table, CORS, `astrox`,
+  cloud console, docs site, troubleshooting). The bullets below are the
+  invariants that code must keep satisfying; the docs are the reader-facing
+  wording. Keep the two in step.
 - The console is a static page and may be served from a cloud origin (Vercel,
   GitHub Pages, any static host) while its data is the service on the reader's
   machine. `src/lib/api-base.ts` is the single definition of that address:

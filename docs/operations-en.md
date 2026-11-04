@@ -126,7 +126,13 @@ If a hook reports `ASTRO event was not recorded`, check permissions and confirm 
 | `ASTRO_PROJECT_DIR` | current directory | Base for a relative trace directory. |
 | `ASTRO_MAX_BODY_BYTES` | `5242880` | HTTP ingestion body limit. |
 | `ASTRO_AUTO_OPEN` | `1` | Start the dashboard from installation or agent events. |
+| `ASTRO_CORS_ORIGINS` | unset (no CORS) | Origins allowed to read the local API; equivalent config field `server.corsOrigins`. |
+| `ASTRO_DEMO_EVENTS` | unset | Sample-dataset path override for `GET /api/demo-events`. |
 | `CODEX_HOME` | `~/.codex` | Codex configuration and history root. |
+
+The full reference (including the internal variables `ASTRO_PID_FILE`,
+`ASTRO_OPEN_BROWSER`, and `ASTRO_TAKEOVER`) lives in the
+[Deployment Guide](deployment-en.md) §2.4.
 
 The installer creates `<ASTRO_HOME>/plugins/astro/config.yaml` and `.env` from
 the repository templates. The recorder, CLI, service, installer, DeepSeek

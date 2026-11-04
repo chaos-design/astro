@@ -129,7 +129,12 @@ find "$HOME/.astrox" -type f -name events.jsonl -print
 | `ASTRO_PROJECT_DIR` | 当前目录 | 解析相对 `ASTRO_TRACE_DIR` 的基准。 |
 | `ASTRO_MAX_BODY_BYTES` | `5242880` | HTTP 写入体积上限。 |
 | `ASTRO_AUTO_OPEN` | `1` | 安装或 Agent 触发时自动启动控制台。 |
+| `ASTRO_CORS_ORIGINS` | 未设置（关闭跨域） | 允许读取本机 API 的部署页来源，等价配置项 `server.corsOrigins`。 |
+| `ASTRO_DEMO_EVENTS` | 未设置 | 示例数据集（`GET /api/demo-events`）路径覆盖。 |
 | `CODEX_HOME` | `~/.codex` | Codex 配置、活动和归档历史目录。 |
+
+全量参考（含 `ASTRO_PID_FILE`、`ASTRO_OPEN_BROWSER`、`ASTRO_TAKEOVER` 等内部变量）
+见 [部署指南](deployment-zh.md) §2.4。
 
 安装器会从仓库模板创建 `<ASTRO_HOME>/plugins/astro/config.yaml` 与 `.env`。
 采集器、CLI、服务、安装器、DeepSeek 适配器和 Vite 代理统一读取这两个文件。

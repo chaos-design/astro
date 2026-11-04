@@ -223,6 +223,8 @@ node ~/.astrox/plugins/astro/server/server.mjs
 
 控制台是纯静态页面，可以部署到 Vercel 或 GitHub Pages，在浏览器里实时查看
 **本机**的 Agent 运行：页面本身在云端，数据始终来自你电脑上的 ASTRO 服务。
+完整的部署参考（CORS、数据目录、`astrox` 命令、故障排查）见
+[部署指南](deployment-zh.md)。
 
 部署方式：
 
@@ -825,6 +827,19 @@ Prompt 子运行，无 Prompt 时才回退到完整会话，不直接调用服�
 文件缺失 404、非法 500；`/api/health` 的 `corsOrigins` 字段报告当前跨域允许列表。
 两者都供「部署预览页面」使用：部署页默认连接 `http://127.0.0.1:5678`，允许列表
 见第 4.3 节。
+
+### 13.5 服务管理
+
+```text
+DELETE /api/events                 清空全部已采集事件
+POST /api/restart                 原地重启（继任进程接管同一端口，SSE 自动重连）
+POST /api/config/data-root         {"path": "/abs/path"} 更改数据目录
+```
+
+`POST /api/config/data-root` 把数据目录写进插件 `.env`（保留其它行，拒绝缺失或
+相对路径）后原地重启，`/api/health` 的 `dataRoot` 字段报告结果；控制台的「数据
+目录 → 更改」卡片就是这个端点。等价动作也可用 `astrox restart` / `astrox update`
+完成。完整的服务端端点与环境变量参考见 [部署指南](deployment-zh.md)。
 
 ## 14. Browser SDK
 

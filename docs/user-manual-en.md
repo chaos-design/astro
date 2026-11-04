@@ -243,7 +243,9 @@ migration or `--astro-home=/path/to/.astrox` to change the data root.
 
 The console is a static page, so it can be deployed to Vercel or GitHub Pages
 and watch agent runs happening **on your machine**: the page lives in the
-cloud, the data still comes from the ASTRO service on your computer.
+cloud, the data still comes from the ASTRO service on your computer. The full
+deployment reference (CORS, data directory, `astrox` commands,
+troubleshooting) lives in the [Deployment Guide](deployment-en.md).
 
 Deployment paths:
 
@@ -956,6 +958,21 @@ malformed one 500. `/api/health` reports the active cross-origin allowlist as
 `corsOrigins`. Both support the deployed preview page: it targets
 `http://127.0.0.1:5678` by default, and the allowlist is described in
 section 4.3.
+
+### 13.5 Service management
+
+```text
+DELETE /api/events                 clear all captured events
+POST /api/restart                  in-place restart (successor keeps the same port, SSE reconnects)
+POST /api/config/data-root         {"path": "/abs/path"} change the data directory
+```
+
+`POST /api/config/data-root` writes the data directory into the plugin `.env`
+(every other line preserved, missing or relative paths rejected), then restarts
+in place; `/api/health` reports the resulting `dataRoot`. The console's
+"data directory → change" card is this endpoint. The same jobs can be done from
+the shell with `astrox restart` / `astrox update`. The full server endpoint and
+environment reference lives in the [Deployment Guide](deployment-en.md).
 
 ## 14. Browser SDK
 

@@ -19,6 +19,7 @@
     "build:plugin": "pnpm build && pnpm build:native-plugins && node scripts/build-plugin.mjs",
     "dev": "vite",
     "astrox": "node bin/astrox.mjs",
+    "deploy:preview": "pnpm build && pnpm build:docs && node scripts/merge-deploy-output.mjs && ASTRO_CONSOLE_DIST=deploy/console node scripts/verify-console-build.mjs",
     "dev:docs": "vite --config site/vite.config.ts",
     "install-hooks": "node scripts/install-hooks.mjs",
     "install-opencode-plugin": "node scripts/install-opencode-plugin.mjs",
