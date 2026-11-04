@@ -2,14 +2,17 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   attachScrollFpsTracker,
+  clampHudPosition,
   computeFps,
   formatHudHeadline,
+  getHudTiles,
   getPerfSnapshot,
   installPerfMetrics,
   isApiRequest,
   markAppReady,
   recordListRender,
   recordScrollSample,
+  resolveHudPosition,
   resolvePerfHudEnabled,
 } from "../src/lib/perf-metrics.ts";
 
@@ -97,5 +100,77 @@ test("browser-only installers no-op outside the DOM", () => {
       removeEventListener() {},
     } as unknown as HTMLElement),
     "function",
+  );
+});
+
+test("clampHudPosition keeps the dragged HUD inside the viewport", () => {
+  const viewport = { width: 1_000, height: 800 };
+  // In-range positions pass through rounded.
+  assert.deepEqual(
+    clampHudPosition({ left: 100.4, top: 50.6 }, 240, 32, viewport.width, viewport.height),
+    { left: 100, top: 51 },
+  );
+  // Beyond the right/bottom edge is pulled back so the panel stays visible.
+  assert.deepEqual(
+    clampHudPosition({ left: 1_200, top: 900 }, 240, 32, viewport.width, viewport.height),
+    { left: 752, top: 760 },
+  );
+  // A viewport smaller than the HUD still keeps the top-left edge on screen.
+  assert.deepEqual(
+    clampHudPosition({ left: -50, top: -50 }, 240, 32, 100, 50),
+    { left: 8, top: 8 },
+  );
+});
+
+test("resolveHudPosition restores a stored drag, rejects malformed values", () => {
+  const viewport = { width: 1_000, height: 800 };
+  assert.deepEqual(
+    resolveHudPosition('{"left":40,"top":60}', 240, 32, viewport.width, viewport.height),
+    { left: 40, top: 60 },
+  );
+  // Out-of-range stored positions (a smaller window since the drop) clamp.
+  assert.deepEqual(
+    resolveHudPosition('{"left":5000,"top":5000}', 240, 32, viewport.width, viewport.height),
+    { left: 752, top: 760 },
+  );
+  // Absent, broken JSON, and non-numeric fields all fall back to the default.
+  assert.equal(resolveHudPosition(null, 240, 32, viewport.width, viewport.height), null);
+  assert.equal(resolveHudPosition("not-json", 240, 32, viewport.width, viewport.height), null);
+  assert.equal(
+    resolveHudPosition('{"left":"x","top":0}', 240, 32, viewport.width, viewport.height),
+    null,
+  );
+  assert.equal(
+    resolveHudPosition('{"left":null,"top":null}', 240, 32, viewport.width, viewport.height),
+    null,
+  );
+});
+
+test("getHudTiles tone-codes the three headline numbers", () => {
+  const tiles = getHudTiles({
+    ...getPerfSnapshot(),
+    scrollFps: { average: 58, last: 58, samples: 3, worst: 55 },
+    listRender: { count: 4, lastMs: 1, averageMs: 2, maxMs: 4, lastRows: 20 },
+    longTasks: { count: 0, maxMs: 0, totalMs: 0 },
+  });
+  assert.deepEqual(
+    tiles.map((tile) => [tile.label, tile.tone]),
+    [
+      ["滚动帧率", "ok"],
+      ["列表渲染", "ok"],
+      ["长任务", "ok"],
+    ],
+  );
+  // Thresholds flip the tone instead of hiding the number: the tool reports
+  // the bad state, it does not go quiet.
+  const degraded = getHudTiles({
+    ...getPerfSnapshot(),
+    scrollFps: { average: 22, last: 22, samples: 2, worst: 18 },
+    listRender: { count: 4, lastMs: 30, averageMs: 25, maxMs: 40, lastRows: 20 },
+    longTasks: { count: 2, maxMs: 180, totalMs: 240 },
+  });
+  assert.deepEqual(
+    degraded.map((tile) => tile.tone),
+    ["bad", "bad", "bad"],
   );
 });

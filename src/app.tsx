@@ -2524,8 +2524,7 @@ const AtomicLog = memo(function AtomicLog({
   runningEventId,
   selectedEventId,
   locateRequest,
-  query,
-  onQueryChange,
+  queryResetToken,
   onSelect,
   onLocateSelectedAtom,
   canLocateSelectedAtom,
@@ -2535,8 +2534,7 @@ const AtomicLog = memo(function AtomicLog({
   runningEventId: string;
   selectedEventId: string;
   locateRequest: number;
-  query: string;
-  onQueryChange: (query: string) => void;
+  queryResetToken: number;
   onSelect: (eventId: string) => void;
   onLocateSelectedAtom: () => void;
   canLocateSelectedAtom: boolean;
@@ -2561,6 +2559,15 @@ const AtomicLog = memo(function AtomicLog({
     canScrollDown: false,
     canScrollUp: false,
   });
+  // The search text is log-local state: a keystroke re-renders only this
+  // panel, not the studio around it. Filtering reads a deferred copy of the
+  // text, so typing stays immediate while the re-filter runs behind it, and
+  // app-root flows that need an empty box bump `queryResetToken`.
+  const [query, setQuery] = useState("");
+  const deferredQuery = useDeferredValue(query);
+  useEffect(() => {
+    setQuery("");
+  }, [queryResetToken]);
   // Mirror of `scrollPosition` used by the scroll handler: the up chevron
   // only appears once the reader has actually scrolled into older events, and
   // it stays until they are back near the newest ones. The gap between the
@@ -2570,16 +2577,17 @@ const AtomicLog = memo(function AtomicLog({
     canScrollDown: false,
     canScrollUp: false,
   });
-  // Filtering scans the cached haystacks, so repeated keystrokes stay cheap;
-  // the cache itself is warmed below, outside the keystroke path.
+  // Entries are built once per events change; the deferred needle only
+  // re-runs the (cached-haystack) filter, so a keystroke never pays for
+  // rebuilding every turn separator.
+  const entries = useMemo(() => buildLogEntries(events), [events]);
   const visibleEntries = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    const entries = buildLogEntries(events);
+    const needle = deferredQuery.trim().toLowerCase();
     const matched = needle
       ? entries.filter(({ event }) => matchesEventQuery(event, needle))
       : entries;
     return [...matched].reverse();
-  }, [events, query]);
+  }, [entries, deferredQuery]);
 
   // Warm the search haystacks in idle slices: the first keystroke stays fast
   // without making the selection of a long run pay for serializing every
@@ -2760,7 +2768,7 @@ const AtomicLog = memo(function AtomicLog({
         <InputGroup className="atomic-log__search">
           <InputGroupInput
             value={query}
-            onChange={(event) => onQueryChange(event.target.value)}
+            onChange={(event) => setQuery(event.target.value)}
             placeholder="Search tools or text"
             aria-label="搜索事件日志"
           />
@@ -4184,7 +4192,10 @@ export default function App() {
   const [service, setService] = useState<ServiceHealth | null>(null);
   const [serviceError, setServiceError] = useState("");
   const [restarting, setRestarting] = useState(false);
-  const [query, setQuery] = useState("");
+  // The LOG search box owns its text inside AtomicLog: a keystroke must not
+  // re-render the whole studio. Flows that need an empty box (selection jumps,
+  // history search) bump this token instead of holding the string here.
+  const [logQueryResetToken, setLogQueryResetToken] = useState(0);
   const [now, setNow] = useState(() => Date.now());
   const [activeSessionKey, setActiveSessionKey] = useState("");
   const [activePromptRunKey, setActivePromptRunKey] = useState("");
@@ -5559,7 +5570,7 @@ export default function App() {
         setLocateRequest((current) => current + 1);
       }
       setConsoleOpen(true);
-      setQuery("");
+      setLogQueryResetToken((current) => current + 1);
       setReplayMode(false);
       setPlaying(false);
     },
@@ -5586,7 +5597,7 @@ export default function App() {
     setActiveView("topology");
     setHistoryOpen(true);
     setConsoleOpen(true);
-    setQuery("");
+    setLogQueryResetToken((current) => current + 1);
     setReplayMode(false);
     setPlaying(false);
     setHistorySearchOpen(false);
@@ -5879,7 +5890,7 @@ export default function App() {
     }
     setSelectedEventId(locateAtomEvent.id);
     setConsoleOpen(true);
-    setQuery("");
+    setLogQueryResetToken((current) => current + 1);
     setTrajectoryLocateRequest((current) => current + 1);
     setLogLocateRequest((current) => current + 1);
   }, [
@@ -5918,7 +5929,7 @@ export default function App() {
       setPlaying(false);
       setReplayMode(false);
       setConsoleOpen(true);
-      setQuery("");
+      setLogQueryResetToken((current) => current + 1);
       const event = activeEvents.find((candidate) => candidate.id === eventId);
       setSelectedAtomId(
         atomId || getAtomIdForEvent(event || null, platformId) || null,
@@ -6558,8 +6569,7 @@ export default function App() {
                 live={liveActive}
                 selectedEventId={selectedEventId || ""}
                 locateRequest={logLocateRequest}
-                query={query}
-                onQueryChange={setQuery}
+                queryResetToken={logQueryResetToken}
                 onSelect={handleLogSelect}
                 canLocateSelectedAtom={Boolean(currentAtomId)}
                 onLocateSelectedAtom={handleLogLocateAtom}

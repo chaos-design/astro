@@ -503,14 +503,30 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   history + timed ingestion) and `pnpm perf:bench` (per-batch derive
   milliseconds per phase); client long tasks read off the `?perf=1` HUD via
   `window.__astroPerf.snapshot()`.
-- The `?perf=1` HUD is a floating, collapsible panel pinned to the **bottom
-  edge** of the page (`src/lib/perf-metrics.ts`): collapsed it is one pill
-  with two headline numbers (scroll fps, list render average); expanded it
-  documents every metric beside its live value, plus the usage notes
-  (`?perf=0` clears the stored choice, the console API, the benchmark
-  drivers). It stays pure DOM outside React so the tool measuring the app
-  never enters the app's render path — expansion is DOM state, not component
+- The `?perf=1` HUD is a floating, collapsible, **draggable** panel
+  (`src/lib/perf-metrics.ts`): it starts anchored to the bottom-right edge,
+  and dragging the pill or the panel header re-places it (persisted under
+  `astro:perf-hud-pos`, clamped back into the viewport on restore and resize).
+  A press that never leaves the 4px threshold stays a click, so dropping the
+  HUD never toggles it. Collapsed it is one pill with two headline numbers
+  (scroll fps, list render average); expanded it shows three tone-coded tiles
+  (scroll fps / list render / long tasks, ok-warn-bad by threshold) above
+  label→value rows per metric group, plus the usage notes (`?perf=0` clears
+  the stored choice, the console API, the benchmark drivers). It stays pure
+  DOM outside React so the tool measuring the app never enters the app's
+  render path — expansion, drag and collapse are DOM state, not component
   state.
+- The LOG search text is **log-local state** (`AtomicLog`), never app-root
+  state: a keystroke re-renders only the log panel, not the studio. Filtering
+  reads a `useDeferredValue` copy of the text over the cached per-event
+  haystacks (`src/lib/event-search.ts`), and `buildLogEntries` is memoized
+  separately from the needle so a keystroke never rebuilds every turn
+  separator. App-root flows that need an empty box bump a reset token
+  (`logQueryResetToken`), they do not hold the string.
+- The LOG header's scroll controls **always reserve their two-button width**
+  (`.atomic-log__scroll-controls`): the buttons mount per direction, and
+  without the reservation every mount/unmount at a scroll edge resized the
+  sibling search input — the box jittered on every streamed event.
 
 ## Run Trajectory Order
 

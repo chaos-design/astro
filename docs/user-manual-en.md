@@ -521,7 +521,9 @@ The upper LOG area:
 
 - orders the newest event first;
 - groups rows by turn;
-- searches any serialized field in the selected prompt run;
+- searches any serialized field in the selected prompt run; matching follows
+  the keystroke in the background (per-event serializations are cached, so
+  typing stays smooth on long runs);
 - selects or clears an event by clicking its row;
 - locates the mapped atom in the topology;
 - puts the top/bottom scroll controls in the panel header (only the edge that is
@@ -1127,20 +1129,43 @@ Do not expose the service through `0.0.0.0` or a public network without authenti
 
 Append `?perf=1` to the page address (for example
 `http://127.0.0.1:5678/?perf=1`) to float a performance panel at the **bottom
-edge** of the page. Collapsed it is one pill with two headline numbers (average
-scroll fps and the average list-render time); clicking it expands the panel,
-where every metric carries its value and an explanation — first paint
-(ready/fcp/lcp), scroll fps (sampled only while a list actually scrolls), RUN
-HISTORY render time, network requests (api and static assets counted
-separately), and main-thread long tasks. `?perf=0` turns it off and clears the
-stored choice, so the panel stays away after a refresh; either choice persists
-until explicitly changed.
+edge** of the page, anchored to the bottom-right corner and **draggable**: hold
+the pill or the expanded panel's title bar and drop it anywhere — the position
+is remembered (it survives a reload and is pulled back into view when the
+window shrinks). A tap (held under ~4px of movement) toggles the panel; the
+expanded title bar also carries a `—` collapse button on the right.
+
+Collapsed it is one pill with two headline numbers (average scroll fps and the
+average list-render time). Expanded, read the three **tone-coded tiles** first
+— scroll fps, list render, long tasks — where green/amber/red mean healthy,
+worth watching, and degraded (fps ≥50 / ≥30; render average ≤8 / ≤16 ms; zero
+long tasks, red once the worst one passes 100 ms). Below the tiles every metric
+is laid out as label→value rows in five groups (load, scroll, list render,
+network, long tasks), each group title carrying a one-line gray note on how to
+read its numbers. `?perf=0` turns it off and clears the stored choice, so the
+panel stays away after a refresh; either choice persists until explicitly
+changed.
 
 The panel reads the same numbers as `window.__astroPerf.snapshot()`, which you
 can call directly in the browser console; reproduce and compare performance
 issues with `pnpm perf:fixture` (synthetic history) + `pnpm perf:bench`
 (per-phase derive timings). When hunting jank, look at the long tasks' `max`
 first: its source is usually the derive pipeline, not the rendering.
+
+A recommended path for hunting one jank:
+
+1. Add `?perf=1` to the address where the jank happens and reload; drag the
+   panel somewhere it does not cover the view;
+2. Reproduce the jank once (expanding a large run, scrolling the LOG…) — the
+   long-task tile increments immediately; expand the panel and read
+   "long tasks → max";
+3. Read the three tiles' colors: red/amber scroll fps with a green list render
+   points outside rendering (usually event derivation); a red/amber list
+   render means the RUN HISTORY commits themselves are heavy;
+4. To keep evidence, run `window.__astroPerf.snapshot()` in the browser
+   console and archive it, then compare against the same snapshot after the
+   fix; per-phase derive timings come from `pnpm perf:bench`, synthetic large
+   histories from `pnpm perf:fixture`.
 
 ### The UI Shows Demo
 

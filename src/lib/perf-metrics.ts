@@ -322,6 +322,109 @@ export function formatHudHeadline(snapshot: PerfSnapshot): string {
   return `${fps || "--"}fps · ${snapshot.listRender.averageMs.toFixed(1)}ms`;
 }
 
+/**
+ * The HUD is draggable, so its place on the screen is the reader's choice.
+ * The default anchors to the bottom-right edge; a dragged (or restored)
+ * position pins with left/top instead.
+ */
+export type HudPosition = { left: number; top: number };
+
+const HUD_POSITION_KEY = "astro:perf-hud-pos";
+const HUD_EDGE = 8;
+
+/** Clamps a position so the HUD stays fully inside the viewport. */
+export function clampHudPosition(
+  position: HudPosition,
+  width: number,
+  height: number,
+  viewportWidth: number,
+  viewportHeight: number,
+): HudPosition {
+  const maxLeft = Math.max(HUD_EDGE, viewportWidth - width - HUD_EDGE);
+  const maxTop = Math.max(HUD_EDGE, viewportHeight - height - HUD_EDGE);
+  return {
+    left: Math.min(Math.max(HUD_EDGE, Math.round(position.left)), maxLeft),
+    top: Math.min(Math.max(HUD_EDGE, Math.round(position.top)), maxTop),
+  };
+}
+
+/**
+ * Parses a stored position; `null` when absent or malformed so a corrupted
+ * value falls back to the default edge anchor instead of breaking the HUD.
+ */
+export function resolveHudPosition(
+  stored: string | null,
+  width: number,
+  height: number,
+  viewportWidth: number,
+  viewportHeight: number,
+): HudPosition | null {
+  if (!stored) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(stored) as Partial<HudPosition>;
+    if (
+      typeof parsed.left !== "number" ||
+      typeof parsed.top !== "number" ||
+      !Number.isFinite(parsed.left) ||
+      !Number.isFinite(parsed.top)
+    ) {
+      return null;
+    }
+    return clampHudPosition(
+      { left: parsed.left, top: parsed.top },
+      width,
+      height,
+      viewportWidth,
+      viewportHeight,
+    );
+  } catch {
+    return null;
+  }
+}
+
+/** Three headline tiles for the expanded panel, tone-coded by threshold. */
+export type HudTile = {
+  value: string;
+  label: string;
+  tone: "ok" | "warn" | "bad";
+};
+
+export function getHudTiles(snapshot: PerfSnapshot): HudTile[] {
+  const fps =
+    snapshot.scrollFps.samples > 0 ? snapshot.scrollFps.average : snapshot.scrollFps.last;
+  const render = snapshot.listRender.averageMs;
+  return [
+    {
+      value: `${fps || "--"} fps`,
+      label: "滚动帧率",
+      tone: fps >= 50 ? "ok" : fps >= 30 ? "warn" : "bad",
+    },
+    {
+      value: `${render.toFixed(1)} ms`,
+      label: "列表渲染",
+      tone: render <= 8 ? "ok" : render <= 16 ? "warn" : "bad",
+    },
+    {
+      value: `${snapshot.longTasks.count}`,
+      label: "长任务",
+      tone:
+        snapshot.longTasks.count === 0
+          ? "ok"
+          : snapshot.longTasks.maxMs > 100
+            ? "bad"
+            : "warn",
+    },
+  ];
+}
+
+const hudToneColor: Record<HudTile["tone"], string> = {
+  ok: "#4ade80",
+  warn: "#fbbf24",
+  bad: "#f87171",
+};
+
 const panelStyles: Partial<CSSStyleDeclaration> = {
   position: "fixed",
   right: "12px",
@@ -340,7 +443,7 @@ const pillStyles: Partial<CSSStyleDeclaration> = {
   display: "inline-flex",
   alignItems: "center",
   gap: "6px",
-  padding: "3px 10px",
+  padding: "4px 11px",
   borderRadius: "999px",
   border: "1px solid rgba(148, 163, 184, 0.35)",
   background: "rgba(7, 10, 16, 0.88)",
@@ -348,100 +451,261 @@ const pillStyles: Partial<CSSStyleDeclaration> = {
   font: "inherit",
   fontSize: "10px",
   letterSpacing: "0.06em",
-  cursor: "pointer",
+  cursor: "grab",
   boxShadow: "0 4px 16px rgba(0, 0, 0, 0.45)",
+  userSelect: "none",
 };
 
 const panelBodyStyles: Partial<CSSStyleDeclaration> = {
   pointerEvents: "auto",
-  width: "330px",
-  maxHeight: "min(460px, calc(100vh - 96px))",
+  width: "336px",
+  maxHeight: "min(520px, calc(100vh - 96px))",
   overflowY: "auto",
-  borderRadius: "10px",
+  borderRadius: "12px",
   border: "1px solid rgba(148, 163, 184, 0.28)",
   background: "rgba(7, 10, 16, 0.94)",
   color: "#c9d6ea",
   fontSize: "11px",
-  lineHeight: "1.55",
-  padding: "10px 12px",
+  lineHeight: "1.5",
+  padding: "0",
   boxShadow: "0 12px 32px rgba(0, 0, 0, 0.55)",
 };
 
-const sectionTitleStyles: Partial<CSSStyleDeclaration> = {
-  margin: "8px 0 2px",
-  fontSize: "9px",
+const hudBarStyles: Partial<CSSStyleDeclaration> = {
+  display: "flex",
+  alignItems: "center",
+  gap: "7px",
+  padding: "9px 12px 8px",
+  borderBottom: "1px solid rgba(148, 163, 184, 0.18)",
+  cursor: "grab",
+  userSelect: "none",
+  color: "#e8f0ff",
+  fontSize: "10px",
   fontWeight: "700",
   letterSpacing: "0.12em",
+  position: "sticky",
+  top: "0",
+  background: "rgba(7, 10, 16, 0.96)",
+  zIndex: "1",
+};
+
+const collapseButtonStyles: Partial<CSSStyleDeclaration> = {
+  marginLeft: "auto",
+  width: "20px",
+  height: "20px",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "0",
+  borderRadius: "5px",
+  border: "1px solid rgba(148, 163, 184, 0.3)",
+  background: "transparent",
+  color: "#c9d6ea",
+  font: "inherit",
+  fontSize: "11px",
+  lineHeight: "1",
+  cursor: "pointer",
+};
+
+const tilesRowStyles: Partial<CSSStyleDeclaration> = {
+  display: "grid",
+  gridTemplateColumns: "repeat(3, 1fr)",
+  gap: "6px",
+  padding: "10px 12px 2px",
+};
+
+const tileStyles: Partial<CSSStyleDeclaration> = {
+  borderRadius: "8px",
+  border: "1px solid rgba(148, 163, 184, 0.2)",
+  background: "rgba(148, 163, 184, 0.07)",
+  padding: "7px 8px 6px",
+  textAlign: "center",
+};
+
+const tileValueStyles: Partial<CSSStyleDeclaration> = {
+  fontSize: "14px",
+  fontWeight: "700",
+  fontVariantNumeric: "tabular-nums",
+  letterSpacing: "0.02em",
+};
+
+const tileLabelStyles: Partial<CSSStyleDeclaration> = {
+  marginTop: "2px",
+  fontSize: "9px",
+  letterSpacing: "0.1em",
   color: "#7f96b5",
 };
 
-const valueStyles: Partial<CSSStyleDeclaration> = {
+const sectionTitleStyles: Partial<CSSStyleDeclaration> = {
+  margin: "10px 12px 0",
+  paddingBottom: "3px",
+  fontSize: "9px",
+  fontWeight: "700",
+  letterSpacing: "0.14em",
+  color: "#8fa8c7",
+  borderBottom: "1px solid rgba(148, 163, 184, 0.14)",
+  display: "flex",
+  justifyContent: "space-between",
+  gap: "8px",
+};
+
+const sectionDocStyles: Partial<CSSStyleDeclaration> = {
+  margin: "3px 12px 0",
+  fontSize: "9.5px",
+  color: "#647c9b",
+};
+
+const rowStyles: Partial<CSSStyleDeclaration> = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "baseline",
+  gap: "10px",
+  padding: "2px 12px 0",
+};
+
+const rowLabelStyles: Partial<CSSStyleDeclaration> = {
+  color: "#7f96b5",
+  flex: "0 0 auto",
+};
+
+const rowValueStyles: Partial<CSSStyleDeclaration> = {
   margin: "0",
   color: "#e8f0ff",
   fontVariantNumeric: "tabular-nums",
+  textAlign: "right",
   whiteSpace: "pre-wrap",
 };
 
-const docStyles: Partial<CSSStyleDeclaration> = {
-  margin: "1px 0 0",
-  fontSize: "10px",
-  color: "#7f96b5",
+const usageStyles: Partial<CSSStyleDeclaration> = {
+  margin: "10px 0 0",
+  padding: "8px 12px 10px",
+  borderTop: "1px solid rgba(148, 163, 184, 0.18)",
+  fontSize: "9.5px",
+  lineHeight: "1.6",
+  color: "#647c9b",
+  whiteSpace: "pre-wrap",
 };
 
 /**
  * Static documentation shown inside the expanded panel: what each metric
- * measures and how to read it. Kept beside the values so the HUD explains
- * itself instead of sending the reader to the manual.
+ * measures and how to read it. Rows stay label→value pairs so the panel scans
+ * as a table instead of prose; the muted line under each title says what the
+ * numbers mean.
  */
 const metricSections: Array<{
   title: string;
   doc: string;
-  read: (snapshot: PerfSnapshot) => string;
+  rows: Array<{
+    label: string;
+    value: (snapshot: PerfSnapshot) => string;
+    tone?: (snapshot: PerfSnapshot) => HudTile["tone"] | undefined;
+  }>;
 }> = [
   {
-    title: "首屏 FIRST PAINT",
-    doc: "ready：导航开始到应用首次提交渲染；fcp / lcp：首次内容绘制与最大内容绘制。本地服务下通常都在 1s 内，明显偏大先看静态资源与首屏快照体积。",
-    read: (snapshot) =>
-      `ready ${snapshot.appReadyMs ?? "--"}ms · fcp ${snapshot.firstContentfulPaintMs ?? "--"}ms · lcp ${snapshot.largestContentfulPaintMs ?? "--"}ms`,
+    title: "加载 LOAD",
+    doc: "导航开始到首次提交渲染 / 首次内容绘制 / 最大内容绘制；本地服务下通常都在 1s 内",
+    rows: [
+      { label: "ready", value: (s) => `${s.appReadyMs ?? "--"} ms` },
+      {
+        label: "FCP / LCP",
+        value: (s) =>
+          `${s.firstContentfulPaintMs ?? "--"} / ${s.largestContentfulPaintMs ?? "--"} ms`,
+      },
+    ],
   },
   {
     title: "滚动 SCROLL FPS",
-    doc: "只在列表真实滚动时采样（一个手势一个样本）。avg 是会话平均，worst 是最差的一次手势；低于 45 需要关注该手势期间的长任务。",
-    read: (snapshot) =>
-      `last ${snapshot.scrollFps.last} · avg ${snapshot.scrollFps.average} · worst ${snapshot.scrollFps.worst}（${snapshot.scrollFps.samples} 次手势）`,
+    doc: "仅在实际滚动时采样，一个手势一个样本；worst 是最差的一次手势",
+    rows: [
+      {
+        label: "last / avg / worst",
+        value: (s) =>
+          `${s.scrollFps.last} / ${s.scrollFps.average} / ${s.scrollFps.worst} fps`,
+        tone: (s) => {
+          // No gesture yet is "no data", not a degraded signal: the row stays
+          // neutral until a real scroll sample exists.
+          if (s.scrollFps.samples === 0) {
+            return undefined;
+          }
+          const fps =
+            s.scrollFps.samples > 0 ? s.scrollFps.average : s.scrollFps.last;
+          return fps >= 50 ? "ok" : fps >= 30 ? "warn" : "bad";
+        },
+      },
+      { label: "手势数", value: (s) => `${s.scrollFps.samples}` },
+    ],
   },
   {
     title: "列表渲染 LIST RENDER",
-    doc: "RUN HISTORY 每次提交渲染的耗时与行数。avg 稳定在个位数毫秒属正常；max 反映最差的一次提交（通常是快照落地或大批量事件）。",
-    read: (snapshot) =>
-      `last ${snapshot.listRender.lastMs.toFixed(1)}ms · avg ${snapshot.listRender.averageMs.toFixed(1)}ms · max ${snapshot.listRender.maxMs.toFixed(1)}ms · ${snapshot.listRender.count} 次 · ${snapshot.listRender.lastRows} 行`,
+    doc: "RUN HISTORY 每次提交渲染的耗时；avg 稳定在个位数毫秒属正常",
+    rows: [
+      {
+        label: "last / avg / max",
+        value: (s) =>
+          `${s.listRender.lastMs.toFixed(1)} / ${s.listRender.averageMs.toFixed(1)} / ${s.listRender.maxMs.toFixed(1)} ms`,
+        tone: (s) =>
+          s.listRender.averageMs <= 8
+            ? "ok"
+            : s.listRender.averageMs <= 16
+              ? "warn"
+              : "bad",
+      },
+      {
+        label: "提交次数 / 行数",
+        value: (s) => `${s.listRender.count} / ${s.listRender.lastRows}`,
+      },
+    ],
   },
   {
     title: "网络 NETWORK",
-    doc: "api 是 /api/*（事件流、快照、健康检查），assets 是静态资源；字节数为传输体积。流式会话下 api 请求随事件批次增长属预期。",
-    read: (snapshot) =>
-      `${snapshot.network.totalRequests} 请求（api ${snapshot.network.apiRequests} · 静态 ${snapshot.network.assetRequests}） · ${(snapshot.network.transferBytes / 1024).toFixed(0)}KB`,
+    doc: "api 是 /api/*（事件流、快照、健康检查），静态是控制台资源；流式下 api 随事件批次增长属预期",
+    rows: [
+      {
+        label: "api / 静态",
+        value: (s) => `${s.network.apiRequests} / ${s.network.assetRequests} 请求`,
+      },
+      {
+        label: "传输体积",
+        value: (s) => `${(s.network.transferBytes / 1024).toFixed(0)} KB`,
+      },
+    ],
   },
   {
     title: "长任务 LONG TASKS",
-    doc: "阻塞主线程超过 50ms 的任务。total 反映累计卡顿，max 是最严重的一次；流式高负载下 max 的来源通常在派生管线而非渲染。",
-    read: (snapshot) =>
-      `${snapshot.longTasks.count} 次 · 累计 ${snapshot.longTasks.totalMs.toFixed(0)}ms · 最长 ${snapshot.longTasks.maxMs}ms`,
+    doc: "阻塞主线程超过 50ms 的任务；排查卡顿先看最长一次的来源（通常是派生管线）",
+    rows: [
+      {
+        label: "次数 / 累计",
+        value: (s) => `${s.longTasks.count} / ${s.longTasks.totalMs.toFixed(0)} ms`,
+      },
+      {
+        label: "最长",
+        value: (s) => `${s.longTasks.maxMs} ms`,
+        tone: (s) =>
+          s.longTasks.count === 0
+            ? "ok"
+            : s.longTasks.maxMs > 100
+              ? "bad"
+              : "warn",
+      },
+    ],
   },
 ];
 
 const usageCopy = [
-  "?perf=1 开启（记住选择），?perf=0 关闭并清除；关闭后刷新页面不再出现。",
-  "控制台可随时读取同样数据：window.__astroPerf.snapshot()。",
-  "性能改动需要前后数字：pnpm perf:fixture（合成历史）+ pnpm perf:bench（逐阶段派生耗时）。",
+  "?perf=0 关闭并清除记忆 · 拖动标题或胶囊可移动面板",
+  "控制台读取同样数据：window.__astroPerf.snapshot()",
+  "复现与对比：pnpm perf:fixture + pnpm perf:bench",
 ].join("\n");
 
 /**
- * Mounts the opt-in HUD: a floating, collapsible panel pinned to the bottom
- * edge of the page. Collapsed it is one pill with two headline numbers;
- * expanded it documents every metric beside its live value. Pure DOM on
- * purpose — React renders must not be influenced by the tool that measures
- * them — so expansion is ordinary DOM state, not component state.
+ * Mounts the opt-in HUD: a floating, collapsible panel that the reader can
+ **drag anywhere** (pill and panel header both carry the drag; the place is
+ * remembered across visits). Collapsed it is one pill with two headline
+ * numbers; expanded it shows three tone-coded tiles plus every metric as
+ * label→value rows. Pure DOM on purpose — React renders must not be
+ * influenced by the tool that measures them — so expansion, drag and collapse
+ * are ordinary DOM state, not component state.
  */
 export function mountPerfHud(
   getSnapshot: () => PerfSnapshot,
@@ -459,7 +723,7 @@ export function mountPerfHud(
   pill.className = "astro-perf-hud__toggle";
   pill.setAttribute("aria-expanded", "false");
   pill.setAttribute("aria-controls", "astro-perf-hud-panel");
-  pill.title = "页面性能面板：点击展开各指标说明";
+  pill.title = "页面性能面板：点击展开，按住拖动可移动";
   Object.assign(pill.style, pillStyles);
 
   const panel = doc.createElement("div");
@@ -468,42 +732,193 @@ export function mountPerfHud(
   panel.hidden = true;
   Object.assign(panel.style, panelBodyStyles);
 
-  const header = doc.createElement("div");
-  header.style.margin = "0 0 4px";
-  header.style.color = "#e8f0ff";
-  header.style.fontSize = "10px";
-  header.style.fontWeight = "700";
-  header.style.letterSpacing = "0.12em";
-  header.textContent = "页面性能 PERF";
+  // Panel header doubles as the drag grip; the collapse button stays exempt.
+  const hudBar = doc.createElement("div");
+  Object.assign(hudBar.style, hudBarStyles);
+
+  const grip = doc.createElement("span");
+  grip.textContent = "⠿";
+  grip.style.color = "#7f96b5";
+  grip.style.fontSize = "12px";
+  grip.setAttribute("aria-hidden", "true");
+
+  const hudTitle = doc.createElement("span");
+  hudTitle.textContent = "PERF 页面性能";
+
+  const collapse = doc.createElement("button");
+  collapse.type = "button";
+  collapse.textContent = "—";
+  collapse.title = "收起面板";
+  collapse.setAttribute("aria-label", "收起性能面板");
+  Object.assign(collapse.style, collapseButtonStyles);
+
+  hudBar.append(grip, hudTitle, collapse);
+  panel.append(hudBar);
+
+  const tilesRow = doc.createElement("div");
+  Object.assign(tilesRow.style, tilesRowStyles);
+  const tileValueNodes = getHudTiles(getSnapshot()).map(({ value, label }) => {
+    const tile = doc.createElement("div");
+    Object.assign(tile.style, tileStyles);
+    const tileValue = doc.createElement("div");
+    Object.assign(tileValue.style, tileValueStyles);
+    tileValue.textContent = value;
+    const tileLabel = doc.createElement("div");
+    Object.assign(tileLabel.style, tileLabelStyles);
+    tileLabel.textContent = label;
+    tile.append(tileValue, tileLabel);
+    tilesRow.append(tile);
+    return tileValue;
+  });
+  panel.append(tilesRow);
+
+  const rowValueNodes: Array<{
+    node: HTMLElement;
+    read: (snapshot: PerfSnapshot) => string;
+    tone?: (snapshot: PerfSnapshot) => HudTile["tone"] | undefined;
+  }> = [];
+  for (const section of metricSections) {
+    const title = doc.createElement("div");
+    Object.assign(title.style, sectionTitleStyles);
+    title.textContent = section.title;
+    const note = doc.createElement("p");
+    Object.assign(note.style, sectionDocStyles);
+    note.textContent = section.doc;
+    panel.append(title, note);
+    for (const row of section.rows) {
+      const rowNode = doc.createElement("div");
+      Object.assign(rowNode.style, rowStyles);
+      const label = doc.createElement("span");
+      Object.assign(label.style, rowLabelStyles);
+      label.textContent = row.label;
+      const value = doc.createElement("span");
+      Object.assign(value.style, rowValueStyles);
+      rowNode.append(label, value);
+      panel.append(rowNode);
+      rowValueNodes.push({ node: value, read: row.value, tone: row.tone });
+    }
+  }
 
   const usage = doc.createElement("p");
-  Object.assign(usage.style, docStyles);
-  usage.style.marginTop = "10px";
-  usage.style.borderTop = "1px solid rgba(148, 163, 184, 0.22)";
-  usage.style.paddingTop = "8px";
-  usage.style.whiteSpace = "pre-wrap";
+  Object.assign(usage.style, usageStyles);
   usage.textContent = usageCopy;
-
-  panel.append(header);
-  const valueNodes = metricSections.map(({ title, doc: sectionDoc }) => {
-    const heading = doc.createElement("div");
-    heading.textContent = title;
-    Object.assign(heading.style, sectionTitleStyles);
-    const value = doc.createElement("p");
-    Object.assign(value.style, valueStyles);
-    const note = doc.createElement("p");
-    Object.assign(note.style, docStyles);
-    note.textContent = sectionDoc;
-    panel.append(heading, value, note);
-    return value;
-  });
   panel.append(usage);
+
+  // Drag: the pill and the panel header move the host. A press that never
+  // moves past the threshold stays a click (the pill toggles expansion); a
+  // real drag persists the dropped position. The host switches from its
+  // default bottom-right anchor to left/top on the first placement.
+  let justDragged = false;
+  const placeAt = (left: number, top: number) => {
+    host.style.left = `${left}px`;
+    host.style.top = `${top}px`;
+    host.style.right = "auto";
+    host.style.bottom = "auto";
+  };
+
+  const storedPosition = resolveHudPosition(
+    readHudStorage(HUD_POSITION_KEY),
+    host.offsetWidth || 240,
+    host.offsetHeight || 32,
+    window.innerWidth,
+    window.innerHeight,
+  );
+  if (storedPosition) {
+    placeAt(storedPosition.left, storedPosition.top);
+  }
+
+  const persistPosition = () => {
+    const rect = host.getBoundingClientRect();
+    writeHudPosition({
+      left: Math.round(rect.left),
+      top: Math.round(rect.top),
+    });
+  };
+
+  const clampIntoViewport = () => {
+    if (host.style.left === "" || host.style.top === "") {
+      return;
+    }
+    const rect = host.getBoundingClientRect();
+    const next = clampHudPosition(
+      { left: rect.left, top: rect.top },
+      rect.width,
+      rect.height,
+      window.innerWidth,
+      window.innerHeight,
+    );
+    placeAt(next.left, next.top);
+  };
+
+  const attachDrag = (handle: HTMLElement) => {
+    handle.addEventListener("pointerdown", (event: PointerEvent) => {
+      if (event.button !== 0) {
+        return;
+      }
+      const startPoint = { x: event.clientX, y: event.clientY };
+      const rect = host.getBoundingClientRect();
+      const grabOffset = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+      let dragging = false;
+      const onMove = (moveEvent: PointerEvent) => {
+        if (
+          !dragging &&
+          Math.hypot(moveEvent.clientX - startPoint.x, moveEvent.clientY - startPoint.y) < 4
+        ) {
+          return;
+        }
+        dragging = true;
+        handle.setPointerCapture?.(event.pointerId);
+        const next = clampHudPosition(
+          {
+            left: moveEvent.clientX - grabOffset.x,
+            top: moveEvent.clientY - grabOffset.y,
+          },
+          host.offsetWidth,
+          host.offsetHeight,
+          window.innerWidth,
+          window.innerHeight,
+        );
+        placeAt(next.left, next.top);
+      };
+      const onUp = () => {
+        handle.removeEventListener("pointermove", onMove);
+        handle.removeEventListener("pointerup", onUp);
+        handle.removeEventListener("pointercancel", onUp);
+        if (!dragging) {
+          return;
+        }
+        persistPosition();
+        // The pill's click fires right after pointerup: swallow the one that
+        // ends a drag so dropping the HUD never toggles it.
+        justDragged = true;
+        window.setTimeout(() => {
+          justDragged = false;
+        }, 0);
+      };
+      handle.addEventListener("pointermove", onMove);
+      handle.addEventListener("pointerup", onUp);
+      handle.addEventListener("pointercancel", onUp);
+    });
+  };
+
+  attachDrag(pill);
+  attachDrag(hudBar);
+  // The collapse button lives inside the drag grip: dragging must not start
+  // from it, and its click must reach it.
+  collapse.addEventListener("pointerdown", (event) => event.stopPropagation());
 
   const render = () => {
     const snapshot = getSnapshot();
     pill.textContent = `PERF ${formatHudHeadline(snapshot)}`;
-    metricSections.forEach(({ read }, index) => {
-      valueNodes[index].textContent = read(snapshot);
+    getHudTiles(snapshot).forEach((tile, index) => {
+      const node = tileValueNodes[index];
+      node.textContent = tile.value;
+      node.style.color = hudToneColor[tile.tone];
+    });
+    rowValueNodes.forEach(({ node, read, tone }) => {
+      node.textContent = read(snapshot);
+      const toneValue = tone?.(snapshot);
+      node.style.color = toneValue ? hudToneColor[toneValue] : "#e8f0ff";
     });
   };
   render();
@@ -512,19 +927,36 @@ export function mountPerfHud(
   const setExpanded = (next: boolean) => {
     expanded = next;
     panel.hidden = !next;
+    pill.hidden = next;
     pill.setAttribute("aria-expanded", String(next));
   };
   pill.addEventListener("click", () => {
-    setExpanded(!expanded);
+    if (!justDragged) {
+      setExpanded(!expanded);
+    }
   });
+  collapse.addEventListener("click", () => setExpanded(false));
 
   host.append(panel, pill);
   doc.body.appendChild(host);
+  // The viewport is not settled while the module boots (an embedded browser
+  // can still report a tiny window), so a restored position is re-clamped
+  // once real layout exists — that is what keeps a saved spot from snapping
+  // to the top-left corner on load.
+  window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(clampIntoViewport);
+  });
 
   const timer = window.setInterval(render, HUD_UPDATE_MS);
-  window.addEventListener("pagehide", () => window.clearInterval(timer), {
-    once: true,
-  });
+  window.addEventListener("resize", clampIntoViewport, { passive: true });
+  window.addEventListener(
+    "pagehide",
+    () => {
+      window.clearInterval(timer);
+      window.removeEventListener("resize", clampIntoViewport);
+    },
+    { once: true },
+  );
   return host;
 }
 
@@ -534,33 +966,45 @@ export function mountPerfHud(
  * happens on an explicit query-param decision.
  */
 export function setupPerfHud(query: string = window.location.search): void {
-  const stored = readHudStorage();
+  const stored = readHudStorage(HUD_STORAGE_KEY);
   const enabled = resolvePerfHudEnabled(query, stored);
   const requested = new URLSearchParams(query).get("perf");
   if (requested === "1" || requested === "0") {
-    writeHudStorage(enabled);
+    if (enabled) {
+      writeHudStorage(HUD_STORAGE_KEY, "1");
+    } else {
+      clearHudStorage(HUD_STORAGE_KEY);
+    }
   }
   if (enabled) {
     mountPerfHud(getPerfSnapshot);
   }
 }
 
-function readHudStorage(): string | null {
+function readHudStorage(key: string): string | null {
   try {
-    return window.localStorage.getItem(HUD_STORAGE_KEY);
+    return window.localStorage.getItem(key);
   } catch {
     return null;
   }
 }
 
-function writeHudStorage(enabled: boolean) {
+function writeHudStorage(key: string, value: string) {
   try {
-    if (enabled) {
-      window.localStorage.setItem(HUD_STORAGE_KEY, "1");
-    } else {
-      window.localStorage.removeItem(HUD_STORAGE_KEY);
-    }
+    window.localStorage.setItem(key, value);
   } catch {
     // Storage can be unavailable (private mode): the HUD stays session-only.
   }
+}
+
+function clearHudStorage(key: string) {
+  try {
+    window.localStorage.removeItem(key);
+  } catch {
+    // Storage can be unavailable (private mode): the HUD stays session-only.
+  }
+}
+
+function writeHudPosition(position: HudPosition) {
+  writeHudStorage(HUD_POSITION_KEY, JSON.stringify(position));
 }

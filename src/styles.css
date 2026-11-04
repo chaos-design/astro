@@ -5602,11 +5602,16 @@ pre,
 
 /* Log edge controls live in the header row. They used to float over the list,
    where the top chevron sat on the first visible atom — the row a reader had
-   just scrolled to was half covered by a button. */
+   just scrolled to was half covered by a button. The container always reserves
+   the two-button width (22px × 2 + 4px gap): the buttons mount per direction,
+   and without the reservation every mount/unmount at a scroll edge resized
+   the sibling search input — the box jittered on every streamed event. */
 .atomic-log__scroll-controls {
   display: flex;
-  flex: 0 0 auto;
+  flex: 0 0 48px;
+  width: 48px;
   align-items: center;
+  justify-content: flex-end;
   gap: 4px;
 }
 
