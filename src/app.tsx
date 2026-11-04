@@ -2313,7 +2313,13 @@ const RunHistory = memo(function RunHistory({
         </div>
       </header>
       <div
-        className="run-history__list min-h-0 overflow-auto p-1.5"
+        className={cn(
+          "run-history__list min-h-0 overflow-auto p-1.5",
+          // A sparse list has the vertical room to show each message whole, so
+          // the cards grow taller instead of cutting every title at two lines;
+          // a dense list keeps the compact clamp for scannability.
+          sessions.length <= appLayout.runHistorySparseListRows && "is-sparse",
+        )}
         ref={listRef}
         onPointerLeave={handleListPointerLeave}
         onScroll={handleListScroll}

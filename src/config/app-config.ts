@@ -219,6 +219,13 @@ export const appLayout = {
   historyPromptListMaxHeight: 300,
   historyPromptRowEstimate: 116,
   /**
+   * Visible run count at and below which RUN HISTORY renders sparse: the
+   * panel has vertical room to spare, so card titles take the six-line clamp
+   * (`.run-history__list.is-sparse` in src/styles.css) instead of the dense
+   * two-line cut. Above it the compact clamp returns for scannability.
+   */
+  runHistorySparseListRows: 4,
+  /**
    * Viewport width (px) at and below which the studio header collapses its
    * horizontal nav into the mobile disclosure menu. Must stay in step with the
    * `@media (max-width: 900px)` header rules in src/styles.css; the assertion

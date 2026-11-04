@@ -2478,7 +2478,10 @@ pre,
 }
 
 .studio-workspace {
-  --left-panel-width: 210px;
+  /* RUN HISTORY cards carry wrapped titles, workspace paths and tag rows; at
+   * 210px the message text column was ~159px and every line truncated. The
+   * wider track keeps the canvas dominant while the cards read. */
+  --left-panel-width: 240px;
   --right-panel-width: 320px;
 
   display: grid;
@@ -3010,6 +3013,14 @@ pre,
   -webkit-line-clamp: 2;
 }
 
+/* Sparse list (only a few messages on screen): the panel has vertical room to
+ * spare, so the cards grow taller instead of truncating — the title takes the
+ * same six-line ceiling the hover card uses rather than the dense two-line
+ * cut. The threshold lives in appLayout.runHistorySparseListRows. */
+.run-history__list.is-sparse .run-history__copy > strong {
+  -webkit-line-clamp: 6;
+}
+
 .run-history__copy > small,
 .run-history__copy > code {
   overflow: hidden;
@@ -3086,7 +3097,10 @@ pre,
  * overshoot tolerance for two- and three-message threads); a CSS max-height
  * here would clip that measured height again. */
 .run-history__prompt-scroll {
-  margin: 5px 4px 5px 8px;
+  /* The thread gutter (margin + border + list padding) used to eat 16px of an
+   * already narrow panel; 9px keeps the nesting legible and gives the prompt
+   * cards' text back to the title and tags. */
+  margin: 5px 4px;
   overflow: hidden;
   border-left: 1px solid color-mix(in srgb, var(--blue) 48%, var(--line));
   background: color-mix(in srgb, var(--panel-raised) 46%, transparent);
@@ -3101,7 +3115,7 @@ pre,
   display: flex;
   min-width: 0;
   margin: 0;
-  padding: 5px 4px 6px 7px;
+  padding: 5px 4px 6px 4px;
   list-style: none;
   flex-direction: column;
   gap: 6px;
@@ -3117,8 +3131,8 @@ pre,
 .run-history__prompts li::before {
   position: absolute;
   top: 17px;
-  left: -7px;
-  width: 5px;
+  left: -4px;
+  width: 3px;
   border-top: 1px solid color-mix(in srgb, var(--blue) 48%, var(--line));
   content: "";
 }
@@ -6784,7 +6798,7 @@ pre,
 
 @media (max-width: 1180px) {
   .studio-workspace {
-    --left-panel-width: 190px;
+    --left-panel-width: 220px;
     --right-panel-width: 294px;
   }
 
