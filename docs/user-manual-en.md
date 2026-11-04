@@ -399,9 +399,13 @@ a large history no longer transfers everything before the first paint;
 events instead of only widening a local filter.
 
 Executing messages ignore the window: they are always listed and always pinned
-to the top — within the selected agent. A message executing under another agent
-is not part of this list; the agent picker signals it instead, with a pulsing
-dot on the agent that is running, and switching to it shows the message.
+to the top — within the selected agent. When several execute at once they are
+ordered by their **newest message's start time**: the message that began
+executing last sits on top, and each row's position is stable while its
+message runs (no shuffling as events keep arriving) — only a newly sent
+prompt takes the top. A message executing under another agent is not part of
+this list; the agent picker signals it instead, with a pulsing dot on the
+agent that is running, and switching to it shows the message.
 Switching agents also moves the canvas, the log and the selection onto the new
 agent's newest message rather than leaving the previous run on screen.
 

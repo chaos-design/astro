@@ -165,6 +165,7 @@ import {
   eventMeta,
   formatDuration,
   getEventSummary,
+  getEventTimestamp,
   getExecutionInstruction,
   getFlowNodeIdForEvent,
   normalizeTraceEvent,
@@ -4622,10 +4623,10 @@ export default function App() {
         snapshotEvents = null;
         // Live broadcasts can interleave with the chunks; restore the same
         // chronological order the single-frame snapshot used to guarantee.
+        // Timestamps come from the per-event cache instead of re-parsing in
+        // every comparison.
         events.sort((left, right) => {
-          const delta =
-            (Date.parse(left.capturedAt || "") || 0) -
-            (Date.parse(right.capturedAt || "") || 0);
+          const delta = getEventTimestamp(left) - getEventTimestamp(right);
           return delta || String(left.id).localeCompare(String(right.id));
         });
         resumeCursorRef.current = events.at(-1)?.id ?? resumeCursorRef.current;
@@ -5039,9 +5040,22 @@ export default function App() {
   // the first row, and both are derived at render time. Neither path may leave
   // `filteredSessions`: the agent scope is applied first, the time window is
   // measured inside it, and the result is the list.
+  //
+  // The pin orders live rows by the *start of the run's newest message*, not
+  // its latest event: that key is stable for the whole execution of a message
+  // (events keep arriving but the order never moves), so two concurrently
+  // running messages no longer trade places batch after batch. The message
+  // that started executing last sits on top; sending it a new message makes
+  // it — not the other — take the top.
   const visibleSessions = useMemo(() => {
+    const executionStart = (session: TraceSession) =>
+      promptRunsBySession.get(session.key)?.at(-1)?.start ?? session.start;
     if (liveFilter && !isDemo) {
-      return selectLiveRunHistory(filteredSessions, liveSessionKeys);
+      return selectLiveRunHistory(
+        filteredSessions,
+        liveSessionKeys,
+        executionStart,
+      );
     }
     return pinLiveRunHistory(
       selectVisibleRunHistory(
@@ -5051,6 +5065,7 @@ export default function App() {
         liveSessionKeys,
       ),
       liveSessionKeys,
+      executionStart,
     );
   }, [
     filteredSessions,
@@ -5059,6 +5074,7 @@ export default function App() {
     liveSessionKeys,
     now,
     runHistoryHours,
+    promptRunsBySession,
   ]);
   // The Live filter reads the whole history, so there is no window to widen.
   // `historyTruncated` comes from the service: the snapshot only contains the

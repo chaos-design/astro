@@ -203,12 +203,17 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   scrolling.
 - Selection styling outranks the live accent; a selected live row keeps its
   selection border.
-- Executing runs are pinned to the top of the list, ordered by their latest
-  activity, and stay inside the visible time window whatever their `start`
-  (`collectLiveRunKeys` → `selectVisibleRunHistory` / `pinLiveRunHistory`). A
-  session resumed today began days ago; without the pin its new prompt would
-  sort below every run that merely started later, and the window would drop it
-  mid-execution. Finished runs fall back to newest-first order.
+- Executing runs are pinned to the top of the list, ordered by the **start of
+  the run's newest message** (not its latest event, which moves on every
+  streaming batch and made two running rows trade places constantly), and stay
+  inside the visible time window whatever their `start`
+  (`collectLiveRunKeys` → `selectVisibleRunHistory` / `pinLiveRunHistory`,
+  which app.tsx calls with an `executionStart` resolver from
+  `promptRunsBySession`). A session resumed today began days ago; without the
+  pin its new prompt would sort below every run that merely started later, and
+  the window would drop it mid-execution. The message that started executing
+  last sits on top; a newly sent message takes the top the moment it starts.
+  Finished runs fall back to newest-first order.
 - The same live key set drives the pin, the window exemption, the `N LIVE`
   count, and the Live filter's rows. Do not derive a second one — a row that is
   pinned but not counted (or the reverse) reads as a bug.
@@ -473,7 +478,10 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   way back.
 - Performance work lands with numbers from the same fixture and script before
   and after (script time, long tasks, chunk size); "feels faster" is not a
-  verification.
+  verification. The repeatable driver is `pnpm perf:fixture` (synthetic
+  history + timed ingestion) and `pnpm perf:bench` (per-batch derive
+  milliseconds per phase); client long tasks read off the `?perf=1` HUD via
+  `window.__astroPerf.snapshot()`.
 
 ## Run Trajectory Order
 

@@ -295,8 +295,12 @@ async function streamSnapshot(response, events, meta) {
 }
 
 function broadcast(eventName, value) {
+  // Serialize once for the whole fleet. A subagent storm can push many events
+  // per second to several open tabs; the old shape re-stringified the payload
+  // for every client.
+  const frame = sseFrame(eventName, value);
   for (const response of clients) {
-    sendSse(response, eventName, value);
+    response.write(frame);
   }
 }
 
@@ -809,9 +813,7 @@ async function handleRequest(request, response) {
     // unknown cursor (cleared events, a different process) falls back to the
     // full snapshot, which keeps reconnects correct rather than fast.
     const resumeCursor = requestUrl.searchParams.get("since") || "";
-    const resumeIndex = resumeCursor
-      ? allEvents.findIndex((event) => event.id === resumeCursor)
-      : -1;
+    const resumeIndex = resumeCursor ? store.resumeIndex(resumeCursor) : -1;
     // A client that had to ask for the whole snapshot again (a restart, a
     // manual reload) names the snapshot it already holds. When the history on
     // disk is the one it has — the common case after restarting the service —
