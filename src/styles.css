@@ -1176,12 +1176,15 @@ pre,
   background: var(--selection-bg);
 }
 
+/* No border line in the resting state: the whole header row stays quiet and
+   the violet border only appears on hover, so all three controls share one
+   resting surface and one hover effect. */
 .theme-select {
   width: 28px;
   min-width: 28px;
   padding: 0;
   justify-content: center;
-  border-color: var(--line-bright);
+  border-color: transparent;
   color: var(--muted-soft);
   background: var(--panel-raised);
 }
