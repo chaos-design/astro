@@ -9,23 +9,28 @@
 # 面" section.
 #
 # Triggers:
-#   - push to `main`             -> build + verify + upload
-#   - pull request to `main`     -> build + verify + upload
+#   - push to `main`             -> build + verify + upload + deploy to Pages
+#   - push to the rolling-preview feature branch -> build + verify + upload
+#     + deploy to Pages (live preview of the in-flight branch without merging;
+#     remove it from the list once the branch is merged/deleted)
+#   - pull request to `main`     -> build + verify + upload (no deploy)
 #   - workflow_dispatch (any branch) -> build + verify + upload + deploy to
-#     Pages from that branch's tip
+#     Pages from that branch's tip (manual override, e.g. to re-publish a
+#     branch that is no longer a push trigger)
 #
-# The Pages job is manual on purpose: a repository has a single Pages site,
-# and this repo also documents a docs-site Pages path — deploy one or the
-# other, not both. It now publishes the *dispatched branch's* build (no
-# main-only gate), so an in-flight feature branch gets a live preview URL
-# without merging; dispatching from a different branch simply republishes
-# that branch over the same site.
+# The Pages job publishes only the *console* artifact (never the docs site): a
+# repository has a single Pages site, and this repo also documents a docs-site
+# path (Vercel, via `vercel.json` + `scripts/merge-deploy-output.mjs`) —
+# deploy one or the other, not both. It publishes the *triggering branch's*
+# build (no main-only gate), so the most recent push wins on the shared site.
 
 name: Build console preview
 
 on:
   push:
-    branches: [main]
+    # `main` is the formal release. The feature branch is the rolling-preview
+    # test target for the in-flight work; delete it when that branch merges.
+    branches: [main, feat/demo-dataset-from-local-service]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -79,10 +84,16 @@ jobs:
   deploy-pages:
     name: Deploy console preview to GitHub Pages
     needs: build
-    # Any branch's manual dispatch publishes that branch's build. The Pages
-    # site is a single rolling target: the most recent dispatch wins, so a
-    # feature branch gets a live preview URL without merging to main.
-    if: github.event_name == 'workflow_dispatch'
+    # Publishing happens on push to the production branch (`main`) and on push
+    # to the rolling-preview feature branch, plus a manual dispatch from any
+    # branch. The Pages site is a single rolling target: the most recent
+    # qualifying build wins, so a feature branch gets a live preview URL
+    # without merging to main.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' &&
+        (github.ref == 'refs/heads/main' ||
+         github.ref == 'refs/heads/feat/demo-dataset-from-local-service'))
     runs-on: ubuntu-latest
     permissions:
       pages: write
