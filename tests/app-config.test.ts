@@ -16,11 +16,21 @@ import {
   isDemoGateOpen,
   isHistoryRangeId,
   isMaxSyncId,
+  legacyStorageKeys,
   maxSyncOptions,
   retiredStorageKeys,
+  resolvePerfHudInitial,
   shouldShowDemo,
   storageKeys,
 } from "../src/config/app-config.ts";
+
+/** A read-only memory stand-in for localStorage (the resolver only reads). */
+function createMemoryStorage(seed: Record<string, string> = {}) {
+  const store = new Map(Object.entries(seed));
+  return {
+    getItem: (key: string) => (store.has(key) ? store.get(key) ?? null : null),
+  };
+}
 
 test("keeps user preference defaults and storage keys in app config", () => {
   assert.equal(appDefaults.platform, "claude");
@@ -57,6 +67,44 @@ test("opens RUN HISTORY unfiltered", () => {
     "ASTROX_RUN_HISTORY_LIVE_FILTER",
   );
   assert.ok(!Object.values(storageKeys).includes("ASTROX_RUN_HISTORY_LIVE_FILTER"));
+});
+
+test("keeps the performance HUD off by default, migrating the legacy opt-in", () => {
+  // The HUD is a diagnostic tool, not part of the console, so it stays off
+  // until the Settings → 性能 switch arms it.
+  assert.equal(appDefaults.perfHud, false);
+  assert.equal(storageKeys.perfHud, "ASTROX_PERF_HUD");
+  // The retired `?perf=1` parameter persisted its opt-in under a legacy key
+  // (the string "1", not "true"); it is honoured once and removed on write.
+  assert.equal(legacyStorageKeys.perfHud, "astro:perf-hud");
+});
+
+test("resolves the performance HUD's initial state, migrating the legacy opt-in", () => {
+  // The settings key (ASTROX_PERF_HUD, written as "true"/"false") wins.
+  assert.equal(resolvePerfHudInitial(createMemoryStorage({ ASTROX_PERF_HUD: "true" })), true);
+  assert.equal(
+    resolvePerfHudInitial(createMemoryStorage({ ASTROX_PERF_HUD: "false" })),
+    false,
+  );
+  // An invalid primary value falls back to the default (off), not to the
+  // legacy key.
+  assert.equal(
+    resolvePerfHudInitial(createMemoryStorage({ ASTROX_PERF_HUD: "banana" })),
+    false,
+  );
+  // No primary at all: the legacy `?perf=1`-era flag stored "1" — honour the
+  // opt-in once.
+  assert.equal(
+    resolvePerfHudInitial(createMemoryStorage({ "astro:perf-hud": "1" })),
+    true,
+  );
+  // A legacy value that is not "1" is not an opt-in.
+  assert.equal(
+    resolvePerfHudInitial(createMemoryStorage({ "astro:perf-hud": "0" })),
+    false,
+  );
+  // Empty storage: default off.
+  assert.equal(resolvePerfHudInitial(createMemoryStorage()), false);
 });
 
 test("caps the console's sync window at eight hours by default", () => {

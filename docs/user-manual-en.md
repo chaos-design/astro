@@ -586,7 +586,8 @@ duration even when it is longer than the current limit.
 ### 5.8 Settings
 
 The gear in the header opens the settings dialog. It is a two-pane card: a
-section rail on the left (Appearance, Run history, Canvas, Panels, About) and
+section rail on the left (Appearance, Run history, Canvas, Panels, Performance,
+About) and
 the active section's fields on the right. Every entry applies immediately, and
 the footer's **Done** button only closes the dialog — there is no Apply step:
 
@@ -626,6 +627,15 @@ the footer's **Done** button only closes the dialog — there is no Apply step:
 - **Expand RUN HISTORY** and **Expand EVENTS**: the two columns' expanded state
   (`ASTROX_HISTORY_OPEN` / `ASTROX_CONSOLE_OPEN`).
 
+**Performance**
+
+- **Performance panel**: floats a diagnostics panel (scroll fps, list render,
+  long tasks) at the bottom of the page, off by default (`ASTROX_PERF_HUD`).
+  Toggling it mounts and removes the panel immediately; the dropped position
+  persists across visits. The old `?perf=1` parameter is retired — a browser
+  that stored it is honoured once on first load, after which this switch owns
+  the state. See "The Performance Panel" below.
+
 **About**
 
 - The console version (`v0.0.3`), where the preferences actually live (browser
@@ -633,9 +643,10 @@ the footer's **Done** button only closes the dialog — there is no Apply step:
   presentation and never rewrite captured events.
 
 The values are written to `ASTROX_HISTORY_RANGE`, `ASTROX_RUN_HISTORY_LIVE_VIEW`,
-`ASTROX_MAX_SYNC` and the other keys above. **Reset** restores every section at
-once (3 hours, Live off, an 8-hour sync window, dark, topology, runtime atoms
-only, and the width-based panel defaults).
+`ASTROX_MAX_SYNC`, `ASTROX_PERF_HUD` and the other keys above. **Reset**
+restores every section at once (3 hours, Live off, an 8-hour sync window,
+dark, topology, runtime atoms only, the performance panel off, and the
+width-based panel defaults).
 
 ## 6. Execution Topology
 
@@ -1076,10 +1087,13 @@ only effective display state.
 | `ASTROX_MAX_SYNC` | `1h` / `4h` / `8h` / `12h` / `24h` / `off` | Longest sync window, `8h` unless changed; `off` never stops |
 | `ASTROX_ACTIVE_VIEW` | `topology` / `trajectory` | Last canvas view |
 | `ASTROX_DEEP_VIEW` | `true` / `false` | Runtime-only atoms in the topology |
+| `ASTROX_PERF_HUD` | `true` / `false` | Performance panel on, `false` unless changed |
 
-Legacy `astro-theme` and `astro-platform` values migrate automatically and
-are removed after the new key is written. Invalid or unavailable storage falls
-back to defaults without affecting capture. The old
+Legacy `astro-theme`, `astro-platform`, and `astro:perf-hud` values are removed
+after the corresponding new key is written: the first two migrate automatically;
+`astro:perf-hud` is the on-flag the retired `?perf=1` parameter stored (the value
+`"1"`), and a first load still honours it before the switch takes over. Invalid
+or unavailable storage falls back to defaults without affecting capture. The old
 `ASTROX_RUN_HISTORY_LIVE_FILTER` is not migrated: it meant "show every
 message", the opposite of the Live filter, so it is deleted on the next write.
 
@@ -1125,40 +1139,47 @@ Do not expose the service through `0.0.0.0` or a public network without authenti
 
 ## 17. Troubleshooting
 
-### The Performance Panel (?perf=1)
+### The Performance Panel
 
-Append `?perf=1` to the page address (for example
-`http://127.0.0.1:5678/?perf=1`) to float a performance panel at the **bottom
-edge** of the page, anchored to the bottom-right corner and **draggable**: hold
-the pill or the expanded panel's title bar and drop it anywhere — the position
-is remembered (it survives a reload and is pulled back into view when the
-window shrinks). A tap (held under ~4px of movement) toggles the panel; the
-expanded title bar also carries a `—` collapse button on the right.
+Turn on **Performance panel** in **Settings → Performance**
+(`ASTROX_PERF_HUD`, off by default) to float a diagnostics panel at the
+**bottom edge** of the page; switching it off removes it immediately. The
+state and the dropped position both persist in browser storage. The old
+`?perf=1` parameter is retired: a browser that stored it is honoured once on
+first load, after which this switch owns the state.
+
+The panel is anchored to the bottom-right corner and **draggable**: hold the
+pill or the expanded panel's title bar and drop it anywhere — the position is
+remembered (it survives a reload and is pulled back into view when the window
+shrinks). A tap (held under ~4px of movement) toggles the panel; the expanded
+title bar also carries a `—` collapse button on the right. The panel always
+expands **upward** from the pill — however low the pill sits, the open panel
+grows up into view instead of pushing off the bottom of the screen.
 
 Collapsed it is one pill with two headline numbers (average scroll fps and the
-average list-render time). Expanded, read the three **tone-coded tiles** first
-— scroll fps, list render, long tasks — where green/amber/red mean healthy,
-worth watching, and degraded (fps ≥50 / ≥30; render average ≤8 / ≤16 ms; zero
-long tasks, red once the worst one passes 100 ms). Below the tiles every metric
-is laid out as label→value rows in five groups (load, scroll, list render,
-network, long tasks), each group title carrying a one-line gray note on how to
-read its numbers. `?perf=0` turns it off and clears the stored choice, so the
-panel stays away after a refresh; either choice persists until explicitly
-changed.
+average list-render time). Expanded, the top of the panel stays a one-line
+colour legend (green = ok, amber = watch, red = bad) above three
+**tone-coded tiles** — scroll fps, list render, long tasks — where
+green/amber/red mean healthy, worth watching, and degraded (fps ≥50 / ≥30;
+render average ≤8 / ≤16 ms; zero long tasks, red once the worst one passes
+100 ms). Every other metric lives in a collapsed **detail** region (a native
+`<details>`, closed by default): open it to see label→value rows in five
+groups (load, scroll, list render, network, long tasks), each group title
+carrying a one-line gray note on how to read its numbers.
 
 The panel reads the same numbers as `window.__astroPerf.snapshot()`, which you
 can call directly in the browser console; reproduce and compare performance
 issues with `pnpm perf:fixture` (synthetic history) + `pnpm perf:bench`
-(per-phase derive timings). When hunting jank, look at the long tasks' `max`
-first: its source is usually the derive pipeline, not the rendering.
+(per-phase derive timings). When hunting jank, look at the longest single long
+task first: its source is usually the derive pipeline, not the rendering.
 
 A recommended path for hunting one jank:
 
-1. Add `?perf=1` to the address where the jank happens and reload; drag the
-   panel somewhere it does not cover the view;
+1. Open **Settings → Performance → Performance panel** and drag the pill
+   somewhere it does not cover the view;
 2. Reproduce the jank once (expanding a large run, scrolling the LOG…) — the
-   long-task tile increments immediately; expand the panel and read
-   "long tasks → max";
+   long-task tile increments immediately; open the detail region and read
+   "long tasks · longest";
 3. Read the three tiles' colors: red/amber scroll fps with a green list render
    points outside rendering (usually event derivation); a red/amber list
    render means the RUN HISTORY commits themselves are heavy;

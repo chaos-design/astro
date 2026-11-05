@@ -204,5 +204,5 @@ pnpm deploy:preview
 | 部署页报「无法连接本地服务」 | ① 服务是否在跑（`astrox status`）；② `corsOrigins` 是否含该域名（`/api/health`）；③ 端口：health 的 `clientCount` 与 `?api=` 是否一致 |
 | 端口冲突 | 服务自动上探（最多 +20）；日志有实际端口，页面用 `?api=` 指过去 |
 | 示例数据不可用 | `data/demo-events.json` 缺失（404）或损坏（500 报具体字段） |
-| 流式时卡顿/长任务 | 开 `?perf=1` HUD（页面底部悬浮面板，展开可看各项指标说明），`window.__astroPerf.snapshot()` 读数；`pnpm perf:fixture` + `pnpm perf:bench` 复现 |
+| 流式时卡顿/长任务 | 「设置 → 性能」开性能面板（页面底部悬浮，展开看三项摘要与折叠明细），`window.__astroPerf.snapshot()` 读数；`pnpm perf:fixture` + `pnpm perf:bench` 复现 |
 | 服务行为异常 | `astrox doctor`（配置诊断）、`astrox logs`、`/api/health`（`restartCount`/`restartedAt`/`dataRoot`/`version`） |

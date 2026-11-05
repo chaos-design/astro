@@ -346,8 +346,14 @@ use Node.js ES modules or CommonJS according to their existing file extension.
 - `appDefaults.liveView` is the single default of the Live filter. Its old key
   (`ASTROX_RUN_HISTORY_LIVE_FILTER`) is retired, not migrated: it meant "show
   the whole history", so honouring it would arm the new filter on load.
+- `appDefaults.perfHud` is the single default of the performance HUD
+  (Settings → 性能, off by default): the app root mounts the pure-DOM panel
+  from an effect keyed on that flag, and `resolvePerfHudInitial` honours the
+  retired `?perf=1` legacy flag (`astro:perf-hud` = `"1"`) once — the first
+  write of `ASTROX_PERF_HUD` removes the legacy key.
 - The dialog is a two-pane card: `.settings-nav` (外观 / 运行历史 / 画布 / 面板 /
-  关于) beside a `.settings-pane` that renders only the active section, carried by
+  性能 / 关于) beside a `.settings-pane` that renders only the active section,
+  carried by
   a vertical Radix `Tabs` so arrow keys work. A single stacked column scrolled the
   whole dialog or squeezed the controls on a short window. Header and footer are
   fixed and only the pane scrolls; Done merely closes it. A preference that also
@@ -503,21 +509,29 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   and after (script time, long tasks, chunk size); "feels faster" is not a
   verification. The repeatable driver is `pnpm perf:fixture` (synthetic
   history + timed ingestion) and `pnpm perf:bench` (per-batch derive
-  milliseconds per phase); client long tasks read off the `?perf=1` HUD via
-  `window.__astroPerf.snapshot()`.
-- The `?perf=1` HUD is a floating, collapsible, **draggable** panel
-  (`src/lib/perf-metrics.ts`): it starts anchored to the bottom-right edge,
-  and dragging the pill or the panel header re-places it (persisted under
-  `astro:perf-hud-pos`, clamped back into the viewport on restore and resize).
-  A press that never leaves the 4px threshold stays a click, so dropping the
-  HUD never toggles it. Collapsed it is one pill with two headline numbers
-  (scroll fps, list render average); expanded it shows three tone-coded tiles
-  (scroll fps / list render / long tasks, ok-warn-bad by threshold) above
-  label→value rows per metric group, plus the usage notes (`?perf=0` clears
-  the stored choice, the console API, the benchmark drivers). It stays pure
-  DOM outside React so the tool measuring the app never enters the app's
-  render path — expansion, drag and collapse are DOM state, not component
-  state.
+  milliseconds per phase); client long tasks read off the performance HUD
+  (Settings → 性能) or directly via `window.__astroPerf.snapshot()`.
+- The performance HUD is a floating, collapsible, **draggable** panel
+  (`src/lib/perf-metrics.ts`), armed only by the Settings → 性能 preference
+  (`ASTROX_PERF_HUD`, default off) — the `?perf=1`/`?perf=0` URL parameter is
+  retired; the legacy `astro:perf-hud` `"1"` flag is honoured once by
+  `resolvePerfHudInitial` (in `src/config/app-config.ts`) and the app removes
+  that key on its first write. The app root mounts the panel from a React
+  effect keyed on the preference, so toggling the switch mounts and tears the
+  panel down live. The host is the pill's box and the panel floats above it,
+  so expansion always grows **upward** from wherever the pill sits — a
+  bottom-pinned drop can never push the panel off the bottom of the screen. It
+  starts anchored to the bottom-right edge, and dragging the pill or the panel
+  header re-places it (persisted under `astro:perf-hud-pos` as `{ left,
+  bottom }`, clamped back into the viewport on restore and resize). A press
+  that never leaves the 4px threshold stays a click, so dropping the HUD never
+  toggles it. Collapsed it is one pill with two headline numbers (scroll fps,
+  list render average); expanded it shows a tone legend, three tone-coded
+  tiles (scroll fps / list render / long tasks, ok-warn-bad by threshold), and
+  a collapsed native `<details>`「明细」region holding the label→value rows
+  per metric group plus the usage notes. It stays pure DOM outside React so
+  the tool measuring the app never enters the app's render path — expansion,
+  drag and collapse are DOM state, not component state.
 - The LOG search text is **log-local state** (`AtomicLog`), never app-root
   state: a keystroke re-renders only the log panel, not the studio. Filtering
   reads a `useDeferredValue` copy of the text over the cached per-event
@@ -526,9 +540,10 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   separator. App-root flows that need an empty box bump a reset token
   (`logQueryResetToken`), they do not hold the string.
 - The LOG header's scroll controls **always reserve their two-button width**
-  (`.atomic-log__scroll-controls`): the buttons mount per direction, and
-  without the reservation every mount/unmount at a scroll edge resized the
-  sibling search input — the box jittered on every streamed event.
+  (`.atomic-log__scroll-controls`): both chevrons stay mounted at all times
+  and an unreachable edge is a `disabled` button (dimmed ink, `cursor:
+  default`, no hover cues), never an unmount — reserving the width stops the
+  sibling search input from resizing on every streamed event.
 
 ## Run Trajectory Order
 
@@ -540,6 +555,23 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   `orderTrajectoryNewestFirst` is the only place allowed to reverse — never
   sort the model in place.
 - The lane overview above the list remains a left-to-right timeline.
+
+## Explicit Locate Requests
+
+- An explicit locate (the LOG header's 定位 button, the trajectory's locate, a
+  search-result pick) must never read as dead. Both targets keep the request
+  **pending** until it can act: the canvas flushes it the moment the layout
+  commits (`layoutPending` is a dependency of its locate effect, so a click
+  made on the routing skeleton still pulses the atom), and the log advances
+  its locate ref only *after* the row is found in `visibleEntries`, so a
+  search filter cannot swallow the request — it flushes when the row returns.
+- The LOG header's locate button is a **dual request** like the trajectory's
+  locate: it focuses the topology AND bumps `logLocateRequest` (plus a search
+  reset), so the panel the button lives in centers the atom's event row too.
+  `focusAtom` alone never moves the log.
+- Explicit centering is instant (`scrollTop =`), matching
+  `scrollRowWithinContainer` — a smooth animation on the virtualized log gets
+  canceled by slice re-renders and reads as no reaction.
 
 ## Exception Events
 

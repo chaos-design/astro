@@ -209,7 +209,7 @@
 - The settings dialog holds browser-local preferences only. Changes apply
   immediately, with no server round trip and no Apply button.
 - It is a **two-pane card**: a `settings-nav` rail on the left (appearance / run
-  history / canvas / panels / about) and a `settings-pane` on the right that
+  history / canvas / panels / performance / about) and a `settings-pane` on the right that
   renders only the active section, built on vertical `Tabs` so arrow keys work.
   A single stacked column either scrolled the whole dialog or squeezed every
   control on a short window. The card is 920×672 on a wide viewport (stacked on

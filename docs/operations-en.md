@@ -454,8 +454,12 @@ Before and after upgrade, confirm the data root is unchanged, native recorder co
 | `ASTROX_PLATFORM` | `codex`, `claude`, `deepseek`, `trae`, `workbuddy` | Topology platform context. |
 | `ASTROX_HISTORY_OPEN` | boolean string | Left History panel. |
 | `ASTROX_CONSOLE_OPEN` | boolean string | Right Events/Inspector panel. |
+| `ASTROX_PERF_HUD` | boolean string | Performance panel on, off by default. |
 
-Legacy `astro-theme` and `astro-platform` values are read and removed after writing the new key. If localStorage is unavailable, preferences remain page-local and trace data is unaffected.
+Legacy `astro-theme` and `astro-platform` values are read and removed after
+writing the new key; `astro:perf-hud` (the on-flag the retired `?perf=1`
+parameter stored) is honoured once on first load, then removed. If localStorage
+is unavailable, preferences remain page-local and trace data is unaffected.
 
 ## 13. Environment and Demo Boundary
 

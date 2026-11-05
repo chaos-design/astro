@@ -5602,10 +5602,11 @@ pre,
 
 /* Log edge controls live in the header row. They used to float over the list,
    where the top chevron sat on the first visible atom — the row a reader had
-   just scrolled to was half covered by a button. The container always reserves
-   the two-button width (22px × 2 + 4px gap): the buttons mount per direction,
-   and without the reservation every mount/unmount at a scroll edge resized
-   the sibling search input — the box jittered on every streamed event. */
+   just scrolled to was half covered by a button. Both buttons stay mounted at
+   all times and the container reserves the two-button width (22px × 2 + 4px
+   gap): an unreachable edge is expressed with a disabled state, not an
+   unmount, so the header layout and the sibling search input never shift as
+   the list scrolls. */
 .atomic-log__scroll-controls {
   display: flex;
   flex: 0 0 48px;
@@ -5634,22 +5635,30 @@ pre,
     background 120ms ease;
 }
 
+/* The unreachable edge stays visible but quiet: dimmer ink, no pointer, no
+   hover response, no scroll cue. */
+.atomic-log__scroll-button:disabled {
+  color: var(--muted);
+  border-color: var(--line);
+  cursor: default;
+}
+
 .atomic-log__scroll-button > svg {
   width: 12px;
   height: 12px;
 }
 
-.atomic-log__scroll-button:hover {
+.atomic-log__scroll-button:not(:disabled):hover {
   border-color: var(--selection-border);
   color: var(--selection-text);
   background: var(--selection-bg);
 }
 
-.atomic-log__scroll-button--top:hover svg {
+.atomic-log__scroll-button--top:not(:disabled):hover svg {
   animation: scroll-cue-up 720ms ease-in-out infinite;
 }
 
-.atomic-log__scroll-button--bottom:hover svg {
+.atomic-log__scroll-button--bottom:not(:disabled):hover svg {
   animation: scroll-cue-down 720ms ease-in-out infinite;
 }
 

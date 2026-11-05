@@ -229,5 +229,5 @@ the spot; serve the directory statically to preview the merged layout.
 | Deployed page says it cannot reach the local service | ① service running (`astrox status`); ② origin in `corsOrigins` (`/api/health`); ③ port — `clientCount` and `?api=` agree |
 | Port conflict | The service walks up (≤ +20); the log prints the real port, point the page there with `?api=` |
 | Sample data unavailable | `data/demo-events.json` missing (404) or malformed (500 names the offending field) |
-| Jank / long tasks while streaming | Open the `?perf=1` HUD (floating panel at the page bottom; expand it for per-metric notes), read `window.__astroPerf.snapshot()`; reproduce with `pnpm perf:fixture` + `pnpm perf:bench` |
+| Jank / long tasks while streaming | Open the performance panel via **Settings → Performance** (floating panel at the page bottom; expand it for the summary tiles and the collapsed detail rows), read `window.__astroPerf.snapshot()`; reproduce with `pnpm perf:fixture` + `pnpm perf:bench` |
 | Service misbehaving | `astrox doctor` (config diagnostics), `astrox logs`, `/api/health` (`restartCount` / `restartedAt` / `dataRoot` / `version`) |

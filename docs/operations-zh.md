@@ -436,8 +436,11 @@ astrox restart         # 重启守护进程，加载新 server 与 dist
 | `ASTROX_PLATFORM` | `codex` / `claude` / `deepseek` / `trae` / `workbuddy` | 拓扑平台上下文。 |
 | `ASTROX_HISTORY_OPEN` | boolean string | 左侧 History 展开状态。 |
 | `ASTROX_CONSOLE_OPEN` | boolean string | 右侧 Events/Inspector 展开状态。 |
+| `ASTROX_PERF_HUD` | boolean string | 性能面板开关，默认关。 |
 
-旧 `astro-theme` 和 `astro-platform` 会在读取后迁移，并在新键写入时删除。localStorage 不可用时，偏好只在当前页面内生效，不影响 Trace 数据。
+旧 `astro-theme`、`astro-platform` 与 `astro:perf-hud`（早版 `?perf=1` 遗留的开启标记）
+会在对应新键写入时删除；前两者自动迁移，`astro:perf-hud` 首读保留一次。localStorage
+不可用时，偏好只在当前页面内生效，不影响 Trace 数据。
 
 ## 13. 环境与 Demo 边界
 

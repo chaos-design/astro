@@ -139,6 +139,7 @@ import {
   panelHeaderClass,
   panelHeaderCopyClass,
   retiredStorageKeys,
+  resolvePerfHudInitial,
   isDemoGateOpen,
   shouldShowDemo,
   storageKeys,
@@ -256,7 +257,9 @@ import {
 } from "./lib/run-history-state";
 import {
   attachScrollFpsTracker,
+  getPerfSnapshot,
   markAppReady,
+  mountPerfHud,
   recordListRender,
 } from "./lib/perf-metrics";
 import {
@@ -2545,8 +2548,8 @@ const AtomicLog = memo(function AtomicLog({
   const scrollFrameRef = useRef(0);
   // Render-cost instrumentation: the body stamps its start time, and the
   // no-deps layout effect below closes the measurement after commit. The
-  // samples feed `window.__astroPerf` (and the ?perf=1 HUD) so list render
-  // cost is comparable before and after a change.
+  // samples feed `window.__astroPerf` (and the Settings → 性能 HUD) so list
+  // render cost is comparable before and after a change.
   const renderStartRef = useRef(0);
   renderStartRef.current = performance.now();
   const [metrics, setMetrics] = useState<LogRowMetrics>({
@@ -2700,7 +2703,6 @@ const AtomicLog = memo(function AtomicLog({
 
   useEffect(() => {
     const explicitLocate = locateRequestRef.current !== locateRequest;
-    locateRequestRef.current = locateRequest;
     const list = listRef.current;
     if (!list || !selectedEventId) {
       return;
@@ -2709,8 +2711,13 @@ const AtomicLog = memo(function AtomicLog({
       (entry) => entry.event.id === selectedEventId,
     );
     if (entryIndex < 0) {
+      // The row is not in the visible list (e.g. a search filter hides it):
+      // keep the locate request *pending* — the ref advances only once the
+      // row is findable, so the request flushes the moment the row returns
+      // (filter cleared, session switched) instead of being silently lost.
       return;
     }
+    locateRequestRef.current = locateRequest;
     const nextTop = resolveScrollTopForRow({
       center: explicitLocate,
       rowHeight: metrics.row,
@@ -2721,7 +2728,11 @@ const AtomicLog = memo(function AtomicLog({
     if (nextTop === null) {
       return;
     }
-    list.scrollTo({ behavior: explicitLocate ? "smooth" : "auto", top: nextTop });
+    // An explicit locate centers the row *instantly*, matching the
+    // trajectory's locate (scrollRowWithinContainer): a smooth animation
+    // here would run against the virtualized slice re-renders and could be
+    // canceled mid-flight, so the feedback must not depend on it.
+    list.scrollTop = nextTop;
   }, [
     layout.rowTops,
     locateRequest,
@@ -2779,31 +2790,32 @@ const AtomicLog = memo(function AtomicLog({
         {/* Scroll controls live in the header, not floating over the list: an
             overlay chevron sat on top of the first visible atom, so the row a
             reader had just scrolled to was half hidden behind a button. In the
-            header both edges stay reachable and no row is ever covered. Each
-            control only exists while that edge is actually out of view. */}
+            header both edges stay reachable and no row is ever covered. Both
+            buttons stay visible at all times — the container reserves the
+            two-button width — and the unreachable edge is expressed with a
+            disabled state instead of unmounting, so the header layout never
+            shifts as the list scrolls. */}
         <div className="atomic-log__scroll-controls">
-          {scrollPosition.canScrollUp ? (
-            <button
-              type="button"
-              className="atomic-log__scroll-button"
-              aria-label={live ? "回到最新事件" : "滚动到顶部"}
-              title={live ? "回到最新事件" : "滚动到顶部"}
-              onClick={() => scrollToEdge("top")}
-            >
-              <ChevronUp aria-hidden="true" />
-            </button>
-          ) : null}
-          {scrollPosition.canScrollDown ? (
-            <button
-              type="button"
-              className="atomic-log__scroll-button"
-              aria-label="滚动到底部"
-              title="滚动到底部"
-              onClick={() => scrollToEdge("bottom")}
-            >
-              <ChevronDown aria-hidden="true" />
-            </button>
-          ) : null}
+          <button
+            type="button"
+            className="atomic-log__scroll-button atomic-log__scroll-button--top"
+            aria-label={live ? "回到最新事件" : "滚动到顶部"}
+            title={live ? "回到最新事件" : "滚动到顶部"}
+            disabled={!scrollPosition.canScrollUp}
+            onClick={() => scrollToEdge("top")}
+          >
+            <ChevronUp aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            className="atomic-log__scroll-button atomic-log__scroll-button--bottom"
+            aria-label="滚动到底部"
+            title="滚动到底部"
+            disabled={!scrollPosition.canScrollDown}
+            onClick={() => scrollToEdge("bottom")}
+          >
+            <ChevronDown aria-hidden="true" />
+          </button>
         </div>
       </header>
       <div className="atomic-log__body relative min-h-0 overflow-hidden">
@@ -4228,6 +4240,13 @@ export default function App() {
       appDefaults.deepView,
     ),
   );
+  // The performance HUD is a diagnostic tool, off by default: the Settings →
+  // 性能 toggle arms it. A reader who opted in with the retired `?perf=1`
+  // parameter still has the legacy flag honoured once; the first write
+  // removes it, after which the settings key is the only source of truth.
+  const [perfHud, setPerfHud] = useState<boolean>(() =>
+    resolvePerfHudInitial(window.localStorage),
+  );
   const [guideOpen, setGuideOpen] = useState<boolean>(appDefaults.guideOpen);
   const [historySearchOpen, setHistorySearchOpen] = useState(false);
   // The dialog chunk is requested on idle; the component is mounted the first
@@ -4435,6 +4454,30 @@ export default function App() {
   useEffect(() => {
     writeStorageValue(window.localStorage, storageKeys.deepView, deepView);
   }, [deepView]);
+
+  useEffect(() => {
+    // The legacy `?perf=1`-era flag (its stored `1` is what resolvePerfHudInitial
+    // honoured at load) is dropped on the first write, so the settings key
+    // becomes the only place the HUD state lives.
+    writeStorageValue(
+      window.localStorage,
+      storageKeys.perfHud,
+      perfHud,
+      legacyStorageKeys.perfHud,
+    );
+  }, [perfHud]);
+
+  // The HUD is pure DOM outside the React tree (the tool that measures must
+  // never enter the render path); React only decides *whether* it exists.
+  // The mount returns an idempotent teardown, so StrictMode's
+  // mount/unmount/mount double-invocation is safe.
+  useEffect(() => {
+    if (!perfHud) {
+      return;
+    }
+    const disconnect = mountPerfHud(getPerfSnapshot);
+    return () => disconnect?.();
+  }, [perfHud]);
 
   useEffect(() => {
     writeStorageValue(
@@ -5922,6 +5965,14 @@ export default function App() {
     }
     setActiveView("topology");
     focusAtom(currentAtomId);
+    // The button lives in the LOG header, so the LOG must react too: bump the
+    // log's own locate request to center the atom's event row (mirroring the
+    // trajectory locate, which bumps both view requests). A plain
+    // selectedEventId change only *reveals* the row when it is off-screen,
+    // so a click would read as dead while the row is on screen. Clearing the
+    // search filter guarantees the row exists in the filtered list.
+    setLogQueryResetToken((current) => current + 1);
+    setLogLocateRequest((current) => current + 1);
   }, [currentAtomId, focusAtom]);
 
   const handleTrajectorySelect = useCallback(
@@ -6308,6 +6359,7 @@ export default function App() {
               historyRange={historyRange}
               liveView={liveFilter}
               maxSync={maxSync}
+              perfHud={perfHud}
               theme={theme}
               onActiveViewChange={(view) => {
                 setActiveView(view);
@@ -6321,6 +6373,7 @@ export default function App() {
               onHistoryRangeChange={setHistoryRange}
               onLiveViewChange={setLiveFilter}
               onMaxSyncChange={setMaxSync}
+              onPerfHudChange={setPerfHud}
               onThemeChange={setTheme}
             />
             <ThemeSwitcher theme={theme} onChange={setTheme} />

@@ -8,10 +8,12 @@
  * so a before/after comparison of an optimization reads a single consistent
  * snapshot instead of ad-hoc console timing.
  *
- * The visible HUD is strictly opt-in (`?perf=1`, persisted; `?perf=0`
- * clears it) so regular usage never pays for HUD DOM updates. It floats at
- * the bottom edge of the page: a collapsed pill carries two headline
- * numbers, and expanding it documents every metric beside its live value.
+ * The visible HUD is strictly opt-in: it is armed by the Settings → 性能
+ * preference (a browser-local `ASTROX_PERF_HUD` flag), never by a URL
+ * parameter. It floats at the bottom edge of the page: a collapsed pill
+ * carries two headline numbers, and expanding it grows **upward** from the
+ * pill — three tone-coded summary tiles stay resident, and every metric lives
+ * in a collapsed `明细` region the reader opens on demand.
  */
 
 const LIST_RENDER_SAMPLE_LIMIT = 200;
@@ -19,7 +21,6 @@ const SCROLL_FPS_SAMPLE_LIMIT = 100;
 /** Frame gap after the last scroll event at which a scroll sample closes. */
 const SCROLL_IDLE_MS = 400;
 const HUD_UPDATE_MS = 500;
-const HUD_STORAGE_KEY = "astro:perf-hud";
 
 export type ListRenderStats = {
   count: number;
@@ -297,25 +298,6 @@ export function installPerfMetrics(): () => void {
   };
 }
 
-/**
- * HUD visibility: the `perf` query parameter wins (`1` enables, `0` disables
- * and clears the stored preference), otherwise the stored preference decides.
- */
-export function resolvePerfHudEnabled(
-  query: string,
-  storedValue: string | null,
-): boolean {
-  const params = new URLSearchParams(query);
-  const requested = params.get("perf");
-  if (requested === "1") {
-    return true;
-  }
-  if (requested === "0") {
-    return false;
-  }
-  return storedValue === "1";
-}
-
 /** One headline number for the collapsed pill, e.g. `60fps · 0.8ms`. */
 export function formatHudHeadline(snapshot: PerfSnapshot): string {
   const fps = snapshot.scrollFps.samples > 0 ? snapshot.scrollFps.average : snapshot.scrollFps.last;
@@ -325,14 +307,22 @@ export function formatHudHeadline(snapshot: PerfSnapshot): string {
 /**
  * The HUD is draggable, so its place on the screen is the reader's choice.
  * The default anchors to the bottom-right edge; a dragged (or restored)
- * position pins with left/top instead.
+ * position pins with `left`/`bottom` instead, with the pill's *bottom edge*
+ * pinned — the expanded panel grows upward from it, so expanding can never
+ * push the pill or the panel off the bottom of the viewport.
  */
-export type HudPosition = { left: number; top: number };
+export type HudPosition = { left: number; bottom: number };
 
 const HUD_POSITION_KEY = "astro:perf-hud-pos";
 const HUD_EDGE = 8;
+/** The expanded panel's width; it floats above the pill, right-aligned. */
+const HUD_PANEL_WIDTH = 336;
 
-/** Clamps a position so the HUD stays fully inside the viewport. */
+/**
+ * Clamps a position so the pill stays fully inside the viewport, and the
+ * panel that opens upward from it never runs past the left edge: the pill's
+ * minimum left leaves room for the panel's width to its left.
+ */
 export function clampHudPosition(
   position: HudPosition,
   width: number,
@@ -340,17 +330,21 @@ export function clampHudPosition(
   viewportWidth: number,
   viewportHeight: number,
 ): HudPosition {
-  const maxLeft = Math.max(HUD_EDGE, viewportWidth - width - HUD_EDGE);
-  const maxTop = Math.max(HUD_EDGE, viewportHeight - height - HUD_EDGE);
+  const minLeft = HUD_EDGE + Math.max(0, HUD_PANEL_WIDTH - width);
+  const maxLeft = Math.max(minLeft, viewportWidth - width - HUD_EDGE);
+  const maxBottom = Math.max(HUD_EDGE, viewportHeight - height - HUD_EDGE);
   return {
-    left: Math.min(Math.max(HUD_EDGE, Math.round(position.left)), maxLeft),
-    top: Math.min(Math.max(HUD_EDGE, Math.round(position.top)), maxTop),
+    left: Math.min(Math.max(minLeft, Math.round(position.left)), maxLeft),
+    bottom: Math.min(Math.max(HUD_EDGE, Math.round(position.bottom)), maxBottom),
   };
 }
 
 /**
  * Parses a stored position; `null` when absent or malformed so a corrupted
  * value falls back to the default edge anchor instead of breaking the HUD.
+ * A pre-upgrade position stored `{ left, top }` (the host grew downward, so
+ * it could land off-screen) and is treated as absent: the reader simply
+ * re-drops the pill instead of guessing a spot.
  */
 export function resolveHudPosition(
   stored: string | null,
@@ -366,14 +360,14 @@ export function resolveHudPosition(
     const parsed = JSON.parse(stored) as Partial<HudPosition>;
     if (
       typeof parsed.left !== "number" ||
-      typeof parsed.top !== "number" ||
+      typeof parsed.bottom !== "number" ||
       !Number.isFinite(parsed.left) ||
-      !Number.isFinite(parsed.top)
+      !Number.isFinite(parsed.bottom)
     ) {
       return null;
     }
     return clampHudPosition(
-      { left: parsed.left, top: parsed.top },
+      { left: parsed.left, bottom: parsed.bottom },
       width,
       height,
       viewportWidth,
@@ -425,15 +419,15 @@ const hudToneColor: Record<HudTile["tone"], string> = {
   bad: "#f87171",
 };
 
+// Host: a bottom-anchored box the size of the pill. The pill is its only
+// in-flow child, so the host box tracks the pill exactly and the panel
+// floats above it (absolute, right-aligned): expanding never shifts the
+// pill, and the panel always opens upward from wherever the pill sits.
 const panelStyles: Partial<CSSStyleDeclaration> = {
   position: "fixed",
   right: "12px",
   bottom: "12px",
   zIndex: "2147483647",
-  display: "flex",
-  flexDirection: "column",
-  alignItems: "flex-end",
-  gap: "6px",
   pointerEvents: "none",
   fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
 };
@@ -458,7 +452,13 @@ const pillStyles: Partial<CSSStyleDeclaration> = {
 
 const panelBodyStyles: Partial<CSSStyleDeclaration> = {
   pointerEvents: "auto",
-  width: "336px",
+  position: "absolute",
+  right: "0",
+  // The host box is the pill's box: the panel sits 6px above the pill and
+  // grows upward with its content, so it never pushes the pill down or
+  // leaves the bottom of the viewport.
+  bottom: "calc(100% + 6px)",
+  width: `${HUD_PANEL_WIDTH}px`,
   maxHeight: "min(520px, calc(100vh - 96px))",
   overflowY: "auto",
   borderRadius: "12px",
@@ -469,6 +469,48 @@ const panelBodyStyles: Partial<CSSStyleDeclaration> = {
   lineHeight: "1.5",
   padding: "0",
   boxShadow: "0 12px 32px rgba(0, 0, 0, 0.55)",
+};
+
+/** One-line legend that teaches the tone colours used by the tiles and rows. */
+const toneLegendStyles: Partial<CSSStyleDeclaration> = {
+  display: "flex",
+  gap: "12px",
+  padding: "6px 12px 0",
+  fontSize: "9px",
+  letterSpacing: "0.04em",
+  color: "#7f96b5",
+  whiteSpace: "nowrap",
+};
+
+const toneDotStyles: Partial<CSSStyleDeclaration> = {
+  display: "inline-block",
+  width: "6px",
+  height: "6px",
+  borderRadius: "50%",
+  marginRight: "4px",
+  verticalAlign: "1px",
+};
+
+/**
+ * The detail rows live in a native <details>, closed by default: the panel
+ * scans as three summary tiles plus the legend, and the reader opts into the
+ * full metric table. Native disclosure means no JS, and the rows stay in the
+ * DOM while closed, so the 500 ms refresh updates them either way.
+ */
+const detailsStyles: Partial<CSSStyleDeclaration> = {
+  margin: "10px 12px 0",
+  borderTop: "1px solid rgba(148, 163, 184, 0.18)",
+};
+
+const summaryStyles: Partial<CSSStyleDeclaration> = {
+  padding: "5px 0 2px",
+  fontSize: "9px",
+  fontWeight: "700",
+  letterSpacing: "0.14em",
+  color: "#8fa8c7",
+  cursor: "pointer",
+  userSelect: "none",
+  listStyle: "none",
 };
 
 const hudBarStyles: Partial<CSSStyleDeclaration> = {
@@ -587,10 +629,11 @@ const usageStyles: Partial<CSSStyleDeclaration> = {
 };
 
 /**
- * Static documentation shown inside the expanded panel: what each metric
- * measures and how to read it. Rows stay label→value pairs so the panel scans
- * as a table instead of prose; the muted line under each title says what the
- * numbers mean.
+ * Static documentation shown inside the collapsed 明细 region: what each
+ * metric measures and how to read it. Rows stay label→value pairs so the
+ * table scans as columns instead of prose; the muted line under each title
+ * says what the numbers mean. Labels are Chinese-first — the panel is a
+ * reading surface, not an i18n experiment.
  */
 const metricSections: Array<{
   title: string;
@@ -603,11 +646,11 @@ const metricSections: Array<{
 }> = [
   {
     title: "加载 LOAD",
-    doc: "导航开始到首次提交渲染 / 首次内容绘制 / 最大内容绘制；本地服务下通常都在 1s 内",
+    doc: "导航开始到应用就绪 / 首帧内容（FCP）/ 最大内容（LCP）；本地服务下通常都在 1s 内",
     rows: [
-      { label: "ready", value: (s) => `${s.appReadyMs ?? "--"} ms` },
+      { label: "应用就绪", value: (s) => `${s.appReadyMs ?? "--"} ms` },
       {
-        label: "FCP / LCP",
+        label: "首帧 / 最大内容",
         value: (s) =>
           `${s.firstContentfulPaintMs ?? "--"} / ${s.largestContentfulPaintMs ?? "--"} ms`,
       },
@@ -615,10 +658,10 @@ const metricSections: Array<{
   },
   {
     title: "滚动 SCROLL FPS",
-    doc: "仅在实际滚动时采样，一个手势一个样本；worst 是最差的一次手势",
+    doc: "仅在实际滚动时采样，一个手势一个样本；最差 是最差的一次手势",
     rows: [
       {
-        label: "last / avg / worst",
+        label: "最近 · 平均 · 最差",
         value: (s) =>
           `${s.scrollFps.last} / ${s.scrollFps.average} / ${s.scrollFps.worst} fps`,
         tone: (s) => {
@@ -632,15 +675,15 @@ const metricSections: Array<{
           return fps >= 50 ? "ok" : fps >= 30 ? "warn" : "bad";
         },
       },
-      { label: "手势数", value: (s) => `${s.scrollFps.samples}` },
+      { label: "滚动手势数", value: (s) => `${s.scrollFps.samples}` },
     ],
   },
   {
     title: "列表渲染 LIST RENDER",
-    doc: "RUN HISTORY 每次提交渲染的耗时；avg 稳定在个位数毫秒属正常",
+    doc: "RUN HISTORY 每次提交渲染的耗时；平均稳定在个位数毫秒属正常",
     rows: [
       {
-        label: "last / avg / max",
+        label: "最近 · 平均 · 最大",
         value: (s) =>
           `${s.listRender.lastMs.toFixed(1)} / ${s.listRender.averageMs.toFixed(1)} / ${s.listRender.maxMs.toFixed(1)} ms`,
         tone: (s) =>
@@ -651,18 +694,18 @@ const metricSections: Array<{
               : "bad",
       },
       {
-        label: "提交次数 / 行数",
+        label: "渲染次数 / 行数",
         value: (s) => `${s.listRender.count} / ${s.listRender.lastRows}`,
       },
     ],
   },
   {
     title: "网络 NETWORK",
-    doc: "api 是 /api/*（事件流、快照、健康检查），静态是控制台资源；流式下 api 随事件批次增长属预期",
+    doc: "接口是 /api/*（事件流、快照、健康检查），静态是控制台资源；流式下接口请求随事件批次增长属预期",
     rows: [
       {
-        label: "api / 静态",
-        value: (s) => `${s.network.apiRequests} / ${s.network.assetRequests} 请求`,
+        label: "接口 / 静态请求",
+        value: (s) => `${s.network.apiRequests} / ${s.network.assetRequests} 次`,
       },
       {
         label: "传输体积",
@@ -679,7 +722,7 @@ const metricSections: Array<{
         value: (s) => `${s.longTasks.count} / ${s.longTasks.totalMs.toFixed(0)} ms`,
       },
       {
-        label: "最长",
+        label: "最长一次",
         value: (s) => `${s.longTasks.maxMs} ms`,
         tone: (s) =>
           s.longTasks.count === 0
@@ -692,25 +735,36 @@ const metricSections: Array<{
   },
 ];
 
+/**
+ * Shown at the bottom of the 明细 region: how to toggle the panel from
+ * Settings (the URL parameter is retired), how to read the same data from the
+ * console, and the repeatable reproduction drivers.
+ */
 const usageCopy = [
-  "?perf=0 关闭并清除记忆 · 拖动标题或胶囊可移动面板",
-  "控制台读取同样数据：window.__astroPerf.snapshot()",
+  "面板开关在「设置 → 性能」；拖动标题或胶囊可移动面板，位置会记住",
+  "控制台读取同样的数据：window.__astroPerf.snapshot()",
   "复现与对比：pnpm perf:fixture + pnpm perf:bench",
 ].join("\n");
 
 /**
- * Mounts the opt-in HUD: a floating, collapsible panel that the reader can
- **drag anywhere** (pill and panel header both carry the drag; the place is
+ * Mounts the opt-in HUD: a floating, collapsible panel the reader can
+ * **drag anywhere** (pill and panel header both carry the drag; the place is
  * remembered across visits). Collapsed it is one pill with two headline
- * numbers; expanded it shows three tone-coded tiles plus every metric as
- * label→value rows. Pure DOM on purpose — React renders must not be
+ * numbers; expanded it grows **upward** from the pill and shows three
+ * tone-coded summary tiles above a collapsed 明细 region that carries every
+ * metric as label→value rows. Pure DOM on purpose — React renders must not be
  * influenced by the tool that measures them — so expansion, drag and collapse
- * are ordinary DOM state, not component state.
+ * are ordinary DOM state, not component state. The React tree only decides
+ * *whether* the HUD exists (the Settings → 性能 preference).
+ *
+ * Returns the teardown the owner calls on unmount (clears the refresh timer,
+ * the resize re-clamp, and removes the host); `null` in a document-less
+ * environment.
  */
 export function mountPerfHud(
   getSnapshot: () => PerfSnapshot,
   doc: Document = document,
-): HTMLElement | null {
+): (() => void) | null {
   if (typeof doc === "undefined") {
     return null;
   }
@@ -755,6 +809,25 @@ export function mountPerfHud(
   hudBar.append(grip, hudTitle, collapse);
   panel.append(hudBar);
 
+  // One-line legend that teaches the tone colours the tiles and rows use.
+  const legend = doc.createElement("div");
+  Object.assign(legend.style, toneLegendStyles);
+  for (const [tone, word] of [
+    ["ok", "正常"],
+    ["warn", "关注"],
+    ["bad", "异常"],
+  ] as const) {
+    const item = doc.createElement("span");
+    const dot = doc.createElement("span");
+    Object.assign(dot.style, toneDotStyles);
+    dot.style.background = hudToneColor[tone];
+    dot.setAttribute("aria-hidden", "true");
+    item.textContent = ` ${word}`;
+    item.append(dot);
+    legend.append(item);
+  }
+  panel.append(legend);
+
   const tilesRow = doc.createElement("div");
   Object.assign(tilesRow.style, tilesRowStyles);
   const tileValueNodes = getHudTiles(getSnapshot()).map(({ value, label }) => {
@@ -772,6 +845,19 @@ export function mountPerfHud(
   });
   panel.append(tilesRow);
 
+  // Every metric lives in a native <details>, closed by default: the panel
+  // scans as three summary tiles plus the legend, and the full table is an
+  // opt-in. Native disclosure means no JS, and the rows stay in the DOM
+  // while closed, so the 500 ms refresh updates them either way.
+  const details = doc.createElement("details");
+  details.className = "astro-perf-hud__details";
+  Object.assign(details.style, detailsStyles);
+  const summary = doc.createElement("summary");
+  Object.assign(summary.style, summaryStyles);
+  summary.textContent = "明细 · 全部指标";
+  details.append(summary);
+  panel.append(details);
+
   const rowValueNodes: Array<{
     node: HTMLElement;
     read: (snapshot: PerfSnapshot) => string;
@@ -784,7 +870,7 @@ export function mountPerfHud(
     const note = doc.createElement("p");
     Object.assign(note.style, sectionDocStyles);
     note.textContent = section.doc;
-    panel.append(title, note);
+    details.append(title, note);
     for (const row of section.rows) {
       const rowNode = doc.createElement("div");
       Object.assign(rowNode.style, rowStyles);
@@ -794,7 +880,7 @@ export function mountPerfHud(
       const value = doc.createElement("span");
       Object.assign(value.style, rowValueStyles);
       rowNode.append(label, value);
-      panel.append(rowNode);
+      details.append(rowNode);
       rowValueNodes.push({ node: value, read: row.value, tone: row.tone });
     }
   }
@@ -802,52 +888,62 @@ export function mountPerfHud(
   const usage = doc.createElement("p");
   Object.assign(usage.style, usageStyles);
   usage.textContent = usageCopy;
-  panel.append(usage);
+  details.append(usage);
 
   // Drag: the pill and the panel header move the host. A press that never
   // moves past the threshold stays a click (the pill toggles expansion); a
   // real drag persists the dropped position. The host switches from its
-  // default bottom-right anchor to left/top on the first placement.
+  // default bottom-right anchor to left/bottom on the first placement: the
+  // pill's *bottom edge* is what gets pinned, so the panel always opens
+  // upward and expansion can never leave the viewport through the bottom.
   let justDragged = false;
-  const placeAt = (left: number, top: number) => {
+  const placeAt = (left: number, bottom: number) => {
     host.style.left = `${left}px`;
-    host.style.top = `${top}px`;
+    host.style.bottom = `${bottom}px`;
+    host.style.top = "auto";
     host.style.right = "auto";
-    host.style.bottom = "auto";
   };
+
+  // The host box is the pill's box (the panel floats above it), so the pill's
+  // own width/height is what the clamp and the restore need.
+  const pillWidth = () => pill.offsetWidth || 240;
+  const pillHeight = () => pill.offsetHeight || 32;
 
   const storedPosition = resolveHudPosition(
     readHudStorage(HUD_POSITION_KEY),
-    host.offsetWidth || 240,
-    host.offsetHeight || 32,
+    pillWidth(),
+    pillHeight(),
     window.innerWidth,
     window.innerHeight,
   );
   if (storedPosition) {
-    placeAt(storedPosition.left, storedPosition.top);
+    placeAt(storedPosition.left, storedPosition.bottom);
   }
 
   const persistPosition = () => {
     const rect = host.getBoundingClientRect();
     writeHudPosition({
       left: Math.round(rect.left),
-      top: Math.round(rect.top),
+      bottom: Math.round(window.innerHeight - rect.bottom),
     });
   };
 
   const clampIntoViewport = () => {
-    if (host.style.left === "" || host.style.top === "") {
+    if (host.style.left === "" || host.style.bottom === "") {
       return;
     }
     const rect = host.getBoundingClientRect();
     const next = clampHudPosition(
-      { left: rect.left, top: rect.top },
+      {
+        left: rect.left,
+        bottom: window.innerHeight - rect.bottom,
+      },
       rect.width,
       rect.height,
       window.innerWidth,
       window.innerHeight,
     );
-    placeAt(next.left, next.top);
+    placeAt(next.left, next.bottom);
   };
 
   const attachDrag = (handle: HTMLElement) => {
@@ -868,17 +964,23 @@ export function mountPerfHud(
         }
         dragging = true;
         handle.setPointerCapture?.(event.pointerId);
+        // Convert the grabbed top-left back to the pinned bottom edge: the
+        // pill's bottom must land where the reader dropped it, and the panel
+        // then grows upward from that edge.
         const next = clampHudPosition(
           {
             left: moveEvent.clientX - grabOffset.x,
-            top: moveEvent.clientY - grabOffset.y,
+            bottom:
+              window.innerHeight -
+              (moveEvent.clientY - grabOffset.y) -
+              host.offsetHeight,
           },
           host.offsetWidth,
           host.offsetHeight,
           window.innerWidth,
           window.innerHeight,
         );
-        placeAt(next.left, next.top);
+        placeAt(next.left, next.bottom);
       };
       const onUp = () => {
         handle.removeEventListener("pointermove", onMove);
@@ -927,7 +1029,10 @@ export function mountPerfHud(
   const setExpanded = (next: boolean) => {
     expanded = next;
     panel.hidden = !next;
-    pill.hidden = next;
+    // The pill keeps its layout box while the panel is open: the host is
+    // sized by the pill and the panel anchors to it — `display: none` would
+    // collapse the host and re-anchor the panel, so hide it visually only.
+    pill.style.visibility = next ? "hidden" : "visible";
     pill.setAttribute("aria-expanded", String(next));
   };
   pill.addEventListener("click", () => {
@@ -949,36 +1054,18 @@ export function mountPerfHud(
 
   const timer = window.setInterval(render, HUD_UPDATE_MS);
   window.addEventListener("resize", clampIntoViewport, { passive: true });
-  window.addEventListener(
-    "pagehide",
-    () => {
-      window.clearInterval(timer);
-      window.removeEventListener("resize", clampIntoViewport);
-    },
-    { once: true },
-  );
-  return host;
-}
-
-/**
- * Resolves the HUD preference (`?perf=1|0` over `localStorage`) and mounts the
- * HUD when enabled. Split from {@link mountPerfHud} so the storage write only
- * happens on an explicit query-param decision.
- */
-export function setupPerfHud(query: string = window.location.search): void {
-  const stored = readHudStorage(HUD_STORAGE_KEY);
-  const enabled = resolvePerfHudEnabled(query, stored);
-  const requested = new URLSearchParams(query).get("perf");
-  if (requested === "1" || requested === "0") {
-    if (enabled) {
-      writeHudStorage(HUD_STORAGE_KEY, "1");
-    } else {
-      clearHudStorage(HUD_STORAGE_KEY);
+  // The React owner (Settings → 性能) calls this on unmount; it is idempotent
+  // so StrictMode's mount/unmount/mount double-invocation is safe.
+  let disconnected = false;
+  return () => {
+    if (disconnected) {
+      return;
     }
-  }
-  if (enabled) {
-    mountPerfHud(getPerfSnapshot);
-  }
+    disconnected = true;
+    window.clearInterval(timer);
+    window.removeEventListener("resize", clampIntoViewport);
+    host.remove();
+  };
 }
 
 function readHudStorage(key: string): string | null {
@@ -992,14 +1079,6 @@ function readHudStorage(key: string): string | null {
 function writeHudStorage(key: string, value: string) {
   try {
     window.localStorage.setItem(key, value);
-  } catch {
-    // Storage can be unavailable (private mode): the HUD stays session-only.
-  }
-}
-
-function clearHudStorage(key: string) {
-  try {
-    window.localStorage.removeItem(key);
   } catch {
     // Storage can be unavailable (private mode): the HUD stays session-only.
   }

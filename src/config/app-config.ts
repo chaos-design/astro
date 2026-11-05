@@ -47,6 +47,12 @@ type AppDefaults = {
   maxSync: MaxSyncId;
   menuOpen: boolean;
   /**
+   * The floating performance HUD (scroll fps, list render, long tasks). A
+   * diagnostic tool, not part of the console: off by default so a normal
+   * session never shows it, and it measures without touching captured events.
+   */
+  perfHud: boolean;
+  /**
    * Fallback agent when no preference is stored. This mirrors the first entry
    * of the agent dropdown so the default selection is the top of the list.
    */
@@ -72,6 +78,7 @@ export const appDefaults: AppDefaults = {
   liveView: false,
   maxSync: "8h",
   menuOpen: false,
+  perfHud: false,
   platform: "claude",
   replayCursor: 0,
   replayMode: false,
@@ -252,6 +259,8 @@ export const storageKeys = {
   inspectorTab: "ASTROX_INSPECTOR_TAB",
   maxSync: "ASTROX_MAX_SYNC",
   platform: "ASTROX_PLATFORM",
+  /** The performance HUD toggle (Settings → 性能). */
+  perfHud: "ASTROX_PERF_HUD",
   runHistoryLiveView: "ASTROX_RUN_HISTORY_LIVE_VIEW",
   theme: "ASTROX_THEME",
 } as const;
@@ -272,11 +281,40 @@ export const retiredStorageKeys = {
 /**
  * Previous key names accepted during migration. They are removed as soon as
  * the corresponding ASTROX_ preference is written.
+ *
+ * `astro:perf-hud` is the flag the retired `?perf=1` URL parameter wrote: it
+ * holds `"1"` when the reader opted in, not `"true"`, so the initial read
+ * (`resolvePerfHudInitial`, below) interprets it — a stored `"1"` still
+ * arms the HUD, and the key is dropped when the new preference is first
+ * written.
  */
 export const legacyStorageKeys = {
+  perfHud: "astro:perf-hud",
   platform: "astro-platform",
   theme: "astro-theme",
 } as const;
+
+/**
+ * Resolves the performance HUD's initial armed state from storage only — the
+ * `perf` URL parameter is retired; Settings → 性能 is the single switch.
+ *
+ * The primary key is written by the app as `"true"`/`"false"`. When it is
+ * absent, the legacy `?perf=1`-era flag is honoured once: it stored `"1"`
+ * (not `"true"`), so only that exact value still arms the HUD. Anything else
+ * — no primary, no legacy, a garbage value — falls back to the default (off);
+ * the app removes the legacy key on its first write.
+ */
+export function resolvePerfHudInitial(storage: {
+  getItem(key: string): string | null;
+}): boolean {
+  const current = storage.getItem(storageKeys.perfHud);
+  if (current === "true" || current === "false") {
+    return current === "true";
+  }
+  return (current ?? storage.getItem(legacyStorageKeys.perfHud)) === "1"
+    ? true
+    : appDefaults.perfHud;
+}
 
 /**
  * Theme selector choices and their icons. The IDs are persisted as Theme
