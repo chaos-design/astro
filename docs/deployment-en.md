@@ -174,14 +174,19 @@ explicit `?demo=1`, with a persistent "sample data" banner.
 - On every push/PR to `main`: build the console, run the
   `verify-console-build` assertions (relative assets, shipped icons and sample
   dataset, no docs-site markers), upload the `console-dist` artifact.
-- A separate **deploy** job runs only on `workflow_dispatch` (manual), and it
-  can run from **any branch**: the most recent dispatch publishes *that*
-  branch's build over the single shared Pages site, so an in-flight feature
-  branch gets a live preview URL without merging.
+- The **deploy** job publishes automatically on push to `main` (the formal
+  release) or to a rolling-preview branch listed in the workflow's `push`
+  trigger (an in-flight feature branch gets a live preview URL without merging;
+  remove it from that list once it merges). It publishes *that* branch's build
+  over the single shared Pages site — the most recent qualifying build wins.
+- The manual `workflow_dispatch` can run from **any branch** to re-publish a
+  branch that is no longer a push trigger.
 
 Constraint: the Pages site hosts the **console only**, never the docs — the
 two cannot share the one site (the workflow comments and
-`verify-console-build` enforce this).
+`verify-console-build` enforce this). The docs site keeps its own path: the
+Vercel merged output (`vercel.json` + `scripts/merge-deploy-output.mjs`) or the
+`docs-dist` artifact; it is not auto-deployed to Pages.
 
 ### 4.3 Any other static host
 
