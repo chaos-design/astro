@@ -282,6 +282,18 @@ button:not(:disabled),
   cursor: pointer;
 }
 
+/* A control that cannot act must not invite a press: disabled reads as the
+ * plain arrow, on raw buttons and on rows that disable through
+ * `aria-disabled` instead of the attribute. `cursor: not-allowed` is
+ * deliberately not used — the console's disabled affordance is dimming, and
+ * shadcn buttons drop pointer events entirely, so an arrow keeps one
+ * convention everywhere. */
+button:disabled,
+button[aria-disabled="true"],
+[role="button"][aria-disabled="true"] {
+  cursor: default;
+}
+
 /* Strip the UA button border, except for controls that draw their own:
  * console/playback buttons, Radix triggers, and the two custom pills below.
  * Without the exclusions the LIVE chip and the service card's restart action

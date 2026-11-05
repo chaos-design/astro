@@ -526,12 +526,25 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   bottom }`, clamped back into the viewport on restore and resize). A press
   that never leaves the 4px threshold stays a click, so dropping the HUD never
   toggles it. Collapsed it is one pill with two headline numbers (scroll fps,
-  list render average); expanded it shows a tone legend, three tone-coded
-  tiles (scroll fps / list render / long tasks, ok-warn-bad by threshold), and
-  a collapsed native `<details>`「明细」region holding the label→value rows
-  per metric group plus the usage notes. It stays pure DOM outside React so
+  list render average); expanded it shows a tone legend and three tone-coded
+  tiles (scroll fps / list render / long tasks, ok-warn-bad by threshold)
+  **pinned at the top**, with every metric group rendered expanded below them
+  (no disclosure control) — only the label→value rows and usage notes scroll,
+  so walking the table never moves the headline numbers. A drag sets the body
+  cursor to `grabbing` for its duration. It stays pure DOM outside React so
   the tool measuring the app never enters the app's render path — expansion,
   drag and collapse are DOM state, not component state.
+- Cursor affordances follow one convention: clickable things point
+  (`button:not(:disabled)`, `[role="button"]`, and Radix menu/select items —
+  never `cursor-default` on an operable row), disabled controls read as the
+  plain arrow (`button:disabled`, `[aria-disabled="true"]`; the console dims
+  instead of using `not-allowed`), busy controls may use `cursor: progress`,
+  and draggable handles carry `grab` (→ `grabbing` while held).
+- The HistorySearch result rows are memoized end to end (`SearchResult` is
+  `React.memo`, the snippet builds once per row, and the row's `onSelect` is
+  a stable ref-routed callback): a scroll append or a background app-root
+  re-render must not re-render rows already on screen. Batch appends run in a
+  `startTransition`.
 - The LOG search text is **log-local state** (`AtomicLog`), never app-root
   state: a keystroke re-renders only the log panel, not the studio. Filtering
   reads a `useDeferredValue` copy of the text over the cached per-event

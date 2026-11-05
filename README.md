@@ -102,6 +102,12 @@ schedule tools, approve permissions, or alter agent decisions.
 - Full-event inspection for overview, input, output, and normalized raw JSON.
 - Global History search over IDs, locators, prompts, messages, tool I/O, and
   nested payload fields, with time, Agent, status, and event-type filters.
+  Result rows load in scroll-driven batches that render only the new rows, so
+  long lists scroll without re-rendering what is already on screen.
+- Opt-in performance panel (Settings → Performance, `ASTROX_PERF_HUD`): a
+  draggable floating HUD with tone-coded tiles for scroll fps, list render,
+  and long tasks pinned above the fully expanded metric table; the same
+  numbers read via `window.__astroPerf.snapshot()`.
 - One-result location across the Session, Prompt run, event log, inspector,
   and mapped topology atom.
 - Deep links using `source`, `session`, and `event` query parameters.
@@ -1116,6 +1122,22 @@ the platform when supported, selects the exact run and event, exits replay,
 opens History and Events, and independently locates the matching log row and
 topology atom. Results render in automatic batches. This client-side search is
 separate from `/api/search` and only covers loaded data.
+
+![Global history search](docs/assets/history-search.png)
+
+#### Performance panel
+
+Turn the HUD on in **Settings → Performance** (`ASTROX_PERF_HUD`, off by
+default). A pill at the bottom edge carries the two headline numbers and opens
+upward into a draggable panel: the tone legend and three tone-coded tiles
+(scroll fps, list render, long tasks) stay pinned at the top while every
+metric group — load, scroll, list render, network, long tasks — renders
+expanded below them, so scrolling the panel never moves the tiles. Positions
+persist (`astro:perf-hud-pos`), the retired `?perf=1` flag is honoured once,
+and the panel is pure DOM outside React so measuring the app never enters its
+render path.
+
+![Performance panel](docs/assets/perf-hud.png)
 
 ### Topology and trajectory
 

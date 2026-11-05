@@ -371,7 +371,11 @@ Available filters include:
 
 Filters combine across groups. Text matching is case-insensitive and supports
 exact substrings and ordered fuzzy matches. The result list loads more entries
-automatically as it scrolls.
+automatically as it scrolls — appends render only the new rows and are
+scheduled at lower priority, so scrolling a long list never re-renders the
+rows already on screen.
+
+![Global history search dialog](assets/history-search.png)
 
 Selecting a result switches to the matching platform when available, selects
 the parent Session and Prompt run, opens History and Events, selects the exact
@@ -1162,10 +1166,13 @@ colour legend (green = ok, amber = watch, red = bad) above three
 **tone-coded tiles** — scroll fps, list render, long tasks — where
 green/amber/red mean healthy, worth watching, and degraded (fps ≥50 / ≥30;
 render average ≤8 / ≤16 ms; zero long tasks, red once the worst one passes
-100 ms). Every other metric lives in a collapsed **detail** region (a native
-`<details>`, closed by default): open it to see label→value rows in five
-groups (load, scroll, list render, network, long tasks), each group title
-carrying a one-line gray note on how to read its numbers.
+100 ms). The legend and the tiles are **pinned to the top of the panel**:
+every other metric renders expanded below them — no disclosure control — in
+five groups (load, scroll, list render, network, long tasks), each group title
+carrying a one-line gray note on how to read its numbers; scrolling the panel
+only scrolls the metric rows, so the tiles never move out of view.
+
+![Performance panel (expanded, tiles pinned)](assets/perf-hud.png)
 
 The panel reads the same numbers as `window.__astroPerf.snapshot()`, which you
 can call directly in the browser console; reproduce and compare performance
@@ -1178,8 +1185,8 @@ A recommended path for hunting one jank:
 1. Open **Settings → Performance → Performance panel** and drag the pill
    somewhere it does not cover the view;
 2. Reproduce the jank once (expanding a large run, scrolling the LOG…) — the
-   long-task tile increments immediately; open the detail region and read
-   "long tasks · longest";
+   long-task tile increments immediately; read "long tasks · longest" straight
+   off the metric table below the tiles;
 3. Read the three tiles' colors: red/amber scroll fps with a green list render
    points outside rendering (usually event derivation); a red/amber list
    render means the RUN HISTORY commits themselves are heavy;

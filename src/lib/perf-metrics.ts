@@ -12,8 +12,9 @@
  * preference (a browser-local `ASTROX_PERF_HUD` flag), never by a URL
  * parameter. It floats at the bottom edge of the page: a collapsed pill
  * carries two headline numbers, and expanding it grows **upward** from the
- * pill — three tone-coded summary tiles stay resident, and every metric lives
- * in a collapsed `明细` region the reader opens on demand.
+ * pill — the tone legend and three tone-coded summary tiles stay resident at
+ * the top (scrolling the panel never moves them out of view) and every metric
+ * section is rendered expanded below them; only the detail rows scroll.
  */
 
 const LIST_RENDER_SAMPLE_LIMIT = 200;
@@ -456,11 +457,13 @@ const panelBodyStyles: Partial<CSSStyleDeclaration> = {
   right: "0",
   // The host box is the pill's box: the panel sits 6px above the pill and
   // grows upward with its content, so it never pushes the pill down or
-  // leaves the bottom of the viewport.
+  // leaves the bottom of the viewport. A flex column keeps the header, the
+  // legend and the summary tiles pinned while only the metric rows scroll.
   bottom: "calc(100% + 6px)",
+  display: "flex",
+  flexDirection: "column",
   width: `${HUD_PANEL_WIDTH}px`,
-  maxHeight: "min(520px, calc(100vh - 96px))",
-  overflowY: "auto",
+  maxHeight: "min(560px, calc(100vh - 96px))",
   borderRadius: "12px",
   border: "1px solid rgba(148, 163, 184, 0.28)",
   background: "rgba(7, 10, 16, 0.94)",
@@ -469,6 +472,19 @@ const panelBodyStyles: Partial<CSSStyleDeclaration> = {
   lineHeight: "1.5",
   padding: "0",
   boxShadow: "0 12px 32px rgba(0, 0, 0, 0.55)",
+};
+
+/**
+ * The scrollable region under the resident tiles: with every metric section
+ * expanded the content overflows, and the scroll must never carry the legend
+ * or the summary tiles with it — the headline numbers stay readable while the
+ * reader walks the detail table.
+ */
+const hudScrollStyles: Partial<CSSStyleDeclaration> = {
+  flex: "1 1 auto",
+  minHeight: "0",
+  overflowY: "auto",
+  overscrollBehavior: "contain",
 };
 
 /** One-line legend that teaches the tone colours used by the tiles and rows. */
@@ -491,28 +507,6 @@ const toneDotStyles: Partial<CSSStyleDeclaration> = {
   verticalAlign: "1px",
 };
 
-/**
- * The detail rows live in a native <details>, closed by default: the panel
- * scans as three summary tiles plus the legend, and the reader opts into the
- * full metric table. Native disclosure means no JS, and the rows stay in the
- * DOM while closed, so the 500 ms refresh updates them either way.
- */
-const detailsStyles: Partial<CSSStyleDeclaration> = {
-  margin: "10px 12px 0",
-  borderTop: "1px solid rgba(148, 163, 184, 0.18)",
-};
-
-const summaryStyles: Partial<CSSStyleDeclaration> = {
-  padding: "5px 0 2px",
-  fontSize: "9px",
-  fontWeight: "700",
-  letterSpacing: "0.14em",
-  color: "#8fa8c7",
-  cursor: "pointer",
-  userSelect: "none",
-  listStyle: "none",
-};
-
 const hudBarStyles: Partial<CSSStyleDeclaration> = {
   display: "flex",
   alignItems: "center",
@@ -525,10 +519,7 @@ const hudBarStyles: Partial<CSSStyleDeclaration> = {
   fontSize: "10px",
   fontWeight: "700",
   letterSpacing: "0.12em",
-  position: "sticky",
-  top: "0",
-  background: "rgba(7, 10, 16, 0.96)",
-  zIndex: "1",
+  flex: "0 0 auto",
 };
 
 const collapseButtonStyles: Partial<CSSStyleDeclaration> = {
@@ -629,7 +620,7 @@ const usageStyles: Partial<CSSStyleDeclaration> = {
 };
 
 /**
- * Static documentation shown inside the collapsed 明细 region: what each
+ * Static documentation rendered expanded under the resident tiles: what each
  * metric measures and how to read it. Rows stay label→value pairs so the
  * table scans as columns instead of prose; the muted line under each title
  * says what the numbers mean. Labels are Chinese-first — the panel is a
@@ -736,7 +727,7 @@ const metricSections: Array<{
 ];
 
 /**
- * Shown at the bottom of the 明细 region: how to toggle the panel from
+ * Shown at the bottom of the expanded panel: how to toggle the panel from
  * Settings (the URL parameter is retired), how to read the same data from the
  * console, and the repeatable reproduction drivers.
  */
@@ -750,12 +741,14 @@ const usageCopy = [
  * Mounts the opt-in HUD: a floating, collapsible panel the reader can
  * **drag anywhere** (pill and panel header both carry the drag; the place is
  * remembered across visits). Collapsed it is one pill with two headline
- * numbers; expanded it grows **upward** from the pill and shows three
- * tone-coded summary tiles above a collapsed 明细 region that carries every
- * metric as label→value rows. Pure DOM on purpose — React renders must not be
- * influenced by the tool that measures them — so expansion, drag and collapse
- * are ordinary DOM state, not component state. The React tree only decides
- * *whether* the HUD exists (the Settings → 性能 preference).
+ * numbers; expanded it grows **upward** from the pill: the tone legend and
+ * three tone-coded summary tiles stay resident at the top and every metric
+ * section renders expanded below them — scrolling the panel only scrolls the
+ * detail rows, so the headline numbers never leave the screen. Pure DOM on
+ * purpose — React renders must not be influenced by the tool that measures
+ * them — so expansion, drag and collapse are ordinary DOM state, not
+ * component state. The React tree only decides *whether* the HUD exists (the
+ * Settings → 性能 preference).
  *
  * Returns the teardown the owner calls on unmount (clears the refresh timer,
  * the resize re-clamp, and removes the host); `null` in a document-less
@@ -845,18 +838,15 @@ export function mountPerfHud(
   });
   panel.append(tilesRow);
 
-  // Every metric lives in a native <details>, closed by default: the panel
-  // scans as three summary tiles plus the legend, and the full table is an
-  // opt-in. Native disclosure means no JS, and the rows stay in the DOM
-  // while closed, so the 500 ms refresh updates them either way.
-  const details = doc.createElement("details");
-  details.className = "astro-perf-hud__details";
-  Object.assign(details.style, detailsStyles);
-  const summary = doc.createElement("summary");
-  Object.assign(summary.style, summaryStyles);
-  summary.textContent = "明细 · 全部指标";
-  details.append(summary);
-  panel.append(details);
+  // Every metric section renders expanded in its own scroll region: the
+  // legend and the summary tiles above it are pinned (flex siblings outside
+  // the scroller), so walking the detail table never moves the headline
+  // numbers off the screen. No disclosure control — the panel is a table that
+  // is always fully readable, not an accordion.
+  const scrollBody = doc.createElement("div");
+  scrollBody.className = "astro-perf-hud__scroll";
+  Object.assign(scrollBody.style, hudScrollStyles);
+  panel.append(scrollBody);
 
   const rowValueNodes: Array<{
     node: HTMLElement;
@@ -870,7 +860,7 @@ export function mountPerfHud(
     const note = doc.createElement("p");
     Object.assign(note.style, sectionDocStyles);
     note.textContent = section.doc;
-    details.append(title, note);
+    scrollBody.append(title, note);
     for (const row of section.rows) {
       const rowNode = doc.createElement("div");
       Object.assign(rowNode.style, rowStyles);
@@ -880,7 +870,7 @@ export function mountPerfHud(
       const value = doc.createElement("span");
       Object.assign(value.style, rowValueStyles);
       rowNode.append(label, value);
-      details.append(rowNode);
+      scrollBody.append(rowNode);
       rowValueNodes.push({ node: value, read: row.value, tone: row.tone });
     }
   }
@@ -888,7 +878,7 @@ export function mountPerfHud(
   const usage = doc.createElement("p");
   Object.assign(usage.style, usageStyles);
   usage.textContent = usageCopy;
-  details.append(usage);
+  scrollBody.append(usage);
 
   // Drag: the pill and the panel header move the host. A press that never
   // moves past the threshold stays a click (the pill toggles expansion); a
@@ -962,7 +952,13 @@ export function mountPerfHud(
         ) {
           return;
         }
-        dragging = true;
+        if (!dragging) {
+          dragging = true;
+          // While a drag is live the whole page reads as the grip: the cursor
+          // must not flicker back to an arrow whenever the pointer outruns
+          // the pill for a frame.
+          doc.body.style.cursor = "grabbing";
+        }
         handle.setPointerCapture?.(event.pointerId);
         // Convert the grabbed top-left back to the pinned bottom edge: the
         // pill's bottom must land where the reader dropped it, and the panel
@@ -986,6 +982,7 @@ export function mountPerfHud(
         handle.removeEventListener("pointermove", onMove);
         handle.removeEventListener("pointerup", onUp);
         handle.removeEventListener("pointercancel", onUp);
+        doc.body.style.cursor = "";
         if (!dragging) {
           return;
         }

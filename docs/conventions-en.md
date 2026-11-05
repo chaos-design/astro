@@ -304,6 +304,20 @@
   `window.alert`: a native alert blocks the page, cannot be styled and cannot be
   ignored. Success, failure and an empty result each need their own wording, and
   a failure must name the cause.
+- **The cursor is an affordance.** Clickable things point: `button:not(:disabled)`,
+  `[role="button"]`, and Radix menu/select items — never `cursor-default` on an
+  operable row. Disabled controls read as the plain arrow (`button:disabled`,
+  `[aria-disabled="true"]`; the console dims instead of `not-allowed`), busy
+  controls may use `cursor: progress`, and draggable handles carry `grab`,
+  switching to `grabbing` while held (the performance HUD drag does exactly
+  this).
+- **Long list rows are memoized end to end.** Row components (such as
+  HistorySearch's `SearchResult`) are wrapped in `React.memo`, per-row
+  derivation (snippet, highlight) is memoized per row, callbacks stay stable
+  through a ref, and batch appends run inside `startTransition`. A scroll
+  append or a background app-root re-render must never re-render the rows
+  already on screen — otherwise every append rebuilds the snippet and highlight
+  regex for a full screen of rows, and the scroll eats the jank it causes.
 - **Performance claims are measured.** Compare before and after on the same data
   fixture, machine and sampling script, and put the numbers (script time, long
   tasks, chunk size) in the pull request instead of "faster now".

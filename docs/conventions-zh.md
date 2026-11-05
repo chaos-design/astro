@@ -225,6 +225,16 @@
 - **反馈走控制台提示条**（`ConsoleNotices`），不用 `window.alert`：原生弹窗会阻塞
   页面、无法样式化、也无法忽略。成功、失败、空结果都要有明确文案；失败要给出原因
   而不只是一句"失败"。
+- **光标即可供**：可点击的元素一律 `pointer`——`button:not(:disabled)`、
+  `[role="button"]`，以及 Radix 菜单/下拉项（不要在可操作的行上写
+  `cursor-default`）；禁用控件是普通箭头（`button:disabled`、
+  `[aria-disabled="true"]`，控制台用变暗表达禁用，不用 `not-allowed`）；忙碌控件
+  可用 `cursor: progress`；可拖动手柄用 `grab`，拖动进行中切 `grabbing`（性能面板
+  拖拽即如此实现）。
+- **长列表行端到端记忆化**：结果行组件（如 HistorySearch 的 `SearchResult`）用
+  `React.memo` 包裹，行内派生（摘要、高亮）按行记忆化，回调经 ref 路由保持稳定，
+  追加批次套 `startTransition`。滚动追加或应用根部后台重渲染不得重渲染已在屏幕上
+  的行——否则每次分批追加都会为整屏行重建摘要与正则，滚动吃掉自己造成的卡顿。
 - **结论必须可测**：性能改动前后用同一份数据夹具、同一台机器、同一个采样脚本对比，
   PR 里写清指标（脚本时间、长任务、chunk 体积），不写"更快了"。
 ## 10. 服务重启与快照重载
