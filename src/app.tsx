@@ -6675,6 +6675,7 @@ export default function App() {
           }
         >
           <LazyHistorySearch
+            defaultAgent={agentId}
             defaultRange={historyRange}
             open={historySearchOpen}
             onOpenChange={setHistorySearchOpen}

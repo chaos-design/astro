@@ -359,6 +359,10 @@ Open Search History from the header or press `Cmd/Ctrl + K`. It searches every
 event already loaded in the browser, not only the currently selected Prompt.
 The dialog opens on the default time range from Settings — the last three hours
 unless changed; a range picked inside the dialog applies to that search only.
+It also opens **scoped to the agent the page is currently on**: the Agent filter
+is pre-selected to that agent, so results read as "this agent's history" rather
+than the whole machine's; picking a different agent inside the dialog still
+applies to that search only.
 
 Available filters include:
 

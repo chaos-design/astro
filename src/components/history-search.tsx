@@ -502,6 +502,7 @@ const SearchResult = memo(function SearchResult({
 });
 
 export function HistorySearch({
+  defaultAgent,
   defaultRange = defaultTimeRange,
   onOpenChange,
   onSelect,
@@ -509,6 +510,14 @@ export function HistorySearch({
   promptRunsBySession,
   sessions,
 }: {
+  /**
+   * The agent the page is currently scoped to. The dialog opens with its Agent
+   * filter already set to this, so a search is "associated with" the agent the
+   * reader is looking at; changing the filter inside the dialog still wins for
+   * that session. A configured agent value equals its source string, and
+   * `others` is the trailing catch-all, so this seeds `sources` directly.
+   */
+  defaultAgent?: string;
   /**
    * Range the dialog opens on. Comes from Settings, so "the default range for
    * loading messages" is one preference shared with RUN HISTORY rather than a
@@ -543,6 +552,12 @@ export function HistorySearch({
   const [sources, setSources] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
+  // The current page agent, read on each open without re-triggering the open
+  // effect (the dialog's own filter choice wins for the rest of the session).
+  const defaultAgentRef = useRef(defaultAgent);
+  useEffect(() => {
+    defaultAgentRef.current = defaultAgent;
+  }, [defaultAgent]);
   const [statuses, setStatuses] = useState<ReadonlySet<TraceRunStatus>>(
     () => new Set(),
   );
@@ -720,6 +735,13 @@ export function HistorySearch({
   useEffect(() => {
     if (open) {
       setOpenedAt(Date.now());
+      // Open scoped to the page's agent: pre-select it in the Agent filter so
+      // the results read as "this agent's history", not the whole machine's.
+      // A manual change inside the dialog still wins until the next open.
+      const agent = defaultAgentRef.current;
+      if (agent !== undefined) {
+        setSources(new Set([agent]));
+      }
     }
   }, [open]);
 
