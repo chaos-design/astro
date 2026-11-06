@@ -379,6 +379,11 @@ use Node.js ES modules or CommonJS according to their existing file extension.
 - The budget is a single `setTimeout`, armed by `getSyncStopDelay`
   (`src/lib/sync-budget.ts`). No interval, no polling: with the limit set to
   `off` there is no timer at all. Do not turn this into a per-second check.
+- Changing the cap re-arms that timer for the time left under the new cap
+  (wall-clock from the current sync start, not a clock restart): lowering the
+  cap below what already elapsed stops the stream at once. While a pause is in
+  effect no timer runs and the counting is stopped too; the clock only starts
+  over on a resume.
 - When it fires, `syncStopped` closes the `EventSource`; that is what stops the
   appending, the re-derivation and the memory growth. The header marker turns
   from `synced` to `paused` (amber, a `<button>`), and the service card says the
@@ -388,6 +393,11 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   missed tail — appending hours of deltas would grow the very array the budget
   capped. Restarting the local service performs the same reset, so a restart
   after a spent budget never leaves the console stuck in `paused`.
+- A cap change while the budget has stopped the stream lifts the pause through
+  that same reset (`capChangeResumesSync` in `sync-budget.ts`): a cap that
+  still has time left — `off` included — reopens the stream with a fresh
+  snapshot, so the new cap takes effect without a second click. A cap whose
+  time is already spent keeps the stream stopped.
 - `syncStopped` is not `connected === false`: a dropped socket is retried by
   `EventSource`; a spent budget is deliberate and only a user action lifts it.
 

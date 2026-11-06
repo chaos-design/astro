@@ -177,9 +177,14 @@
   `setTimeout`（`getSyncStopDelay`）实现，`off` 时不建任何计时器；到点后
   `syncStopped` 关闭 `EventSource`，停止追加事件、停止派生、停止内存增长。不要改成
   每秒轮询或 `setInterval`。
-- 停止后的恢复入口有两个且必须等价：顶栏 `synced` 变成 `paused`（可点击，
-  `resumeSync`），以及服务卡片里的「重启本地服务」。两者都会重置 `syncStartedAt`，
-  重新同步时拉**当前快照**（`handleReloadLatestEvents`）而不是补播错过的增量——补播
+- 预算是「自当前同步窗口起」的墙钟时间，所以**暂停同时停表**：`syncStopped`
+  期间不挂任何计时器，时钟只在恢复时归零。改动「最长同步时长」会按**新上限**重新
+  挂载计时器（从原起点算剩余），把上限调得比已耗时还短会立即停流。
+- 停止后的恢复入口有三个且必须等价：顶栏 `synced` 变成 `paused`（可点击，
+  `resumeSync`）、服务卡片里的「重启本地服务」、以及在设置里把上限调到仍有剩余
+  （含 `off`）——后两者在暂停中会自动走同一条恢复路径（`capChangeResumesSync`）。
+  三者都会重置 `syncStartedAt`，重新同步时拉**当前快照**
+  （`handleReloadLatestEvents`）而不是补播错过的增量——补播
   恰好会把预算刚截住的数组重新撑大。重启服务后仍停在 `paused` 属于 bug。
 - `syncStopped` 与 `connected === false` 是两件事：后者是掉线（`EventSource` 会自动
   重连），前者是主动停止，只能由用户动作解除。

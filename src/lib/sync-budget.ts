@@ -37,3 +37,17 @@ export function getSyncStopDelay(
   const remaining = startedAt + budget - now;
   return remaining > 0 ? remaining : 0;
 }
+
+/**
+ * Does a change of the cap reopen a stream the spent budget had closed?
+ *
+ * The cap is the only reason that kind of pause exists, so a cap that no
+ * longer holds — still has time left, or is `off` — must not leave the
+ * console stopped: the pause lifts at once, the clock starts over, and the
+ * missed tail arrives as a fresh snapshot (the resume path), never as a
+ * replay that would regrow the capped array. A cap whose time is already
+ * spent (`delay <= 0`) keeps the stream stopped.
+ */
+export function capChangeResumesSync(stopped: boolean, delay: number | null): boolean {
+  return stopped && (delay === null || delay > 0);
+}

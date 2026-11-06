@@ -236,13 +236,17 @@ so syncing has a ceiling:
   arms `syncStopped`; the stream effect's cleanup then closes the `EventSource`,
   so nothing is appended, derived or retained any more;
 - the budget is a single `setTimeout` (`getSyncStopDelay`): no timer at all when
-  the limit is `off`, and no polling;
+  the limit is `off`, and no polling; changing the limit re-arms that timer for
+  the time left under the new cap, and no timer runs while a pause is in effect;
 - the header marker turns from `synced` into an amber `paused` button, and the
   service card says the stream stopped on purpose instead of reporting a lost
   connection;
-- recovery has two equivalent paths: clicking `paused` (`resumeSync`) or
-  restarting the local service. Both reset `syncStartedAt` and pull a **fresh
-  snapshot** (`handleReloadLatestEvents`) rather than replaying the missed tail —
+- recovery has three equivalent paths: clicking `paused` (`resumeSync`),
+  restarting the local service, or moving the cap in Settings so that time is
+  still left (including `off`) — `capChangeResumesSync` makes the latter two
+  resume automatically while stopped. All reset `syncStartedAt` and pull a
+  **fresh snapshot** (`handleReloadLatestEvents`) rather than replaying the
+  missed tail —
   a replay would regrow the array the budget just capped. Staying `paused` after
   a successful restart is a bug.
 

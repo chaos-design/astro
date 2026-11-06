@@ -237,12 +237,19 @@
   it fires, `syncStopped` closes the `EventSource`, which stops the appending,
   the re-derivation and the memory growth. Never implement it as a per-second
   poll.
-- A spent budget has two equivalent ways out, and both must work: the header
-  marker (`synced` → clickable `paused`, `resumeSync`) and the service card's
-  restart. Both reset `syncStartedAt`; resuming pulls a **fresh snapshot**
-  (`handleReloadLatestEvents`) instead of replaying the missed tail, which would
-  regrow the very array the budget capped. Still `paused` after a successful
-  restart is a bug.
+- The budget is wall-clock from the start of the current sync window, so a
+  pause also **stops the counting**: no timer runs while `syncStopped`, and
+  the clock only restarts on a resume. Changing the cap re-arms the timer for
+  the time left under the new cap (measured from the original start); lowering
+  the cap below what already elapsed stops the stream at once.
+- A spent budget has three equivalent ways out, and all must work: the header
+  marker (`synced` → clickable `paused`, `resumeSync`), the service card's
+  restart, and moving the cap in Settings so that time is still left (including
+  `off`) — the latter two resume automatically while stopped
+  (`capChangeResumesSync`). All three reset `syncStartedAt`; resuming pulls a
+  **fresh snapshot** (`handleReloadLatestEvents`) instead of replaying the
+  missed tail, which would regrow the very array the budget capped. Still
+  `paused` after a successful restart is a bug.
 - `syncStopped` is not `connected === false`: the latter is a dropped socket
   that `EventSource` retries, the former is a deliberate stop that only a user
   action lifts.

@@ -449,8 +449,9 @@ The status marker in the header describes the event stream itself:
   Settings → Run history), so the console has deliberately stopped accepting
   new events to keep a long-open page from accumulating memory. Clicking the
   marker reloads the current snapshot and restarts the clock; restarting the
-  local service does the same. The pause is announced once with a notice that
-  names the cause and the way back.
+  local service does the same; raising the cap above what has already synced
+  (or setting it to `off`) resumes automatically. The pause is announced once
+  with a notice that names the cause and the ways back.
 
 **After a local service restart** the console drops its resume cursor, pulls the
 full snapshot again and applies the current filter to it — agent, default range
@@ -622,7 +623,9 @@ the footer's **Done** button only closes the dialog — there is no Apply step:
   When it runs out the stream is closed and no new event is accepted; the header
   marker turns from `synced` to `paused`. Clicking that marker, or restarting
   the local service from its card, reloads the current snapshot and restarts
-  the clock.
+  the clock. Changing the value applies at once — the timer is re-armed for the
+  time left under the new cap — and if the console is paused while the new cap
+  still has time left (or is `No limit`) it resumes on its own.
 
 **Canvas**
 

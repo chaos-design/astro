@@ -214,7 +214,7 @@ import {
   selectLiveRunHistory,
   selectVisibleRunHistory,
 } from "./lib/run-history-window";
-import { getSyncStopDelay } from "./lib/sync-budget";
+import { capChangeResumesSync, getSyncStopDelay } from "./lib/sync-budget";
 import { atomLevel, projectTraceEvents } from "./lib/atomic-projection";
 import {
   buildTraceTurnIndex,
@@ -1034,7 +1034,7 @@ function ServiceStatus({
           {error ? <p className="service-card__error">{error}</p> : null}
           <p className="service-card__hint">
             {syncPaused
-              ? "已按「最长同步时长」停止接收新事件；重启服务或点击顶部 paused 标记即可继续同步。"
+              ? "已按「最长同步时长」停止接收新事件；重启服务、点击顶部 paused 标记，或在设置中调高「最长同步时长」，都可以继续同步。"
               : "重启会保留当前端口，页面与事件流会自动重连。"}
           </p>
           <Button
@@ -4994,30 +4994,9 @@ export default function App() {
     }
     pushNotice("info", "示例数据不可用", demoError);
   }, [demoError, pushNotice]);
-  /*
-   * Sync budget. One timeout, re-armed only when the setting or the start of
-   * the current sync window changes — no interval, so an idle console costs
-   * nothing. When it fires, the stream effect above closes its EventSource,
-   * which is what stops the appending, the re-derivation and the memory
-   * growth; the header chip then offers to resume (`resumeSync`).
-   */
-  useEffect(() => {
-    if (isDemo) {
-      return undefined;
-    }
-    const delay = getSyncStopDelay(syncStartedAt, maxSyncHours, Date.now());
-    if (delay === null) {
-      // No limit configured: make sure a previously armed stop is lifted.
-      setSyncStopped(false);
-      return undefined;
-    }
-    if (delay <= 0) {
-      setSyncStopped(true);
-      return undefined;
-    }
-    const timer = window.setTimeout(() => setSyncStopped(true), delay);
-    return () => window.clearTimeout(timer);
-  }, [isDemo, maxSyncHours, syncStartedAt]);
+  // The sync budget timer is armed with the resume logic below
+  // (`resumeSync`): a cap change must be able to reopen the stream, so the
+  // effect lives next to the only definition of "resume".
 
   // The budget expiring is a silent switch-over in the header; say it out loud
   // once, together with the way back. `syncStopped` is also set on resume and
@@ -5035,7 +5014,7 @@ export default function App() {
     pushNotice(
       "info",
       `已达最长同步时长（${getMaxSyncLabel(maxSync)}），已暂停接收新事件`,
-      "点击顶部的 paused 按钮或重启服务可以继续同步",
+      "点击顶部的 paused 按钮、重启服务，或在设置里调高「最长同步时长」，都可以继续同步",
     );
   }, [maxSync, pushNotice, syncStopped]);
 
@@ -6160,6 +6139,43 @@ export default function App() {
     setSyncStopped(false);
     handleReloadLatestEvents();
   }, [handleReloadLatestEvents]);
+
+  /*
+   * Sync budget. One timeout, re-armed only when the cap or the start of the
+   * current sync window changes — no interval, so an idle console costs
+   * nothing. When it fires, the stream effect closes its EventSource, which
+   * is what stops the appending, the re-derivation and the memory growth;
+   * the header chip then offers to resume.
+   *
+   * The cap is wall-clock from the sync start, so a pause stops the counting
+   * too: no timer is armed while `syncStopped`, and the clock only starts
+   * over on a resume. Changing the cap re-arms the timer for the time left
+   * under the new cap; when the cap moves while the budget had stopped the
+   * stream and the new cap still holds — `off` included — the pause lifts
+   * through the same reset `resumeSync` performs, so the new cap takes
+   * effect without a second click.
+   */
+  useEffect(() => {
+    if (isDemo) {
+      return undefined;
+    }
+    const delay = getSyncStopDelay(syncStartedAt, maxSyncHours, Date.now());
+    if (capChangeResumesSync(syncStopped, delay)) {
+      resumeSync();
+      return undefined;
+    }
+    if (delay === null) {
+      // No cap configured: make sure a previously armed stop is lifted.
+      setSyncStopped(false);
+      return undefined;
+    }
+    if (delay <= 0) {
+      setSyncStopped(true);
+      return undefined;
+    }
+    const timer = window.setTimeout(() => setSyncStopped(true), delay);
+    return () => window.clearTimeout(timer);
+  }, [isDemo, maxSyncHours, resumeSync, syncStartedAt, syncStopped]);
 
   const headerNavActions: ReadonlyArray<HeaderNavAction> = [
     {

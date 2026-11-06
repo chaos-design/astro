@@ -193,10 +193,13 @@ Guide 的观测列表保留语义化 `ul` / `li`，使用原生 `disc` 标记。
 - `appDefaults.maxSync`（默认 `8h`，设置项「最长同步时长」）到点后 `syncStopped` 置位，
   流效果的清理函数关闭 `EventSource`，从此不再追加事件、不再派生、内存不再增长；
 - 计时只有一个 `setTimeout`（`getSyncStopDelay`），`off` 时压根不建计时器，不做轮询；
+  改动「最长同步时长」会按新上限重挂这个计时器（从原同步起点算剩余），暂停期间
+  不挂计时器、时钟也停走；
 - 顶栏 `synced` 变成琥珀色 `paused` 按钮，服务卡片同步说明「同步已按上限停止」而不是
   「连接断开」；
-- 恢复有两条等价路径：点 `paused`（`resumeSync`）或重启本地服务。两者都重置
-  `syncStartedAt`，并拉一份**当前快照**（`handleReloadLatestEvents`）而不是补播错过的
+- 恢复有三条等价路径：点 `paused`（`resumeSync`）、重启本地服务、或在设置里把上限
+  调到仍有剩余（含 `off`）——`capChangeResumesSync` 让后两者在暂停中自动走恢复。
+  都重置 `syncStartedAt`，并拉一份**当前快照**（`handleReloadLatestEvents`）而不是补播错过的
   增量——补播会让刚被截住的数组重新膨胀。重启后仍停在 `paused` 属于 bug。
 
 ### 运行历史时间窗口
