@@ -1619,6 +1619,9 @@ const RunHistoryItem = memo(function RunHistoryItem({
       className={cn(
         "run-history__item",
         activeGroup && "is-active-group",
+        // A lone run only fills the panel while its sub-message thread is open;
+        // a collapsed thread keeps the compact card.
+        hasPromptThread && expanded && "is-thread-open",
         live && "is-live",
       )}
       data-live-status={liveStatus}

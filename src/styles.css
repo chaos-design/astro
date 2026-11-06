@@ -2621,18 +2621,26 @@ pre,
   gap: 8px;
 }
 
-/* A lone run should not float as one small card above an empty panel: the
-   single item stretches to fill the remaining panel height. The moment a
-   second run lands the class drops off and the compact card stack returns. */
-.run-history__list.is-single > .run-history__item {
+/* A lone run should not float as one small card above an empty panel. Only
+   when it carries an OPEN sub-message thread does the item fill the remaining
+   panel height — and that space is absorbed by the thread's scroll region, not
+   the message row (the row keeps its natural height). A lone run with no
+   thread, or with a collapsed thread, stays a compact card. The moment a
+   second run lands the class drops off and the compact stack returns. */
+.run-history__list.is-single > .run-history__item.is-thread-open {
   flex: 1 1 auto;
   min-height: 0;
   display: flex;
   flex-direction: column;
 }
 
-.run-history__list.is-single > .run-history__item > .run-history__row {
+/* The sub-message list takes the vertical room. It is the flex-grow child:
+   the inline measured height is the basis, flex-grow extends it to fill the
+   item. Scoped to the open thread so a collapsed one (height 0) never
+   stretches into an empty box. */
+.run-history__list.is-single > .run-history__item.is-thread-open > .run-history__prompt-scroll {
   flex: 1 1 auto;
+  min-height: 0;
 }
 
 .run-history__item {
