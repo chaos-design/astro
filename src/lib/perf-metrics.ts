@@ -503,8 +503,7 @@ const toneDotStyles: Partial<CSSStyleDeclaration> = {
   width: "6px",
   height: "6px",
   borderRadius: "50%",
-  marginRight: "4px",
-  verticalAlign: "1px",
+  flex: "0 0 auto",
 };
 
 const hudBarStyles: Partial<CSSStyleDeclaration> = {
@@ -810,13 +809,20 @@ export function mountPerfHud(
     ["warn", "关注"],
     ["bad", "异常"],
   ] as const) {
+    // Each entry is a flex pair: the tone dot first, then the label, with one
+    // even gap between them. A text-node-then-append put the dot on the wrong
+    // side and the leading space doubled the dot↔label margin.
     const item = doc.createElement("span");
+    item.style.display = "inline-flex";
+    item.style.alignItems = "center";
+    item.style.gap = "5px";
     const dot = doc.createElement("span");
     Object.assign(dot.style, toneDotStyles);
     dot.style.background = hudToneColor[tone];
     dot.setAttribute("aria-hidden", "true");
-    item.textContent = ` ${word}`;
-    item.append(dot);
+    const label = doc.createElement("span");
+    label.textContent = word;
+    item.append(dot, label);
     legend.append(item);
   }
   panel.append(legend);
