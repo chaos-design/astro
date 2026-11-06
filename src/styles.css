@@ -2621,6 +2621,20 @@ pre,
   gap: 8px;
 }
 
+/* A lone run should not float as one small card above an empty panel: the
+   single item stretches to fill the remaining panel height. The moment a
+   second run lands the class drops off and the compact card stack returns. */
+.run-history__list.is-single > .run-history__item {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.run-history__list.is-single > .run-history__item > .run-history__row {
+  flex: 1 1 auto;
+}
+
 .run-history__item {
   position: relative;
   min-width: 0;

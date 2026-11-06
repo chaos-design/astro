@@ -2192,6 +2192,11 @@ const RunHistory = memo(function RunHistory({
         `${session.key}:${promptRunsBySession.get(session.key)?.length ?? 0}`,
     )
     .join("|");
+  // A lone run should not float as one small card above an empty panel: with
+  // exactly one row shown it stretches to fill the remaining panel height, and
+  // the moment a second run lands the list reverts to the compact card stack
+  // (the `is-sparse` clamp). Zero rows (loading/empty) never carry the class.
+  const isSingleRun = sessions.length === 1;
   useEffect(() => {
     closeHoverCard();
   }, [closeHoverCard, expandedRuns, rowSignature]);
@@ -2345,6 +2350,9 @@ const RunHistory = memo(function RunHistory({
           // a dense list keeps the compact clamp for scannability. The
           // decision is hysteresis-stable (see `sparseList`).
           sparseList && "is-sparse",
+          // A lone run stretches to fill the panel instead of floating as one
+          // small card; with two or more rows the compact stack returns.
+          isSingleRun && "is-single",
         )}
         ref={listRef}
         onPointerLeave={handleListPointerLeave}
