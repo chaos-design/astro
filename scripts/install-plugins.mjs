@@ -721,6 +721,25 @@ if (invokedFile === realpathSync(fileURLToPath(import.meta.url))) {
   const astroHome =
     getOption("astro-home") || getOption("aot-home") || undefined;
   const scope = getOption("scope") === "user" ? "user" : "project";
+  // The installed runtime serves its dashboard from the copied `dist/` build.
+  // A missing build installs silently today (the copies just skip `dist`) and
+  // the service later answers 503 "Dashboard is not built" — the classic
+  // stale/missing bundle trap. Build it up front unless the user opts out.
+  if (!process.argv.includes("--no-build")) {
+    const distIndex = join(packageDir, "dist", "index.html");
+    if (!existsSync(distIndex)) {
+      console.log("Console build missing — running `pnpm build` first…");
+      const result = spawnSync("pnpm", ["build"], {
+        stdio: "inherit",
+        cwd: packageDir,
+      });
+      if (result.status !== 0 || !existsSync(distIndex)) {
+        throw new Error(
+          "Console build failed — run `pnpm install && pnpm build` and retry (or pre-build and pass --no-build).",
+        );
+      }
+    }
+  }
   const installed = installClients({
     targetDir,
     clients,

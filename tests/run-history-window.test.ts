@@ -159,6 +159,57 @@ test("keeps the newest-first order while nothing is executing", () => {
   );
 });
 
+type PinnedRun = TraceSession & { messageStart: number };
+
+// The console pins by the start of a run's newest message, not by its latest
+// event (which moves on every streaming batch). The tests stand in for that
+// resolver with an explicit `messageStart` field.
+test("an order key keeps two executing rows stable while activity lands", () => {
+  const older = session(Date.parse("2026-10-09T10:00:00"));
+  const newer = session(Date.parse("2026-10-09T11:00:00"));
+  (older as PinnedRun).messageStart = Date.parse("2026-10-09T10:30:00");
+  (newer as PinnedRun).messageStart = Date.parse("2026-10-09T11:30:00");
+  const messageStart = (run: TraceSession) =>
+    (run as PinnedRun).messageStart;
+
+  // Activity keeps landing on the older message — its `end` runs ahead of
+  // the newer one — but the stable key keeps the rows in place.
+  (older as PinnedRun).end = Date.parse("2026-10-09T13:59:00");
+  assert.deepEqual(
+    pinLiveRunHistory([newer, older], new Set([older.key, newer.key]), messageStart).map(
+      (entry) => entry.key,
+    ),
+    [newer.key, older.key],
+  );
+
+  // Without a key the default still follows the latest activity.
+  assert.deepEqual(
+    pinLiveRunHistory([newer, older], new Set([older.key, newer.key])).map(
+      (entry) => entry.key,
+    ),
+    [older.key, newer.key],
+  );
+});
+
+test("a freshly started message takes the top, forwarder included", () => {
+  const older = session(Date.parse("2026-10-09T10:00:00"));
+  const newer = session(Date.parse("2026-10-09T11:00:00"));
+  (older as PinnedRun).messageStart = Date.parse("2026-10-09T10:30:00");
+  (newer as PinnedRun).messageStart = Date.parse("2026-10-09T11:30:00");
+  const messageStart = (run: TraceSession) =>
+    (run as PinnedRun).messageStart;
+
+  // The older run receives a new message *now*: the one that started
+  // executing last takes the top, even though its session began first.
+  (older as PinnedRun).messageStart = Date.parse("2026-10-09T13:00:00");
+  assert.deepEqual(
+    selectLiveRunHistory([newer, older], new Set([older.key, newer.key]), messageStart).map(
+      (entry) => entry.key,
+    ),
+    [older.key, newer.key],
+  );
+});
+
 test("the Live filter keeps only the executing messages, whole history included", () => {
   // The Live filter reads the agent's entire history, not the time window:
   // time window: a session resumed a minute ago still carries the start of its

@@ -25,6 +25,7 @@
 | `tests/` | Node 测试运行器套件 | 手工验收记录 |
 | `docs/` | 中英成对的使用、协议、架构、运维与约定文档 | 生成物 |
 | `site/` | 文档站（读取 `docs/*.md`） | 文档正文副本 |
+| `data/` | 控制台示例数据集等本地资源文件 | 采集数据、用户偏好 |
 
 ## 3. 分支、提交与 PR
 
@@ -45,8 +46,40 @@
   - 异常与错误判定只在 `src/lib/exception-events.ts`；
   - RUN HISTORY 的 live 判定只在 `src/lib/run-history-state.ts`（`isLiveRunStatus`
     + `isFreshLiveRun` + `collectLiveRunKeys`）；
-  - 时间窗口计算只在 `src/lib/run-history-window.ts`。
+  - 时间窗口计算只在 `src/lib/run-history-window.ts`；
+  - 预览页「是否打开过」的状态只在 `plugin/trace-recorder.cjs`
+    （`readPreviewState` / `markPreviewOpened`，持久化为 `ASTRO_HOME` 下的
+    `preview-state.json`）：服务端在控制台页面接入 `/api/stream` 时打点，
+    Hook 启动流程据此决定是否还需要为用户打开浏览器；
+  - 运行所用模型的读取只在 `src/lib/trace-model.ts`（`extractRunModel` +
+    `buildSessionPromptRuns` 的 SessionStart 回退）：各客户端的 payload 形态
+    （pi 的 `model`/`provider`、deepseek 的模型对象、opencode 的 step 通知、
+    zcode 的会话起始模型）在此归一成一个展示串；某条运行自身没上报模型时
+    回退到会话起始模型（ZCode 只在 SessionStart 携带 model），界面只在有
+    可显示值时渲染 `MODEL` 标签。
   新增消费方必须复用这些函数，不得再写一份“失败事件名单”或“live 名单”。
+- 示例（Demo）数据只在 `data/demo-events.json`：服务通过 `server/demo-dataset.mjs`
+  读取并由 `GET /api/demo-events` 提供，控制台只在 `src/lib/demo-events.ts` 解析。
+  不要在组件、测试或服务里再写一份内联事件数组；测试需要示例会话时读取该文件。
+  渲染门禁只在 `src/config/app-config.ts` 的 `isDemoGateOpen`：dev/test 自动放行，
+  生产构建仅在读者显式带 `?demo=1`（`isDemoPreviewEnabled` 解析）时放行，且只在
+  无捕获事件时渲染——生产页默认绝不隐式回退示例。
+- 部署页面的服务地址只在 `src/lib/api-base.ts` 解析（`?api=` → `ASTROX_API_BASE` →
+  同源/本机默认），请求一律走 `joinApi`；跨域边界只在服务端
+  `ASTRO_CORS_ORIGINS`（默认关闭，显式允许列表，含 Private Network 预检应答），
+  已安装运行时的长期配置写在 `config.yaml` 的 `server.corsOrigins`。不要在组件里
+  硬编码 `/api/...`，也不要让服务默认放开 `*`。
+- `public/` 下的资源一律经 `src/lib/asset-url.ts` 的 `assetUrl()` 取地址，不得写
+  `/icons/...` 这类根路径：GitHub Pages 把页面挂在 `/astro/`，根路径会逃出项目
+  前缀并 404（智能体下拉的品牌图标踩过）。`scripts/verify-console-build.mjs` 在
+  CI 里复查构建产物没有根路径资源，并确认产物只有控制台、没有混入文档站。
+- 事件流快照按 `hours` 窗口下发，并拆成 `reset`（元数据）+ 分批 `trace` + `ready`，
+  不得恢复成一次 `JSON.stringify` 全量事件：单帧几百 MB 会阻塞事件循环，实时事件、
+  健康检查和其它 SSE 客户端都排在它后面。窗口外的更早历史由 `truncated` 驱动
+  `LOAD EARLIER` 扩大窗口重新订阅；扩大时清游标与快照键。
+- 数据目录设置只经 `server/runtime-settings.mjs` 改写 `.env` 的 `ASTRO_TRACE_DIR`
+  （保留其它行、拒绝不存在的相对路径），`POST /api/config/data-root` 成功后重启
+  服务；不要在组件里拼接或直接写配置文件。
 - 平台相关的映射放到 `src/config/atom-platforms.ts` 或对应适配器，领域工具函数
   保持平台无关。
 - 界面动作优先使用 Lucide 图标；品牌图标（如 GitHub）以内联 SVG 组件提供，不额外
@@ -71,9 +104,20 @@
   `agentOptions` 里的已配置智能体，其余来源（browser、generic、自定义 HTTP 采集器）
   统一落到末尾的 `Others`（`OTHERS_AGENT_ID` / `matchesAgentSourceFilter`）。旧实现
   会把数据里出现的每个来源都变成一项伪智能体，列表随采集器数量增长且真假难辨。
+- 窗口内的**稀疏/紧凑布局带迟滞**（`isSparseRunHistoryList` +
+  `RUN_HISTORY_SPARSE_HYSTERESIS_ROWS`）：条数到达
+  `appLayout.runHistorySparseListRows`（4）时进入稀疏布局（标题放宽到 6 行），
+  但要超过阈值 2 条才回到紧凑布局。窗口锚点随最新消息移动，会话一边老化出窗、
+  一边有追问把旧会话拉回来，条数会在阈值附近反复横跳；没有迟滞时每次穿越都会
+  让整列表的行高重排一次，看起来就是执行期间列表在跳动。
 - 展开的 Prompt 子列表**按内容测量高度**（`ResizeObserver`，上限 300 px，越界不超过
   1/4 时完整展开）：固定“行数 × 估算高度”会裁掉换行标题的最后一行，两条消息的线程
   反而出现滚动条。
+- Prompt 子列表对多条消息的会话**常驻挂载并带动画**：展开/收起在测量高度与 0 之间
+  过渡（边距同步参与，收起后不留占位，`visibility: hidden` 保证不绘制、不可聚焦、
+  不进无障碍树）。卸载式收起让每次展开都变成一次“瞬移”——执行中的行一次提交长高
+  数百像素，把下方所有行顶下去，同样读作 Live 列表跳动。只有一条消息的会话不渲染
+  子列表（父行就是它），Live 筛选不再把单消息会话重复画成两行。
 
 ## 6. Live 筛选（本次约定）
 
@@ -116,7 +160,7 @@
 
 - 设置弹窗只承载浏览器本地偏好，立即生效，不经过服务端，不需要“应用”按钮。
 - 弹窗是**两栏卡片**：左侧 `settings-nav` 分区栏（外观 / 运行历史 / 画布 / 面板 /
-  关于），右侧 `settings-pane` 只渲染当前分区的字段；改用 `Tabs orientation="vertical"`
+  性能 / 关于），右侧 `settings-pane` 只渲染当前分区的字段；改用 `Tabs orientation="vertical"`
   取得方向键导航，不再把全部偏好叠成一列。弹窗固定 920×672（窄屏退化为上下两段），
   头部与底部固定，只有右侧面板滚动。底部的「完成」只负责关闭——没有“应用”这一步。
 - 已在顶栏或工具栏有开关的偏好也要并列出来——一个能列全的入口胜过让用户去顶栏找。
@@ -133,9 +177,14 @@
   `setTimeout`（`getSyncStopDelay`）实现，`off` 时不建任何计时器；到点后
   `syncStopped` 关闭 `EventSource`，停止追加事件、停止派生、停止内存增长。不要改成
   每秒轮询或 `setInterval`。
-- 停止后的恢复入口有两个且必须等价：顶栏 `synced` 变成 `paused`（可点击，
-  `resumeSync`），以及服务卡片里的「重启本地服务」。两者都会重置 `syncStartedAt`，
-  重新同步时拉**当前快照**（`handleReloadLatestEvents`）而不是补播错过的增量——补播
+- 预算是「自当前同步窗口起」的墙钟时间，所以**暂停同时停表**：`syncStopped`
+  期间不挂任何计时器，时钟只在恢复时归零。改动「最长同步时长」会按**新上限**重新
+  挂载计时器（从原起点算剩余），把上限调得比已耗时还短会立即停流。
+- 停止后的恢复入口有三个且必须等价：顶栏 `synced` 变成 `paused`（可点击，
+  `resumeSync`）、服务卡片里的「重启本地服务」、以及在设置里把上限调到仍有剩余
+  （含 `off`）——后两者在暂停中会自动走同一条恢复路径（`capChangeResumesSync`）。
+  三者都会重置 `syncStartedAt`，重新同步时拉**当前快照**
+  （`handleReloadLatestEvents`）而不是补播错过的增量——补播
   恰好会把预算刚截住的数组重新撑大。重启服务后仍停在 `paused` 属于 bug。
 - `syncStopped` 与 `connected === false` 是两件事：后者是掉线（`EventSource` 会自动
   重连），前者是主动停止，只能由用户动作解除。
@@ -181,6 +230,16 @@
 - **反馈走控制台提示条**（`ConsoleNotices`），不用 `window.alert`：原生弹窗会阻塞
   页面、无法样式化、也无法忽略。成功、失败、空结果都要有明确文案；失败要给出原因
   而不只是一句"失败"。
+- **光标即可供**：可点击的元素一律 `pointer`——`button:not(:disabled)`、
+  `[role="button"]`，以及 Radix 菜单/下拉项（不要在可操作的行上写
+  `cursor-default`）；禁用控件是普通箭头（`button:disabled`、
+  `[aria-disabled="true"]`，控制台用变暗表达禁用，不用 `not-allowed`）；忙碌控件
+  可用 `cursor: progress`；可拖动手柄用 `grab`，拖动进行中切 `grabbing`（性能面板
+  拖拽即如此实现）。
+- **长列表行端到端记忆化**：结果行组件（如 HistorySearch 的 `SearchResult`）用
+  `React.memo` 包裹，行内派生（摘要、高亮）按行记忆化，回调经 ref 路由保持稳定，
+  追加批次套 `startTransition`。滚动追加或应用根部后台重渲染不得重渲染已在屏幕上
+  的行——否则每次分批追加都会为整屏行重建摘要与正则，滚动吃掉自己造成的卡顿。
 - **结论必须可测**：性能改动前后用同一份数据夹具、同一台机器、同一个采样脚本对比，
   PR 里写清指标（脚本时间、长任务、chunk 体积），不写"更快了"。
 ## 10. 服务重启与快照重载

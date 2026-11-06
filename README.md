@@ -77,9 +77,11 @@ schedule tools, approve permissions, or alter agent decisions.
   answers with identical text.
 - Expandable prompt-run history within each session. `INITIAL` and numbered
   `FOLLOW-UP` rows isolate one prompt and all events before the next prompt.
-- The executing message is pinned to the top of the run list, ordered by its
-  latest activity. A resumed session keeps its original start, so its new
-  prompt would otherwise sort below every run that merely started later.
+- The executing message is pinned to the top of the run list, ordered by the
+  start of each run's newest message (the message that began executing last
+  leads, and each position is stable while that message runs — a resumed
+  session keeps its original start, so its new prompt would otherwise sort
+  below every run that merely started later).
 - Active session duration refreshes every second and is timed on the executing
   message: a session resumed days later shows the new prompt's elapsed time,
   not the age of the session. It is capped at the shared 24-hour default and
@@ -100,6 +102,12 @@ schedule tools, approve permissions, or alter agent decisions.
 - Full-event inspection for overview, input, output, and normalized raw JSON.
 - Global History search over IDs, locators, prompts, messages, tool I/O, and
   nested payload fields, with time, Agent, status, and event-type filters.
+  Result rows load in scroll-driven batches that render only the new rows, so
+  long lists scroll without re-rendering what is already on screen.
+- Opt-in performance panel (Settings → Performance, `ASTROX_PERF_HUD`): a
+  draggable floating HUD with tone-coded tiles for scroll fps, list render,
+  and long tasks pinned above the fully expanded metric table; the same
+  numbers read via `window.__astroPerf.snapshot()`.
 - One-result location across the Session, Prompt run, event log, inspector,
   and mapped topology atom.
 - Deep links using `source`, `session`, and `event` query parameters.
@@ -108,7 +116,13 @@ schedule tools, approve permissions, or alter agent decisions.
 - Recursive secret redaction before persistence.
 - Light, dark, and system themes; no CDN or remote font dependency.
 - Persisted History, Events, theme, and platform preferences under `ASTROX_*` keys.
-- Demo data only in development/test; production keeps a truthful empty state.
+- Demo data only in development/test, loaded from the local resource file
+  `data/demo-events.json` by the service; production keeps a truthful empty
+  state and never requests sample data.
+- Deployable console preview (Vercel, GitHub Pages, any static host): the
+  page reads the ASTRO service on the visitor's machine (`?api=` /
+  `ASTROX_API_BASE`, origin allowlist via `ASTRO_CORS_ORIGINS`) and follows
+  new events live over SSE.
 
 ## Supported Sources
 
@@ -158,9 +172,15 @@ pnpm start
 Open `http://127.0.0.1:5678`. The server prints the actual URL if it selects a
 later port.
 
-In `pnpm dev` development mode, the console loads a built-in Demo when no real
-events exist so topology, trajectory, inspection, and replay can be evaluated.
-Production builds never synthesize Demo events and preserve the real empty state.
+In `pnpm dev` development mode, the console loads a Demo when no real events
+exist so topology, trajectory, inspection, and replay can be evaluated. The
+sample data is not bundled: the service reads the local resource file
+`data/demo-events.json` and serves it as `GET /api/demo-events`, and the console
+turns it into events. Event times are offsets from load time, so the sample run
+stays inside the hours-based RUN HISTORY window. If the service is unavailable
+the console falls back to the build-time copy at `/data/demo-events.json`; if
+neither answers it keeps the truthful empty state and says so.
+Production builds never request or show Demo events.
 Direct hook installation starts and opens the dashboard automatically.
 
 ### Choose an integration
@@ -181,6 +201,28 @@ Direct hook installation starts and opens the dashboard automatically.
 Use either the native plugin or direct hooks for the same Codex, Claude Code,
 or WorkBuddy
 installation, not both. Enabling both records the same lifecycle event twice.
+
+### Deploy a preview page (Vercel / GitHub Pages)
+
+The console is a static page, so it can live in the cloud while the data stays
+on your machine: a deployed page reads the ASTRO service running locally over
+the loopback and follows new events live over SSE — every prompt writes the
+JSONL, the service pushes it, RUN HISTORY and the topology update in real time.
+
+| Path | How |
+| --- | --- |
+| Vercel | `vercel.json` builds the console and the docs site and merges them: docs at the root, the console preview at `/console/`. Import the repository — no extra settings. |
+| GitHub Actions | `.github/workflows/console-preview.yml` builds the console on push/PR and uploads a `console-dist` artifact; run "Deploy console preview to GitHub Pages" manually to publish the current branch's build (no main merge required). |
+| Any static host | `pnpm build` produces `dist/` with relative asset URLs; serve it as-is. |
+
+A deployed page targets `http://127.0.0.1:5678` by default; override with
+`?api=<address>` (persisted as `ASTROX_API_BASE`). The service must allow the
+page's origin — start it with `ASTRO_CORS_ORIGINS="https://<domain>" pnpm start`
+(multiple origins comma-separated, `/api/health` reports the list). Origins are
+the read boundary for your local traces: list only domains you control.
+The full reference — local install, every environment variable, `astrox`
+service management, the CORS and data-directory details, and a troubleshooting
+quick table — is in `docs/deployment-en.md` (and `docs/deployment-zh.md`).
 
 ### Native Codex, Claude Code, and WorkBuddy plugins
 
@@ -1081,6 +1123,22 @@ opens History and Events, and independently locates the matching log row and
 topology atom. Results render in automatic batches. This client-side search is
 separate from `/api/search` and only covers loaded data.
 
+![Global history search](docs/assets/history-search.png)
+
+#### Performance panel
+
+Turn the HUD on in **Settings → Performance** (`ASTROX_PERF_HUD`, off by
+default). A pill at the bottom edge carries the two headline numbers and opens
+upward into a draggable panel: the tone legend and three tone-coded tiles
+(scroll fps, list render, long tasks) stay pinned at the top while every
+metric group — load, scroll, list render, network, long tasks — renders
+expanded below them, so scrolling the panel never moves the tiles. Positions
+persist (`astro:perf-hud-pos`), the retired `?perf=1` flag is honoured once,
+and the panel is pure DOM outside React so measuring the app never enters its
+render path.
+
+![Performance panel](docs/assets/perf-hud.png)
+
 ### Topology and trajectory
 
 - **Topology view** shows stable semantic atoms and paths, dynamic
@@ -1277,7 +1335,9 @@ pagination or streaming history, authentication, and archival before use.
 | SSE disconnect | Display `offline`; reconnect and restore the full event snapshot before live updates |
 | Layout Worker unavailable | Dynamically load the same router on the main thread |
 | Router cannot find an optimal path | Return diagnostics and fallback routes where possible |
-| No events | Development/test shows Demo; production preserves the real empty state |
+| No events | Development/test renders the local sample dataset; production preserves the real empty state |
+| Sample dataset missing or malformed | The service answers 404/500, the console reports `示例数据不可用` and keeps captured events |
+| Deployed page cannot reach the local service | One `无法连接本地服务` notice (with the `ASTRO_CORS_ORIGINS` hint) and `offline`; add the page origin to the allowlist and restart the service |
 | Hook parse or write failure | Report on stderr and exit successfully; Codex quiet mode preserves stdout compatibility |
 | Dashboard launch or browser open failure | Keep writing trace data and retry after a stale PID is detected |
 | Active or waiting Prompt reaches the timeout | Cap its advancing duration, derive `terminated`, and stop selected-run live effects without appending an event |
@@ -1313,7 +1373,9 @@ The automated suite covers:
 - initial SSE snapshots, live increments, and reconnect repair;
 - active duration refresh, 24-hour timeout, and `terminated` display state;
 - `ASTROX_` preference persistence and legacy-key migration;
-- production Demo isolation and Vite proxy environment resolution.
+- production Demo isolation and Vite proxy environment resolution;
+- sample-dataset delivery: service-side path resolution, mtime caching, 404/500
+  branches, and console-side parsing, fallback, and failure handling.
 
 The current suite contains 182 tests.
 
@@ -1361,12 +1423,20 @@ runtime npm dependencies. See the
 
 Demo is expected only in development/test when the real event count is zero.
 Production should remain empty; if it shows Demo, check for a Vite development
-page or stale build:
+page or stale build.
+
+The sample run is a local file, so also check which one the service read:
 
 ```bash
 curl http://127.0.0.1:5678/api/health
 curl http://127.0.0.1:5678/api/events
+curl http://127.0.0.1:5678/api/demo-events
 ```
+
+`path` in the last response is the file actually read (default
+`data/demo-events.json`, overridable with `ASTRO_DEMO_EVENTS`) and `eventCount`
+is its event count; 404 means the file is missing, 500 means it exists but is
+not a valid dataset and `error` names the field.
 
 ### Agent activity does not appear
 

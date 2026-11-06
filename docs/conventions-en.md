@@ -27,6 +27,7 @@
 | `tests/` | Node test-runner suites | manual acceptance notes |
 | `docs/` | paired Chinese/English user, protocol, architecture, operations and convention docs | generated output |
 | `site/` | the docs site (reads `docs/*.md`) | copies of doc content |
+| `data/` | local resource files such as the console's sample dataset | captured traces, user preferences |
 
 ## 3. Branches, commits, and pull requests
 
@@ -52,8 +53,54 @@
     `src/lib/exception-events.ts`;
   - RUN HISTORY liveness lives only in `src/lib/run-history-state.ts`
     (`isLiveRunStatus` + `isFreshLiveRun` + `collectLiveRunKeys`);
-  - the time window lives only in `src/lib/run-history-window.ts`.
+  - the time window lives only in `src/lib/run-history-window.ts`;
+  - the preview page's opened state lives only in `plugin/trace-recorder.cjs`
+    (`readPreviewState` / `markPreviewOpened`, persisted as
+    `preview-state.json` in `ASTRO_HOME`): the service marks it when a console
+    page attaches to `/api/stream`, and the hook launch flow consumes it to
+    decide whether the browser still gets opened;
+  - the run model (which LLM a prompt executed on) is read only in
+    `src/lib/trace-model.ts` (`extractRunModel` + the SessionStart fallback in
+    `buildSessionPromptRuns`), which normalizes every client's payload spelling
+    (pi's `model`/`provider` keys, deepseek's model object, opencode's step
+    notification, zcode's session-start model) into one display string; runs
+    without their own observation fall back to the session-start model, and
+    the UI shows the `MODEL` tag only when a value exists.
   New consumers reuse those helpers; do not grow a second failure or live list.
+- Sample (Demo) data lives only in `data/demo-events.json`: the service reads it
+  through `server/demo-dataset.mjs` and serves `GET /api/demo-events`, and the
+  console parses it only in `src/lib/demo-events.ts`. Do not inline another
+  event array in a component, test, or service; tests that need a sample run
+  read that file. The render gate lives only in `isDemoGateOpen`
+  (`src/config/app-config.ts`): automatic in dev/test, and in a production
+  build only when the reader explicitly passes `?demo=1` (parsed by
+  `isDemoPreviewEnabled`) and there are zero captured events — a deployment
+  never *implicitly* falls back to the sample.
+- The deployed console's service address is resolved only in
+  `src/lib/api-base.ts` (`?api=` → `ASTROX_API_BASE` → same-origin / local
+  default) and requests go through `joinApi`; the cross-origin boundary lives
+  only in the service's `ASTRO_CORS_ORIGINS` (off by default, explicit
+  allowlist, Private-Network preflight answer), with `server.corsOrigins` in
+  `config.yaml` as the durable form for an installed runtime. Do not hardcode
+  `/api/...` in components and do not default the service to `*`.
+- Files under `public/` are addressed through `assetUrl()` in
+  `src/lib/asset-url.ts`, never with an origin-root path such as `/icons/...`:
+  GitHub Pages mounts the page at `/astro/`, so a root path escapes the project
+  prefix and 404s (this broke the agent dropdown's brand marks).
+  `scripts/verify-console-build.mjs` re-checks the build in CI for root-path
+  assets and confirms the artifact is the console only, with no docs site mixed
+  in.
+- Event-stream snapshots are windowed by `hours` and streamed as a `reset`
+  frame (metadata) plus batched `trace` frames and a final `ready`. Do not go
+  back to one `JSON.stringify(allEvents)`: a single frame of a
+  multi-hundred-megabyte history blocks the event loop, so live events, health
+  checks and every other SSE client wait behind it. Older history outside the
+  window is reached by `truncated` + `LOAD EARLIER`, which re-subscribes with a
+  wider window after clearing the cursor and snapshot key.
+- The data-directory setting rewrites `ASTRO_TRACE_DIR` in `.env` only through
+  `server/runtime-settings.mjs` (other lines preserved, relative/missing paths
+  rejected); `POST /api/config/data-root` then restarts the service. Components
+  must not build config paths or write files themselves.
 - Platform-specific mappings belong in `src/config/atom-platforms.ts` or the
   relevant adapter; domain helpers stay platform-neutral.
 - Prefer Lucide icons for interface actions. Brand glyphs (such as GitHub) ship
@@ -83,11 +130,27 @@
   trailing `Others` (`OTHERS_AGENT_ID` / `matchesAgentSourceFilter`). The old
   behaviour turned every source found in the data into a pseudo-agent, so the
   menu grew with the number of collectors and stopped meaning "agent".
+- The sparse/dense layout decision carries **hysteresis**
+  (`isSparseRunHistoryList` + `RUN_HISTORY_SPARSE_HYSTERESIS_ROWS`): the list
+  goes sparse at `appLayout.runHistorySparseListRows` (4) — titles relax to six
+  lines — but only returns to the dense clamp two runs later. The window anchor
+  moves with the newest message, so sessions age out of it while a follow-up
+  pulls an old one back in and the count hovers around the threshold; without
+  the buffer every crossing re-clamped every row's height at once, which read
+  as the list jumping while a run executed.
 - The expanded Prompt thread is **measured**, not estimated: a
   `ResizeObserver` sizes it to its content up to a 300 px ceiling, with a small
   overshoot tolerance (≤ 1.25×) so a two- or three-message thread expands in
   full. `rows × fixed estimate` clipped the last row whenever a title wrapped —
   exactly the short thread where that row is the whole second message.
+- For multi-prompt sessions the thread is **always mounted and animated**: it
+  transitions between the measured height and 0 (margins join the transition so
+  a collapsed thread leaves no gap; `visibility: hidden` keeps it unpainted,
+  unfocusable, and out of the a11y tree). Unmounting on collapse turned every
+  expand into a teleport — the executing row grew hundreds of pixels in one
+  commit and shoved the rows below, which read as the Live list jumping. A
+  single-prompt session renders no thread at all (the parent row *is* that
+  message), so the Live filter no longer paints the same message twice.
 
 ## 6. The Live filter
 
@@ -146,7 +209,7 @@
 - The settings dialog holds browser-local preferences only. Changes apply
   immediately, with no server round trip and no Apply button.
 - It is a **two-pane card**: a `settings-nav` rail on the left (appearance / run
-  history / canvas / panels / about) and a `settings-pane` on the right that
+  history / canvas / panels / performance / about) and a `settings-pane` on the right that
   renders only the active section, built on vertical `Tabs` so arrow keys work.
   A single stacked column either scrolled the whole dialog or squeezed every
   control on a short window. The card is 920×672 on a wide viewport (stacked on
@@ -174,12 +237,19 @@
   it fires, `syncStopped` closes the `EventSource`, which stops the appending,
   the re-derivation and the memory growth. Never implement it as a per-second
   poll.
-- A spent budget has two equivalent ways out, and both must work: the header
-  marker (`synced` → clickable `paused`, `resumeSync`) and the service card's
-  restart. Both reset `syncStartedAt`; resuming pulls a **fresh snapshot**
-  (`handleReloadLatestEvents`) instead of replaying the missed tail, which would
-  regrow the very array the budget capped. Still `paused` after a successful
-  restart is a bug.
+- The budget is wall-clock from the start of the current sync window, so a
+  pause also **stops the counting**: no timer runs while `syncStopped`, and
+  the clock only restarts on a resume. Changing the cap re-arms the timer for
+  the time left under the new cap (measured from the original start); lowering
+  the cap below what already elapsed stops the stream at once.
+- A spent budget has three equivalent ways out, and all must work: the header
+  marker (`synced` → clickable `paused`, `resumeSync`), the service card's
+  restart, and moving the cap in Settings so that time is still left (including
+  `off`) — the latter two resume automatically while stopped
+  (`capChangeResumesSync`). All three reset `syncStartedAt`; resuming pulls a
+  **fresh snapshot** (`handleReloadLatestEvents`) instead of replaying the
+  missed tail, which would regrow the very array the budget capped. Still
+  `paused` after a successful restart is a bug.
 - `syncStopped` is not `connected === false`: the latter is a dropped socket
   that `EventSource` retries, the former is a deliberate stop that only a user
   action lifts.
@@ -241,6 +311,20 @@
   `window.alert`: a native alert blocks the page, cannot be styled and cannot be
   ignored. Success, failure and an empty result each need their own wording, and
   a failure must name the cause.
+- **The cursor is an affordance.** Clickable things point: `button:not(:disabled)`,
+  `[role="button"]`, and Radix menu/select items — never `cursor-default` on an
+  operable row. Disabled controls read as the plain arrow (`button:disabled`,
+  `[aria-disabled="true"]`; the console dims instead of `not-allowed`), busy
+  controls may use `cursor: progress`, and draggable handles carry `grab`,
+  switching to `grabbing` while held (the performance HUD drag does exactly
+  this).
+- **Long list rows are memoized end to end.** Row components (such as
+  HistorySearch's `SearchResult`) are wrapped in `React.memo`, per-row
+  derivation (snippet, highlight) is memoized per row, callbacks stay stable
+  through a ref, and batch appends run inside `startTransition`. A scroll
+  append or a background app-root re-render must never re-render the rows
+  already on screen — otherwise every append rebuilds the snippet and highlight
+  regex for a full screen of rows, and the scroll eats the jank it causes.
 - **Performance claims are measured.** Compare before and after on the same data
   fixture, machine and sampling script, and put the numbers (script time, long
   tasks, chunk size) in the pull request instead of "faster now".

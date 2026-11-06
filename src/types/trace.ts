@@ -386,4 +386,12 @@ export type TracePromptRun = {
   terminalReason?: RunTerminalReason | null;
   statusDetail?: string | null;
   toolCount: number;
+  /**
+   * LLM model the run executed on, read from the events that report it
+   * (`AgentMessage` `payload.model` / `payload.provider`, a `Notification`
+   * model message), falling back to the session-start model for clients that
+   * report it only there (zcode's `SessionStart.payload.model`). Absent when
+   * no client recorded a model.
+   */
+  model?: string;
 };

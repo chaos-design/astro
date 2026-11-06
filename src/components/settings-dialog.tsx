@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { CSSProperties } from "react";
 import {
   Check,
+  Gauge,
   History,
   Info,
   Network,
@@ -77,6 +78,15 @@ const settingsSections = [
     title: "面板",
     description: "左右两列在打开控制台时的展开状态；面板头部的箭头可随时切换。",
     icon: PanelsTopLeft,
+  },
+  {
+    id: "perf",
+    label: "性能",
+    hint: "诊断面板",
+    title: "性能",
+    description:
+      "页面性能诊断面板：滚动帧率、列表渲染与长任务。只采集、不修改已记录的事件。",
+    icon: Gauge,
   },
   {
     id: "about",
@@ -171,7 +181,8 @@ function SwitchField({
 
 /**
  * Console settings: every browser-local preference the console has, grouped by
- * what it changes — appearance, RUN HISTORY, the canvas, and the two panels.
+ * what it changes — appearance, RUN HISTORY, the canvas, the two panels, and
+ * the performance HUD.
  *
  * The dialog edits the same values the panels restore on reload, so there is
  * no apply step and no server round trip. Preferences that also have an inline
@@ -191,6 +202,7 @@ export function SettingsDialog({
   historyRange,
   liveView,
   maxSync,
+  perfHud,
   theme,
   onActiveViewChange,
   onConsoleOpenChange,
@@ -199,6 +211,7 @@ export function SettingsDialog({
   onHistoryRangeChange,
   onLiveViewChange,
   onMaxSyncChange,
+  onPerfHudChange,
   onThemeChange,
 }: {
   activeView: ActiveView;
@@ -208,6 +221,7 @@ export function SettingsDialog({
   historyRange: HistoryRangeId;
   liveView: boolean;
   maxSync: MaxSyncId;
+  perfHud: boolean;
   theme: Theme;
   onActiveViewChange: (view: ActiveView) => void;
   onConsoleOpenChange: (open: boolean) => void;
@@ -216,6 +230,7 @@ export function SettingsDialog({
   onHistoryRangeChange: (range: HistoryRangeId) => void;
   onLiveViewChange: (liveView: boolean) => void;
   onMaxSyncChange: (maxSync: MaxSyncId) => void;
+  onPerfHudChange: (perfHud: boolean) => void;
   onThemeChange: (theme: Theme) => void;
 }) {
   const [section, setSection] = useState<SettingsSectionId>("appearance");
@@ -227,6 +242,7 @@ export function SettingsDialog({
     historyRange === defaultHistoryRange &&
     liveView === appDefaults.liveView &&
     maxSync === appDefaults.maxSync &&
+    perfHud === appDefaults.perfHud &&
     theme === appDefaults.theme &&
     activeView === appDefaults.activeView &&
     deepView === appDefaults.deepView &&
@@ -237,6 +253,7 @@ export function SettingsDialog({
     onHistoryRangeChange(defaultHistoryRange);
     onLiveViewChange(appDefaults.liveView);
     onMaxSyncChange(appDefaults.maxSync);
+    onPerfHudChange(appDefaults.perfHud);
     onThemeChange(appDefaults.theme);
     onActiveViewChange(appDefaults.activeView);
     onDeepViewChange(appDefaults.deepView);
@@ -415,6 +432,15 @@ export function SettingsDialog({
                 description="右侧事件日志与检查器默认展开。"
                 value={consoleOpen}
                 onChange={onConsoleOpenChange}
+              />
+            </TabsContent>
+
+            <TabsContent className="settings-section" value="perf">
+              <SwitchField
+                label="性能面板"
+                description="在页面右下角浮出性能诊断面板：滚动帧率、列表渲染、长任务，可拖动；状态保存在浏览器本地，只采集、不写回事件。"
+                value={perfHud}
+                onChange={onPerfHudChange}
               />
             </TabsContent>
 

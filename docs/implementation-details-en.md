@@ -111,7 +111,17 @@ server-side `/api/search` and does not promise access to unloaded history.
 Selecting a result changes the source platform, Session, and Prompt; selects
 the exact event and mapped atom; exits replay; opens History and LOG; and sends
 independent location requests to the topology and event list. Each scroll
-container owns its own reveal operation.
+container owns its own reveal operation. The LOG header's "locate the executing
+atom" button follows the same dual-request pattern: beyond focusing the
+topology it bumps the log's own locate request (and clears the search filter so
+the target row exists), and the log centers the atom's event row **instantly**
+— a direct scrollTop assignment like the trajectory's locate, not a smooth
+animation that the virtualized re-renders would interrupt.
+
+A locate request whose target is not ready yet stays **pending** instead of
+being silently dropped: the canvas flushes it the moment the layout commits (a
+click made while routing still pulses the atom), and the log flushes it as soon
+as the row reappears in the visible list (filter cleared, session switched).
 
 Manual atom selection, the executing atom, and the selected event's atom follow
 an explicit priority. A locate request uses a short color pulse and restrained
@@ -203,6 +213,18 @@ newest message; a `?session=` deep link that names another agent's run moves
 the dropdown and the address bar's `agent` with it, so the open run is always a
 row of the list.
 
+### Snapshot window and batched transfer
+
+The first snapshot covers only the console's current time window
+(`/api/stream?hours=`, three hours by default) plus the full history of sessions
+that are still executing; older history is fetched by `LOAD EARLIER` with a
+wider window, which replaces the list. The transfer itself is a `reset` frame
+(metadata, empty list), batches of 400 `trace` frames, and a final `ready`; the
+client commits once at `ready`. Serializing hundreds of thousands of events into
+one frame blocked the event loop, so live events and every other request had to
+wait behind it. `truncated` in `ready` decides whether "load earlier" is
+available, instead of inferring it from the sessions that happen to be loaded.
+
 ### Sync budget
 
 The console and the local service share one SSE connection (`/api/stream`,
@@ -214,13 +236,17 @@ so syncing has a ceiling:
   arms `syncStopped`; the stream effect's cleanup then closes the `EventSource`,
   so nothing is appended, derived or retained any more;
 - the budget is a single `setTimeout` (`getSyncStopDelay`): no timer at all when
-  the limit is `off`, and no polling;
+  the limit is `off`, and no polling; changing the limit re-arms that timer for
+  the time left under the new cap, and no timer runs while a pause is in effect;
 - the header marker turns from `synced` into an amber `paused` button, and the
   service card says the stream stopped on purpose instead of reporting a lost
   connection;
-- recovery has two equivalent paths: clicking `paused` (`resumeSync`) or
-  restarting the local service. Both reset `syncStartedAt` and pull a **fresh
-  snapshot** (`handleReloadLatestEvents`) rather than replaying the missed tail —
+- recovery has three equivalent paths: clicking `paused` (`resumeSync`),
+  restarting the local service, or moving the cap in Settings so that time is
+  still left (including `off`) — `capChangeResumesSync` makes the latter two
+  resume automatically while stopped. All reset `syncStartedAt` and pull a
+  **fresh snapshot** (`handleReloadLatestEvents`) rather than replaying the
+  missed tail —
   a replay would regrow the array the budget just capped. Staying `paused` after
   a successful restart is a bug.
 
@@ -244,7 +270,7 @@ The list is narrowed to the agent, then filtered by an hour window (the
 The settings dialog (`src/components/settings-dialog.tsx`) holds browser-local
 preferences only; changes apply immediately and are written to `localStorage`.
 It is a two-pane card: a `.settings-nav` rail on the left (appearance, run
-history, canvas, panels, about) and a `.settings-pane` on the right that renders
+history, canvas, panels, performance, about) and a `.settings-pane` on the right that renders
 only the active section, carried by a vertical Radix `Tabs` so arrow keys work.
 Header and footer are fixed and only the pane scrolls; the footer's Done button
 merely closes the dialog. The reset restores every section at once. The range
@@ -268,8 +294,10 @@ Opening the Flow Guide dims the console with a flat scrim
 (`.atom-guide__overlay`, 58% on dark, 34% on light) instead of a backdrop blur:
 the canvas repaints continuously and would recompute the blur every frame. The
 LOG header carries the top/bottom scroll controls
-(`.atomic-log__scroll-controls`), rendered only while that edge is out of view;
-they used to float over the list and cover the first visible atom.
+(`.atomic-log__scroll-controls`), both always mounted and the unreachable edge
+expressed as a `disabled` button (dimmed, `cursor: default`, no hover cues)
+rather than an unmount; they used to float over the list and cover the first
+visible atom.
 
 ### Mobile layout
 

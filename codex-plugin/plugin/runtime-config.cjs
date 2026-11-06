@@ -393,6 +393,37 @@ function booleanValue(value) {
   return { ok: false };
 }
 
+/**
+ * A list of deployment origins, from either a YAML sequence or the
+ * comma-separated `ASTRO_CORS_ORIGINS` spelling. Entries are trimmed and empty
+ * segments dropped, so `"a, b,"` and `[a, b]` mean the same allowlist. The
+ * service still matches origins literally; this only decides what reaches it.
+ */
+function originListValue(value) {
+  if (value === null) {
+    return { ok: true, value: [] };
+  }
+  const items = Array.isArray(value)
+    ? value
+    : typeof value === "string"
+      ? value.split(",")
+      : null;
+  if (!items) {
+    return { ok: false };
+  }
+  const origins = [];
+  for (const item of items) {
+    if (typeof item !== "string") {
+      return { ok: false };
+    }
+    const origin = item.trim();
+    if (origin) {
+      origins.push(origin);
+    }
+  }
+  return { ok: true, value: origins };
+}
+
 const fields = [
   {
     path: ["server", "host"],
@@ -414,6 +445,18 @@ const fields = [
     legacy: ["AGENT_TRACE_MAX_BODY_BYTES"],
     defaultValue: 5_242_880,
     normalize: integerValue(1),
+  },
+  {
+    // The cross-origin read boundary for the local API. Kept in the shared
+    // configuration because the service is normally started by a recorder
+    // hook, not by a shell — without a config field an installed runtime had
+    // no way to carry an allowlist across launches, and a deployed console
+    // could never connect.
+    path: ["server", "corsOrigins"],
+    environment: "ASTRO_CORS_ORIGINS",
+    legacy: ["AGENT_TRACE_CORS_ORIGINS"],
+    defaultValue: [],
+    normalize: originListValue,
   },
   {
     path: ["runtime", "autoOpen"],
@@ -482,7 +525,7 @@ const fields = [
 
 const allowedKeys = new Map([
   ["", new Set(["version", "server", "runtime", "storage", "clients", "integrations"])],
-  ["server", new Set(["host", "port", "maxBodyBytes"])],
+  ["server", new Set(["host", "port", "maxBodyBytes", "corsOrigins"])],
   ["runtime", new Set(["autoOpen"])],
   ["storage", new Set(["traceDir", "projectDir"])],
   ["clients", new Set(["codex", "claude", "deepseek", "workbuddy"])],

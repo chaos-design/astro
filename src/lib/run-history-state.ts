@@ -87,6 +87,35 @@ export function quantizeTimestamp(now: number, bucketMs: number): number {
   return Math.floor(now / bucketMs) * bucketMs;
 }
 
+/**
+ * Extra runs a sparse list may gain before it re-clamps to the dense layout.
+ *
+ * The sparse/dense switch changes every row's title clamp at once, so a count
+ * hovering at the threshold would re-clamp the whole list each time a session
+ * aged out of the window or a re-run entered it — the visible "jumping" of the
+ * panel while a run is live. The buffer makes the crossing one-way per sweep:
+ * the list goes sparse at {@link sparseThreshold} and only returns to the
+ * dense layout once it has grown past the buffer.
+ */
+export const RUN_HISTORY_SPARSE_HYSTERESIS_ROWS = 2;
+
+/**
+ * Whether RUN HISTORY renders in the sparse (taller-cards) layout, with
+ * hysteresis over the previous decision. Entering sparse uses the configured
+ * threshold; leaving it requires the count to exceed the threshold by
+ * {@link RUN_HISTORY_SPARSE_HYSTERESIS_ROWS}.
+ */
+export function isSparseRunHistoryList(
+  count: number,
+  wasSparse: boolean,
+  sparseThreshold: number,
+): boolean {
+  if (wasSparse) {
+    return count <= sparseThreshold + RUN_HISTORY_SPARSE_HYSTERESIS_ROWS;
+  }
+  return count <= sparseThreshold;
+}
+
 export function getRunHistoryDisplayStatus(
   sessionStatus: TraceRunStatus,
   promptRuns: readonly Pick<TracePromptRun, "status">[],

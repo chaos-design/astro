@@ -53,6 +53,7 @@ import {
 import type {
   ComponentProps,
   CSSProperties,
+  FormEvent,
   PointerEvent as ReactPointerEvent,
   ReactNode,
   RefObject,
@@ -134,9 +135,12 @@ import {
   isHistoryRangeId,
   isMaxSyncId,
   legacyStorageKeys,
+  maxStreamWindowHours,
   panelHeaderClass,
   panelHeaderCopyClass,
   retiredStorageKeys,
+  resolvePerfHudInitial,
+  isDemoGateOpen,
   shouldShowDemo,
   storageKeys,
   themeOptions,
@@ -158,16 +162,26 @@ import {
   buildSessionPromptRuns,
   buildFlow,
   buildHarnessFlow,
-  createDemoEvents,
   createSessionProjection,
   eventMeta,
   formatDuration,
   getEventSummary,
+  getEventTimestamp,
   getExecutionInstruction,
   getFlowNodeIdForEvent,
   normalizeTraceEvent,
   parseImportedTrace,
 } from "./lib/trace-model";
+import {
+  loadDemoEvents,
+  isDemoPreviewEnabled,
+  staticDemoDatasetEndpoint,
+  type DemoLoadResult,
+} from "./lib/demo-events";
+import {
+  joinApi,
+  resolveApiBase,
+} from "./lib/api-base";
 import {
   readStorageBoolean,
   readStorageValue,
@@ -200,7 +214,7 @@ import {
   selectLiveRunHistory,
   selectVisibleRunHistory,
 } from "./lib/run-history-window";
-import { getSyncStopDelay } from "./lib/sync-budget";
+import { capChangeResumesSync, getSyncStopDelay } from "./lib/sync-budget";
 import { atomLevel, projectTraceEvents } from "./lib/atomic-projection";
 import {
   buildTraceTurnIndex,
@@ -235,6 +249,7 @@ import {
   getRunHistoryDisplayState,
   getRunHistoryTerminalInfo,
   isLiveRunStatus,
+  isSparseRunHistoryList,
   RUN_HISTORY_COARSE_REFRESH_MS,
   runTerminalReasonLabels,
   quantizeTimestamp,
@@ -242,7 +257,9 @@ import {
 } from "./lib/run-history-state";
 import {
   attachScrollFpsTracker,
+  getPerfSnapshot,
   markAppReady,
+  mountPerfHud,
   recordListRender,
 } from "./lib/perf-metrics";
 import {
@@ -748,6 +765,7 @@ function usePageVisibility() {
 function ServiceStatus({
   connected,
   error,
+  onChangeDataRoot,
   onRestart,
   restarting,
   service,
@@ -755,6 +773,7 @@ function ServiceStatus({
 }: {
   connected: boolean;
   error: string;
+  onChangeDataRoot: (path: string) => Promise<boolean>;
   onRestart: () => void;
   restarting: boolean;
   service: ServiceHealth | null;
@@ -762,6 +781,21 @@ function ServiceStatus({
   syncPaused: boolean;
 }) {
   const [now, setNow] = useState(() => Date.now());
+  const [editingRoot, setEditingRoot] = useState(false);
+  const [rootDraft, setRootDraft] = useState("");
+  const [savingRoot, setSavingRoot] = useState(false);
+  const submitRoot = async (event: FormEvent) => {
+    event.preventDefault();
+    if (savingRoot) {
+      return;
+    }
+    setSavingRoot(true);
+    const saved = await onChangeDataRoot(rootDraft);
+    setSavingRoot(false);
+    if (saved) {
+      setEditingRoot(false);
+    }
+  };
   // The uptime reads as a clock, but a suspended tab has nothing to advance:
   // the value is recomputed from `fetchedAt` the moment the console resumes.
   const { suspended } = usePageVisibility();
@@ -936,13 +970,47 @@ function ServiceStatus({
             </div>
           </dl>
           <div className="service-card__path">
-            <span className="service-card__path-label">数据目录</span>
-            <code title={service?.dataRoot}>
-              {service?.dataRoot || "--"}
-            </code>
+            <div className="service-card__path-head">
+              <span className="service-card__path-label">数据目录</span>
+              {service ? (
+                <button
+                  type="button"
+                  className="service-card__path-edit"
+                  onClick={() => {
+                    setRootDraft(service.dataRoot || "");
+                    setEditingRoot((current) => !current);
+                  }}
+                >
+                  {editingRoot ? "取消" : "更改"}
+                </button>
+              ) : null}
+            </div>
+            {editingRoot ? (
+              <form className="service-card__root-form" onSubmit={submitRoot}>
+                <input
+                  aria-label="数据目录路径"
+                  className="service-card__root-input"
+                  onChange={(event) => setRootDraft(event.currentTarget.value)}
+                  placeholder="/Users/you/.astrox"
+                  spellCheck={false}
+                  value={rootDraft}
+                />
+                <Button
+                  className="service-card__root-save"
+                  disabled={savingRoot || restarting}
+                  size="sm"
+                  type="submit"
+                  variant="outline"
+                >
+                  {savingRoot || restarting ? "保存中…" : "保存并重启"}
+                </Button>
+              </form>
+            ) : (
+              <code title={service?.dataRoot}>{service?.dataRoot || "--"}</code>
+            )}
             <em>
               各采集客户端（录制器）写入的会话事件 JSONL 保存在这里；轨迹文件按客户端与
-              会话分目录存放，是控制台全部读数的来源。
+              会话分目录存放，是控制台全部读数的来源。更改后服务会重启并重新读取该目录。
             </em>
           </div>
         </section>
@@ -966,7 +1034,7 @@ function ServiceStatus({
           {error ? <p className="service-card__error">{error}</p> : null}
           <p className="service-card__hint">
             {syncPaused
-              ? "已按「最长同步时长」停止接收新事件；重启服务或点击顶部 paused 标记即可继续同步。"
+              ? "已按「最长同步时长」停止接收新事件；重启服务、点击顶部 paused 标记，或在设置中调高「最长同步时长」，都可以继续同步。"
               : "重启会保留当前端口，页面与事件流会自动重连。"}
           </p>
           <Button
@@ -1009,6 +1077,8 @@ type RunHistoryRowDetails = {
   start: number;
   status: "demo" | TraceSession["status"];
   title: string;
+  /** LLM model the prompt ran on, when a client recorded one. */
+  model?: string;
 };
 
 /**
@@ -1109,6 +1179,7 @@ function RunHistoryRowContent({
   extraValue,
   git,
   live = false,
+  model,
   reason,
   staleFor,
   source,
@@ -1137,6 +1208,11 @@ function RunHistoryRowContent({
           <span>
             AGENT <b>{source}</b>
           </span>
+          {model ? (
+            <span>
+              MODEL <b>{model}</b>
+            </span>
+          ) : null}
           <span>
             STATUS <b>{status}</b>
             {reason ? <em className="run-history__reason"> · {reason}</em> : null}
@@ -1161,6 +1237,7 @@ function RunHistoryDetailsCard({
   extraValue,
   fullCode,
   git,
+  model,
   reason,
   source,
   staleFor,
@@ -1197,6 +1274,10 @@ function RunHistoryDetailsCard({
   }
   if (git?.branch) {
     lines.splice(4, 0, ["BRANCH", git.branch]);
+  }
+  // After the other splices: MODEL sits right below AGENT in every case.
+  if (model) {
+    lines.splice(1, 0, ["MODEL", model]);
   }
   return (
     <div className="run-history__tooltip">
@@ -1528,6 +1609,9 @@ const RunHistoryItem = memo(function RunHistoryItem({
     start: firstPromptRun?.start ?? session.start,
     status: isDemo ? "demo" : status,
     title: session.title,
+    // The session row is the only row for single-prompt runs, so it carries
+    // the newest prompt's model; multi-prompt rows show it per sub-row.
+    model: lastPromptRun?.model,
   };
 
   return (
@@ -1535,6 +1619,9 @@ const RunHistoryItem = memo(function RunHistoryItem({
       className={cn(
         "run-history__item",
         activeGroup && "is-active-group",
+        // A lone run only fills the panel while its sub-message thread is open;
+        // a collapsed thread keeps the compact card.
+        hasPromptThread && expanded && "is-thread-open",
         live && "is-live",
       )}
       data-live-status={liveStatus}
@@ -1579,11 +1666,21 @@ const RunHistoryItem = memo(function RunHistoryItem({
           <ChevronRight />
         </Button>
       ) : null}
-      {expanded ? (
+      {/* The thread stays mounted for every multi-prompt row and animates
+          between its measured height and 0. Unmounting it on collapse made
+          every expand a teleport: the executing row grew by hundreds of
+          pixels in one commit and shoved the whole list (the N LIVE jumping).
+          A collapsed thread is visibility-hidden, so it neither paints nor
+          participates in a11y or focus, and its margins collapse with it. */}
+      {hasPromptThread ? (
         <ScrollArea
           id={promptListId}
-          className="run-history__prompt-scroll"
-          style={{ height: threadHeight }}
+          className={cn(
+            "run-history__prompt-scroll",
+            !expanded && "is-collapsed",
+          )}
+          style={{ height: expanded ? threadHeight : 0 }}
+          aria-hidden={!expanded}
         >
           <ol className="run-history__prompts" ref={promptListRef}>
             {displayPromptRows.map(({ displayState, promptLive, promptRun }) => {
@@ -1630,6 +1727,7 @@ const RunHistoryItem = memo(function RunHistoryItem({
                 start: promptRun.start,
                 status: isDemo ? "demo" : displayState.status,
                 title: promptRun.title,
+                model: promptRun.model,
               };
               return (
                 <li key={promptRun.key}>
@@ -1759,6 +1857,7 @@ const RunHistory = memo(function RunHistory({
   activeKey,
   activePromptRunKey,
   canLoadMore,
+  demoError,
   gitInfo,
   initialLoading,
   isDemo,
@@ -1777,6 +1876,12 @@ const RunHistory = memo(function RunHistory({
   activeKey: string;
   activePromptRunKey: string;
   isDemo: boolean;
+  /**
+   * Why the sample dataset could not be loaded, when this console was supposed
+   * to show it. The empty state names the reason, because an empty list with no
+   * explanation reads as "this agent never ran anything".
+   */
+  demoError: string | null;
   /**
    * Armed live filter: the rows are the messages that are executing right
    * now, filtered out of the selected agent's *whole* history (the parent
@@ -1805,6 +1910,17 @@ const RunHistory = memo(function RunHistory({
     () => new Set(),
   );
   const [hoverCard, setHoverCard] = useState<RunHistoryHoverCard | null>(null);
+  // Sparse/dense is a whole-list re-clamp (every title changes its line
+  // ceiling), so the decision carries hysteresis: a count hovering at the
+  // threshold — sessions aging out of the window while a re-run enters it —
+  // must not re-clamp the list on each crossing.
+  const sparseRef = useRef(false);
+  const sparseList = isSparseRunHistoryList(
+    sessions.length,
+    sparseRef.current,
+    appLayout.runHistorySparseListRows,
+  );
+  sparseRef.current = sparseList;
   const activePromptRunRef = useRef<HTMLDivElement | null>(null);
   const hoverCardRef = useRef<HTMLDivElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -2079,6 +2195,11 @@ const RunHistory = memo(function RunHistory({
         `${session.key}:${promptRunsBySession.get(session.key)?.length ?? 0}`,
     )
     .join("|");
+  // A lone run should not float as one small card above an empty panel: with
+  // exactly one row shown it stretches to fill the remaining panel height, and
+  // the moment a second run lands the list reverts to the compact card stack
+  // (the `is-sparse` clamp). Zero rows (loading/empty) never carry the class.
+  const isSingleRun = sessions.length === 1;
   useEffect(() => {
     closeHoverCard();
   }, [closeHoverCard, expandedRuns, rowSignature]);
@@ -2225,7 +2346,17 @@ const RunHistory = memo(function RunHistory({
         </div>
       </header>
       <div
-        className="run-history__list min-h-0 overflow-auto p-1.5"
+        className={cn(
+          "run-history__list min-h-0 overflow-auto p-1.5",
+          // A sparse list has the vertical room to show each message whole, so
+          // the cards grow taller instead of cutting every title at two lines;
+          // a dense list keeps the compact clamp for scannability. The
+          // decision is hysteresis-stable (see `sparseList`).
+          sparseList && "is-sparse",
+          // A lone run stretches to fill the panel instead of floating as one
+          // small card; with two or more rows the compact stack returns.
+          isSingleRun && "is-single",
+        )}
         ref={listRef}
         onPointerLeave={handleListPointerLeave}
         onScroll={handleListScroll}
@@ -2277,6 +2408,11 @@ const RunHistory = memo(function RunHistory({
               <>
                 <strong>当前没有正在执行的消息</strong>
                 <span>关闭 Live 筛选可回到最近 {rangeLabel}内的消息</span>
+              </>
+            ) : demoError ? (
+              <>
+                <strong>最近 {rangeLabel}内没有消息</strong>
+                <span>示例数据不可用：{demoError}</span>
               </>
             ) : (
               `最近 ${rangeLabel}内没有消息`
@@ -2402,8 +2538,7 @@ const AtomicLog = memo(function AtomicLog({
   runningEventId,
   selectedEventId,
   locateRequest,
-  query,
-  onQueryChange,
+  queryResetToken,
   onSelect,
   onLocateSelectedAtom,
   canLocateSelectedAtom,
@@ -2413,8 +2548,7 @@ const AtomicLog = memo(function AtomicLog({
   runningEventId: string;
   selectedEventId: string;
   locateRequest: number;
-  query: string;
-  onQueryChange: (query: string) => void;
+  queryResetToken: number;
   onSelect: (eventId: string) => void;
   onLocateSelectedAtom: () => void;
   canLocateSelectedAtom: boolean;
@@ -2425,8 +2559,8 @@ const AtomicLog = memo(function AtomicLog({
   const scrollFrameRef = useRef(0);
   // Render-cost instrumentation: the body stamps its start time, and the
   // no-deps layout effect below closes the measurement after commit. The
-  // samples feed `window.__astroPerf` (and the ?perf=1 HUD) so list render
-  // cost is comparable before and after a change.
+  // samples feed `window.__astroPerf` (and the Settings → 性能 HUD) so list
+  // render cost is comparable before and after a change.
   const renderStartRef = useRef(0);
   renderStartRef.current = performance.now();
   const [metrics, setMetrics] = useState<LogRowMetrics>({
@@ -2439,6 +2573,15 @@ const AtomicLog = memo(function AtomicLog({
     canScrollDown: false,
     canScrollUp: false,
   });
+  // The search text is log-local state: a keystroke re-renders only this
+  // panel, not the studio around it. Filtering reads a deferred copy of the
+  // text, so typing stays immediate while the re-filter runs behind it, and
+  // app-root flows that need an empty box bump `queryResetToken`.
+  const [query, setQuery] = useState("");
+  const deferredQuery = useDeferredValue(query);
+  useEffect(() => {
+    setQuery("");
+  }, [queryResetToken]);
   // Mirror of `scrollPosition` used by the scroll handler: the up chevron
   // only appears once the reader has actually scrolled into older events, and
   // it stays until they are back near the newest ones. The gap between the
@@ -2448,16 +2591,17 @@ const AtomicLog = memo(function AtomicLog({
     canScrollDown: false,
     canScrollUp: false,
   });
-  // Filtering scans the cached haystacks, so repeated keystrokes stay cheap;
-  // the cache itself is warmed below, outside the keystroke path.
+  // Entries are built once per events change; the deferred needle only
+  // re-runs the (cached-haystack) filter, so a keystroke never pays for
+  // rebuilding every turn separator.
+  const entries = useMemo(() => buildLogEntries(events), [events]);
   const visibleEntries = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    const entries = buildLogEntries(events);
+    const needle = deferredQuery.trim().toLowerCase();
     const matched = needle
       ? entries.filter(({ event }) => matchesEventQuery(event, needle))
       : entries;
     return [...matched].reverse();
-  }, [events, query]);
+  }, [entries, deferredQuery]);
 
   // Warm the search haystacks in idle slices: the first keystroke stays fast
   // without making the selection of a long run pay for serializing every
@@ -2570,7 +2714,6 @@ const AtomicLog = memo(function AtomicLog({
 
   useEffect(() => {
     const explicitLocate = locateRequestRef.current !== locateRequest;
-    locateRequestRef.current = locateRequest;
     const list = listRef.current;
     if (!list || !selectedEventId) {
       return;
@@ -2579,8 +2722,13 @@ const AtomicLog = memo(function AtomicLog({
       (entry) => entry.event.id === selectedEventId,
     );
     if (entryIndex < 0) {
+      // The row is not in the visible list (e.g. a search filter hides it):
+      // keep the locate request *pending* — the ref advances only once the
+      // row is findable, so the request flushes the moment the row returns
+      // (filter cleared, session switched) instead of being silently lost.
       return;
     }
+    locateRequestRef.current = locateRequest;
     const nextTop = resolveScrollTopForRow({
       center: explicitLocate,
       rowHeight: metrics.row,
@@ -2591,7 +2739,11 @@ const AtomicLog = memo(function AtomicLog({
     if (nextTop === null) {
       return;
     }
-    list.scrollTo({ behavior: explicitLocate ? "smooth" : "auto", top: nextTop });
+    // An explicit locate centers the row *instantly*, matching the
+    // trajectory's locate (scrollRowWithinContainer): a smooth animation
+    // here would run against the virtualized slice re-renders and could be
+    // canceled mid-flight, so the feedback must not depend on it.
+    list.scrollTop = nextTop;
   }, [
     layout.rowTops,
     locateRequest,
@@ -2638,7 +2790,7 @@ const AtomicLog = memo(function AtomicLog({
         <InputGroup className="atomic-log__search">
           <InputGroupInput
             value={query}
-            onChange={(event) => onQueryChange(event.target.value)}
+            onChange={(event) => setQuery(event.target.value)}
             placeholder="Search tools or text"
             aria-label="搜索事件日志"
           />
@@ -2649,31 +2801,32 @@ const AtomicLog = memo(function AtomicLog({
         {/* Scroll controls live in the header, not floating over the list: an
             overlay chevron sat on top of the first visible atom, so the row a
             reader had just scrolled to was half hidden behind a button. In the
-            header both edges stay reachable and no row is ever covered. Each
-            control only exists while that edge is actually out of view. */}
+            header both edges stay reachable and no row is ever covered. Both
+            buttons stay visible at all times — the container reserves the
+            two-button width — and the unreachable edge is expressed with a
+            disabled state instead of unmounting, so the header layout never
+            shifts as the list scrolls. */}
         <div className="atomic-log__scroll-controls">
-          {scrollPosition.canScrollUp ? (
-            <button
-              type="button"
-              className="atomic-log__scroll-button"
-              aria-label={live ? "回到最新事件" : "滚动到顶部"}
-              title={live ? "回到最新事件" : "滚动到顶部"}
-              onClick={() => scrollToEdge("top")}
-            >
-              <ChevronUp aria-hidden="true" />
-            </button>
-          ) : null}
-          {scrollPosition.canScrollDown ? (
-            <button
-              type="button"
-              className="atomic-log__scroll-button"
-              aria-label="滚动到底部"
-              title="滚动到底部"
-              onClick={() => scrollToEdge("bottom")}
-            >
-              <ChevronDown aria-hidden="true" />
-            </button>
-          ) : null}
+          <button
+            type="button"
+            className="atomic-log__scroll-button atomic-log__scroll-button--top"
+            aria-label={live ? "回到最新事件" : "滚动到顶部"}
+            title={live ? "回到最新事件" : "滚动到顶部"}
+            disabled={!scrollPosition.canScrollUp}
+            onClick={() => scrollToEdge("top")}
+          >
+            <ChevronUp aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            className="atomic-log__scroll-button atomic-log__scroll-button--bottom"
+            aria-label="滚动到底部"
+            title="滚动到底部"
+            disabled={!scrollPosition.canScrollDown}
+            onClick={() => scrollToEdge("bottom")}
+          >
+            <ChevronDown aria-hidden="true" />
+          </button>
         </div>
       </header>
       <div className="atomic-log__body relative min-h-0 overflow-hidden">
@@ -3890,6 +4043,15 @@ function getPlatformForSource(source: string | null | undefined) {
   return atomPlatformOptions.find((platform) => platform.source === source)?.id;
 }
 
+/**
+ * Demo lifecycle as the console sees it: `off` when this build never asks for
+ * sample data, `loading` while the request is in flight, and the loader's own
+ * `ready` / `empty` / `error` / `canceled` outcome afterwards.
+ */
+type DemoDatasetState =
+  | { status: "off" | "loading"; events: TraceEvent[] }
+  | DemoLoadResult;
+
 export default function App() {
   // A hidden tab must not keep the SSE stream, the duration clock, or the
   // health poll running. Suspension only starts after a long hidden period;
@@ -3897,13 +4059,71 @@ export default function App() {
   // stream from the last event we hold and reset the clock.
   const pageVisibility = usePageVisibility();
   const pageSuspended = pageVisibility.suspended;
-  const demoEvents = useMemo(
-    () =>
-      shouldShowDemo(0, import.meta.env)
-        ? createDemoEvents()
-        : [],
+  /*
+   * Where the data comes from. The local service answers same-origin; a
+   * deployed console (Vercel, GitHub Pages) names the service on the reader's
+   * machine instead — `?api=` wins and persists, then the stored override,
+   * then the same-origin/local-service heuristic. Resolved once per mount:
+   * mid-session changes would strand the open stream on the old base.
+   */
+  const apiBase = useMemo(() => {
+    const resolution = resolveApiBase({
+      search: window.location.search,
+      origin: window.location.origin,
+      stored: readStorageValue(window.localStorage, storageKeys.apiBase, ""),
+    });
+    // `?api=` is the user naming the service for this browser, not just this
+    // page view: keep it, including the explicit same-origin reset (`?api=`).
+    if (resolution.source === "param") {
+      writeStorageValue(window.localStorage, storageKeys.apiBase, resolution.base);
+    }
+    return resolution.base;
+  }, []);
+  /*
+   * The sample run is a local resource file (`data/demo-events.json`), read by
+   * the service and fetched here — the bundle no longer carries synthetic
+   * events. Two gates decide whether it loads at all:
+   *
+   *  - dev/test builds: automatic when there are no captured events (the classic
+   *    Demo). Production builds keep their honest empty state unless the reader
+   *    explicitly opts in with `?demo=1` — the sample is an opt-in preview on a
+   *    deployment, never a silent fallback to captured data.
+   */
+  const buildDemo = shouldShowDemo(0, import.meta.env);
+  const demoOptIn = useMemo(
+    () => isDemoPreviewEnabled(window.location.search),
     [],
   );
+  const demoAllowed = buildDemo || demoOptIn;
+  const [demoDataset, setDemoDataset] = useState<DemoDatasetState>(() => ({
+    status: demoAllowed ? "loading" : "off",
+    events: [],
+  }));
+  useEffect(() => {
+    if (!demoAllowed) {
+      return undefined;
+    }
+    const controller = new AbortController();
+    setDemoDataset({ status: "loading", events: [] });
+    void loadDemoEvents({
+      // The service on the configured base first; the static copy next to the
+      // page itself (base-relative, so a `/console/` mount finds its own copy)
+      // is the fallback for a deployment whose service will not answer.
+      endpoints: [
+        joinApi(apiBase, "/api/demo-events"),
+        staticDemoDatasetEndpoint(),
+      ],
+      signal: controller.signal,
+      timeoutMs: appTimings.demoFetchTimeoutMs,
+    }).then((result) => {
+      // Unmounting aborts the request; that is not a state to render.
+      if (controller.signal.aborted) {
+        return;
+      }
+      setDemoDataset(result);
+    });
+    return () => controller.abort();
+  }, [apiBase, demoAllowed]);
   const [initialLocation, setInitialLocation] = useState<ReturnType<typeof getInitialLocation> | null>(
     getInitialLocation,
   );
@@ -3916,6 +4136,14 @@ export default function App() {
    */
   const liveEventsRef = useRef<TraceEvent[]>([]);
   liveEventsRef.current = liveEvents;
+  /**
+   * Whether the stream has ever connected, mirrored for the stream effect:
+   * the remote-service hint must fire only when a deployed page never managed
+   * to connect, not on every transient drop of an established stream.
+   */
+  const everConnectedRef = useRef(false);
+  // The same hint is announced once per page load, not once per retry.
+  const remoteConnectHintedRef = useRef(false);
   // Working directory → git presentation (repo name + branch), resolved by the
   // server from the closest `.git` and delivered with the snapshot plus one
   // `git` message per newly seen directory.
@@ -3923,6 +4151,14 @@ export default function App() {
     Record<string, { repo: string; branch: string } | null>
   >({});
   const [eventsLoaded, setEventsLoaded] = useState(false);
+  // The server only ships the requested time window, so an older run may
+  // exist outside it. `truncated` is what keeps "load earlier" actionable:
+  // the list itself no longer contains the sessions that would prove it.
+  const [historyTruncated, setHistoryTruncated] = useState(false);
+  // Every event the service holds, not just the ones inside the current
+  // window. The demo gate must not treat a narrow window as "no captured
+  // events" and replace a real history with the sample.
+  const [capturedEventCount, setCapturedEventCount] = useState(0);
   const [importedEvents, setImportedEvents] = useState<TraceEvent[]>([]);
   // Transient action feedback (import, clear, reload). Replaces the blocking
   // `window.alert` calls, which could not be styled, dismissed or ignored.
@@ -3979,7 +4215,10 @@ export default function App() {
   const [service, setService] = useState<ServiceHealth | null>(null);
   const [serviceError, setServiceError] = useState("");
   const [restarting, setRestarting] = useState(false);
-  const [query, setQuery] = useState("");
+  // The LOG search box owns its text inside AtomicLog: a keystroke must not
+  // re-render the whole studio. Flows that need an empty box (selection jumps,
+  // history search) bump this token instead of holding the string here.
+  const [logQueryResetToken, setLogQueryResetToken] = useState(0);
   const [now, setNow] = useState(() => Date.now());
   const [activeSessionKey, setActiveSessionKey] = useState("");
   const [activePromptRunKey, setActivePromptRunKey] = useState("");
@@ -4011,6 +4250,13 @@ export default function App() {
       storageKeys.deepView,
       appDefaults.deepView,
     ),
+  );
+  // The performance HUD is a diagnostic tool, off by default: the Settings →
+  // 性能 toggle arms it. A reader who opted in with the retired `?perf=1`
+  // parameter still has the legacy flag honoured once; the first write
+  // removes it, after which the settings key is the only source of truth.
+  const [perfHud, setPerfHud] = useState<boolean>(() =>
+    resolvePerfHudInitial(window.localStorage),
   );
   const [guideOpen, setGuideOpen] = useState<boolean>(appDefaults.guideOpen);
   const [historySearchOpen, setHistorySearchOpen] = useState(false);
@@ -4084,6 +4330,10 @@ export default function App() {
   // number driving the list and the "load earlier" affordance; switching the
   // range or the agent resets it to the preference.
   const [runHistoryHours, setRunHistoryHours] = useState(historyRangeHours);
+  // Hours of the newest snapshot this page asked for. The stream reads it at
+  // subscribe time; "load earlier" grows it and re-subscribes, so the service
+  // only ever ships the range the list is about to render.
+  const streamWindowHoursRef = useRef(historyRangeHours);
   // Live filter: RUN HISTORY narrowed to the messages that are executing right
   // now, drawn from the agent's whole history (no time window). Off by
   // default — the filter is allowed to match nothing, so arming it on load
@@ -4217,6 +4467,30 @@ export default function App() {
   }, [deepView]);
 
   useEffect(() => {
+    // The legacy `?perf=1`-era flag (its stored `1` is what resolvePerfHudInitial
+    // honoured at load) is dropped on the first write, so the settings key
+    // becomes the only place the HUD state lives.
+    writeStorageValue(
+      window.localStorage,
+      storageKeys.perfHud,
+      perfHud,
+      legacyStorageKeys.perfHud,
+    );
+  }, [perfHud]);
+
+  // The HUD is pure DOM outside the React tree (the tool that measures must
+  // never enter the render path); React only decides *whether* it exists.
+  // The mount returns an idempotent teardown, so StrictMode's
+  // mount/unmount/mount double-invocation is safe.
+  useEffect(() => {
+    if (!perfHud) {
+      return;
+    }
+    const disconnect = mountPerfHud(getPerfSnapshot);
+    return () => disconnect?.();
+  }, [perfHud]);
+
+  useEffect(() => {
     writeStorageValue(
       window.localStorage,
       storageKeys.historyRange,
@@ -4226,8 +4500,20 @@ export default function App() {
 
   // Changing the default range must be visible immediately: the existing
   // window may have been widened by hand, so it snaps back to the new default.
+  // A larger default also needs data the current snapshot never asked for, so
+  // the stream re-subscribes for that window instead of silently showing a
+  // short list under a wide range label.
   useEffect(() => {
     setRunHistoryHours(historyRangeHours);
+    if (historyRangeHours > streamWindowHoursRef.current) {
+      streamWindowHoursRef.current = historyRangeHours;
+      resumeCursorRef.current = "";
+      snapshotKeyRef.current = "";
+      forceSnapshotRef.current = true;
+      reloadingRef.current = true;
+      setReloadingEvents(true);
+      setStreamEpoch((current) => current + 1);
+    }
   }, [historyRangeHours]);
 
   useEffect(() => {
@@ -4362,6 +4648,10 @@ export default function App() {
     // re-projection entirely.
     const knownSnapshot = forceSnapshot ? snapshotKeyRef.current : "";
     const streamParams = new URLSearchParams();
+    const windowHours = streamWindowHoursRef.current;
+    if (windowHours > 0) {
+      streamParams.set("hours", String(windowHours));
+    }
     if (resumeCursor) {
       streamParams.set("since", resumeCursor);
     } else if (knownSnapshot) {
@@ -4369,8 +4659,13 @@ export default function App() {
     }
     const streamQuery = streamParams.toString();
     const source = new EventSource(
-      streamQuery ? `/api/stream?${streamQuery}` : "/api/stream",
+      joinApi(apiBase, streamQuery ? `/api/stream?${streamQuery}` : "/api/stream"),
     );
+    // A chunked snapshot arrives as a reset frame followed by ordinary `trace`
+    // frames. Collecting it here and committing once at `ready` keeps the
+    // array copy linear; appending each batch to state would be quadratic on a
+    // large history.
+    let snapshotEvents: TraceEvent[] | null = null;
     // Ids seen so far: an O(1) set keeps per-event dedup linear in total
     // events instead of rescanning the accumulated array on every message.
     const seenIds = new Set<string>();
@@ -4399,13 +4694,53 @@ export default function App() {
     source.addEventListener("ready", (message: MessageEvent<string>) => {
       const payload = JSON.parse(message.data) as {
         eventCount?: number;
+        totalEventCount?: number;
         snapshot?: string;
+        hours?: number;
+        truncated?: boolean;
       };
       if (payload?.snapshot) {
         snapshotKeyRef.current = payload.snapshot;
       }
+      if (typeof payload?.truncated === "boolean") {
+        setHistoryTruncated(payload.truncated);
+      }
+      const capturedTotal = payload?.totalEventCount ?? payload?.eventCount;
+      if (typeof capturedTotal === "number") {
+        setCapturedEventCount(capturedTotal);
+      }
+      everConnectedRef.current = true;
       setConnected(true);
       setEverConnected(true);
+      if (snapshotEvents) {
+        const events = snapshotEvents;
+        snapshotEvents = null;
+        // Live broadcasts can interleave with the chunks; restore the same
+        // chronological order the single-frame snapshot used to guarantee.
+        // Timestamps come from the per-event cache instead of re-parsing in
+        // every comparison.
+        events.sort((left, right) => {
+          const delta = getEventTimestamp(left) - getEventTimestamp(right);
+          return delta || String(left.id).localeCompare(String(right.id));
+        });
+        resumeCursorRef.current = events.at(-1)?.id ?? resumeCursorRef.current;
+        const newest = events.at(-1)?.capturedAt;
+        if (newest) {
+          setLastEventAt(Date.parse(newest) || 0);
+        }
+        startTransition(() => {
+          setLiveEvents(events);
+          setEventsLoaded(true);
+          reloadingRef.current = false;
+          setReloadingEvents(false);
+        });
+      } else {
+        // `reset` / `reset-same` already marked the list ready; this covers a
+        // resumed connection whose first frame was only a cursor replay.
+        setEventsLoaded(true);
+        reloadingRef.current = false;
+        setReloadingEvents(false);
+      }
     });
     // New working directories arrive with their git presentation before the
     // events that reference them, so run rows can name the repo and branch.
@@ -4430,6 +4765,11 @@ export default function App() {
       }
       seenIds.add(event.id);
       resumeCursorRef.current = event.id;
+      if (snapshotEvents) {
+        // Part of the chunked snapshot: committed once at `ready`.
+        snapshotEvents.push(event);
+        return;
+      }
       pending.push(event);
       flushTimer ??= window.setTimeout(flush, 120);
     });
@@ -4471,10 +4811,19 @@ export default function App() {
     source.addEventListener("reset-same", (message: MessageEvent<string>) => {
       const payload = JSON.parse(message.data) as {
         eventCount?: number;
+        totalEventCount?: number;
         snapshot?: string;
+        truncated?: boolean;
       };
       if (payload?.snapshot) {
         snapshotKeyRef.current = payload.snapshot;
+      }
+      if (typeof payload?.truncated === "boolean") {
+        setHistoryTruncated(payload.truncated);
+      }
+      const capturedTotal = payload?.totalEventCount ?? payload?.eventCount;
+      if (typeof capturedTotal === "number") {
+        setCapturedEventCount(capturedTotal);
       }
       if (flushTimer !== null) {
         window.clearTimeout(flushTimer);
@@ -4490,7 +4839,33 @@ export default function App() {
       const payload = JSON.parse(message.data) as {
         events: TraceEvent[];
         git?: Record<string, { repo: string; branch: string }>;
+        streaming?: boolean;
+        truncated?: boolean;
+        hours?: number;
+        totalEventCount?: number;
       };
+      if (typeof payload?.truncated === "boolean") {
+        setHistoryTruncated(payload.truncated);
+      }
+      if (typeof payload?.totalEventCount === "number") {
+        setCapturedEventCount(payload.totalEventCount);
+      }
+      if (payload.streaming) {
+        // A chunked snapshot: the reset frame is metadata plus (normally) an
+        // empty list, and the events follow as `trace` frames. Keep whatever
+        // is on screen until `ready` commits the new list once.
+        if (flushTimer !== null) {
+          window.clearTimeout(flushTimer);
+          flushTimer = null;
+        }
+        pending = [];
+        snapshotEvents = payload.events.map(normalizeTraceEvent);
+        for (const event of snapshotEvents) {
+          seenIds.add(event.id);
+        }
+        setGitInfo(payload.git ?? {});
+        return;
+      }
       /*
        * A restart re-sends the whole history. When the snapshot describes the
        * events already on screen (the common case: nothing was recorded while
@@ -4550,8 +4925,23 @@ export default function App() {
         reloadingRef.current = false;
         pushNotice("error", "重新加载失败，事件流会自动重试");
       }
+      // A deployed console reaches across origins to reach the local service.
+      // When that never connects, say why once — a silent offline chip reads
+      // like "no agents are running" when the actual blocker is a refused
+      // origin or a service that was never started.
+      if (apiBase && !everConnectedRef.current && !remoteConnectHintedRef.current) {
+        remoteConnectHintedRef.current = true;
+        pushNotice(
+          "error",
+          "无法连接本地服务",
+          `${apiBase || "同源"} — 确认服务已启动，并在服务端设置 ASTRO_CORS_ORIGINS 加入 ${window.location.origin}`,
+        );
+      }
     };
-    source.onopen = () => setConnected(true);
+    source.onopen = () => {
+      everConnectedRef.current = true;
+      setConnected(true);
+    };
     return () => {
       if (flushTimer !== null) {
         window.clearTimeout(flushTimer);
@@ -4559,7 +4949,7 @@ export default function App() {
       source.close();
       setConnected(false);
     };
-  }, [pageSuspended, streamEpoch, syncStopped]);
+  }, [apiBase, pageSuspended, streamEpoch, syncStopped]);
 
   const allEvents = useMemo(
     () =>
@@ -4575,32 +4965,38 @@ export default function App() {
         : liveEvents,
     [liveEvents, importedEvents],
   );
-  const isDemo = shouldShowDemo(allEvents.length, import.meta.env);
-  const visibleEvents = isDemo ? demoEvents : allEvents;
+  // Demo needs three things: no captured events (the sample never overwrites
+  // real data), the build or the reader permitting it, and the dataset having
+  // actually arrived. dev/test permits it automatically; a production build
+  // permits it only through the explicit `?demo=1` preview opt-in. A failed
+  // load leaves the console on the truthful empty state rather than pinning a
+  // stale or synthetic run.
+  const demoGateOpen = isDemoGateOpen(
+    Math.max(allEvents.length, capturedEventCount),
+    import.meta.env,
+    demoOptIn,
+  );
+  const isDemo = demoDataset.status === "ready" && demoGateOpen;
+  const visibleEvents = isDemo ? demoDataset.events : allEvents;
   /*
-   * Sync budget. One timeout, re-armed only when the setting or the start of
-   * the current sync window changes — no interval, so an idle console costs
-   * nothing. When it fires, the stream effect above closes its EventSource,
-   * which is what stops the appending, the re-derivation and the memory
-   * growth; the header chip then offers to resume (`resumeSync`).
+   * Sample data is a development convenience, never captured evidence. Only the
+   * empty console needs the explanation — with real events on screen a missing
+   * sample changes nothing — and it is one notice, not a repeated toast: the
+   * load happens once per mount.
    */
+  const demoError =
+    demoDataset.status === "error" && demoGateOpen
+      ? demoDataset.error
+      : null;
   useEffect(() => {
-    if (isDemo) {
-      return undefined;
+    if (!demoError) {
+      return;
     }
-    const delay = getSyncStopDelay(syncStartedAt, maxSyncHours, Date.now());
-    if (delay === null) {
-      // No limit configured: make sure a previously armed stop is lifted.
-      setSyncStopped(false);
-      return undefined;
-    }
-    if (delay <= 0) {
-      setSyncStopped(true);
-      return undefined;
-    }
-    const timer = window.setTimeout(() => setSyncStopped(true), delay);
-    return () => window.clearTimeout(timer);
-  }, [isDemo, maxSyncHours, syncStartedAt]);
+    pushNotice("info", "示例数据不可用", demoError);
+  }, [demoError, pushNotice]);
+  // The sync budget timer is armed with the resume logic below
+  // (`resumeSync`): a cap change must be able to reopen the stream, so the
+  // effect lives next to the only definition of "resume".
 
   // The budget expiring is a silent switch-over in the header; say it out loud
   // once, together with the way back. `syncStopped` is also set on resume and
@@ -4618,7 +5014,7 @@ export default function App() {
     pushNotice(
       "info",
       `已达最长同步时长（${getMaxSyncLabel(maxSync)}），已暂停接收新事件`,
-      "点击顶部的 paused 按钮或重启服务可以继续同步",
+      "点击顶部的 paused 按钮、重启服务，或在设置里调高「最长同步时长」，都可以继续同步",
     );
   }, [maxSync, pushNotice, syncStopped]);
 
@@ -4717,9 +5113,22 @@ export default function App() {
   // the first row, and both are derived at render time. Neither path may leave
   // `filteredSessions`: the agent scope is applied first, the time window is
   // measured inside it, and the result is the list.
+  //
+  // The pin orders live rows by the *start of the run's newest message*, not
+  // its latest event: that key is stable for the whole execution of a message
+  // (events keep arriving but the order never moves), so two concurrently
+  // running messages no longer trade places batch after batch. The message
+  // that started executing last sits on top; sending it a new message makes
+  // it — not the other — take the top.
   const visibleSessions = useMemo(() => {
+    const executionStart = (session: TraceSession) =>
+      promptRunsBySession.get(session.key)?.at(-1)?.start ?? session.start;
     if (liveFilter && !isDemo) {
-      return selectLiveRunHistory(filteredSessions, liveSessionKeys);
+      return selectLiveRunHistory(
+        filteredSessions,
+        liveSessionKeys,
+        executionStart,
+      );
     }
     return pinLiveRunHistory(
       selectVisibleRunHistory(
@@ -4729,6 +5138,7 @@ export default function App() {
         liveSessionKeys,
       ),
       liveSessionKeys,
+      executionStart,
     );
   }, [
     filteredSessions,
@@ -4737,11 +5147,16 @@ export default function App() {
     liveSessionKeys,
     now,
     runHistoryHours,
+    promptRunsBySession,
   ]);
   // The Live filter reads the whole history, so there is no window to widen.
+  // `historyTruncated` comes from the service: the snapshot only contains the
+  // requested window, so an older session cannot prove that more exists.
   const canLoadMoreHistory =
     !(liveFilter && !isDemo) &&
-    canLoadMoreRunHistory(filteredSessions, now, runHistoryHours);
+    runHistoryHours < maxStreamWindowHours &&
+    (historyTruncated ||
+      canLoadMoreRunHistory(filteredSessions, now, runHistoryHours));
   // Recomputed only when the inputs change instead of on every parent render.
   const hasAdvancingRun = useMemo(
     () =>
@@ -5188,7 +5603,7 @@ export default function App() {
         setLocateRequest((current) => current + 1);
       }
       setConsoleOpen(true);
-      setQuery("");
+      setLogQueryResetToken((current) => current + 1);
       setReplayMode(false);
       setPlaying(false);
     },
@@ -5215,7 +5630,7 @@ export default function App() {
     setActiveView("topology");
     setHistoryOpen(true);
     setConsoleOpen(true);
-    setQuery("");
+    setLogQueryResetToken((current) => current + 1);
     setReplayMode(false);
     setPlaying(false);
     setHistorySearchOpen(false);
@@ -5276,7 +5691,9 @@ export default function App() {
     const importedIds = new Set(importedEvents.map((event) => event.id));
     try {
       if (!isDemo) {
-        const response = await fetch("/api/events", { method: "DELETE" });
+        const response = await fetch(joinApi(apiBase, "/api/events"), {
+          method: "DELETE",
+        });
         if (!response.ok) throw new Error(`Server returned ${response.status}`);
       }
       // The SSE reset is ordered with new traces; the HTTP response is not.
@@ -5304,7 +5721,9 @@ export default function App() {
     let active = true;
     const load = async () => {
       try {
-        const response = await fetch("/api/health", { cache: "no-store" });
+        const response = await fetch(joinApi(apiBase, "/api/health"), {
+          cache: "no-store",
+        });
         if (!response.ok) {
           throw new Error(`Server returned ${response.status}`);
         }
@@ -5333,12 +5752,67 @@ export default function App() {
       active = false;
       window.clearInterval(timer);
     };
-  }, [pageSuspended]);
+  }, [apiBase, pageSuspended]);
 
   // Restart the local dashboard service in place. The server spawns a
   // successor that re-binds the same port and then exits; this poll waits for
   // a different pid to answer before re-subscribing the event stream, so the
   // UI never keeps consuming the dying process's stream.
+  /**
+   * Wait for the successor to answer with a different pid, then re-subscribe
+   * the stream from a fresh snapshot. Shared by the restart button and the
+   * data-directory setting: both replace the process, and the console must
+   * neither keep consuming the dying stream nor reuse its cursor.
+   */
+  const waitForServiceRestart = async (previousPid: number) => {
+    const deadline = Date.now() + 20_000;
+    for (;;) {
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      try {
+        const health = await fetch(joinApi(apiBase, "/api/health"), {
+          cache: "no-store",
+        });
+        const payload = (await health.json()) as Omit<
+          ServiceHealth,
+          "fetchedAt"
+        >;
+        if (payload?.pid && payload.pid !== previousPid) {
+          setService({ ...payload, fetchedAt: Date.now() });
+          setServiceError("");
+          break;
+        }
+      } catch {
+        // The outgoing process is still holding the port; keep waiting.
+      }
+      if (Date.now() > deadline) {
+        throw new Error("重启超时，请检查本地服务进程");
+      }
+    }
+    // New process, new stream: drop the old connection explicitly instead
+    // of trusting EventSource to reconnect at the right moment.
+    //
+    // A restart is not "the same history, newer tail": the new process reads
+    // the trace files from scratch, so a file added, removed or rewritten
+    // while the service was down only shows up if the console asks for the
+    // full snapshot. Reusing the cursor turned a restart into an empty
+    // `resume` replay, which left a stale list on screen that looked freshly
+    // loaded. The window snaps back to the configured range so the list
+    // describes the current filter (agent + range + Live) rather than a
+    // hand-widened window that the new process may not even contain.
+    resumeCursorRef.current = "";
+    forceSnapshotRef.current = true;
+    setReloadingEvents(true);
+    setRunHistoryHours(historyRangeHours);
+    streamWindowHoursRef.current = historyRangeHours;
+    setHistoryTruncated(false);
+    setStreamEpoch((current) => current + 1);
+    // A restart is also the documented way out of a spent sync budget: the
+    // new process serves a fresh snapshot, so the clock starts over here
+    // instead of leaving the console stopped after a successful restart.
+    setSyncStartedAt(Date.now());
+    setSyncStopped(false);
+  };
+
   const restartDashboard = async () => {
     if (isDemo) {
       return;
@@ -5353,58 +5827,61 @@ export default function App() {
     const previousPid = service?.pid ?? 0;
     setRestarting(true);
     try {
-      const response = await fetch("/api/restart", { method: "POST" });
+      const response = await fetch(joinApi(apiBase, "/api/restart"), {
+        method: "POST",
+      });
       if (!response.ok) {
         throw new Error(`Server returned ${response.status}`);
       }
-      const deadline = Date.now() + 20_000;
-      for (;;) {
-        await new Promise((resolve) => setTimeout(resolve, 400));
-        try {
-          const health = await fetch("/api/health", { cache: "no-store" });
-          const payload = (await health.json()) as Omit<
-            ServiceHealth,
-            "fetchedAt"
-          >;
-          if (payload?.pid && payload.pid !== previousPid) {
-            setService({ ...payload, fetchedAt: Date.now() });
-            setServiceError("");
-            break;
-          }
-        } catch {
-          // The outgoing process is still holding the port; keep waiting.
-        }
-        if (Date.now() > deadline) {
-          throw new Error("重启超时，请检查本地服务进程");
-        }
-      }
-      // New process, new stream: drop the old connection explicitly instead
-      // of trusting EventSource to reconnect at the right moment.
-      //
-      // A restart is not "the same history, newer tail": the new process reads
-      // the trace files from scratch, so a file added, removed or rewritten
-      // while the service was down only shows up if the console asks for the
-      // full snapshot. Reusing the cursor turned a restart into an empty
-      // `resume` replay, which left a stale list on screen that looked freshly
-      // loaded. The window snaps back to the configured range so the list
-      // describes the current filter (agent + range + Live) rather than a
-      // hand-widened window that the new process may not even contain.
-      resumeCursorRef.current = "";
-      forceSnapshotRef.current = true;
-      setReloadingEvents(true);
-      setRunHistoryHours(historyRangeHours);
-      setStreamEpoch((current) => current + 1);
-      // A restart is also the documented way out of a spent sync budget: the
-      // new process serves a fresh snapshot, so the clock starts over here
-      // instead of leaving the console stopped after a successful restart.
-      setSyncStartedAt(Date.now());
-      setSyncStopped(false);
+      await waitForServiceRestart(previousPid);
     } catch (error) {
       pushNotice(
         "error",
         "重启本地服务失败",
         error instanceof Error ? error.message : String(error),
       );
+    } finally {
+      setRestarting(false);
+    }
+  };
+
+  /**
+   * Point the service at another trace root. The server persists it to the
+   * plugin `.env` (so hooks that start the service later use it too) and
+   * restarts; the page then reloads from the new directory.
+   */
+  const changeDataRoot = async (path: string): Promise<boolean> => {
+    if (isDemo) {
+      return false;
+    }
+    const previousPid = service?.pid ?? 0;
+    setRestarting(true);
+    try {
+      const response = await fetch(joinApi(apiBase, "/api/config/data-root"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path }),
+      });
+      const payload = (await response.json().catch(() => ({}))) as {
+        error?: string;
+      };
+      if (!response.ok) {
+        throw new Error(payload?.error || `Server returned ${response.status}`);
+      }
+      pushNotice(
+        "success",
+        "数据目录已更新",
+        "服务正在重启，完成后会重新读取该目录。",
+      );
+      await waitForServiceRestart(previousPid);
+      return true;
+    } catch (error) {
+      pushNotice(
+        "error",
+        "更新数据目录失败",
+        error instanceof Error ? error.message : String(error),
+      );
+      return false;
     } finally {
       setRestarting(false);
     }
@@ -5446,7 +5923,7 @@ export default function App() {
     }
     setSelectedEventId(locateAtomEvent.id);
     setConsoleOpen(true);
-    setQuery("");
+    setLogQueryResetToken((current) => current + 1);
     setTrajectoryLocateRequest((current) => current + 1);
     setLogLocateRequest((current) => current + 1);
   }, [
@@ -5478,6 +5955,14 @@ export default function App() {
     }
     setActiveView("topology");
     focusAtom(currentAtomId);
+    // The button lives in the LOG header, so the LOG must react too: bump the
+    // log's own locate request to center the atom's event row (mirroring the
+    // trajectory locate, which bumps both view requests). A plain
+    // selectedEventId change only *reveals* the row when it is off-screen,
+    // so a click would read as dead while the row is on screen. Clearing the
+    // search filter guarantees the row exists in the filtered list.
+    setLogQueryResetToken((current) => current + 1);
+    setLogLocateRequest((current) => current + 1);
   }, [currentAtomId, focusAtom]);
 
   const handleTrajectorySelect = useCallback(
@@ -5485,7 +5970,7 @@ export default function App() {
       setPlaying(false);
       setReplayMode(false);
       setConsoleOpen(true);
-      setQuery("");
+      setLogQueryResetToken((current) => current + 1);
       const event = activeEvents.find((candidate) => candidate.id === eventId);
       setSelectedAtomId(
         atomId || getAtomIdForEvent(event || null, platformId) || null,
@@ -5589,14 +6074,34 @@ export default function App() {
     promptRunsBySession,
   ]);
 
-  // Widening the window is pure filtering over already-loaded sessions, so it
-  // is synchronous: the previous implementation faked a 320ms "loading" state
-  // on top of instantaneous work, which made the list feel slower than it is.
+  // Widening the window is usually pure filtering over already-loaded
+  // sessions. When the service only shipped the previous window (or says it
+  // truncated older history), widening it also re-subscribes for a snapshot
+  // that reaches further back; the stream commits it in one transition.
   const handleLoadMoreRunHistory = useCallback(() => {
-    setRunHistoryHours((current) =>
-      nextRunHistoryVisibleHours(filteredSessions, now, current),
+    const next = Math.min(
+      historyTruncated && runHistoryHours < maxStreamWindowHours
+        ? runHistoryHours * 2
+        : nextRunHistoryVisibleHours(filteredSessions, now, runHistoryHours),
+      maxStreamWindowHours,
     );
-  }, [filteredSessions, now]);
+    if (next <= runHistoryHours) {
+      return;
+    }
+    setRunHistoryHours(next);
+    if (next > streamWindowHoursRef.current) {
+      // The next snapshot is a superset of what is on screen: drop the cursor
+      // (a tail replay would only add new events) and the snapshot key (the
+      // server must not answer `reset-same` for a narrower window).
+      streamWindowHoursRef.current = next;
+      resumeCursorRef.current = "";
+      snapshotKeyRef.current = "";
+      forceSnapshotRef.current = true;
+      reloadingRef.current = true;
+      setReloadingEvents(true);
+      setStreamEpoch((current) => current + 1);
+    }
+  }, [filteredSessions, historyTruncated, now, runHistoryHours]);
 
   /**
    * The console is deliberately between snapshots: a restart is waiting for
@@ -5635,6 +6140,43 @@ export default function App() {
     handleReloadLatestEvents();
   }, [handleReloadLatestEvents]);
 
+  /*
+   * Sync budget. One timeout, re-armed only when the cap or the start of the
+   * current sync window changes — no interval, so an idle console costs
+   * nothing. When it fires, the stream effect closes its EventSource, which
+   * is what stops the appending, the re-derivation and the memory growth;
+   * the header chip then offers to resume.
+   *
+   * The cap is wall-clock from the sync start, so a pause stops the counting
+   * too: no timer is armed while `syncStopped`, and the clock only starts
+   * over on a resume. Changing the cap re-arms the timer for the time left
+   * under the new cap; when the cap moves while the budget had stopped the
+   * stream and the new cap still holds — `off` included — the pause lifts
+   * through the same reset `resumeSync` performs, so the new cap takes
+   * effect without a second click.
+   */
+  useEffect(() => {
+    if (isDemo) {
+      return undefined;
+    }
+    const delay = getSyncStopDelay(syncStartedAt, maxSyncHours, Date.now());
+    if (capChangeResumesSync(syncStopped, delay)) {
+      resumeSync();
+      return undefined;
+    }
+    if (delay === null) {
+      // No cap configured: make sure a previously armed stop is lifted.
+      setSyncStopped(false);
+      return undefined;
+    }
+    if (delay <= 0) {
+      setSyncStopped(true);
+      return undefined;
+    }
+    const timer = window.setTimeout(() => setSyncStopped(true), delay);
+    return () => window.clearTimeout(timer);
+  }, [isDemo, maxSyncHours, resumeSync, syncStartedAt, syncStopped]);
+
   const headerNavActions: ReadonlyArray<HeaderNavAction> = [
     {
       id: "import",
@@ -5669,7 +6211,11 @@ export default function App() {
   ];
 
   return (
-    <main className="studio-shell">
+    <main
+      className="studio-shell"
+      data-history-truncated={historyTruncated ? "true" : "false"}
+      data-history-window={runHistoryHours}
+    >
       <header className="studio-header">
         <div className="studio-brand">
           <span className="brand-mark">
@@ -5821,6 +6367,7 @@ export default function App() {
               error={serviceError}
               restarting={restarting}
               syncPaused={syncStopped}
+              onChangeDataRoot={changeDataRoot}
               onRestart={() => {
                 void restartDashboard();
               }}
@@ -5839,6 +6386,7 @@ export default function App() {
               historyRange={historyRange}
               liveView={liveFilter}
               maxSync={maxSync}
+              perfHud={perfHud}
               theme={theme}
               onActiveViewChange={(view) => {
                 setActiveView(view);
@@ -5852,6 +6400,7 @@ export default function App() {
               onHistoryRangeChange={setHistoryRange}
               onLiveViewChange={setLiveFilter}
               onMaxSyncChange={setMaxSync}
+              onPerfHudChange={setPerfHud}
               onThemeChange={setTheme}
             />
             <ThemeSwitcher theme={theme} onChange={setTheme} />
@@ -5878,6 +6427,21 @@ export default function App() {
         </IconAction>
       </header>
 
+      {demoOptIn && isDemo ? (
+        /* A production build renders the sample run only because the reader
+           explicitly asked for it with ?demo=1 — make that unmistakable, or
+           the sample would look indistinguishable from captured evidence. */
+        <div className="studio-shell__sample-banner" role="status">
+          <span className="studio-shell__sample-banner__eyebrow">
+            示例数据
+          </span>
+          <span>
+            当前展示的是本地示例会话（<code>?demo=1</code>），不是捕获到的真实
+            Agent 运行。
+          </span>
+        </div>
+      ) : null}
+
       <section
         className={cn(
           "studio-workspace",
@@ -5901,6 +6465,7 @@ export default function App() {
               sessions={visibleSessions}
               activeKey={activeSession?.key || ""}
               activePromptRunKey={activePromptRun?.key || ""}
+              demoError={demoError}
               gitInfo={gitInfo}
               isDemo={isDemo}
               liveFilter={liveFilter}
@@ -6084,8 +6649,7 @@ export default function App() {
                 live={liveActive}
                 selectedEventId={selectedEventId || ""}
                 locateRequest={logLocateRequest}
-                query={query}
-                onQueryChange={setQuery}
+                queryResetToken={logQueryResetToken}
                 onSelect={handleLogSelect}
                 canLocateSelectedAtom={Boolean(currentAtomId)}
                 onLocateSelectedAtom={handleLogLocateAtom}
@@ -6127,6 +6691,7 @@ export default function App() {
           }
         >
           <LazyHistorySearch
+            defaultAgent={agentId}
             defaultRange={historyRange}
             open={historySearchOpen}
             onOpenChange={setHistorySearchOpen}

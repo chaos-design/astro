@@ -47,6 +47,12 @@ type AppDefaults = {
   maxSync: MaxSyncId;
   menuOpen: boolean;
   /**
+   * The floating performance HUD (scroll fps, list render, long tasks). A
+   * diagnostic tool, not part of the console: off by default so a normal
+   * session never shows it, and it measures without touching captured events.
+   */
+  perfHud: boolean;
+  /**
    * Fallback agent when no preference is stored. This mirrors the first entry
    * of the agent dropdown so the default selection is the top of the list.
    */
@@ -72,6 +78,7 @@ export const appDefaults: AppDefaults = {
   liveView: false,
   maxSync: "8h",
   menuOpen: false,
+  perfHud: false,
   platform: "claude",
   replayCursor: 0,
   replayMode: false,
@@ -116,6 +123,15 @@ export const historyRangeOptions: ReadonlyArray<{
   { id: "5d", shortLabel: "5 天", label: "最近 5 天", hours: 5 * 24 },
   { id: "7d", shortLabel: "7 天", label: "最近 7 天", hours: 7 * 24 },
 ];
+
+/**
+ * Longest history window the service will ship in one snapshot.
+ *
+ * The service caps the same number; the client needs it to stop offering
+ * "load earlier" once the window can no longer grow. One month is well past
+ * the 7-day preference and keeps a single snapshot bounded.
+ */
+export const maxStreamWindowHours = 24 * 31;
 
 /** Range used until the user picks another one in Settings. */
 export const defaultHistoryRange: HistoryRangeId = appDefaults.historyRange;
@@ -182,7 +198,7 @@ export function getMaxSyncLabel(id: MaxSyncId): string {
  * Release string shown in the application header. Kept in sync with the
  * root package.json version and asserted by tests/app-config.test.ts.
  */
-export const appVersion = "0.0.3";
+export const appVersion = "0.0.4";
 
 /**
  * Timing values shared by live UI effects.
@@ -191,6 +207,13 @@ export const appVersion = "0.0.3";
 export const appTimings = {
   activeRunTimeoutMs: 24 * 60 * 60 * 1_000,
   activeTransitionMs: 4_200,
+  /**
+   * How long the console waits for the local Demo dataset before giving up.
+   * The file is a few kilobytes on the same machine, so a slow answer means
+   * the service is down or wedged — the console reports it and keeps its
+   * empty state instead of waiting on the skeleton.
+   */
+  demoFetchTimeoutMs: 4_000,
   replayStepBaseMs: 900,
   sessionDurationRefreshMs: 1_000,
 } as const;
@@ -202,6 +225,13 @@ export const appTimings = {
 export const appLayout = {
   historyPromptListMaxHeight: 300,
   historyPromptRowEstimate: 116,
+  /**
+   * Visible run count at and below which RUN HISTORY renders sparse: the
+   * panel has vertical room to spare, so card titles take the six-line clamp
+   * (`.run-history__list.is-sparse` in src/styles.css) instead of the dense
+   * two-line cut. Above it the compact clamp returns for scannability.
+   */
+  runHistorySparseListRows: 4,
   /**
    * Viewport width (px) at and below which the studio header collapses its
    * horizontal nav into the mobile disclosure menu. Must stay in step with the
@@ -217,6 +247,11 @@ export const appLayout = {
  */
 export const storageKeys = {
   activeView: "ASTROX_ACTIVE_VIEW",
+  /**
+   * API base for a deployed console (`?api=` persists here). Empty means
+   * same-origin; see `src/lib/api-base.ts` for the resolution order.
+   */
+  apiBase: "ASTROX_API_BASE",
   consoleOpen: "ASTROX_CONSOLE_OPEN",
   deepView: "ASTROX_DEEP_VIEW",
   historyOpen: "ASTROX_HISTORY_OPEN",
@@ -224,6 +259,8 @@ export const storageKeys = {
   inspectorTab: "ASTROX_INSPECTOR_TAB",
   maxSync: "ASTROX_MAX_SYNC",
   platform: "ASTROX_PLATFORM",
+  /** The performance HUD toggle (Settings → 性能). */
+  perfHud: "ASTROX_PERF_HUD",
   runHistoryLiveView: "ASTROX_RUN_HISTORY_LIVE_VIEW",
   theme: "ASTROX_THEME",
 } as const;
@@ -244,11 +281,40 @@ export const retiredStorageKeys = {
 /**
  * Previous key names accepted during migration. They are removed as soon as
  * the corresponding ASTROX_ preference is written.
+ *
+ * `astro:perf-hud` is the flag the retired `?perf=1` URL parameter wrote: it
+ * holds `"1"` when the reader opted in, not `"true"`, so the initial read
+ * (`resolvePerfHudInitial`, below) interprets it — a stored `"1"` still
+ * arms the HUD, and the key is dropped when the new preference is first
+ * written.
  */
 export const legacyStorageKeys = {
+  perfHud: "astro:perf-hud",
   platform: "astro-platform",
   theme: "astro-theme",
 } as const;
+
+/**
+ * Resolves the performance HUD's initial armed state from storage only — the
+ * `perf` URL parameter is retired; Settings → 性能 is the single switch.
+ *
+ * The primary key is written by the app as `"true"`/`"false"`. When it is
+ * absent, the legacy `?perf=1`-era flag is honoured once: it stored `"1"`
+ * (not `"true"`), so only that exact value still arms the HUD. Anything else
+ * — no primary, no legacy, a garbage value — falls back to the default (off);
+ * the app removes the legacy key on its first write.
+ */
+export function resolvePerfHudInitial(storage: {
+  getItem(key: string): string | null;
+}): boolean {
+  const current = storage.getItem(storageKeys.perfHud);
+  if (current === "true" || current === "false") {
+    return current === "true";
+  }
+  return (current ?? storage.getItem(legacyStorageKeys.perfHud)) === "1"
+    ? true
+    : appDefaults.perfHud;
+}
 
 /**
  * Theme selector choices and their icons. The IDs are persisted as Theme
@@ -331,6 +397,11 @@ export const trajectoryKeyLabels: Readonly<Record<string, string>> = {
 /**
  * Demo data is allowed only during local development or automated test modes.
  * Production builds with no events must never present synthetic trace data.
+ *
+ * This is the *permission*, not the data: the sample run itself is a local
+ * resource file served by the service (`data/demo-events.json`), so the
+ * console also requires the dataset to have loaded before it renders (`isDemo`
+ * in `app.tsx`).
  */
 export function shouldShowDemo(
   eventCount: number,
@@ -341,3 +412,27 @@ export function shouldShowDemo(
     (environment.DEV || environment.MODE === "test")
   );
 }
+
+/**
+ * The full gate that decides whether the sample run is rendered *now*. It needs
+ * three things, and they are checked here so the rule has one definition:
+ *
+ *  - no captured events — the sample never overwrites real data;
+ *  - the build permitting Demo (dev/test) **or** the reader's explicit
+ *    `?demo=1` preview opt-in (production builds, the deployed preview page);
+ *  - the dataset itself is loaded separately in `app.tsx`; this gate only
+ *    says "are we allowed to", not "did it arrive".
+ *
+ * `demoOptIn` is the parsed result of the `?demo=1` param
+ * (`isDemoPreviewEnabled`), so a production console keeps its honest empty
+ * state unless the reader turns it on — the sample is an opt-in, never a
+ * silent fallback to captured evidence.
+ */
+export function isDemoGateOpen(
+  eventCount: number,
+  environment: Pick<ImportMetaEnv, "DEV" | "MODE">,
+  demoOptIn: boolean,
+) {
+  return eventCount === 0 && (shouldShowDemo(0, environment) || demoOptIn);
+}
+

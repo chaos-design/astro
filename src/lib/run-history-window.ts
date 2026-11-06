@@ -88,14 +88,25 @@ export function selectVisibleRunHistory(
  * Pin the executing messages to the top of RUN HISTORY. Ordering strictly by
  * `start` buries a resumed run: the session began hours or days ago, so the
  * prompt that is executing *right now* would sort below every session that
- * merely started later. Pinned rows are ordered by their latest activity
- * (`end` — the moment the new prompt arrived), so the run that just received
- * a message is the first row; finished rows keep their newest-first order
- * underneath.
+ * merely started later.
+ *
+ * The default order is the latest activity (`end`), so the run that just
+ * received a message is the first row. The console passes a more stable key
+ * instead — the start of the run's newest message. `end` moves on every
+ * streaming batch while a run executes, so two concurrently running rows
+ * swapped places batch after batch and the list read as "jumping". Ordering
+ * by message start is stable for the whole execution of a message: rows only
+ * move when a new message actually starts (which takes the top) or finishes
+ * (which drops the row to the finished group). Finished rows keep their
+ * newest-first order underneath.
  */
 export function pinLiveRunHistory<
   T extends { key: string; start: number; end: number },
->(sessions: readonly T[], liveKeys: ReadonlySet<string>): T[] {
+>(
+  sessions: readonly T[],
+  liveKeys: ReadonlySet<string>,
+  orderKey?: (session: T) => number,
+): T[] {
   if (liveKeys.size === 0) {
     return [...sessions];
   }
@@ -104,8 +115,9 @@ export function pinLiveRunHistory<
   for (const session of sessions) {
     (liveKeys.has(session.key) ? live : finished).push(session);
   }
+  const order = orderKey ?? ((session: T) => session.end);
   live.sort(
-    (left, right) => right.end - left.end || right.start - left.start,
+    (left, right) => order(right) - order(left) || right.start - left.start,
   );
   return [...live, ...finished];
 }
@@ -124,13 +136,18 @@ export function pinLiveRunHistory<
  */
 export function selectLiveRunHistory<
   T extends { key: string; start: number; end: number },
->(sessions: readonly T[], liveKeys: ReadonlySet<string>): T[] {
+>(
+  sessions: readonly T[],
+  liveKeys: ReadonlySet<string>,
+  orderKey?: (session: T) => number,
+): T[] {
   if (liveKeys.size === 0) {
     return [];
   }
   return pinLiveRunHistory(
     sessions.filter((session) => liveKeys.has(session.key)),
     liveKeys,
+    orderKey,
   );
 }
 
