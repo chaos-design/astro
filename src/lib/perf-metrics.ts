@@ -789,7 +789,7 @@ export function mountPerfHud(
   grip.setAttribute("aria-hidden", "true");
 
   const hudTitle = doc.createElement("span");
-  hudTitle.textContent = "PERF 页面性能";
+  hudTitle.textContent = "页面性能";
 
   const collapse = doc.createElement("button");
   collapse.type = "button";
@@ -1014,7 +1014,7 @@ export function mountPerfHud(
 
   const render = () => {
     const snapshot = getSnapshot();
-    pill.textContent = `PERF ${formatHudHeadline(snapshot)}`;
+    pill.textContent = formatHudHeadline(snapshot);
     getHudTiles(snapshot).forEach((tile, index) => {
       const node = tileValueNodes[index];
       node.textContent = tile.value;
