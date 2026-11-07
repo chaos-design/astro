@@ -1,17 +1,14 @@
-# Builds the docs site and the console, merges them into one deployable
-# directory (docs at the root, the console preview under /console/), verifies
-# the merged output, and publishes it:
+# Builds the docs site (site/ React+Vite SPA over docs/), verifies the
+# published output, and uploads it as a `docs-dist` artifact that can be
+# published to any static host.
 #
 # Triggers:
-#   - push to `main`          -> build + verify + deploy the merged output to
-#                                GitHub Pages (https://chaos-design.github.io/astro/)
-#   - pull request to `main`  -> build + verify + upload artifacts for preview
+#   - push to `main`          -> build + verify + upload
+#   - pull request to `main`  -> build + verify + upload
 #
-# This workflow owns the Pages site on `main`. `console-preview.yml` keeps
-# publishing console-only rolling previews from feature branches and manual
-# dispatches; the most recent deploy still wins on the shared site, so avoid
-# running both for the same commit. `vercel.json` is kept at the repository
-# root so the same merged build can also be deployed manually via Vercel.
+# A separate Vercel deployment is not part of this workflow; `vercel.json`
+# is kept at the repository root so the same build can be deployed manually
+# via Vercel if desired.
 
 name: Build docs site
 
@@ -30,7 +27,7 @@ permissions:
 
 jobs:
   build:
-    name: Build and verify merged docs + console output
+    name: Install, build and verify docs site
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -48,27 +45,16 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # build console (pnpm build) + docs site (pnpm build:docs) +
-      # merge into deploy/ + verify-console-build assertions.
-      - name: Build and merge deploy output
-        run: pnpm deploy:preview
+      - name: Build docs site
+        run: pnpm build:docs
 
       - name: Verify build output
         run: |
           test -f site/dist/index.html
           test -f site/dist/decks/project-overview-slides-zh.html
-          test -f dist/index.html
-          test -f dist/data/demo-events.json
-          test -f deploy/index.html
-          test -f deploy/console/index.html
-          test -f deploy/decks/project-overview-slides-zh.html
-          echo "Docs output:"
+          echo "Published output:"
           ls site/dist
-          echo "Console output:"
-          ls dist
-          echo "Merged deploy output:"
-          ls deploy
-          ls deploy/decks
+          ls site/dist/decks
 
       - name: Upload docs build
         uses: actions/upload-artifact@v4
@@ -76,43 +62,3 @@ jobs:
           name: docs-dist
           path: site/dist
           retention-days: 7
-
-      - name: Upload merged deploy build
-        uses: actions/upload-artifact@v4
-        with:
-          name: deploy-dist
-          path: deploy
-          retention-days: 7
-
-  deploy-pages:
-    name: Deploy docs + console to GitHub Pages
-    needs: build
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    permissions:
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    concurrency:
-      group: pages
-      cancel-in-progress: false
-    steps:
-      - name: Download merged deploy build
-        uses: actions/download-artifact@v4
-        with:
-          name: deploy-dist
-          path: deploy
-
-      - name: Configure GitHub Pages
-        uses: actions/configure-pages@v5
-
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: deploy
-
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4

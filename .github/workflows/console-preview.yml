@@ -9,6 +9,7 @@
 # 面" section.
 #
 # Triggers:
+#   - push to `main`             -> build + verify + upload + deploy to Pages
 #   - push to the rolling-preview feature branch -> build + verify + upload
 #     + deploy to Pages (live preview of the in-flight branch without merging;
 #     remove it from the list once the branch is merged/deleted)
@@ -17,20 +18,19 @@
 #     Pages from that branch's tip (manual override, e.g. to re-publish a
 #     branch that is no longer a push trigger)
 #
-# `main` is NOT a trigger here: the formal release channel is
-# `docs-site.yml`, which deploys the merged output (docs site at the root,
-# the console under /console/) to Pages on every push to `main`. This
-# workflow stays the rolling preview for in-flight branches, so the shared
-# Pages site is not flipped back and forth between a console-only build and
-# the merged release build.
+# The Pages job publishes only the *console* artifact (never the docs site): a
+# repository has a single Pages site, and this repo also documents a docs-site
+# path (Vercel, via `vercel.json` + `scripts/merge-deploy-output.mjs`) —
+# deploy one or the other, not both. It publishes the *triggering branch's*
+# build (no main-only gate), so the most recent push wins on the shared site.
 
 name: Build console preview
 
 on:
   push:
-    # The feature branch is the rolling-preview test target for the
-    # in-flight work; delete it from the list when that branch merges.
-    branches: [feat/demo-dataset-from-local-service]
+    # `main` is the formal release. The feature branch is the rolling-preview
+    # test target for the in-flight work; delete it when that branch merges.
+    branches: [main, feat/demo-dataset-from-local-service]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -84,14 +84,16 @@ jobs:
   deploy-pages:
     name: Deploy console preview to GitHub Pages
     needs: build
-    # Publishing happens on push to the rolling-preview feature branch, plus a
-    # manual dispatch from any branch. Pushes to `main` publish the merged
-    # docs + console release instead (docs-site.yml). The Pages site is a
-    # single rolling target: the most recent qualifying build wins.
+    # Publishing happens on push to the production branch (`main`) and on push
+    # to the rolling-preview feature branch, plus a manual dispatch from any
+    # branch. The Pages site is a single rolling target: the most recent
+    # qualifying build wins, so a feature branch gets a live preview URL
+    # without merging to main.
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'push' &&
-        github.ref == 'refs/heads/feat/demo-dataset-from-local-service')
+        (github.ref == 'refs/heads/main' ||
+         github.ref == 'refs/heads/feat/demo-dataset-from-local-service'))
     runs-on: ubuntu-latest
     permissions:
       pages: write

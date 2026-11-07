@@ -150,6 +150,9 @@ whole build (`pnpm build && pnpm build:docs &&
 node scripts/merge-deploy-output.mjs`), producing docs at the root and the
 console under `/console/` (with a rewrite so `/console` resolves).
 
+The live deployment — and the online address of the documentation — is
+<https://astro-site-cyan-five.vercel.app/>.
+
 The reader side (data always stays on the reader's machine):
 
 1. Run the local service (§2);
@@ -167,39 +170,28 @@ Behavior contract: a deployed page that never connects announces it **once**
 silent fallback to sample data. The sample renders only behind the reader's
 explicit `?demo=1`, with a persistent "sample data" banner.
 
-### 4.2 GitHub Pages (docs + console, merged)
+### 4.2 GitHub Pages (console preview only)
 
-`.github/workflows/docs-site.yml` is the release channel:
+`.github/workflows/console-preview.yml` — the live preview page is
+<https://chaos-design.github.io/astro/>; append `?demo=1` to explore it with
+the sample dataset:
 
-- On every push/PR to `main`: run `pnpm deploy:preview` (console build, docs
-  build, merge, `verify-console-build` assertions), verify the merged output,
-  and upload the `docs-dist` (docs only) and `deploy-dist` (merged) artifacts.
-- The **deploy** job runs on push to `main` only and publishes the merged
-  output to <https://chaos-design.github.io/astro/> — the docs site at the
-  root, the console preview under `/console/`. The Vercel layout and the
-  Pages layout are therefore the same directory.
+- On every push/PR to `main`: build the console, run the
+  `verify-console-build` assertions (relative assets, shipped icons and sample
+  dataset, no docs-site markers), upload the `console-dist` artifact.
+- The **deploy** job publishes automatically on push to `main` (the formal
+  release) or to a rolling-preview branch listed in the workflow's `push`
+  trigger (an in-flight feature branch gets a live preview URL without merging;
+  remove it from that list once it merges). It publishes *that* branch's build
+  over the single shared Pages site — the most recent qualifying build wins.
+- The manual `workflow_dispatch` can run from **any branch** to re-publish a
+  branch that is no longer a push trigger.
 
-`.github/workflows/console-preview.yml` is the rolling preview:
-
-- `main` is not a trigger — the release channel above owns the Pages site for
-  `main`, so the shared site is not flipped between a console-only build and
-  the merged release build.
-- It builds the console on push to a listed preview branch and on PR to
-  `main` (artifact only, no deploy); a push to the preview branch or the
-  manual `workflow_dispatch` ("Deploy console preview to GitHub Pages") can
-  publish **that** branch's build over the shared Pages site — the most
-  recent qualifying build wins, so use it for a live preview of in-flight
-  work and re-run `docs-site.yml` (or push to `main`) to restore the release.
-
-### 4.2.1 Reader setup
-
-Both clouds serve the same page, so the reader side is identical: run the
-local service (§2), allow the deployment origin (`ASTRO_CORS_ORIGINS` or
-`server.corsOrigins` in `~/.astrox/plugins/astro/config.yaml`, then restart),
-and open the page — it reads the local service, `?api=` points at a
-non-default port. The behavior contract from §4.1 applies unchanged: one
-"cannot reach the local service" announcement, sample data only behind
-explicit `?demo=1`.
+Constraint: the Pages site hosts the **console only**, never the docs — the
+two cannot share the one site (the workflow comments and
+`verify-console-build` enforce this). The docs site keeps its own path: the
+Vercel merged output (`vercel.json` + `scripts/merge-deploy-output.mjs`) or the
+`docs-dist` artifact; it is not auto-deployed to Pages.
 
 ### 4.3 Any other static host
 
@@ -210,14 +202,13 @@ under any sub-path; pair it with the CORS allowlist from §3.
 
 `pnpm build:docs` inlines every `docs/*.md` into `site/dist` at build time
 (`docs/*.html` decks go to `/decks/`, `docs/assets/` ships along); the output
-is self-contained. Three hosting routes:
+is self-contained. The published instance is the Vercel deployment from §4.1
+(<https://astro-site-cyan-five.vercel.app/>). Three hosting routes:
 
 1. The merged artifact: `pnpm deploy:preview` produces `deploy/` (docs at the
    root);
-2. GitHub Pages: `docs-site.yml` publishes the merged output to
-   <https://chaos-design.github.io/astro/> on every push to `main` (§4.2);
-   the `docs-dist` artifact is uploaded on every push/PR for manual hosting
-   elsewhere;
+2. The Actions artifact: `docs-site.yml` uploads `docs-dist` on every
+   push/PR (there is no automatic publish — download and host it anywhere);
 3. `site/dist` deployed directly.
 
 Adding a doc = drop the `.md` in `docs/` **and** register it in

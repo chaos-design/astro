@@ -3,10 +3,10 @@
 **Agent State Trace & Runtime Observations**
 
 This documentation is published online at
-<https://chaos-design.github.io/astro/> — rebuilt on every push to `main`,
-with the console preview under `/console/`. You can try the console without
-installing anything: <https://chaos-design.github.io/astro/console/?demo=1>
-loads the sample dataset in your browser only.
+<https://astro-site-cyan-five.vercel.app/> (Vercel). The console preview is
+published to GitHub Pages at <https://chaos-design.github.io/astro/> — open
+<https://chaos-design.github.io/astro/?demo=1> to try it with the sample
+dataset, no install needed.
 
 This directory separates task-oriented guides from protocol, architecture, and operations references. Start with the user manual for normal use; use the protocol and operations documents when implementing an integration or diagnosing capture.
 

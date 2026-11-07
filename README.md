@@ -4,8 +4,8 @@
 
 ![ASTRO — Agent State Trace & Runtime Observations](docs/assets/astro-hero.png)
 
-**[📖 Read the docs](https://chaos-design.github.io/astro/)** ·
-**[▶ Try the live demo](https://chaos-design.github.io/astro/console/?demo=1)**
+**[📖 Read the docs](https://astro-site-cyan-five.vercel.app/)** ·
+**[▶ Try the live preview](https://chaos-design.github.io/astro/?demo=1)**
 (no install, sample data in the browser only)
 
 English | [简体中文](README-zh.md)
@@ -222,8 +222,8 @@ JSONL, the service pushes it, RUN HISTORY and the topology update in real time.
 
 | Path | How |
 | --- | --- |
-| Vercel | `vercel.json` builds the console and the docs site and merges them: docs at the root, the console preview at `/console/`. Import the repository — no extra settings. |
-| GitHub Pages | Every push to `main` publishes the merged output — the docs site at the root plus the console preview under `/console/` — to [https://chaos-design.github.io/astro](https://chaos-design.github.io/astro/) (`.github/workflows/docs-site.yml`). For in-flight branches, `.github/workflows/console-preview.yml` builds on push/PR; pushing the preview branch or running "Deploy console preview to GitHub Pages" manually publishes that branch's build. |
+| Vercel | `vercel.json` builds the console and the docs site and merges them: docs at the root, the console preview at `/console/`. Import the repository — no extra settings. Live: [astro-site-cyan-five.vercel.app](https://astro-site-cyan-five.vercel.app/) — the online documentation. |
+| GitHub Pages | `.github/workflows/console-preview.yml` builds the console on push/PR; a push to `main` publishes it to [chaos-design.github.io/astro](https://chaos-design.github.io/astro/) — the online preview (append `?demo=1` for the sample dataset). "Deploy console preview to GitHub Pages" publishes any other branch manually. |
 | Any static host | `pnpm build` produces `dist/` with relative asset URLs; serve it as-is. |
 
 A deployed page targets `http://127.0.0.1:5678` by default; override with
@@ -1500,9 +1500,10 @@ for Worker errors; the main-thread fallback can briefly block rendering.
 ## Documentation
 
 The documentation is also published online:
-**[https://chaos-design.github.io/astro](https://chaos-design.github.io/astro/)**
-— the same docs site, rebuilt on every push to `main`, with the console
-preview under `/console/`.
+**[astro-site-cyan-five.vercel.app](https://astro-site-cyan-five.vercel.app/)**
+— the same docs site, rebuilt with every Vercel deployment of `main`. The
+console preview lives at
+**[chaos-design.github.io/astro](https://chaos-design.github.io/astro/?demo=1)**.
 
 | Document | English | 简体中文 |
 | --- | --- | --- |
