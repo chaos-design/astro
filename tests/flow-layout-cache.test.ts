@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createFlowLayoutKey, refreshFlowLayout } from "../src/lib/flow-layout-cache.ts";
 import { createFlowLayout, type FlowLayout } from "../src/lib/flow-layout.ts";
-import { buildHarnessFlow, createDemoEvents } from "../src/lib/trace-model.ts";
+import { buildHarnessFlow } from "../src/lib/trace-model.ts";
+import { createDemoEvents } from "./helpers/demo-fixture.ts";
 
 const events = createDemoEvents(2_000_000_000_000);
 

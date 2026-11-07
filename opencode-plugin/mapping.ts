@@ -93,10 +93,14 @@ export function mapOpenCodeEvent(
   }
 
   if (type === "session.step.started") {
+    // The model id is kept in the message for the human-readable log, and
+    // carried as a structured key so the console can show it without
+    // re-parsing the string. Older captures only have the message.
     return [
       {
         eventName: "Notification",
         message: `step started (${data?.model?.id ?? "unknown"})`,
+        model: data?.model?.id,
       },
     ];
   }

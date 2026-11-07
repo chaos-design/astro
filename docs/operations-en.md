@@ -126,7 +126,13 @@ If a hook reports `ASTRO event was not recorded`, check permissions and confirm 
 | `ASTRO_PROJECT_DIR` | current directory | Base for a relative trace directory. |
 | `ASTRO_MAX_BODY_BYTES` | `5242880` | HTTP ingestion body limit. |
 | `ASTRO_AUTO_OPEN` | `1` | Start the dashboard from installation or agent events. |
+| `ASTRO_CORS_ORIGINS` | unset (no CORS) | Origins allowed to read the local API; equivalent config field `server.corsOrigins`. |
+| `ASTRO_DEMO_EVENTS` | unset | Sample-dataset path override for `GET /api/demo-events`. |
 | `CODEX_HOME` | `~/.codex` | Codex configuration and history root. |
+
+The full reference (including the internal variables `ASTRO_PID_FILE`,
+`ASTRO_OPEN_BROWSER`, and `ASTRO_TAKEOVER`) lives in the
+[Deployment Guide](deployment-en.md) §2.4.
 
 The installer creates `<ASTRO_HOME>/plugins/astro/config.yaml` and `.env` from
 the repository templates. The recorder, CLI, service, installer, DeepSeek
@@ -199,10 +205,16 @@ When the recorder writes `SessionStart` or `UserPromptSubmit`, it:
 
 1. checks `ASTRO_AUTO_OPEN`;
 2. locates the packaged server and built dashboard;
-3. reads `dashboard-<requestedPort>.pid`;
-4. reports the existing URL without opening duplicate tabs when a compatible service runs;
+3. reads `dashboard-<requestedPort>.pid`, probing the port when the PID is stale;
+4. when a compatible service already runs, opens its URL once if the preview page has never been opened, and otherwise reports the existing URL without opening duplicate tabs;
 5. removes a stale or incompatible PID and starts a detached service;
-6. waits for the service to select a port, then opens a source/session deep link.
+6. the service opens a source/session deep link after selecting a port — but only while the preview page has never been opened; later starts stay headless.
+
+Whether the preview page was ever opened is persisted as `preview-state.json`
+in `ASTRO_HOME`: the service marks it the moment a console page attaches to
+`/api/stream` (a local tab or a deployed console both count; document fetches
+and health probes do not). Delete the file to make the next message offer the
+page again.
 
 Manual mode:
 
@@ -442,8 +454,12 @@ Before and after upgrade, confirm the data root is unchanged, native recorder co
 | `ASTROX_PLATFORM` | `codex`, `claude`, `deepseek`, `trae`, `workbuddy` | Topology platform context. |
 | `ASTROX_HISTORY_OPEN` | boolean string | Left History panel. |
 | `ASTROX_CONSOLE_OPEN` | boolean string | Right Events/Inspector panel. |
+| `ASTROX_PERF_HUD` | boolean string | Performance panel on, off by default. |
 
-Legacy `astro-theme` and `astro-platform` values are read and removed after writing the new key. If localStorage is unavailable, preferences remain page-local and trace data is unaffected.
+Legacy `astro-theme` and `astro-platform` values are read and removed after
+writing the new key; `astro:perf-hud` (the on-flag the retired `?perf=1`
+parameter stored) is honoured once on first load, then removed. If localStorage
+is unavailable, preferences remain page-local and trace data is unaffected.
 
 ## 13. Environment and Demo Boundary
 

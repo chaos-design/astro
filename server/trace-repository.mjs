@@ -73,6 +73,8 @@ export class TraceRepository extends EventEmitter {
     this.unidentifiedEventCount = 0;
     this.sessionRecords = new Map();
     this.snapshotKey = "";
+    this.eventIndexFor = null;
+    this.eventIndex = null;
   }
 
   invalidateDerived() {
@@ -106,6 +108,32 @@ export class TraceRepository extends EventEmitter {
     }
     this.snapshotKey = `${events.length.toString(36)}-${(hash >>> 0).toString(36)}`;
     return this.snapshotKey;
+  }
+
+  /**
+   * The index of the first event whose id is `id`, or -1. A suspended client
+   * resuming over SSE names its last event; the old path was an O(n) `findIndex`
+   * on the merged list for every reconnect, which is exactly the cost a busy
+   * stream must not pay. The id→index map is built lazily, once per merged
+   * generation, and only when a resume is actually requested.
+   */
+  resumeIndex(id) {
+    if (!id) {
+      return -1;
+    }
+    const events = this.getEvents();
+    if (this.eventIndexFor !== events) {
+      this.eventIndexFor = events;
+      this.eventIndex = new Map();
+      for (let index = 0; index < events.length; index += 1) {
+        const key = String(events[index].id ?? "");
+        if (!this.eventIndex.has(key)) {
+          this.eventIndex.set(key, index);
+        }
+      }
+    }
+    const found = this.eventIndex.get(String(id));
+    return found === undefined ? -1 : found;
   }
 
   /** Fold one event into the per-session state summary. */

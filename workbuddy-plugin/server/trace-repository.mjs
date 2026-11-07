@@ -72,10 +72,40 @@ export class TraceRepository extends EventEmitter {
     this.knownEventIds = new Set();
     this.unidentifiedEventCount = 0;
     this.sessionRecords = new Map();
+    this.snapshotKey = "";
   }
 
   invalidateDerived() {
     this.mergedEvents = null;
+    this.snapshotKey = "";
+  }
+
+  /**
+   * Cheap identity for the current history: event count plus a rolling hash of
+   * every event id. A client that reconnects after a restart sends the key it
+   * already holds, and the stream answers `reset-same` instead of shipping the
+   * whole snapshot again — a restart with an unchanged history costs no
+   * transfer and no parse on the page. Cached with the merged event list, so
+   * repeated connects do not re-hash.
+   */
+  getSnapshotKey() {
+    if (this.snapshotKey) {
+      return this.snapshotKey;
+    }
+    const events = this.getEvents();
+    let hash = 2166136261;
+    for (const event of events) {
+      const id = String(event.id || "");
+      for (let index = 0; index < id.length; index += 1) {
+        hash ^= id.charCodeAt(index);
+        hash = Math.imul(hash, 16777619);
+      }
+      // Separate ids so ["a","b"] and ["ab"] cannot collide.
+      hash ^= 0x1f;
+      hash = Math.imul(hash, 16777619);
+    }
+    this.snapshotKey = `${events.length.toString(36)}-${(hash >>> 0).toString(36)}`;
+    return this.snapshotKey;
   }
 
   /** Fold one event into the per-session state summary. */

@@ -607,6 +607,79 @@ export function getSessionTitle(events: TraceEvent[]) {
   return events[0]?.cwd?.split("/").filter(Boolean).at(-1) || "Untitled trace";
 }
 
+/**
+ * The run state is a pure left fold: it starts active and each event either
+ * keeps, moves, or terminates it. Splitting it into a per-event step lets the
+ * streaming projection resume the fold from where a previous batch left off
+ * instead of re-walking the whole (possibly huge) session on every appended
+ * slice.
+ */
+export type RunFoldState = {
+  status: TraceRunStatus;
+  reason: RunTerminalReason | null;
+  detail: string | null;
+  runEnded: boolean;
+};
+
+const INITIAL_RUN_STATE: RunFoldState = {
+  status: "active",
+  reason: null,
+  detail: null,
+  runEnded: false,
+};
+
+function stepRunState(
+  state: RunFoldState,
+  event: TraceEvent,
+  waitingEvents?: readonly string[],
+): RunFoldState {
+  const exception = getExceptionOutcome(event, waitingEvents);
+  if (
+    event.eventName === "SessionStart" ||
+    event.eventName === "UserPromptSubmit"
+  ) {
+    // A new prompt (or session) starts a fresh run.
+    return INITIAL_RUN_STATE;
+  }
+  if (exception) {
+    return {
+      status: exception.status,
+      reason: exception.reason,
+      detail: readStatusDetail(event),
+      // A terminal outcome (turn failure, interruption, session end) ends the
+      // run: later progress noise must not resurrect it to "active" in the
+      // run history.
+      runEnded: exception.terminal,
+    };
+  }
+  if (isWaitingTraceEvent(event, waitingEvents)) {
+    return { ...state, status: "waiting", reason: null, detail: readStatusDetail(event) };
+  }
+  if (event.eventName === "Stop") {
+    return { status: "complete", reason: "completed", detail: null, runEnded: true };
+  }
+  if (
+    !state.runEnded &&
+    (state.status === "waiting" || state.status === "failed") &&
+    isExecutionProgressEvent(event)
+  ) {
+    return { status: "active", reason: null, detail: null, runEnded: state.runEnded };
+  }
+  return state;
+}
+
+function foldRunState(
+  events: readonly TraceEvent[],
+  waitingEvents?: readonly string[],
+  from: RunFoldState = INITIAL_RUN_STATE,
+): RunFoldState {
+  let state = from;
+  for (const event of events) {
+    state = stepRunState(state, event, waitingEvents);
+  }
+  return state;
+}
+
 function getTraceRunState(
   events: readonly TraceEvent[],
   waitingEvents?: readonly string[],
@@ -615,48 +688,22 @@ function getTraceRunState(
   reason: RunTerminalReason | null;
   detail: string | null;
 } {
-  let status: TraceRunStatus = "active";
-  let reason: RunTerminalReason | null = null;
-  let detail: string | null = null;
-  let runEnded = false;
-  for (const event of events) {
-    const exception = getExceptionOutcome(event, waitingEvents);
-    if (
-      event.eventName === "SessionStart" ||
-      event.eventName === "UserPromptSubmit"
-    ) {
-      status = "active";
-      reason = null;
-      detail = null;
-      runEnded = false;
-    } else if (exception) {
-      status = exception.status;
-      reason = exception.reason;
-      detail = readStatusDetail(event);
-      // A terminal outcome (turn failure, interruption, session end) ends
-      // the run: later progress noise must not resurrect it to "active" in
-      // the run history.
-      runEnded = exception.terminal;
-    } else if (isWaitingTraceEvent(event, waitingEvents)) {
-      status = "waiting";
-      reason = null;
-      detail = readStatusDetail(event);
-    } else if (event.eventName === "Stop") {
-      status = "complete";
-      reason = "completed";
-      detail = null;
-      runEnded = true;
-    } else if (
-      !runEnded &&
-      (status === "waiting" || status === "failed") &&
-      isExecutionProgressEvent(event)
-    ) {
-      status = "active";
-      reason = null;
-      detail = null;
-    }
-  }
-  return { status, reason, detail };
+  const state = foldRunState(events, waitingEvents);
+  return { status: state.status, reason: state.reason, detail: state.detail };
+}
+
+/**
+ * Resume a run-state fold that stopped at an earlier point: fold only the
+ * appended slice starting from the previous final state. Used by the
+ * streaming projection so a long live session is not re-walked in full on
+ * every batch.
+ */
+export function resumeRunStateFold(
+  appended: readonly TraceEvent[],
+  waitingEvents: readonly string[] | undefined,
+  previous: RunFoldState,
+): RunFoldState {
+  return foldRunState(appended, waitingEvents, previous);
 }
 
 /** Short human-readable cause (payload reason / error / status token). */
@@ -688,12 +735,134 @@ function getTraceRunStatus(
 }
 
 /**
+ * Clients are inconsistent about where they report the LLM model a run
+ * executed on: pi puts `model` / `provider` on the `AgentMessage` payload,
+ * deepseek reports the model *source* object on `AgentMessage.payload.model`,
+ * opencode and pi fold the id into a `Notification` message ("step started
+ * (…) " / "model → provider/id"). This is the single read-side rule that
+ * turns all of those spellings into one display string.
+ */
+const modelSelectMessagePattern = /^model\s*→\s*(.+)$/;
+const stepStartedMessagePattern = /^step started \((.+)\)$/;
+
+function normalizeModelName(value: string): string | undefined {
+  const trimmed = value.trim();
+  return trimmed && trimmed !== "unknown" ? trimmed : undefined;
+}
+
+/**
+ * The model a prompt run executed on, read from the events that report it.
+ * The most recent observation in the run wins — a mid-run model switch
+ * shows the model that produced the last answer. `undefined` when nothing
+ * was recorded; RUN HISTORY then shows no MODEL tag at all.
+ */
+export function extractRunModel(
+  events: readonly TraceEvent[],
+): string | undefined {
+  let observed: string | undefined;
+  for (const event of events) {
+    const payload = event.payload;
+    if (!payload) {
+      continue;
+    }
+    let candidate: string | undefined;
+    if (event.eventName === "AgentMessage") {
+      const reported = payload.model;
+      if (typeof reported === "string") {
+        candidate = normalizeModelName(reported);
+      } else if (reported && typeof reported === "object") {
+        // deepseek reports the model as a source object
+        // `{ kind: "model", provider, model }`.
+        const source = reported as { provider?: unknown; model?: unknown };
+        const modelId = normalizeModelName(
+          typeof source.model === "string" ? source.model : "",
+        );
+        if (modelId) {
+          candidate =
+            typeof source.provider === "string" && source.provider
+              ? `${source.provider}/${modelId}`
+              : modelId;
+        }
+      }
+      // pi reports the provider as a sibling key.
+      if (
+        candidate &&
+        typeof payload.provider === "string" &&
+        payload.provider.trim() &&
+        !candidate.startsWith(`${payload.provider.trim()}/`)
+      ) {
+        candidate = `${payload.provider.trim()}/${candidate}`;
+      }
+    } else if (event.eventName === "Notification") {
+      // Newer opencode captures carry the model as a structured key.
+      const reported = payload.model;
+      if (typeof reported === "string") {
+        candidate = normalizeModelName(reported);
+      }
+      if (!candidate) {
+        const message =
+          typeof payload.message === "string" ? payload.message.trim() : "";
+        if (payload.notification_type === "model_select") {
+          const match = modelSelectMessagePattern.exec(message);
+          candidate = match ? normalizeModelName(match[1]) : undefined;
+        } else {
+          const match = stepStartedMessagePattern.exec(message);
+          candidate = match ? normalizeModelName(match[1]) : undefined;
+        }
+      }
+    }
+    if (candidate) {
+      observed = candidate;
+    }
+  }
+  return observed;
+}
+
+/**
+ * ZCode only reports the model at session start:
+ * `SessionStart.payload.model` (e.g. `account:bigmodel-start-plan/GLM-5.3-Flash`).
+ * That is a session-level value — if the user switches models mid-session the
+ * later prompts read the stale start model, but it is the only model data
+ * that client persists. `buildSessionPromptRuns` uses it as the fallback for
+ * runs whose own events carry no per-run observation.
+ */
+function extractSessionStartModel(
+  events: readonly TraceEvent[],
+): string | undefined {
+  let observed: string | undefined;
+  for (const event of events) {
+    if (event.eventName !== "SessionStart") {
+      continue;
+    }
+    const reported = event.payload?.model;
+    if (typeof reported === "string") {
+      observed = normalizeModelName(reported);
+    }
+  }
+  return observed;
+}
+
+/**
  * Prompt runs are a pure function of the session object. Sessions that a
  * streaming batch did not touch keep their identity (see
  * {@link createSessionProjection}), so this cache lets every untouched row in
  * RUN HISTORY keep the exact same props — and skip re-rendering entirely.
  */
 const promptRunsBySession = new WeakMap<TraceSession, TracePromptRun[]>();
+
+/**
+ * Secondary cache that survives the touched-session object churn: keyed by
+ * session id (stable) it remembers the previously built prompt runs plus the
+ * event signature they were computed against, so a streaming batch can carry
+ * the stable closed runs forward and recompute only the open tail.
+ */
+type PromptRunCacheEntry = {
+  runs: TracePromptRun[];
+  promptCount: number;
+  eventsLength: number;
+  lastEventId: string;
+};
+const promptRunsByKey = new Map<string, PromptRunCacheEntry>();
 
 export function buildSessionPromptRuns(
   session: TraceSession,
@@ -706,7 +875,13 @@ export function buildSessionPromptRuns(
     event.eventName === "UserPromptSubmit" ? [index] : [],
   );
 
-  const runs = promptIndexes.map((startIndex, index): TracePromptRun => {
+  // ZCode reports the model only on SessionStart, which sits before every
+  // prompt window — use it as the fallback for runs whose own events carry no
+  // per-run observation.
+  const sessionStartModel = extractSessionStartModel(session.events);
+
+  const buildRun = (index: number): TracePromptRun => {
+    const startIndex = promptIndexes[index];
     const endIndex = promptIndexes[index + 1] ?? session.events.length;
     const promptWindow = session.events.slice(startIndex, endIndex);
     const terminalIndex = promptWindow.findIndex(
@@ -764,9 +939,60 @@ export function buildSessionPromptRuns(
       toolCount: events.filter(
         (event) => event.eventName === "PreToolUse",
       ).length,
+      model: extractRunModel(events) ?? sessionStartModel,
     };
-  });
+  };
+
+  // Incremental fast path: a streaming batch only touches the tail of the
+  // prompt list. Every run that is *closed* (bounded by a following prompt or
+  // a terminal event) is a pure function of events that no longer change, so
+  // its object can be carried over from the previous build and only the open
+  // run (or the just-closed + open pair when a new prompt landed) is
+  // recomputed. This keeps the 20k-event live session from re-walking all
+  // of its prompt windows on every batch.
+  const prior = promptRunsByKey.get(session.key);
+  let reuseCount = 0;
+  if (
+    prior &&
+    prior.promptCount <= promptIndexes.length &&
+    prior.eventsLength <= session.events.length &&
+    session.events[prior.eventsLength - 1]?.id === prior.lastEventId
+  ) {
+    const grew = promptIndexes.length > prior.promptCount;
+    // Two runs can be in flux (the newly superseded one and the open one);
+    // without a new prompt only the open run is.
+    reuseCount = Math.max(0, promptIndexes.length - (grew ? 2 : 1));
+    reuseCount = Math.min(reuseCount, prior.runs.length);
+  }
+  const runs =
+    reuseCount > 0
+      ? [
+          ...prior!.runs.slice(0, reuseCount),
+          ...promptIndexes
+            .slice(reuseCount)
+            .map((_, offset) => buildRun(reuseCount + offset)),
+        ]
+      : promptIndexes.map((_, index) => buildRun(index));
+
   promptRunsBySession.set(session, runs);
+  promptRunsByKey.set(session.key, {
+    runs,
+    promptCount: promptIndexes.length,
+    eventsLength: session.events.length,
+    lastEventId: session.events.at(-1)?.id || "",
+  });
+  // Bound the keyed cache: it is keyed by session and would otherwise grow
+  // without limit over a very long-lived service. The WeakMap above already
+  // keeps the current set hot, so a clear is cheap to recover from.
+  if (promptRunsByKey.size > 512) {
+    promptRunsByKey.clear();
+    promptRunsByKey.set(session.key, {
+      runs,
+      promptCount: promptIndexes.length,
+      eventsLength: session.events.length,
+      lastEventId: session.events.at(-1)?.id || "",
+    });
+  }
   return runs;
 }
 
@@ -835,6 +1061,17 @@ export function buildSessions(
     .sort(bySessionStartDesc);
 }
 
+/**
+ * Per-session data the incremental append path carries forward so a long live
+ * session is not re-walked in full on every batch: the run-state fold (where
+ * the next slice resumes from) and whether the title is already fixed on a
+ * prompt input.
+ */
+type SessionMeta = {
+  fold: RunFoldState;
+  titleLocked: boolean;
+};
+
 type SessionProjectionCache = {
   count: number;
   firstId: string;
@@ -842,6 +1079,7 @@ type SessionProjectionCache = {
   midId: string;
   sessions: TraceSession[];
   byKey: Map<string, TraceSession>;
+  metaByKey: Map<string, SessionMeta>;
 };
 
 /**
@@ -859,6 +1097,89 @@ type SessionProjectionCache = {
  * and last ids plus the length — and falls back to a full rebuild whenever the
  * list is replaced instead of appended to (an import, a reset, a clear).
  */
+/** Build a session plus the carry-forward meta from scratch. */
+function buildSessionMeta(
+  key: string,
+  events: TraceEvent[],
+): { session: TraceSession; meta: SessionMeta } {
+  const session = createSession(key, events);
+  const fold = foldRunState(events, getWaitingEventsForSource(session.source));
+  let titleLocked = false;
+  for (const event of events) {
+    if (event.eventName === "UserPromptSubmit" && getPromptInput(event)) {
+      titleLocked = true;
+      break;
+    }
+  }
+  return { session, meta: { fold, titleLocked } };
+}
+
+/**
+ * Carry a previous session forward across an appended slice in O(appended)
+ * instead of re-walking the whole (possibly huge) session: the run-state fold
+ * resumes from where it stopped, the title re-locks only while no prompt has
+ * fixed it yet, and the tool count adds up the new `PreToolUse` events.
+ */
+function appendSessionMeta(
+  previous: TraceSession,
+  previousMeta: SessionMeta,
+  appended: TraceEvent[],
+): { session: TraceSession; meta: SessionMeta } {
+  // The projection only reaches here for append-only updates, so the appended
+  // slice is the newest part of a chronological list: no re-sort needed.
+  const events = [...previous.events, ...appended];
+  const fold = foldRunState(
+    appended,
+    getWaitingEventsForSource(previous.source),
+    previousMeta.fold,
+  );
+
+  let titleLocked = previousMeta.titleLocked;
+  let title = previous.title;
+  if (!titleLocked) {
+    for (const event of appended) {
+      if (event.eventName !== "UserPromptSubmit") {
+        continue;
+      }
+      const input = getPromptInput(event);
+      if (input) {
+        title = input;
+        titleLocked = true;
+        break;
+      }
+    }
+  }
+
+  let toolCount = previous.toolCount;
+  for (const event of appended) {
+    if (event.eventName === "PreToolUse") {
+      toolCount += 1;
+    }
+  }
+
+  const last = appended[appended.length - 1];
+  const end = last ? getEventTimestamp(last) : previous.end;
+  return {
+    session: {
+      key: previous.key,
+      id: previous.id,
+      source: previous.source,
+      workspaceId: previous.workspaceId,
+      cwd: previous.cwd,
+      events,
+      title,
+      start: previous.start,
+      end,
+      duration: Math.max(0, end - previous.start),
+      status: fold.status,
+      terminalReason: fold.reason,
+      statusDetail: fold.detail,
+      toolCount,
+    },
+    meta: { fold, titleLocked },
+  };
+}
+
 export function createSessionProjection(): (
   events: TraceEvent[],
 ) => TraceSession[] {
@@ -868,6 +1189,7 @@ export function createSessionProjection(): (
     events: TraceEvent[],
     sessions: TraceSession[],
     byKey: Map<string, TraceSession>,
+    metaByKey: Map<string, SessionMeta>,
   ): TraceSession[] => {
     cache = {
       count: events.length,
@@ -876,6 +1198,7 @@ export function createSessionProjection(): (
       midId: events[events.length >> 1]?.id || "",
       sessions,
       byKey,
+      metaByKey,
     };
     return sessions;
   };
@@ -897,13 +1220,17 @@ export function createSessionProjection(): (
       }
     }
     const byKey = new Map<string, TraceSession>();
+    const metaByKey = new Map<string, SessionMeta>();
     for (const [key, sessionEvents] of grouped) {
-      byKey.set(key, createSession(key, sessionEvents));
+      const { session, meta } = buildSessionMeta(key, sessionEvents);
+      byKey.set(key, session);
+      metaByKey.set(key, meta);
     }
     return snapshot(
       events,
       [...byKey.values()].sort(bySessionStartDesc),
       byKey,
+      metaByKey,
     );
   };
 
@@ -940,18 +1267,23 @@ export function createSessionProjection(): (
     }
     for (const [key, appended] of touched) {
       const previous = current.byKey.get(key);
-      current.byKey.set(
-        key,
-        createSession(
-          key,
-          previous ? [...previous.events, ...appended] : appended,
-        ),
-      );
+      const previousMeta = current.metaByKey.get(key);
+      if (previous && previousMeta) {
+        const next = appendSessionMeta(previous, previousMeta, appended);
+        current.byKey.set(key, next.session);
+        current.metaByKey.set(key, next.meta);
+        continue;
+      }
+      // A brand-new session appearing inside an appended slice.
+      const next = buildSessionMeta(key, appended);
+      current.byKey.set(key, next.session);
+      current.metaByKey.set(key, next.meta);
     }
     return snapshot(
       events,
       [...current.byKey.values()].sort(bySessionStartDesc),
       current.byKey,
+      current.metaByKey,
     );
   };
 }
@@ -980,6 +1312,38 @@ function isExecutionProgressEvent(event: TraceEvent) {
   return executionProgressEvents.has(event.eventName);
 }
 
+/**
+ * The session key is a three-way join re-allocated on every call, and the
+ * flow build asks for one per event — the WeakMap keeps it a single allocation
+ * per event object (they live for the whole snapshot, which is exactly what a
+ * per-event cache wants).
+ */
+const sessionKeys = new WeakMap<TraceEvent, string>();
+
+function getSessionKeyForEvent(event: TraceEvent): string {
+  const cached = sessionKeys.get(event);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const key = getSessionKey(event);
+  sessionKeys.set(event, key);
+  return key;
+}
+
+/** Tool grouping key without a JSON round trip. */
+const toolKeyDelimiter = "\u0001";
+function toolKeyFor(event: TraceEvent): string {
+  return [
+    getSessionKeyForEvent(event),
+    event.parentId ?? "",
+    event.turnId ?? "",
+    event.toolUseId ?? "",
+  ].join(toolKeyDelimiter);
+}
+
+/** Tool result events that close a `PreToolUse` entry. */
+const toolResultEvents = new Set(["PostToolUse", "PostToolUseFailure"]);
+
 function getToolStatus(postEvent: TraceEvent | null) {
   if (!postEvent) {
     return "running";
@@ -994,9 +1358,7 @@ function createFlowEntries(events: TraceEvent[]): FlowEntry[] {
 
   events.forEach((event, stepIndex) => {
     if (event.eventName === "UserPromptSubmit") toolEntries.clear();
-    const toolKey = JSON.stringify([
-      getSessionKey(event), event.parentId, event.turnId, event.toolUseId,
-    ]);
+    const toolKey = toolKeyFor(event);
     if (event.eventName === "PreToolUse") {
       const baseId = `tool-${event.toolUseId || event.id}`;
       let id = baseId;
@@ -1021,10 +1383,7 @@ function createFlowEntries(events: TraceEvent[]): FlowEntry[] {
       return;
     }
 
-    if (
-      ["PostToolUse", "PostToolUseFailure"].includes(event.eventName) &&
-      event.toolUseId
-    ) {
+    if (toolResultEvents.has(event.eventName) && event.toolUseId) {
       const entry = toolEntries.get(toolKey)?.shift();
       if (entry) {
         entry.endEvent = event;
@@ -1216,201 +1575,6 @@ export function searchTraceEvents(
       snippet: createSnippet(searchableValue, matchIndex, needle.length),
     }];
   });
-}
-
-export function createDemoEvents(now = Date.now()): TraceEvent[] {
-  const sessionId = "demo-runtime-7f31";
-  const definitions: Array<[number, string, TracePayload]> = [
-    [-9200, "SessionStart", {}],
-    [
-      -8800,
-      "UserPromptSubmit",
-      {
-        prompt: "Trace this agent run and render the execution topology.",
-        turn: 1,
-        turn_id: "demo-turn-1",
-      },
-    ],
-    [
-      -8260,
-      "Reasoning",
-      {
-        summary: "Inspect the runtime structure and identify the active data flow.",
-        turn: 1,
-        turn_id: "demo-turn-1",
-      },
-    ],
-    [
-      -7720,
-      "PreToolUse",
-      {
-        tool_use_id: "tool-read",
-        tool_name: "Read",
-        tool_input: { path: "src/app.tsx" },
-        turn: 1,
-        turn_id: "demo-turn-1",
-      },
-    ],
-    [
-      -7040,
-      "PostToolUse",
-      {
-        tool_use_id: "tool-read",
-        tool_name: "Read",
-        tool_response: { status: "ok", bytes: 18420 },
-        turn: 1,
-        turn_id: "demo-turn-1",
-      },
-    ],
-    [
-      -6420,
-      "Reasoning",
-      {
-        summary: "Locate the topology, trajectory, and inspector components.",
-        turn: 2,
-        turn_id: "demo-turn-2",
-      },
-    ],
-    [
-      -5940,
-      "PreToolUse",
-      {
-        tool_use_id: "tool-search",
-        tool_name: "Search",
-        tool_input: {
-          query: "trajectory-row topology-routing-indicator inspector-header",
-          path: "src",
-        },
-        turn: 2,
-        turn_id: "demo-turn-2",
-      },
-    ],
-    [
-      -5480,
-      "PostToolUse",
-      {
-        tool_use_id: "tool-search",
-        tool_name: "Search",
-        tool_response: { status: "ok", matches: 18, files: 3 },
-        turn: 2,
-        turn_id: "demo-turn-2",
-      },
-    ],
-    [
-      -4860,
-      "PreToolUse",
-      {
-        tool_use_id: "tool-edit",
-        tool_name: "Edit",
-        tool_input: {
-          path: "src/app.tsx",
-          replacements: 6,
-          scope: "trajectory hierarchy and inspector header",
-        },
-        turn: 2,
-        turn_id: "demo-turn-2",
-      },
-    ],
-    [
-      -3980,
-      "PostToolUse",
-      {
-        tool_use_id: "tool-edit",
-        tool_name: "Edit",
-        tool_response: {
-          status: "ok",
-          changedLines: 142,
-          files: ["src/app.tsx", "src/styles.css"],
-        },
-        turn: 2,
-        turn_id: "demo-turn-2",
-      },
-    ],
-    [
-      -3260,
-      "Reasoning",
-      {
-        summary: "Validate hierarchy, responsive layout, and event selection.",
-        turn: 3,
-        turn_id: "demo-turn-3",
-      },
-    ],
-    [
-      -2680,
-      "PreToolUse",
-      {
-        tool_use_id: "tool-test",
-        tool_name: "RunCommand",
-        tool_input: { cmd: "pnpm test && pnpm build" },
-        turn: 3,
-        turn_id: "demo-turn-3",
-      },
-    ],
-    [
-      -1460,
-      "PostToolUse",
-      {
-        tool_use_id: "tool-test",
-        tool_name: "RunCommand",
-        tool_response: {
-          exitCode: 0,
-          stdout: "25 tests passed; production build complete",
-        },
-        turn: 3,
-        turn_id: "demo-turn-3",
-      },
-    ],
-    [
-      -920,
-      "AgentMessage",
-      {
-        message: "The loop-aware execution trajectory is ready.",
-        turn: 3,
-        turn_id: "demo-turn-3",
-      },
-    ],
-    [
-      -420,
-      "Notification",
-      {
-        notification_type: "idle_prompt",
-        message: "Agent completed the task.",
-        turn: 3,
-        turn_id: "demo-turn-3",
-      },
-    ],
-    [
-      0,
-      "Stop",
-      {
-        last_assistant_message: "Implementation complete. Tests passed.",
-        loop_count: 3,
-        turn: 3,
-        turn_id: "demo-turn-3",
-      },
-    ],
-  ];
-
-  return definitions.map(([offset, eventName, details], index) =>
-    normalizeTraceEvent({
-      schemaVersion: 2,
-      id: `demo-${index}`,
-      capturedAt: new Date(now + offset).toISOString(),
-      source: "codex",
-      workspaceId: "demo-workspace",
-      sessionId,
-      eventName,
-      toolUseId: details.tool_use_id || null,
-      toolName: details.tool_name || null,
-      cwd: "/workspace/astro",
-      payload: {
-        session_id: sessionId,
-        event_name: eventName,
-        cwd: "/workspace/astro",
-        ...details,
-      },
-    }),
-  );
 }
 
 export const supportedEventTypes = eventOrder;

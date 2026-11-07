@@ -8,7 +8,8 @@ import {
   projectTraceEvents,
 } from "../src/lib/atomic-projection.ts";
 import { createFlowLayout, FLOW_ROUTER_OPTIONS } from "../src/lib/flow-layout.ts";
-import { buildHarnessFlow, createDemoEvents } from "../src/lib/trace-model.ts";
+import { buildHarnessFlow } from "../src/lib/trace-model.ts";
+import { createDemoEvents } from "./helpers/demo-fixture.ts";
 
 test("projects trace events into a strictly ordered atomic flow", () => {
   const events = createDemoEvents(2_000_000_000_000);

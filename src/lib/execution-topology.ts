@@ -138,30 +138,82 @@ function getAtomStatus(
   return "complete";
 }
 
+/**
+ * Tool-result event names that can close a tool atom. Module-level so the
+ * node build never re-allocates a fresh array per atom.
+ */
+const toolResultEventNames = new Set(["PostToolUse", "PostToolUseFailure"]);
+
 function createBaseNodes(
   events: TraceEvent[],
   complete: boolean,
   atoms: AtomDefinition[],
   platform: PlatformConfig,
 ): HarnessNode[] {
-  return atoms.map((atom, index) => {
-    const matchingEvents = events.filter((event) =>
-      atomMatchesEvent(atom, event, atom.eventTypes),
-    );
-    const countTypes = atom.countEventTypes || atom.eventTypes;
-    const count = events.filter((event) =>
-      atomMatchesEvent(atom, event, countTypes),
-    ).length;
+  // One pass over the events (chronological) feeds every atom at once. The
+  // previous shape ran three full `events.filter` scans per atom — matching,
+  // count and the PreToolUse iteration count — so a 20k-event active run paid
+  // ~3 × atoms × 20k `.includes` checks per streaming batch. The single pass
+  // below does `atoms × events` set lookups and keeps the last-seen event in
+  // chronological order, which is exactly what `.at(-1)` on the old filtered
+  // arrays returned.
+  const preToolCount = events.reduce(
+    (total, event) => total + (event.eventName === "PreToolUse" ? 1 : 0),
+    0,
+  );
+  type AtomAccumulator = {
+    atom: AtomDefinition;
+    matchSet: Set<string>;
+    countSet: Set<string>;
+    matching: TraceEvent[];
+    lastToolResult: TraceEvent | null;
+    counting?: number;
+  };
+  const accumulators: AtomAccumulator[] = atoms.map((atom) => ({
+    atom,
+    matchSet: new Set(atom.eventTypes),
+    countSet: new Set(atom.countEventTypes || atom.eventTypes),
+    matching: [],
+    lastToolResult: null,
+  }));
+
+  for (const event of events) {
+    const question = isUserQuestionEvent(event);
+    const excluded = isUserQuestionToolEvent(event);
+    for (const state of accumulators) {
+      // Precedence mirrors `atomMatchesEvent`: a positive user-question match
+      // wins, then the tool exclusion, then the type set.
+      const match =
+        state.atom.id === "user-question"
+          ? question
+          : excluded && questionToolExclusions.has(state.atom.id)
+            ? false
+            : state.matchSet.has(event.eventName);
+      if (match) {
+        state.matching.push(event);
+        if (toolResultEventNames.has(event.eventName)) {
+          state.lastToolResult = event;
+        }
+      }
+      const counted =
+        state.atom.id === "user-question"
+          ? question
+          : excluded && questionToolExclusions.has(state.atom.id)
+            ? false
+            : state.countSet.has(event.eventName);
+      if (counted) {
+        state.counting = (state.counting ?? 0) + 1;
+      }
+    }
+  }
+
+  return accumulators.map((state, index) => {
+    const atom = state.atom;
+    const matchingEvents = state.matching;
     const event = matchingEvents.at(-1) || null;
     const endEvent =
       atom.id === "tool-call" || atom.id === "tool-execute"
-        ? [...matchingEvents]
-            .reverse()
-            .find((candidate) =>
-              ["PostToolUse", "PostToolUseFailure"].includes(
-                candidate.eventName,
-              ),
-            ) || null
+        ? state.lastToolResult
         : null;
 
     return {
@@ -172,7 +224,7 @@ function createBaseNodes(
       data: {
         ...atom,
         index,
-        count,
+        count: state.counting ?? 0,
         platform: platform.id,
         actor: event?.source?.toUpperCase() || "SYSTEM",
         status: getAtomStatus(
@@ -187,9 +239,7 @@ function createBaseNodes(
               ? "PASS"
               : "WAIT"
             : null,
-        iterations: events.filter(
-          (candidate) => candidate.eventName === "PreToolUse",
-        ).length,
+        iterations: preToolCount,
         event,
         eventIds: matchingEvents.map((candidate) => candidate.id),
         startEvent: event,
@@ -198,23 +248,6 @@ function createBaseNodes(
       },
     };
   });
-}
-
-function atomMatchesEvent(
-  atom: AtomDefinition,
-  event: TraceEvent,
-  eventTypes: readonly string[],
-) {
-  if (atom.id === "user-question" && isUserQuestionEvent(event)) {
-    return true;
-  }
-  if (
-    isUserQuestionToolEvent(event) &&
-    questionToolExclusions.has(atom.id)
-  ) {
-    return false;
-  }
-  return eventTypes.includes(event.eventName);
 }
 
 function createSubagentNodes(

@@ -123,6 +123,23 @@ const EVENT_PROJECTIONS: Readonly<Record<string, readonly ProjectionStep[]>> = {
   ],
 };
 
+/** Events that close the running model span in the active context. */
+const CLOSES_MODEL_EVENTS = new Set(["Stop", "SessionEnd", "Interrupt"]);
+
+/**
+ * Stable context key for the active model span. Built as one delimited string
+ * instead of `JSON.stringify` of an array, so the hot projection loop stops
+ * allocating an array plus serialized form per event.
+ */
+function contextKey(
+  source: string,
+  workspaceId: string,
+  sessionId: string,
+  parentId: string | null | undefined,
+): string {
+  return `${source}\u0001${workspaceId}\u0001${sessionId}\u0001${parentId ?? ""}`;
+}
+
 export type AtomicTraceProjection = {
   events: AtomicFlowEvent[];
   primarySequenceByTraceId: ReadonlyMap<string, number>;
@@ -143,9 +160,12 @@ export function projectTraceEvents(
   let sequence = 0;
 
   traceEvents.forEach((traceEvent, traceIndex) => {
-    const context = JSON.stringify([
-      traceEvent.source, traceEvent.workspaceId, traceEvent.sessionId, traceEvent.parentId,
-    ]);
+    const context = contextKey(
+      traceEvent.source,
+      traceEvent.workspaceId,
+      traceEvent.sessionId,
+      traceEvent.parentId,
+    );
     if (traceEvent.eventName === "UserPromptSubmit") activeModelByContext.delete(context);
     const fallbackAtomId = config.eventAtomMap[traceEvent.eventName] ?? "trace-append";
     const steps: readonly ProjectionStep[] = isUserQuestionEvent(traceEvent)
@@ -155,13 +175,18 @@ export function projectTraceEvents(
         : EVENT_PROJECTIONS[traceEvent.eventName] ?? [
             { atomId: fallbackAtomId, phase: fallbackPhase(traceEvent) },
           ];
-    const closesModel = ["Stop", "SessionEnd", "Interrupt"].includes(traceEvent.eventName) &&
+    const closesModel = CLOSES_MODEL_EVENTS.has(traceEvent.eventName) &&
       activeModelByContext.has(context);
     const effectiveSteps: readonly ProjectionStep[] = closesModel
       ? [{ atomId: "model-invoke", phase: traceEvent.status === "failed" ? "error" : "end",
           instanceGroup: "model" }, ...steps]
       : steps;
 
+    // The primary atom's key for this event; tracking the last sequence that
+    // projects onto it locally replaces the old `findLast` over the whole
+    // projected list (an O(n·m) scan of every event against every prior step).
+    const primaryKey = atomById.get(fallbackAtomId)?.key;
+    let lastPrimarySequence = 0;
     effectiveSteps.forEach((step) => {
       const sourceAtom = atomById.get(step.atomId) ?? atomById.get(fallbackAtomId);
       if (sourceAtom === undefined) {
@@ -176,6 +201,9 @@ export function projectTraceEvents(
         } else {
           activeModelByContext.set(context, id);
         }
+      }
+      if (sourceAtom.key === primaryKey) {
+        lastPrimarySequence = sequence;
       }
       const event: AtomicFlowEvent = {
         atom: toAtomicDefinition(sourceAtom),
@@ -202,15 +230,11 @@ export function projectTraceEvents(
       traceIdBySequence.set(sequence, traceEvent.id);
     });
 
-    const primaryAtomId = fallbackAtomId;
-    const primary = projectedEvents.findLast(
-      (event) =>
-        traceIdBySequence.get(event.sequence) === traceEvent.id &&
-        atomById.get(primaryAtomId)?.key === event.atom.key,
-    );
-    const latest = primary ?? projectedEvents.at(-1);
-    if (latest !== undefined) {
-      primarySequenceByTraceId.set(traceEvent.id, latest.sequence);
+    // `sequence` counts every push, so after this event's steps it is the
+    // sequence of the last projected step overall — exactly what the old
+    // `projectedEvents.at(-1)` fallback read.
+    if (sequence > 0) {
+      primarySequenceByTraceId.set(traceEvent.id, lastPrimarySequence || sequence);
     }
   });
 

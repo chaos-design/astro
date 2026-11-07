@@ -129,7 +129,12 @@ find "$HOME/.astrox" -type f -name events.jsonl -print
 | `ASTRO_PROJECT_DIR` | 当前目录 | 解析相对 `ASTRO_TRACE_DIR` 的基准。 |
 | `ASTRO_MAX_BODY_BYTES` | `5242880` | HTTP 写入体积上限。 |
 | `ASTRO_AUTO_OPEN` | `1` | 安装或 Agent 触发时自动启动控制台。 |
+| `ASTRO_CORS_ORIGINS` | 未设置（关闭跨域） | 允许读取本机 API 的部署页来源，等价配置项 `server.corsOrigins`。 |
+| `ASTRO_DEMO_EVENTS` | 未设置 | 示例数据集（`GET /api/demo-events`）路径覆盖。 |
 | `CODEX_HOME` | `~/.codex` | Codex 配置、活动和归档历史目录。 |
+
+全量参考（含 `ASTRO_PID_FILE`、`ASTRO_OPEN_BROWSER`、`ASTRO_TAKEOVER` 等内部变量）
+见 [部署指南](deployment-zh.md) §2.4。
 
 安装器会从仓库模板创建 `<ASTRO_HOME>/plugins/astro/config.yaml` 与 `.env`。
 采集器、CLI、服务、安装器、DeepSeek 适配器和 Vite 代理统一读取这两个文件。
@@ -193,10 +198,14 @@ pnpm build
 
 1. 检查 `ASTRO_AUTO_OPEN`；
 2. 查找同包的 `server/server.mjs` 和 `dist/index.html`；
-3. 读取 `dashboard-<requestedPort>.pid`；
-4. 若兼容服务已运行，只报告当前 URL，不重复打开标签页；
+3. 读取 `dashboard-<requestedPort>.pid`，PID 失效时改为探测端口；
+4. 若兼容服务已运行：预览页从未打开过则打开一次，否则只报告当前 URL，不重复打开标签页；
 5. 若 PID 失效或属于其他服务，清理 PID 并启动新的后台服务；
-6. 服务完成端口选择后写回实际 URL，并按来源和会话打开深链。
+6. 服务完成端口选择后写回实际 URL，并按来源和会话打开深链——但仅当预览页从未被打开过；之后的启动保持无头。
+
+预览页「是否打开过」持久化为 `ASTRO_HOME` 下的 `preview-state.json`：服务端在
+控制台页面接入 `/api/stream` 的瞬间打点（本地标签页与部署版控制台都算；拉取
+HTML 文档与健康探测不算）。删除该文件可让下一条消息重新提供页面。
 
 手动模式：
 
@@ -427,8 +436,11 @@ astrox restart         # 重启守护进程，加载新 server 与 dist
 | `ASTROX_PLATFORM` | `codex` / `claude` / `deepseek` / `trae` / `workbuddy` | 拓扑平台上下文。 |
 | `ASTROX_HISTORY_OPEN` | boolean string | 左侧 History 展开状态。 |
 | `ASTROX_CONSOLE_OPEN` | boolean string | 右侧 Events/Inspector 展开状态。 |
+| `ASTROX_PERF_HUD` | boolean string | 性能面板开关，默认关。 |
 
-旧 `astro-theme` 和 `astro-platform` 会在读取后迁移，并在新键写入时删除。localStorage 不可用时，偏好只在当前页面内生效，不影响 Trace 数据。
+旧 `astro-theme`、`astro-platform` 与 `astro:perf-hud`（早版 `?perf=1` 遗留的开启标记）
+会在对应新键写入时删除；前两者自动迁移，`astro:perf-hud` 首读保留一次。localStorage
+不可用时，偏好只在当前页面内生效，不影响 Trace 数据。
 
 ## 13. 环境与 Demo 边界
 

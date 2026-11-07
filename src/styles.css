@@ -282,6 +282,18 @@ button:not(:disabled),
   cursor: pointer;
 }
 
+/* A control that cannot act must not invite a press: disabled reads as the
+ * plain arrow, on raw buttons and on rows that disable through
+ * `aria-disabled` instead of the attribute. `cursor: not-allowed` is
+ * deliberately not used — the console's disabled affordance is dimming, and
+ * shadcn buttons drop pointer events entirely, so an arrow keeps one
+ * convention everywhere. */
+button:disabled,
+button[aria-disabled="true"],
+[role="button"][aria-disabled="true"] {
+  cursor: default;
+}
+
 /* Strip the UA button border, except for controls that draw their own:
  * console/playback buttons, Radix triggers, and the two custom pills below.
  * Without the exclusions the LIVE chip and the service card's restart action
@@ -376,9 +388,43 @@ pre,
   height: 100dvh;
   min-width: 0;
   min-height: 0;
-  grid-template-rows: 64px minmax(0, 1fr);
+  grid-template-rows: 64px auto minmax(0, 1fr);
   overflow: hidden;
   background: var(--bg);
+}
+
+/* The sample-data banner only exists when a production page explicitly opted
+   in with ?demo=1. It sits in its own (row 2) track; the workspace is pinned
+   to row 3 so the banner's conditional presence never reflows the grid. */
+.studio-shell__sample-banner {
+  grid-row: 2;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--amber) 14%, var(--panel));
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.studio-shell__sample-banner__eyebrow {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--amber) 22%, transparent);
+  color: var(--amber);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.studio-shell__sample-banner code {
+  padding: 0 4px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--amber) 18%, transparent);
+  font-size: 12px;
 }
 
 .studio-header {
@@ -946,6 +992,61 @@ pre,
   color: var(--muted-soft);
 }
 
+.service-card__path-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* Buttons are reset at the top of this file; a custom one has to spell out
+ * its border and ink or it renders as bare text. */
+.service-card__path-edit {
+  flex: none;
+  border: 1px solid var(--chrome-line);
+  border-radius: 4px;
+  padding: 1px 6px;
+  color: var(--muted);
+  background: transparent;
+  font: inherit;
+  font-size: 8px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+
+.service-card__path-edit:hover {
+  color: var(--text);
+  border-color: var(--muted);
+}
+
+.service-card__root-form {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.service-card__root-input {
+  min-width: 0;
+  flex: 1;
+  border: 1px solid var(--chrome-line);
+  border-radius: 4px;
+  padding: 4px 6px;
+  color: var(--text);
+  background: var(--panel);
+  font-family: var(--font-mono);
+  font-size: 9px;
+}
+
+.service-card__root-input:focus-visible {
+  outline: 1px solid var(--primary);
+  outline-offset: 1px;
+}
+
+.service-card__root-save {
+  flex: none;
+  font-size: 9px;
+}
+
 /* Two versions side by side: "which bundle am I looking at, and which bundle
  * is serving it?" was a single "0.0.3 · node v24" line that conflated the
  * console, the service, and the runtime. */
@@ -1087,12 +1188,15 @@ pre,
   background: var(--selection-bg);
 }
 
+/* No border line in the resting state: the whole header row stays quiet and
+   the violet border only appears on hover, so all three controls share one
+   resting surface and one hover effect. */
 .theme-select {
   width: 28px;
   min-width: 28px;
   padding: 0;
   justify-content: center;
-  border-color: var(--line-bright);
+  border-color: transparent;
   color: var(--muted-soft);
   background: var(--panel-raised);
 }
@@ -2386,12 +2490,16 @@ pre,
 }
 
 .studio-workspace {
-  --left-panel-width: 210px;
+  /* RUN HISTORY cards carry wrapped titles, workspace paths and tag rows; at
+   * 210px the message text column was ~159px and every line truncated. The
+   * wider track keeps the canvas dominant while the cards read. */
+  --left-panel-width: 240px;
   --right-panel-width: 320px;
 
   display: grid;
   min-width: 0;
   min-height: 0;
+  grid-row: 3;
   grid-template-columns: var(--left-panel-width) minmax(0, 1fr) var(
       --right-panel-width
     );
@@ -2511,6 +2619,28 @@ pre,
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+/* A lone run should not float as one small card above an empty panel. Only
+   when it carries an OPEN sub-message thread does the item fill the remaining
+   panel height — and that space is absorbed by the thread's scroll region, not
+   the message row (the row keeps its natural height). A lone run with no
+   thread, or with a collapsed thread, stays a compact card. The moment a
+   second run lands the class drops off and the compact stack returns. */
+.run-history__list.is-single > .run-history__item.is-thread-open {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* The sub-message list takes the vertical room. It is the flex-grow child:
+   the inline measured height is the basis, flex-grow extends it to fill the
+   item. Scoped to the open thread so a collapsed one (height 0) never
+   stretches into an empty box. */
+.run-history__list.is-single > .run-history__item.is-thread-open > .run-history__prompt-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .run-history__item {
@@ -2917,6 +3047,14 @@ pre,
   -webkit-line-clamp: 2;
 }
 
+/* Sparse list (only a few messages on screen): the panel has vertical room to
+ * spare, so the cards grow taller instead of truncating — the title takes the
+ * same six-line ceiling the hover card uses rather than the dense two-line
+ * cut. The threshold lives in appLayout.runHistorySparseListRows. */
+.run-history__list.is-sparse .run-history__copy > strong {
+  -webkit-line-clamp: 6;
+}
+
 .run-history__copy > small,
 .run-history__copy > code {
   overflow: hidden;
@@ -2993,10 +3131,34 @@ pre,
  * overshoot tolerance for two- and three-message threads); a CSS max-height
  * here would clip that measured height again. */
 .run-history__prompt-scroll {
-  margin: 5px 4px 5px 8px;
+  /* The thread gutter (margin + border + list padding) used to eat 16px of an
+   * already narrow panel; 9px keeps the nesting legible and gives the prompt
+   * cards' text back to the title and tags. */
+  margin: 5px 4px;
   overflow: hidden;
   border-left: 1px solid color-mix(in srgb, var(--blue) 48%, var(--line));
   background: color-mix(in srgb, var(--panel-raised) 46%, transparent);
+  /* The thread is always mounted for multi-prompt rows and animates between
+   * its measured height and 0: expand/collapse slides the rows below instead
+   * of teleporting them (the N LIVE list jumping). Margins join the
+   * transition so a collapsed thread takes no more space than an unmounted
+   * one; visibility stays visible while the collapse animates, then hides
+   * (unfocusable, unannounced) once the box is gone. */
+  transition:
+    height 180ms ease,
+    margin-top 180ms ease,
+    margin-bottom 180ms ease;
+}
+
+.run-history__prompt-scroll.is-collapsed {
+  visibility: hidden;
+  margin-top: 0;
+  margin-bottom: 0;
+  transition:
+    height 180ms ease,
+    margin-top 180ms ease,
+    margin-bottom 180ms ease,
+    visibility 0s linear 180ms;
 }
 
 .run-history__prompt-scroll [data-slot="scroll-area-viewport"] {
@@ -3008,7 +3170,7 @@ pre,
   display: flex;
   min-width: 0;
   margin: 0;
-  padding: 5px 4px 6px 7px;
+  padding: 5px 4px 6px 4px;
   list-style: none;
   flex-direction: column;
   gap: 6px;
@@ -3024,8 +3186,8 @@ pre,
 .run-history__prompts li::before {
   position: absolute;
   top: 17px;
-  left: -7px;
-  width: 5px;
+  left: -4px;
+  width: 3px;
   border-top: 1px solid color-mix(in srgb, var(--blue) 48%, var(--line));
   content: "";
 }
@@ -5474,11 +5636,17 @@ pre,
 
 /* Log edge controls live in the header row. They used to float over the list,
    where the top chevron sat on the first visible atom — the row a reader had
-   just scrolled to was half covered by a button. */
+   just scrolled to was half covered by a button. Both buttons stay mounted at
+   all times and the container reserves the two-button width (22px × 2 + 4px
+   gap): an unreachable edge is expressed with a disabled state, not an
+   unmount, so the header layout and the sibling search input never shift as
+   the list scrolls. */
 .atomic-log__scroll-controls {
   display: flex;
-  flex: 0 0 auto;
+  flex: 0 0 48px;
+  width: 48px;
   align-items: center;
+  justify-content: flex-end;
   gap: 4px;
 }
 
@@ -5501,22 +5669,30 @@ pre,
     background 120ms ease;
 }
 
+/* The unreachable edge stays visible but quiet: dimmer ink, no pointer, no
+   hover response, no scroll cue. */
+.atomic-log__scroll-button:disabled {
+  color: var(--muted);
+  border-color: var(--line);
+  cursor: default;
+}
+
 .atomic-log__scroll-button > svg {
   width: 12px;
   height: 12px;
 }
 
-.atomic-log__scroll-button:hover {
+.atomic-log__scroll-button:not(:disabled):hover {
   border-color: var(--selection-border);
   color: var(--selection-text);
   background: var(--selection-bg);
 }
 
-.atomic-log__scroll-button--top:hover svg {
+.atomic-log__scroll-button--top:not(:disabled):hover svg {
   animation: scroll-cue-up 720ms ease-in-out infinite;
 }
 
-.atomic-log__scroll-button--bottom:hover svg {
+.atomic-log__scroll-button--bottom:not(:disabled):hover svg {
   animation: scroll-cue-down 720ms ease-in-out infinite;
 }
 
@@ -6691,7 +6867,7 @@ pre,
 
 @media (max-width: 1180px) {
   .studio-workspace {
-    --left-panel-width: 190px;
+    --left-panel-width: 220px;
     --right-panel-width: 294px;
   }
 
@@ -6709,7 +6885,7 @@ pre,
  * appLayout.headerNavCollapseMaxWidth in src/config/app-config.ts. */
 @media (max-width: 900px) {
   .studio-shell {
-    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr);
     /* Overlay chrome (nav sheet, side panels) anchors here instead of
      * repeating the header height in several rules, so a taller header — a
      * wrapped observer banner, a wider safe area — cannot leave the panels

@@ -1,6 +1,6 @@
 {
   "name": "astro",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@11.21.0",
@@ -19,6 +19,7 @@
     "build:plugin": "pnpm build && pnpm build:native-plugins && node scripts/build-plugin.mjs",
     "dev": "vite",
     "astrox": "node bin/astrox.mjs",
+    "deploy:preview": "pnpm build && pnpm build:docs && node scripts/merge-deploy-output.mjs && ASTRO_CONSOLE_DIST=deploy/console node scripts/verify-console-build.mjs",
     "dev:docs": "vite --config site/vite.config.ts",
     "install-hooks": "node scripts/install-hooks.mjs",
     "install-opencode-plugin": "node scripts/install-opencode-plugin.mjs",
@@ -26,10 +27,13 @@
     "install-plugins": "node scripts/install-plugins.mjs",
     "install-zcode-plugin": "node scripts/install-zcode-plugin.mjs",
     "import-codex": "node bin/astro.mjs import-codex",
+    "perf:fixture": "node scripts/perf-fixture.mjs",
+    "perf:bench": "node scripts/perf-derive-bench.mjs",
     "start": "node server/server.mjs",
     "test": "node --test tests/*.test.*",
     "typecheck": "tsc --noEmit",
-    "validate:claude-hooks": "node scripts/validate-claude-hooks.mjs"
+    "validate:claude-hooks": "node scripts/validate-claude-hooks.mjs",
+    "verify:console-build": "node scripts/verify-console-build.mjs"
   },
   "dependencies": {
     "@fontsource-variable/geist": "^5.3.0",

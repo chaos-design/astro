@@ -291,3 +291,80 @@ test("fails installation when required source templates are missing", (t) => {
     (error) => error?.code === "ENOENT",
   );
 });
+
+test("carries deployment origins from the environment file", (t) => {
+  const { astroHome, paths } = createFixture(t);
+  writeConfiguration(
+    paths,
+    "version: 1\n",
+    "ASTRO_CORS_ORIGINS=https://astro.example, https://chaos-design.github.io\n",
+  );
+
+  const result = loadRuntimeConfig({
+    astroHome,
+    environment: { ASTRO_HOME: astroHome },
+  });
+
+  assert.deepEqual(result.config.server.corsOrigins, [
+    "https://astro.example",
+    "https://chaos-design.github.io",
+  ]);
+  assert.equal(
+    result.environment.ASTRO_CORS_ORIGINS,
+    "https://astro.example,https://chaos-design.github.io",
+  );
+  assert.equal(result.sources.ASTRO_CORS_ORIGINS, "env");
+  assert.equal(result.diagnostics.length, 0);
+});
+
+test("reads deployment origins from config.yaml and lets an env override win", (t) => {
+  const { astroHome, paths } = createFixture(t);
+  writeConfiguration(
+    paths,
+    [
+      "version: 1",
+      "server:",
+      "  corsOrigins:",
+      "    - https://astro.example",
+      "    - https://chaos-design.github.io",
+      "",
+    ].join("\n"),
+    "",
+  );
+
+  const fromConfig = loadRuntimeConfig({
+    astroHome,
+    environment: { ASTRO_HOME: astroHome },
+  });
+  assert.deepEqual(fromConfig.config.server.corsOrigins, [
+    "https://astro.example",
+    "https://chaos-design.github.io",
+  ]);
+  assert.equal(fromConfig.sources.ASTRO_CORS_ORIGINS, "config");
+
+  const overridden = loadRuntimeConfig({
+    astroHome,
+    environment: {
+      ASTRO_HOME: astroHome,
+      ASTRO_CORS_ORIGINS: "https://only.example",
+    },
+  });
+  assert.deepEqual(overridden.config.server.corsOrigins, [
+    "https://only.example",
+  ]);
+  assert.equal(overridden.environment.ASTRO_CORS_ORIGINS, "https://only.example");
+  assert.equal(overridden.sources.ASTRO_CORS_ORIGINS, "process");
+});
+
+test("an absent allowlist stays same-origin only", (t) => {
+  const { astroHome, paths } = createFixture(t);
+  writeConfiguration(paths, "version: 1\n", "");
+
+  const result = loadRuntimeConfig({
+    astroHome,
+    environment: { ASTRO_HOME: astroHome },
+  });
+
+  assert.deepEqual(result.config.server.corsOrigins, []);
+  assert.equal(result.environment.ASTRO_CORS_ORIGINS, "");
+});

@@ -351,31 +351,42 @@ Each physical line must be one complete JSON object. The reader isolates a malfo
 
 ## 13. SSE Contract
 
-Every `GET /api/stream` connection receives this ordered sequence:
+`GET /api/stream` accepts `hours=<n>` (capped at 744) to bound the first snapshot;
+without it the server sends the full history. The window is anchored at the newest
+event, and a session that is still active/waiting within the last fifteen minutes
+keeps its full history regardless of the window. The ordered sequence is:
 
-1. `reset`: complete current snapshot, or `resume`: only the events after the
-   `since` cursor when the client names an event the server still holds, or
-   `reset-same`: a one-line acknowledgement when the client's `snapshot` key
-   already describes the current history;
-2. `ready`: `eventCount`, `snapshot` (identity of the current history) and `connectedAt`;
-3. `trace`: one newly appended event at a time;
-4. later `reset`: file truncation, newly discovered trace files, or repository resynchronization.
+1. `reset`: snapshot metadata, with an empty `events` list and
+   `streaming: true` when the events follow in batches; metadata carries
+   `eventCount`, `totalEventCount`, `hours`, `truncated`, `anchor` and
+   `snapshot`. A `since` cursor the server still holds produces `resume`
+   instead (only the missed tail); a matching `snapshot` key produces
+   `reset-same` (a one-line acknowledgement);
+2. `trace`: snapshot events in batches of 400 (the same frame as live events).
+   Clients buffer them until `ready` and replace the list once, so appending
+   each batch cannot turn into quadratic copying;
+3. `ready`: the snapshot is complete; repeats the metadata and adds
+   `connectedAt`;
+4. `trace`: one newly appended event at a time (snapshot batches and live
+   events may interleave; deduplicate by ID);
+5. later `reset`: file truncation, newly discovered trace files, or repository
+   resynchronization.
 
-The `snapshot` key is "event count + rolling hash of every event id": it changes
-whenever the history does. After a service restart the console drops its resume
-cursor and asks for the whole snapshot while naming the key it already holds.
-An unchanged history is answered with `reset-same` (a few dozen bytes), so the
-page transfers nothing, parses nothing, and keeps its sessions, flows and list
-as they are; a changed history misses the key and gets the regular `reset`. The
-key only answers "is this the same history" and takes no part in event
-deduplication.
+The `snapshot` key is "event count + rolling hash of every event id", plus the
+window and its count (`<historyKey>@<hours>:<count>`). After a service restart
+the console drops its resume cursor and asks for the snapshot for its current
+window while naming the key it already holds. An unchanged history and window
+are answered with `reset-same` (a few dozen bytes), so the page transfers
+nothing and parses nothing; a changed history misses the key and gets the
+regular `reset` plus batched `trace` frames. The key only answers "is this the
+same history" and takes no part in event deduplication.
 
-The server advertises `retry: 1000`. A plain reconnect receives another full
+The server advertises `retry: 1000`. A plain reconnect receives another
 snapshot before live increments, so follow-up turns missed during disconnection
 are repaired. A console that suspended a hidden tab reconnects with
 `?since=<eventId>` and receives a `resume` carrying just the missed tail, which
 keeps the refresh proportional to what was missed instead of to the whole
-history; an unknown cursor falls back to the full snapshot. Clients should
+history; an unknown cursor falls back to the windowed snapshot. Clients should
 still deduplicate `trace` events by ID.
 
 ## 14. Import, Export, and Compatibility

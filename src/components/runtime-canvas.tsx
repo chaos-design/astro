@@ -209,6 +209,12 @@ export const RuntimeCanvas = memo(function RuntimeCanvas({
     };
   }, []);
 
+  // A locate request that arrives while the layout is still routing (no
+  // nodes mounted yet) is *not* consumed — the ref stays behind so the
+  // request survives. `layoutPending` is a dependency on purpose: the
+  // pending→ready transition re-runs this effect and flushes the pending
+  // request the moment the nodes mount, so a click made on the skeleton
+  // still pulses the atom instead of being silently dropped.
   useEffect(() => {
     if (locateRequestRef.current === locateRequest || !selectedAtomId) {
       return;
@@ -227,7 +233,7 @@ export const RuntimeCanvas = memo(function RuntimeCanvas({
       () => setLocatedAtomId(""),
       1_800,
     );
-  }, [layout, locateRequest, selectedAtomId]);
+  }, [layout, layoutPending, locateRequest, selectedAtomId]);
 
   // While Live the pulse rides the newest executed atom, so keep that node
   // fully inside the viewport (with a breathing margin) whenever the pulse

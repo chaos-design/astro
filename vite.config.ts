@@ -1,11 +1,61 @@
+import { copyFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 import runtimeConfigLoader from "./plugin/runtime-config.cjs";
 
 const defaultAstroHost = "127.0.0.1";
 const defaultAstroPort = 5678;
+
+/**
+ * The console's Demo dataset is one local file, `data/demo-events.json`. The
+ * service reads it directly and serves `GET /api/demo-events`; this plugin
+ * keeps the second, service-free path working:
+ *
+ * - `serve`: answer `/data/demo-events.json` from the repository file, so
+ *   `pnpm dev` still renders the sample run when the API is not running.
+ * - `build`: copy it into `dist/data/`, so a built console served by a static
+ *   host (or by anything that lost the endpoint) can fall back to it.
+ *
+ * A missing file is not a build error: without sample data the console keeps
+ * its truthful empty state.
+ */
+function demoDatasetAsset(): Plugin {
+  const projectDir = import.meta.dirname;
+  const source = path.join(projectDir, "data", "demo-events.json");
+  let outDir = path.join(projectDir, "dist");
+  return {
+    name: "astro-demo-dataset",
+    configResolved(config) {
+      outDir = path.resolve(config.root, config.build.outDir);
+    },
+    configureServer(server) {
+      server.middlewares.use((request, response, next) => {
+        const pathname = (request.url ?? "").split("?")[0];
+        if (pathname !== "/data/demo-events.json") {
+          next();
+          return;
+        }
+        try {
+          const body = readFileSync(source);
+          response.setHeader("Content-Type", "application/json; charset=utf-8");
+          response.setHeader("Cache-Control", "no-store");
+          response.end(body);
+        } catch {
+          next();
+        }
+      });
+    },
+    closeBundle() {
+      if (!existsSync(source)) {
+        return;
+      }
+      mkdirSync(path.join(outDir, "data"), { recursive: true });
+      copyFileSync(source, path.join(outDir, "data", "demo-events.json"));
+    },
+  };
+}
 
 export function resolveAstroProxyTarget(
   environment: Record<string, string | undefined>,
@@ -27,7 +77,13 @@ export default defineConfig(() => {
   }).environment;
 
   return {
-    plugins: [react(), tailwindcss()],
+    plugins: [react(), tailwindcss(), demoDatasetAsset()],
+    // Relative asset URLs, so the built console works wherever it is served
+    // from: the local service root (`/`), a Vercel deployment's `/console/`
+    // subdirectory, or a GitHub Pages project path. The console routes by
+    // query string (`?session=`), never by path, so relative base costs
+    // nothing; API paths stay absolute via `src/lib/api-base.ts`.
+    base: "./",
     resolve: {
       alias: {
         "@": path.resolve(import.meta.dirname, "./src"),

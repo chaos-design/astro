@@ -20,7 +20,7 @@ const repository = readFileSync(
  */
 test("a restart drops the cursor and asks for a full snapshot", () => {
   const restart = app.slice(
-    app.indexOf("const restartDashboard = async ()"),
+    app.indexOf("const waitForServiceRestart = async"),
     app.indexOf("// Locating an atom only needs"),
   );
   assert.match(restart, /resumeCursorRef\.current = ""/);
@@ -29,6 +29,8 @@ test("a restart drops the cursor and asks for a full snapshot", () => {
   // The window snaps back to the configured range, so the list describes the
   // filter rather than a hand-widened window the new process may not contain.
   assert.match(restart, /setRunHistoryHours\(historyRangeHours\)/);
+  assert.match(restart, /streamWindowHoursRef\.current = historyRangeHours/);
+  assert.match(restart, /setHistoryTruncated\(false\)/);
   assert.match(restart, /setStreamEpoch\(\(current\) => current \+ 1\)/);
 });
 
@@ -60,10 +62,11 @@ test("an unchanged snapshot is acknowledged, not re-applied", () => {
 });
 
 test("the server can answer with reset-same and advertises the key", () => {
-  assert.match(server, /sendSse\(response, "reset-same", \{/);
-  assert.match(server, /const snapshotKey = store\.getSnapshotKey\(\)/);
+  assert.match(server, /sendSse\(response, "reset-same", meta\)/);
+  assert.match(server, /store\.getSnapshotKey\(\)/);
   assert.match(server, /clientSnapshot === snapshotKey/);
-  assert.match(server, /snapshot: snapshotKey,\n\s+connectedAt:/);
+  assert.match(server, /snapshot: snapshotKey,/);
+  assert.match(server, /connectedAt: new Date\(\)\.toISOString\(\)/);
   assert.match(repository, /getSnapshotKey\(\) \{/);
 });
 

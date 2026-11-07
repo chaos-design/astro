@@ -1,0 +1,199 @@
+{
+  "schemaVersion": 1,
+  "description": "Sample agent run used by the console's Demo mode. The service reads this file and serves it as GET /api/demo-events; the console renders it only when it has no captured events and runs in development or test mode. Event times are offsets from the moment the console loads the dataset, in milliseconds, so the sample always lands inside the hours-based RUN HISTORY window instead of aging out of it.",
+  "session": {
+    "id": "demo-runtime-7f31",
+    "source": "codex",
+    "workspaceId": "demo-workspace",
+    "cwd": "/workspace/astro"
+  },
+  "events": [
+    {
+      "offsetMs": -9200,
+      "eventName": "SessionStart",
+      "payload": {}
+    },
+    {
+      "offsetMs": -8800,
+      "eventName": "UserPromptSubmit",
+      "payload": {
+        "prompt": "Trace this agent run and render the execution topology.",
+        "turn": 1,
+        "turn_id": "demo-turn-1"
+      }
+    },
+    {
+      "offsetMs": -8260,
+      "eventName": "Reasoning",
+      "payload": {
+        "summary": "Inspect the runtime structure and identify the active data flow.",
+        "turn": 1,
+        "turn_id": "demo-turn-1"
+      }
+    },
+    {
+      "offsetMs": -7720,
+      "eventName": "PreToolUse",
+      "payload": {
+        "tool_use_id": "tool-read",
+        "tool_name": "Read",
+        "tool_input": {
+          "path": "src/app.tsx"
+        },
+        "turn": 1,
+        "turn_id": "demo-turn-1"
+      }
+    },
+    {
+      "offsetMs": -7040,
+      "eventName": "PostToolUse",
+      "payload": {
+        "tool_use_id": "tool-read",
+        "tool_name": "Read",
+        "tool_response": {
+          "status": "ok",
+          "bytes": 18420
+        },
+        "turn": 1,
+        "turn_id": "demo-turn-1"
+      }
+    },
+    {
+      "offsetMs": -6420,
+      "eventName": "Reasoning",
+      "payload": {
+        "summary": "Locate the topology, trajectory, and inspector components.",
+        "turn": 2,
+        "turn_id": "demo-turn-2"
+      }
+    },
+    {
+      "offsetMs": -5940,
+      "eventName": "PreToolUse",
+      "payload": {
+        "tool_use_id": "tool-search",
+        "tool_name": "Search",
+        "tool_input": {
+          "query": "trajectory-row topology-routing-indicator inspector-header",
+          "path": "src"
+        },
+        "turn": 2,
+        "turn_id": "demo-turn-2"
+      }
+    },
+    {
+      "offsetMs": -5480,
+      "eventName": "PostToolUse",
+      "payload": {
+        "tool_use_id": "tool-search",
+        "tool_name": "Search",
+        "tool_response": {
+          "status": "ok",
+          "matches": 18,
+          "files": 3
+        },
+        "turn": 2,
+        "turn_id": "demo-turn-2"
+      }
+    },
+    {
+      "offsetMs": -4860,
+      "eventName": "PreToolUse",
+      "payload": {
+        "tool_use_id": "tool-edit",
+        "tool_name": "Edit",
+        "tool_input": {
+          "path": "src/app.tsx",
+          "replacements": 6,
+          "scope": "trajectory hierarchy and inspector header"
+        },
+        "turn": 2,
+        "turn_id": "demo-turn-2"
+      }
+    },
+    {
+      "offsetMs": -3980,
+      "eventName": "PostToolUse",
+      "payload": {
+        "tool_use_id": "tool-edit",
+        "tool_name": "Edit",
+        "tool_response": {
+          "status": "ok",
+          "changedLines": 142,
+          "files": [
+            "src/app.tsx",
+            "src/styles.css"
+          ]
+        },
+        "turn": 2,
+        "turn_id": "demo-turn-2"
+      }
+    },
+    {
+      "offsetMs": -3260,
+      "eventName": "Reasoning",
+      "payload": {
+        "summary": "Validate hierarchy, responsive layout, and event selection.",
+        "turn": 3,
+        "turn_id": "demo-turn-3"
+      }
+    },
+    {
+      "offsetMs": -2680,
+      "eventName": "PreToolUse",
+      "payload": {
+        "tool_use_id": "tool-test",
+        "tool_name": "RunCommand",
+        "tool_input": {
+          "cmd": "pnpm test && pnpm build"
+        },
+        "turn": 3,
+        "turn_id": "demo-turn-3"
+      }
+    },
+    {
+      "offsetMs": -1460,
+      "eventName": "PostToolUse",
+      "payload": {
+        "tool_use_id": "tool-test",
+        "tool_name": "RunCommand",
+        "tool_response": {
+          "exitCode": 0,
+          "stdout": "25 tests passed; production build complete"
+        },
+        "turn": 3,
+        "turn_id": "demo-turn-3"
+      }
+    },
+    {
+      "offsetMs": -920,
+      "eventName": "AgentMessage",
+      "payload": {
+        "message": "The loop-aware execution trajectory is ready.",
+        "model": "gpt-5.1-codex",
+        "turn": 3,
+        "turn_id": "demo-turn-3"
+      }
+    },
+    {
+      "offsetMs": -420,
+      "eventName": "Notification",
+      "payload": {
+        "notification_type": "idle_prompt",
+        "message": "Agent completed the task.",
+        "turn": 3,
+        "turn_id": "demo-turn-3"
+      }
+    },
+    {
+      "offsetMs": 0,
+      "eventName": "Stop",
+      "payload": {
+        "last_assistant_message": "Implementation complete. Tests passed.",
+        "loop_count": 3,
+        "turn": 3,
+        "turn_id": "demo-turn-3"
+      }
+    }
+  ]
+}

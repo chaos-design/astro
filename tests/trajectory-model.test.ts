@@ -8,10 +8,8 @@ import {
   getTrajectorySegmentPosition,
   orderTrajectoryNewestFirst,
 } from "../src/lib/trajectory-model.ts";
-import {
-  buildHarnessFlow,
-  createDemoEvents,
-} from "../src/lib/trace-model.ts";
+import { buildHarnessFlow } from "../src/lib/trace-model.ts";
+import { createDemoEvents } from "./helpers/demo-fixture.ts";
 
 test("builds loop turns with expandable atomic children", () => {
   const events = createDemoEvents(2_000_000_000_000);

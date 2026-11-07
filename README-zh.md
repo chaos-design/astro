@@ -93,7 +93,11 @@ ASTRO 只观察智能体执行，不负责调用模型、调度工具、批准�
 - 在持久化前递归脱敏敏感信息。
 - 支持浅色、深色和系统主题，不依赖 CDN 或远程字体。
 - History、Events、主题和平台偏好使用 `ASTROX_*` 本地键持久化。
-- Demo 仅用于 development/test；production 空数据保持真实空状态。
+- Demo 仅用于 development/test，数据来自本地资源文件 `data/demo-events.json`；
+  production 空数据保持真实空状态，也不会请求示例数据。
+- 控制台可部署为预览页面（Vercel、GitHub Pages、任意静态托管）：页面读取访问者
+  本机的 ASTRO 服务（`?api=` / `ASTROX_API_BASE`，来源白名单 `ASTRO_CORS_ORIGINS`），
+  通过 SSE 实时跟随新事件。
 
 ## 支持的数据来源
 
@@ -140,9 +144,12 @@ pnpm start
 
 打开 `http://127.0.0.1:5678`。如果服务选择了后续端口，终端会输出实际地址。
 
-在 `pnpm dev` 的 development 模式中，没有真实事件时会加载内置 Demo，可立即
-体验拓扑、轨迹、详情检查和回放控制。production 构建不会生成 Demo，空数据时保持
-真实空状态。安装 Hook 后无需预先执行 `pnpm start`，安装器会立即启动并打开控制台。
+在 `pnpm dev` 的 development 模式中，没有真实事件时会加载 Demo，可立即体验拓扑、
+轨迹、详情检查和回放控制。示例数据不在打包产物里：后台服务读取本地资源文件
+`data/demo-events.json` 并通过 `GET /api/demo-events` 提供，控制台再转换成事件；
+文件里用相对加载时刻的偏移表示时间，因此演示会话始终落在 RUN HISTORY 的小时窗口内。
+服务不可用时回退到构建复制到 `/data/demo-events.json` 的同一份文件，两条来源都失败
+则保持真实空状态并给出提示。production 构建不会请求或展示 Demo。安装 Hook 后无需预先执行 `pnpm start`，安装器会立即启动并打开控制台。
 
 ### 选择接入方式
 
@@ -161,6 +168,24 @@ pnpm start
 
 同一个 Codex、Claude Code 或 WorkBuddy 环境只能选择“原生插件”或“直接 Hook”中的一种。两者
 同时启用会让同一生命周期事件被采集两次。
+
+### 部署预览页面（Vercel / GitHub Pages）
+
+控制台是静态页面，可以部署在云端、数据留在本机：部署后的页面通过回环地址读取
+本机 ASTRO 服务，并通过 SSE 实时跟随新事件——每轮问答写入 JSONL 后服务即推送，
+RUN HISTORY 与拓扑实时更新。
+
+| 途径 | 做法 |
+| --- | --- |
+| Vercel | 仓库 `vercel.json` 已配置构建并合并：文档站在根路径，控制台预览在 `/console/`，导入仓库即可 |
+| GitHub Actions | `.github/workflows/console-preview.yml` 在 push/PR 时构建并上传 `console-dist` 构件；在 Actions 手动运行 "Deploy console preview to GitHub Pages" 可把**当前分支**的构建发布到 Pages（不依赖 main，在途分支即可拿到线上预览地址） |
+| 任意静态托管 | `pnpm build` 产出相对资源路径的 `dist/`，直接托管 |
+
+部署页默认连接 `http://127.0.0.1:5678`，可用 `?api=<地址>` 覆盖（持久化为
+`ASTROX_API_BASE`）。服务端需允许页面来源：`ASTRO_CORS_ORIGINS="https://<域名>" pnpm start`
+启动（多个来源逗号分隔，`/api/health` 的 `corsOrigins` 可确认）。该允许列表就是
+本机轨迹数据的跨域读取边界，请只列自己控制的域名。完整清单见使用手册
+「部署预览页面」一节。
 
 ### Codex、Claude Code 与 WorkBuddy 原生插件
 
@@ -1181,7 +1206,9 @@ Lucide 图标和本地打包的 Geist 字体。
 | SSE 断线 | 显示 `offline`，自动重连后先补齐完整事件快照，再接收实时更新 |
 | 布局 Worker 不可用 | 动态加载相同路由实现并在主线程执行 |
 | 路由器无法找到最优路径 | 尽量返回诊断信息与降级路径 |
-| 没有事件 | development/test 展示 Demo；production 保持真实空状态 |
+| 没有事件 | development/test 展示本地示例数据集；production 保持真实空状态 |
+| 示例数据集缺失或格式错误 | 服务返回 404/500，控制台提示「示例数据不可用」并保留真实事件 |
+| 部署页面连不上本机服务 | 弹一次「无法连接本地服务」（含 `ASTRO_CORS_ORIGINS` 提示）后保持 `offline`；来源加入允许列表并重启服务即可恢复 |
 | Hook 解析或写入失败 | stderr 输出诊断并正常退出；不阻断智能体，Codex quiet 模式保持 stdout 兼容 |
 | 控制台启动或浏览器打开失败 | Trace 仍正常写入；下次提示词会在 PID 失效后重试 |
 | active 或 waiting Prompt 到达超时阈值 | 封顶继续增加的时长，派生 `terminated`，停止当前选中运行的 Live 效果且不新增事件 |
@@ -1217,7 +1244,8 @@ pnpm build:native-plugins
 - SSE 首次快照、持续增量和断线重连补偿；
 - active 时长刷新、24 小时封顶及 `terminated` 显示状态；
 - `ASTROX_` 偏好持久化与旧键迁移；
-- production Demo 隔离与 Vite 代理环境解析。
+- production Demo 隔离与 Vite 代理环境解析；
+- 示例数据集的服务端读取（路径解析、mtime 缓存、404/500）与控制台侧解析、回退和容错。
 
 当前套件包含 182 项测试。
 
@@ -1261,12 +1289,19 @@ pnpm dlx /absolute/path/to/astro-plugin.tgz \
 ### UI 显示演示数据
 
 Demo 只应出现在 development/test 且真实事件数为 0 的场景。production 空数据应
-保持空状态；如果仍显示 Demo，检查是否打开了 Vite 开发页或旧构建：
+保持空状态；如果仍显示 Demo，检查是否打开了 Vite 开发页或旧构建。
+
+示例数据来自本地文件，先确认服务读到的是哪一份：
 
 ```bash
 curl http://127.0.0.1:5678/api/health
 curl http://127.0.0.1:5678/api/events
+curl http://127.0.0.1:5678/api/demo-events
 ```
+
+最后一个接口的 `path` 是实际读取的文件（默认 `data/demo-events.json`，可用
+`ASTRO_DEMO_EVENTS` 覆盖），`eventCount` 是事件数；404 表示文件缺失，500 表示文件
+存在但不是合法数据集（`error` 会指出具体字段）。
 
 ### 智能体活动没有出现
 

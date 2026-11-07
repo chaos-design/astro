@@ -223,12 +223,25 @@ test("keeps the log scroll controls out of the list", () => {
   // visible atom. They now sit in the header row, so no row is ever covered.
   const controls = cssRule(".atomic-log__scroll-controls");
   assert.match(controls, /display:\s*flex/);
+  // The two buttons stay mounted at all times; the container reserves their
+  // width so the sibling search input never resizes as the list scrolls.
+  assert.match(controls, /flex:\s*0 0 48px/);
   assert.doesNotMatch(controls, /position:\s*absolute/);
 
   const button = cssRule(".atomic-log__scroll-button");
   assert.doesNotMatch(button, /position:\s*absolute/);
   assert.doesNotMatch(button, /backdrop-filter/);
   assert.match(button, /width:\s*22px/);
+
+  // The unreachable edge is a disabled button, not a missing one: dimmed,
+  // no pointer, and the hover cues only run on the live edge.
+  const disabled = cssRule(".atomic-log__scroll-button:disabled");
+  assert.match(disabled, /cursor:\s*default/);
+  assert.match(styles, /\.atomic-log__scroll-button:not\(:disabled\):hover/);
+  assert.match(
+    styles,
+    /\.atomic-log__scroll-button--top:not\(:disabled\):hover svg/,
+  );
 });
 
 test("dims the console behind the Flow Guide", () => {

@@ -44,6 +44,10 @@ const STRINGS = {
     cardSlidesKicker: "可视化",
     cardSlidesTitle: "项目架构与功能演示",
     cardSlidesBody: "面向讲解的 22 页 16:9 交互演示，含设计落地地图。",
+    cardConsoleKicker: "实时预览",
+    cardConsoleTitle: "控制台在线预览",
+    cardConsoleBody:
+      "打开部署的控制台页面，连接本机 ASTRO 服务实时查看 Agent 运行（?api= 可指定服务地址）。本机暂无数据时可加 ?demo=1 查看示例会话。",
     decksSectionTitle: "演示与题库 (Decks)",
     decksSectionBlurb: "来自仓库 docs/，自包含、可离线打开",
     // Gallery
@@ -122,6 +126,10 @@ const STRINGS = {
     cardSlidesKicker: "Visual",
     cardSlidesTitle: "Architecture & Feature Demo",
     cardSlidesBody: "A 22-page 16:9 walkthrough deck with a design-landing map.",
+    cardConsoleKicker: "Live preview",
+    cardConsoleTitle: "Console online preview",
+    cardConsoleBody:
+      "Open the deployed console and connect it to the ASTRO service on this machine for a live view (?api= sets the address).",
     decksSectionTitle: "Decks",
     decksSectionBlurb: "From the repo docs/, self-contained and openable offline",
     // Gallery

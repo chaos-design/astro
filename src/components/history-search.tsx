@@ -11,8 +11,10 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { format } from "date-fns";
 import {
+  memo,
   startTransition,
   useDeferredValue,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -418,7 +420,14 @@ function DateRangeFilter({
   );
 }
 
-function SearchResult({
+/**
+ * Memoized end to end: a match object never changes after the index builds,
+ * so an appended batch (or an app-root re-render streaming in the background)
+ * must not re-render the rows already on screen. Without the memo, scrolling
+ * the list re-rendered every visible row per batch — each rebuilding its
+ * snippet and highlight regex — and the scroll ate its own jank.
+ */
+const SearchResult = memo(function SearchResult({
   match,
   onSelect,
   query,
@@ -428,8 +437,12 @@ function SearchResult({
   query: string;
 }) {
   // Only visible rows build a snippet: doing it inside the filter would run it
-  // for every match, including the tens of thousands that never render.
-  const snippet = getHistorySearchSnippet(match, query);
+  // for every match, including the tens of thousands that never render. The
+  // memo keeps the cost at first mount, not every parent pass.
+  const snippet = useMemo(
+    () => getHistorySearchSnippet(match, query),
+    [match, query],
+  );
   return (
     <button
       type="button"
@@ -486,9 +499,10 @@ function SearchResult({
       </span>
     </button>
   );
-}
+});
 
 export function HistorySearch({
+  defaultAgent,
   defaultRange = defaultTimeRange,
   onOpenChange,
   onSelect,
@@ -496,6 +510,14 @@ export function HistorySearch({
   promptRunsBySession,
   sessions,
 }: {
+  /**
+   * The agent the page is currently scoped to. The dialog opens with its Agent
+   * filter already set to this, so a search is "associated with" the agent the
+   * reader is looking at; changing the filter inside the dialog still wins for
+   * that session. A configured agent value equals its source string, and
+   * `others` is the trailing catch-all, so this seeds `sources` directly.
+   */
+  defaultAgent?: string;
   /**
    * Range the dialog opens on. Comes from Settings, so "the default range for
    * loading messages" is one preference shared with RUN HISTORY rather than a
@@ -530,6 +552,12 @@ export function HistorySearch({
   const [sources, setSources] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
+  // The current page agent, read on each open without re-triggering the open
+  // effect (the dialog's own filter choice wins for the rest of the session).
+  const defaultAgentRef = useRef(defaultAgent);
+  useEffect(() => {
+    defaultAgentRef.current = defaultAgent;
+  }, [defaultAgent]);
   const [statuses, setStatuses] = useState<ReadonlySet<TraceRunStatus>>(
     () => new Set(),
   );
@@ -538,6 +566,21 @@ export function HistorySearch({
   const inputRef = useRef<HTMLInputElement | null>(null);
   const resultListRef = useRef<HTMLDivElement | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
+  /*
+   * `onSelect` arrives from the app root, which re-renders on every streamed
+   * batch — a fresh function identity each time. The rows are memoized, so
+   * the handler they hold must not be: routing the call through a ref keeps
+   * one stable identity for the dialog's lifetime while the app root is free
+   * to recreate its callback. Without this, every background SSE batch would
+   * re-render every visible search row.
+   */
+  const onSelectRef = useRef(onSelect);
+  useEffect(() => {
+    onSelectRef.current = onSelect;
+  }, [onSelect]);
+  const handleSelect = useCallback((entry: HistorySearchEntry) => {
+    onSelectRef.current(entry);
+  }, []);
   // Agents only; every source without an agent definition folds into the
   // trailing "Others" catch-all (see `agentFilterOptions`).
   const sourceOptions = agentFilterOptions;
@@ -692,6 +735,13 @@ export function HistorySearch({
   useEffect(() => {
     if (open) {
       setOpenedAt(Date.now());
+      // Open scoped to the page's agent: pre-select it in the Agent filter so
+      // the results read as "this agent's history", not the whole machine's.
+      // A manual change inside the dialog still wins until the next open.
+      const agent = defaultAgentRef.current;
+      if (agent !== undefined) {
+        setSources(new Set([agent]));
+      }
     }
   }, [open]);
 
@@ -711,9 +761,14 @@ export function HistorySearch({
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry?.isIntersecting) {
-          setVisibleCount((current) =>
-            Math.min(matches.length, current + resultBatchSize),
-          );
+          // The append is a low-priority update: the scroll gesture itself
+          // must never wait behind the batch of rows it just uncovered. The
+          // rows are memoized, so the transition re-renders only the new tail.
+          startTransition(() => {
+            setVisibleCount((current) =>
+              Math.min(matches.length, current + resultBatchSize),
+            );
+          });
         }
       },
       { root: resultListRef.current, rootMargin: "120px" },
@@ -765,7 +820,7 @@ export function HistorySearch({
               onKeyDown={(event) => {
                 if (event.key === "Enter" && matches[0]) {
                   event.preventDefault();
-                  onSelect(matches[0]);
+                  handleSelect(matches[0]);
                 } else if (event.key === "ArrowDown") {
                   event.preventDefault();
                   resultListRef.current
@@ -848,7 +903,7 @@ export function HistorySearch({
             <SearchResult
               key={match.eventId}
               match={match}
-              onSelect={onSelect}
+              onSelect={handleSelect}
               query={deferredFilters.query}
             />
           ))}

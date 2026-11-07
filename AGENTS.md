@@ -28,6 +28,9 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   the canonical recorder.
 - `scripts/`: installation, migration, validation, and packaging scripts.
 - `tests/`: Node test runner suites.
+- `data/`: local resource files served by the service, currently the console's
+  sample dataset (`data/demo-events.json`). Not captured traces, not user
+  preferences.
 - `site/`: the docs site; it reads `docs/*.md` at build time, so a new doc also
   needs a catalog entry in `site/src/docs.ts`.
 - `docs/`: English and Chinese architecture, protocol, operation, user, and
@@ -49,11 +52,113 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   `src/lib/exception-events.ts`, RUN HISTORY liveness only in
   `src/lib/run-history-state.ts`, and the visible time window only in
   `src/lib/run-history-window.ts`. Do not grow a second list of failure or live
-  event names.
+  event names. Sample (Demo) data lives only in `data/demo-events.json`.
+  The preview page's opened state lives only in
+  `plugin/trace-recorder.cjs` (`readPreviewState` / `markPreviewOpened`,
+  persisted as `preview-state.json` in `ASTRO_HOME`); the service marks it
+  when a console page attaches to `/api/stream`, and the hook launch flow
+  consumes it to decide whether the browser still gets opened.
+  The run model (which LLM a prompt executed on) is read only in
+  `src/lib/trace-model.ts` (`extractRunModel` + the SessionStart fallback in
+  `buildSessionPromptRuns`), which normalizes every client's payload spelling
+  — pi's `model`/`provider` keys, deepseek's model source object, opencode's
+  step notification, zcode's session-start model — into one display string;
+  the UI shows the tag only when a run reports a model.
 - Treat unrelated working-tree changes as user-owned and do not revert them.
 - A behavior change is only complete when `docs/user-manual-*.md`,
   `docs/conventions-*.md`, this file, `docs/index.md`, and `site/src/docs.ts`
   agree with it.
+
+## Demo Dataset
+
+- The sample run is a local resource file, `data/demo-events.json`, not a
+  bundle constant. `createDemoEvents` used to build it in code; that meant the
+  console carried synthetic events and the service could not answer for them.
+  Do not reintroduce an inline event array in a component, test, or route.
+- The service is the primary reader: `server/demo-dataset.mjs` resolves
+  `data/demo-events.json` (repository) or `dist/data/demo-events.json`
+  (installed runtime, static build), caches by mtime and size, and serves
+  `GET /api/demo-events`. `ASTRO_DEMO_EVENTS` overrides the path. The
+  repository `data/` directory wins whenever it exists, so deleting the file
+  reads as 404 instead of quietly serving the copy an older build left in
+  `dist/`; only a runtime without `data/` (the installed plugin) falls through.
+  A missing file is a 404 and an invalid one a 500 with the offending field;
+  neither may throw through the request handler.
+- The console is the primary validator: `src/lib/demo-events.ts` accepts both
+  the service envelope (`{ dataset, path, eventCount }`) and the bare document,
+  because the build also copies the file to `/data/demo-events.json` and the
+  loader falls back to it when no service answers. A static host that rewrites
+  unknown paths to `index.html` answers 200 with HTML — that is a parse failure
+  to report, not a dataset.
+- Times in the dataset are `offsetMs` from load time, never timestamps. RUN
+  HISTORY is an hours-based window: absolute times age out of it within a day
+  and the sample run silently disappears.
+- Loading is async, so `isDemo` needs three things: zero captured events, the
+  gate open, and the dataset having arrived. The gate (`isDemoGateOpen` in
+  `app-config.ts`) is automatic in development/test (`shouldShowDemo`) but, in a
+  production build, only when the reader explicitly opts in with `?demo=1`
+  (parsed by `isDemoPreviewEnabled`, `src/lib/demo-events.ts`) — a production
+  page keeps its truthful empty state otherwise and must never *implicitly*
+  fall back to the sample. When it does render, a persistent「示例数据」banner
+  (`studio-shell__sample-banner`) makes it unmistakable that the run is a
+  sample, not captured evidence. A failed load keeps the truthful empty state
+  and raises one `示例数据不可用` notice; it must never block or hide captured
+  events.
+- The Demo dataset is a rendering fixture only: it must stay out of health
+  counts, `N LIVE`, the sync budget, and `DELETE /api/events`.
+
+## Deployed Console
+
+- The user-facing deployment reference is `docs/deployment-zh.md` /
+  `docs/deployment-en.md` (local install, full env-var table, CORS, `astrox`,
+  cloud console, docs site, troubleshooting). The bullets below are the
+  invariants that code must keep satisfying; the docs are the reader-facing
+  wording. Keep the two in step.
+- The console is a static page and may be served from a cloud origin (Vercel,
+  GitHub Pages, any static host) while its data is the service on the reader's
+  machine. `src/lib/api-base.ts` is the single definition of that address:
+  `?api=` (persisted to `ASTROX_API_BASE`) → stored value → same-origin when
+  the page itself is local → `http://127.0.0.1:5678` otherwise. Every request
+  goes through `joinApi(apiBase, path)`; do not hardcode `/api/...` in
+  components. The base is resolved once per mount and never changed
+  mid-session.
+- The service decides who may read. `ASTRO_CORS_ORIGINS` is an explicit
+  allowlist (comma-separated; `*` only when spelled out); with nothing set the
+  service emits no CORS headers and behaves exactly like a same-origin-only
+  install. Allowed origins get an echoed `Access-Control-Allow-Origin`,
+  `Access-Control-Allow-Private-Network: true` (Chrome's public→local
+  preflight), and the generic `OPTIONS /api/*` preflight answers allow
+  methods/headers. The headers attach to every `/api/*` response including the
+  SSE stream — EventSource cannot send custom headers, so response headers are
+  all a deployed page gets. The installed runtime is normally started by a
+  recorder hook with no shell to carry the variable, so the same list also
+  lives in `config.yaml` as `server.corsOrigins` (`plugin/runtime-config.cjs`),
+  which survives every later launch.
+- Files under `public/` are addressed through `assetUrl()` in
+  `src/lib/asset-url.ts`, never with an origin-root path such as `/icons/…`:
+  GitHub Pages mounts this console at `/astro/`, so a root path leaves the
+  project prefix and 404s (it broke the agent dropdown's brand marks).
+  `scripts/verify-console-build.mjs` fails the build on origin-root asset URLs.
+- A deployed page that never connects announces it once (「无法连接本地服务」
+  with the base and the `ASTRO_CORS_ORIGINS` line to add). Do not turn that
+  into per-retry noise, and do not silently fall back to demo data — a
+  deployment must never *implicitly* present sample runs as captured evidence.
+  The only path to the sample on a deployment is the reader's explicit `?demo=1`
+  (see Demo Dataset above).
+- Deployment outputs: `vercel.json` builds console + docs and merges them via
+  `scripts/merge-deploy-output.mjs` (docs at the root, console at
+  `/console/`); the console build uses a relative Vite `base` so it also works
+  under GitHub Pages project paths. `.github/workflows/console-preview.yml`
+  uploads `console-dist` on every build, and the Pages deploy job publishes on
+  push to `main` (the formal release) and to the rolling-preview branch listed
+  in the workflow's `push` trigger (an in-flight feature branch gets a live
+  preview URL without merging; drop the branch from that list once it merges),
+  plus `workflow_dispatch` from *any* branch — the most recent qualifying
+  build publishes over the single shared Pages site. The docs and
+  console still must not fight over the one Pages site. The Pages artifact is
+  *only* the console: `scripts/verify-console-build.mjs` asserts the relative
+  asset shape, the shipped icons/sample dataset, and the absence of docs-site
+  markers before the artifact is uploaded.
 
 ## Run Timeout Invariant
 
@@ -105,12 +210,17 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   scrolling.
 - Selection styling outranks the live accent; a selected live row keeps its
   selection border.
-- Executing runs are pinned to the top of the list, ordered by their latest
-  activity, and stay inside the visible time window whatever their `start`
-  (`collectLiveRunKeys` → `selectVisibleRunHistory` / `pinLiveRunHistory`). A
-  session resumed today began days ago; without the pin its new prompt would
-  sort below every run that merely started later, and the window would drop it
-  mid-execution. Finished runs fall back to newest-first order.
+- Executing runs are pinned to the top of the list, ordered by the **start of
+  the run's newest message** (not its latest event, which moves on every
+  streaming batch and made two running rows trade places constantly), and stay
+  inside the visible time window whatever their `start`
+  (`collectLiveRunKeys` → `selectVisibleRunHistory` / `pinLiveRunHistory`,
+  which app.tsx calls with an `executionStart` resolver from
+  `promptRunsBySession`). A session resumed today began days ago; without the
+  pin its new prompt would sort below every run that merely started later, and
+  the window would drop it mid-execution. The message that started executing
+  last sits on top; a newly sent message takes the top the moment it starts.
+  Finished runs fall back to newest-first order.
 - The same live key set drives the pin, the window exemption, the `N LIVE`
   count, and the Live filter's rows. Do not derive a second one — a row that is
   pinned but not counted (or the reverse) reads as a bug.
@@ -145,11 +255,45 @@ use Node.js ES modules or CommonJS according to their existing file extension.
 - Live runs are exempt from the window (the `liveKeys` argument); a resumed
   session's `start` is older than the range by definition.
 - "Load earlier" **doubles** the window (`nextRunHistoryVisibleHours`) instead of
-  advancing one day at a time, and disappears when `canLoadMoreRunHistory` is
-  false. Switching agent or changing the default range resets the width to the
-  preference.
+  advancing one day at a time, and disappears when the control can no longer
+  grow. The service ships only the requested window, so widening past what is
+  loaded re-subscribes with a larger `hours` and replaces the event list;
+  `historyTruncated` keeps the control available even though the older sessions
+  are not in memory. Switching agent or changing the default range resets the
+  width to the preference.
 - The empty state names the configured range, so a short window never reads as
   "no history at all".
+- The sparse/dense row layout carries **hysteresis**
+  (`isSparseRunHistoryList` + `RUN_HISTORY_SPARSE_HYSTERESIS_ROWS`): the list
+  goes sparse at `appLayout.runHistorySparseListRows` but only returns to the
+  dense clamp two runs later. The window is a moving anchor — sessions age out
+  of it while a re-run enters — and a count hovering at the threshold would
+  otherwise re-clamp every row's title on each crossing, which read as the
+  whole list jumping while a run executed.
+
+## Snapshot Streaming
+
+- `GET /api/stream` accepts `hours` (capped at a month). The first snapshot
+  contains only that window plus the full history of sessions that are still
+  active/waiting within the live threshold — a running row must never lose the
+  events that made it a row. `ready` reports `eventCount`, `totalEventCount`,
+  `hours`, `truncated` and `snapshot`; the client uses `truncated` to keep
+  "load earlier" available and to request a wider window.
+- A snapshot is **streamed**, never one `JSON.stringify(events)`:
+  `reset` carries the metadata (and an empty list), the events follow as
+  ordinary `trace` frames in batches of 400, then `ready`. A single frame of a
+  95k-event / 456 MB history blocked the event loop for minutes, which made
+  live events, `/api/health` and every other SSE client wait behind it — the
+  console looked frozen while an agent was running. Keep the batch boundary;
+  the client buffers the frames and commits once at `ready`.
+- The snapshot key includes the window (`<historyKey>@<hours>:<count>`), so the
+  same history at 3h and 6h is never mistaken for the same snapshot. Widening
+  the window clears the cursor and the key before re-subscribing.
+- `POST /api/config/data-root` changes the service's trace root. The file
+  rewriting lives only in `server/runtime-settings.mjs` (it preserves every
+  other `.env` line and rejects missing/relative paths), then the service
+  restarts so the new root is read. The service card exposes it as
+  "data directory → change" and health reports the resulting `dataRoot`.
 
 ## Live View
 
@@ -202,8 +346,14 @@ use Node.js ES modules or CommonJS according to their existing file extension.
 - `appDefaults.liveView` is the single default of the Live filter. Its old key
   (`ASTROX_RUN_HISTORY_LIVE_FILTER`) is retired, not migrated: it meant "show
   the whole history", so honouring it would arm the new filter on load.
+- `appDefaults.perfHud` is the single default of the performance HUD
+  (Settings → 性能, off by default): the app root mounts the pure-DOM panel
+  from an effect keyed on that flag, and `resolvePerfHudInitial` honours the
+  retired `?perf=1` legacy flag (`astro:perf-hud` = `"1"`) once — the first
+  write of `ASTROX_PERF_HUD` removes the legacy key.
 - The dialog is a two-pane card: `.settings-nav` (外观 / 运行历史 / 画布 / 面板 /
-  关于) beside a `.settings-pane` that renders only the active section, carried by
+  性能 / 关于) beside a `.settings-pane` that renders only the active section,
+  carried by
   a vertical Radix `Tabs` so arrow keys work. A single stacked column scrolled the
   whole dialog or squeezed the controls on a short window. Header and footer are
   fixed and only the pane scrolls; Done merely closes it. A preference that also
@@ -229,6 +379,11 @@ use Node.js ES modules or CommonJS according to their existing file extension.
 - The budget is a single `setTimeout`, armed by `getSyncStopDelay`
   (`src/lib/sync-budget.ts`). No interval, no polling: with the limit set to
   `off` there is no timer at all. Do not turn this into a per-second check.
+- Changing the cap re-arms that timer for the time left under the new cap
+  (wall-clock from the current sync start, not a clock restart): lowering the
+  cap below what already elapsed stops the stream at once. While a pause is in
+  effect no timer runs and the counting is stopped too; the clock only starts
+  over on a resume.
 - When it fires, `syncStopped` closes the `EventSource`; that is what stops the
   appending, the re-derivation and the memory growth. The header marker turns
   from `synced` to `paused` (amber, a `<button>`), and the service card says the
@@ -238,6 +393,11 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   missed tail — appending hours of deltas would grow the very array the budget
   capped. Restarting the local service performs the same reset, so a restart
   after a spent budget never leaves the console stuck in `paused`.
+- A cap change while the budget has stopped the stream lifts the pause through
+  that same reset (`capChangeResumesSync` in `sync-budget.ts`): a cap that
+  still has time left — `off` included — reopens the stream with a fresh
+  snapshot, so the new cap takes effect without a second click. A cap whose
+  time is already spent keeps the stream stopped.
 - `syncStopped` is not `connected === false`: a dropped socket is retried by
   `EventSource`; a spent budget is deliberate and only a user action lifts it.
 
@@ -277,6 +437,15 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   that row is the whole second message.
 - The estimate stays as the first-paint fallback only. `max-height` must not be
   re-added in CSS: it would clip the measured height again.
+- The thread is **always mounted** for multi-prompt rows and *animates* between
+  its measured height and 0 (`.run-history__prompt-scroll`, margins collapsing
+  with it; collapsed it is `visibility: hidden`). Unmounting it on collapse
+  made every expand a teleport — the executing row grew hundreds of pixels in
+  one commit and shoved the whole list, which read as the N LIVE view jumping.
+  A collapsed thread must take no more space than an unmounted one.
+- Only a multi-prompt session renders the thread (`hasPromptThread`): a
+  single-prompt live row shows the parent only. The armed Live filter used to
+  auto-expand one-prompt sessions too, rendering the same message twice.
 
 ## Agent Filter
 
@@ -348,7 +517,56 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   way back.
 - Performance work lands with numbers from the same fixture and script before
   and after (script time, long tasks, chunk size); "feels faster" is not a
-  verification.
+  verification. The repeatable driver is `pnpm perf:fixture` (synthetic
+  history + timed ingestion) and `pnpm perf:bench` (per-batch derive
+  milliseconds per phase); client long tasks read off the performance HUD
+  (Settings → 性能) or directly via `window.__astroPerf.snapshot()`.
+- The performance HUD is a floating, collapsible, **draggable** panel
+  (`src/lib/perf-metrics.ts`), armed only by the Settings → 性能 preference
+  (`ASTROX_PERF_HUD`, default off) — the `?perf=1`/`?perf=0` URL parameter is
+  retired; the legacy `astro:perf-hud` `"1"` flag is honoured once by
+  `resolvePerfHudInitial` (in `src/config/app-config.ts`) and the app removes
+  that key on its first write. The app root mounts the panel from a React
+  effect keyed on the preference, so toggling the switch mounts and tears the
+  panel down live. The host is the pill's box and the panel floats above it,
+  so expansion always grows **upward** from wherever the pill sits — a
+  bottom-pinned drop can never push the panel off the bottom of the screen. It
+  starts anchored to the bottom-right edge, and dragging the pill or the panel
+  header re-places it (persisted under `astro:perf-hud-pos` as `{ left,
+  bottom }`, clamped back into the viewport on restore and resize). A press
+  that never leaves the 4px threshold stays a click, so dropping the HUD never
+  toggles it. Collapsed it is one pill with two headline numbers (scroll fps,
+  list render average); expanded it shows a tone legend and three tone-coded
+  tiles (scroll fps / list render / long tasks, ok-warn-bad by threshold)
+  **pinned at the top**, with every metric group rendered expanded below them
+  (no disclosure control) — only the label→value rows and usage notes scroll,
+  so walking the table never moves the headline numbers. A drag sets the body
+  cursor to `grabbing` for its duration. It stays pure DOM outside React so
+  the tool measuring the app never enters the app's render path — expansion,
+  drag and collapse are DOM state, not component state.
+- Cursor affordances follow one convention: clickable things point
+  (`button:not(:disabled)`, `[role="button"]`, and Radix menu/select items —
+  never `cursor-default` on an operable row), disabled controls read as the
+  plain arrow (`button:disabled`, `[aria-disabled="true"]`; the console dims
+  instead of using `not-allowed`), busy controls may use `cursor: progress`,
+  and draggable handles carry `grab` (→ `grabbing` while held).
+- The HistorySearch result rows are memoized end to end (`SearchResult` is
+  `React.memo`, the snippet builds once per row, and the row's `onSelect` is
+  a stable ref-routed callback): a scroll append or a background app-root
+  re-render must not re-render rows already on screen. Batch appends run in a
+  `startTransition`.
+- The LOG search text is **log-local state** (`AtomicLog`), never app-root
+  state: a keystroke re-renders only the log panel, not the studio. Filtering
+  reads a `useDeferredValue` copy of the text over the cached per-event
+  haystacks (`src/lib/event-search.ts`), and `buildLogEntries` is memoized
+  separately from the needle so a keystroke never rebuilds every turn
+  separator. App-root flows that need an empty box bump a reset token
+  (`logQueryResetToken`), they do not hold the string.
+- The LOG header's scroll controls **always reserve their two-button width**
+  (`.atomic-log__scroll-controls`): both chevrons stay mounted at all times
+  and an unreachable edge is a `disabled` button (dimmed ink, `cursor:
+  default`, no hover cues), never an unmount — reserving the width stops the
+  sibling search input from resizing on every streamed event.
 
 ## Run Trajectory Order
 
@@ -360,6 +578,23 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   `orderTrajectoryNewestFirst` is the only place allowed to reverse — never
   sort the model in place.
 - The lane overview above the list remains a left-to-right timeline.
+
+## Explicit Locate Requests
+
+- An explicit locate (the LOG header's 定位 button, the trajectory's locate, a
+  search-result pick) must never read as dead. Both targets keep the request
+  **pending** until it can act: the canvas flushes it the moment the layout
+  commits (`layoutPending` is a dependency of its locate effect, so a click
+  made on the routing skeleton still pulses the atom), and the log advances
+  its locate ref only *after* the row is found in `visibleEntries`, so a
+  search filter cannot swallow the request — it flushes when the row returns.
+- The LOG header's locate button is a **dual request** like the trajectory's
+  locate: it focuses the topology AND bumps `logLocateRequest` (plus a search
+  reset), so the panel the button lives in centers the atom's event row too.
+  `focusAtom` alone never moves the log.
+- Explicit centering is instant (`scrollTop =`), matching
+  `scrollRowWithinContainer` — a smooth animation on the virtualized log gets
+  canceled by slice re-renders and reads as no reaction.
 
 ## Exception Events
 

@@ -207,12 +207,18 @@ some Codex hook events do not accept a control object. All clients use the same
 user-level `~/.astrox` data and runtime root.
 
 On `SessionStart` or `UserPromptSubmit`, the recorder also checks
-`<data-root>/dashboard-<port>.pid`. If the dashboard is not running and
-`ASTRO_AUTO_OPEN` is enabled, it starts the packaged `server/server.mjs` as a
-detached process. A newly started service opens the selected source/session URL;
-an already running compatible service is reused and its URL is reported without
-opening duplicate tabs. The server completes port fallback before opening the
-actual URL. Launch or browser-open failures remain isolated from the hook result.
+`<data-root>/dashboard-<port>.pid`, probing the port when the PID is stale. If
+the dashboard is not running and `ASTRO_AUTO_OPEN` is enabled, it starts the
+packaged `server/server.mjs` as a detached process. A newly started service
+opens the selected source/session URL only while the preview page has never
+been opened; afterwards it starts headless. An already running compatible
+service is reused: the hook opens its URL once when the preview page was never
+opened (self-healing a start whose browser open never produced a page), and
+otherwise reports the URL without opening duplicate tabs. "Preview page
+opened" is persisted as `preview-state.json` in `ASTRO_HOME` by the service
+the moment a console page attaches to `/api/stream`. The server completes port
+fallback before opening the actual URL. Launch or browser-open failures remain
+isolated from the hook result.
 
 ### 6.2 Codex History
 
