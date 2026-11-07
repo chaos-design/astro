@@ -178,7 +178,7 @@ RUN HISTORY 与拓扑实时更新。
 | 途径 | 做法 |
 | --- | --- |
 | Vercel | 仓库 `vercel.json` 已配置构建并合并：文档站在根路径，控制台预览在 `/console/`，导入仓库即可 |
-| GitHub Actions | `.github/workflows/console-preview.yml` 在 push/PR 时构建并上传 `console-dist` 构件；在 Actions 手动运行 "Deploy console preview to GitHub Pages" 可把**当前分支**的构建发布到 Pages（不依赖 main，在途分支即可拿到线上预览地址） |
+| GitHub Pages | 每次 push 到 `main` 都会把合并产物（根路径文档站 + `/console/` 控制台预览）自动发布到 [https://chaos-design.github.io/astro](https://chaos-design.github.io/astro/)（`.github/workflows/docs-site.yml`）。在途分支的滚动预览：`.github/workflows/console-preview.yml` 在 push/PR 时构建，推送预览分支或在 Actions 手动运行 "Deploy console preview to GitHub Pages" 可把**当前分支**的构建发布到 Pages |
 | 任意静态托管 | `pnpm build` 产出相对资源路径的 `dist/`，直接托管 |
 
 部署页默认连接 `http://127.0.0.1:5678`，可用 `?api=<地址>` 覆盖（持久化为
@@ -1351,6 +1351,10 @@ curl http://127.0.0.1:5678/api/demo-events
 模式可能短暂阻塞渲染。
 
 ## 文档
+
+文档站已在线发布：**[https://chaos-design.github.io/astro](https://chaos-design.github.io/astro/)**
+—— 与仓库 `docs/` 同源，每次 push 到 `main` 自动重新构建发布，控制台预览位于
+`/console/`。
 
 | 文档 | English | 简体中文 |
 | --- | --- | --- |

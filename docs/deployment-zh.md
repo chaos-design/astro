@@ -149,22 +149,34 @@ astrox status|start|stop|restart|update|logs|doctor|path|open|info
 `ASTRO_CORS_ORIGINS` 行），不逐次重试刷屏，也**绝不**静默回落示例数据——
 示例只在该读者显式 `?demo=1` 时渲染，且带常驻「示例数据」横幅。
 
-### 4.2 GitHub Pages（仅控制台预览）
+### 4.2 GitHub Pages（文档 + 控制台合并发布）
 
-`.github/workflows/console-preview.yml`：
+`.github/workflows/docs-site.yml` 是正式发布通道：
 
-- 每次 push/PR 到 `main`：构建控制台、跑 `verify-console-build` 校验（相对
-  资源、自带图标与示例数据集、无文档站标记），上传 `console-dist` 工件。
-- **Deploy 任务在 push 时自动发布**：推送到 `main`（正式发布）或工作流
-  `push` 清单里登记的滚动预览分支（如进行中的 feature 分支——合并前即可拿到
-  预览 URL；分支合并后把它从清单移除）都会把*该分支*的构建发布到**同一个**
-  Pages 站点，最近一次命中的构建胜出。
-- 手动 `workflow_dispatch` 从**任何分支**都能跑：用于重新发布已不在
-  push 清单里的分支（如合并后删掉的测试分支）。
+- 每次 push/PR 到 `main`：跑 `pnpm deploy:preview`（控制台构建、文档构建、
+  合并、`verify-console-build` 校验），校验合并产物，上传 `docs-dist`
+  （仅文档）与 `deploy-dist`（合并产物）两个工件。
+- **Deploy 任务只在 push 到 `main` 时运行**，把合并产物发布到
+  <https://chaos-design.github.io/astro/> —— 文档站在根路径，控制台预览在
+  `/console/`。因此 Vercel 与 Pages 的站点布局是同一个目录。
 
-约束：Pages 单站点只放**控制台**，不放文档站（两者互斥，workflow 注释与
-`verify-console-build` 都保证这一点）；文档站走自己的托管路径（Vercel 合并
-产物或 `docs-dist` 工件），不在 Pages 自动部署。
+`.github/workflows/console-preview.yml` 承担滚动预览：
+
+- `main` 不再是它的触发条件——上面的发布通道独占 `main` 的 Pages 站点，
+  避免共享站点在「仅控制台构建」与「合并发布构建」之间来回翻转。
+- 它在推送到登记的预览分支和 PR 到 `main` 时构建（PR 只出工件、不发布）；
+  推送预览分支或手动 `workflow_dispatch`（"Deploy console preview to
+  GitHub Pages"）可把**该分支**的构建发布到共享 Pages 站点——最近一次命中
+  的构建胜出，适合在途工作的实时预览；重新运行 `docs-site.yml`（或推送
+  `main`）即可恢复正式发布。
+
+### 4.2.1 读者侧配置
+
+两个云端部署的是同一个页面，读者侧完全一致：本机跑起服务（§2），把部署
+域名加入允许列表（`ASTRO_CORS_ORIGINS` 或 `~/.astrox/plugins/astro/config.yaml`
+的 `server.corsOrigins` 后重启），打开页面即连本机服务，`?api=` 指到非默认
+端口。§4.1 的行为契约原样适用：连不上只报一次，示例数据仅在显式 `?demo=1`
+时渲染。
 
 ### 4.3 其它静态主机
 
@@ -177,8 +189,9 @@ astrox status|start|stop|restart|update|logs|doctor|path|open|info
 演示页到 `/decks/`，`docs/assets/` 随附），产物自包含。三条托管路径：
 
 1. 合并产物：`pnpm deploy:preview` 产出的 `deploy/`（文档在根）；
-2. Actions 工件：`docs-site.yml` 每次 push/PR 上传 `docs-dist`（无自动发布，
-   下载后部署到任意静态主机）；
+2. GitHub Pages：`docs-site.yml` 每次 push 到 `main` 把合并产物自动发布到
+   <https://chaos-design.github.io/astro/>（§4.2）；`docs-dist` 工件每次
+   push/PR 都会上传，可下载后部署到其它静态主机；
 3. 直接 `site/dist` 部署。
 
 新增文档 = 把 `.md` 放进 `docs/`，并在 `site/src/docs.ts` 的

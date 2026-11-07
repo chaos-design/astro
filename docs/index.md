@@ -2,6 +2,10 @@
 
 **Agent State Trace & Runtime Observations**
 
+This documentation is published online at
+<https://chaos-design.github.io/astro/> — rebuilt on every push to `main`,
+with the console preview under `/console/`.
+
 This directory separates task-oriented guides from protocol, architecture, and operations references. Start with the user manual for normal use; use the protocol and operations documents when implementing an integration or diagnosing capture.
 
 ## 中文

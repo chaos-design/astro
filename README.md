@@ -212,7 +212,7 @@ JSONL, the service pushes it, RUN HISTORY and the topology update in real time.
 | Path | How |
 | --- | --- |
 | Vercel | `vercel.json` builds the console and the docs site and merges them: docs at the root, the console preview at `/console/`. Import the repository — no extra settings. |
-| GitHub Actions | `.github/workflows/console-preview.yml` builds the console on push/PR and uploads a `console-dist` artifact; run "Deploy console preview to GitHub Pages" manually to publish the current branch's build (no main merge required). |
+| GitHub Pages | Every push to `main` publishes the merged output — the docs site at the root plus the console preview under `/console/` — to [https://chaos-design.github.io/astro](https://chaos-design.github.io/astro/) (`.github/workflows/docs-site.yml`). For in-flight branches, `.github/workflows/console-preview.yml` builds on push/PR; pushing the preview branch or running "Deploy console preview to GitHub Pages" manually publishes that branch's build. |
 | Any static host | `pnpm build` produces `dist/` with relative asset URLs; serve it as-is. |
 
 A deployed page targets `http://127.0.0.1:5678` by default; override with
@@ -1487,6 +1487,11 @@ Large subagent graphs require more layout work. Inspect the browser console
 for Worker errors; the main-thread fallback can briefly block rendering.
 
 ## Documentation
+
+The documentation is also published online:
+**[https://chaos-design.github.io/astro](https://chaos-design.github.io/astro/)**
+— the same docs site, rebuilt on every push to `main`, with the console
+preview under `/console/`.
 
 | Document | English | 简体中文 |
 | --- | --- | --- |
