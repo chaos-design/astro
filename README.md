@@ -1,6 +1,16 @@
 # ASTRO
 
+<div align="center">
+
+![ASTRO — Agent State Trace & Runtime Observations](docs/assets/astro-hero.png)
+
+**[📖 Read the docs](https://chaos-design.github.io/astro/)** ·
+**[▶ Try the live demo](https://chaos-design.github.io/astro/console/?demo=1)**
+(no install, sample data in the browser only)
+
 English | [简体中文](README-zh.md)
+
+</div>
 
 **ASTRO** stands for **Agent State Trace & Runtime Observations**. It is an
 observability system for coding-agent execution and is unrelated to the Astro
@@ -14,7 +24,8 @@ machine.
 
 ![ASTRO desktop console](docs/assets/astro-desktop.png)
 
-The screenshot shows the complete desktop workspace with both side panels open:
+The console above (also shown in the banner) is the complete desktop workspace
+with both side panels open:
 `RUNS` organizes history by session and prompt run, the center canvas renders
 the execution topology and atom state, `EVENTS` combines the event stream with
 the inspector, and the footer provides event-level seeking and replay. Selecting

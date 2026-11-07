@@ -1,6 +1,16 @@
 # ASTRO
 
+<div align="center">
+
+![ASTRO — Agent State Trace & Runtime Observations](docs/assets/astro-hero.png)
+
+**[📖 在线文档](https://chaos-design.github.io/astro/)** ·
+**[▶ 在线体验](https://chaos-design.github.io/astro/console/?demo=1)**
+（无需安装，浏览器内加载示例数据）
+
 [English](README.md) | 简体中文
+
+</div>
 
 **ASTRO** 是 **Agent State Trace & Runtime Observations** 的缩写，中文可理解为
 “智能体状态追踪与运行时观测”。它是编码智能体可观测系统，与 Astro Web 框架无关。
@@ -11,7 +21,7 @@ OpenCode、ZCode、Pi、浏览器扩展和自定义客户端接入统一的版�
 
 ![ASTRO 桌面控制台](docs/assets/astro-desktop.png)
 
-图中为完整展开的桌面工作区：左侧 `RUNS` 按 Session 和 Prompt 子运行组织历史，
+上图（即顶部主图中的控制台）为完整展开的桌面工作区：左侧 `RUNS` 按 Session 和 Prompt 子运行组织历史，
 中央画布展示执行拓扑及原子状态，右侧 `EVENTS` 同时提供事件流与详情检查器，
 底部控制条用于逐事件定位和历史回放。选中任一事件后，可以继续检查 Overview、
 Input、Output 与规范化 Raw JSON；拓扑节点、事件日志和回放游标保持双向联动。
