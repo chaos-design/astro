@@ -226,6 +226,12 @@ node ~/.astrox/plugins/astro/server/server.mjs
 完整的部署参考（CORS、数据目录、`astrox` 命令、故障排查）见
 [部署指南](deployment-zh.md)。
 
+当前两条线上地址：**在线预览（GitHub Pages）**
+<https://chaos-design.github.io/astro/>（追加 `?demo=1` 加载示例数据，免安装
+体验）；**在线文档（Vercel）** <https://astro-site-cyan-five.vercel.app/>。
+部署页默认连接 `http://127.0.0.1:5678`，需把部署域名加入服务的 CORS 允许列表
+（见下文）。
+
 部署方式：
 
 | 途径 | 做法 |
