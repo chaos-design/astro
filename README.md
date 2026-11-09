@@ -1,6 +1,16 @@
 # ASTRO
 
+<div align="center">
+
+![ASTRO — Agent State Trace & Runtime Observations](docs/assets/astro-hero.png)
+
+**[📖 Read the docs](https://astro-site-cyan-five.vercel.app/)** ·
+**[▶ Try the live preview](https://chaos-design.github.io/astro/?demo=1)**
+(no install, sample data in the browser only)
+
 English | [简体中文](README-zh.md)
+
+</div>
 
 **ASTRO** stands for **Agent State Trace & Runtime Observations**. It is an
 observability system for coding-agent execution and is unrelated to the Astro
@@ -14,7 +24,8 @@ machine.
 
 ![ASTRO desktop console](docs/assets/astro-desktop.png)
 
-The screenshot shows the complete desktop workspace with both side panels open:
+The console above (also shown in the banner) is the complete desktop workspace
+with both side panels open:
 `RUNS` organizes history by session and prompt run, the center canvas renders
 the execution topology and atom state, `EVENTS` combines the event stream with
 the inspector, and the footer provides event-level seeking and replay. Selecting
@@ -211,8 +222,8 @@ JSONL, the service pushes it, RUN HISTORY and the topology update in real time.
 
 | Path | How |
 | --- | --- |
-| Vercel | `vercel.json` builds the console and the docs site and merges them: docs at the root, the console preview at `/console/`. Import the repository — no extra settings. |
-| GitHub Actions | `.github/workflows/console-preview.yml` builds the console on push/PR and uploads a `console-dist` artifact; run "Deploy console preview to GitHub Pages" manually to publish the current branch's build (no main merge required). |
+| Vercel | `vercel.json` builds the console and the docs site and merges them: docs at the root, the console preview at `/console/`. Import the repository — no extra settings. Live: [astro-site-cyan-five.vercel.app](https://astro-site-cyan-five.vercel.app/) — the online documentation. |
+| GitHub Pages | `.github/workflows/console-preview.yml` builds the console on push/PR; a push to `main` publishes it to [chaos-design.github.io/astro](https://chaos-design.github.io/astro/) — the online preview (append `?demo=1` for the sample dataset). "Deploy console preview to GitHub Pages" publishes any other branch manually. |
 | Any static host | `pnpm build` produces `dist/` with relative asset URLs; serve it as-is. |
 
 A deployed page targets `http://127.0.0.1:5678` by default; override with
@@ -1487,6 +1498,12 @@ Large subagent graphs require more layout work. Inspect the browser console
 for Worker errors; the main-thread fallback can briefly block rendering.
 
 ## Documentation
+
+The documentation is also published online:
+**[astro-site-cyan-five.vercel.app](https://astro-site-cyan-five.vercel.app/)**
+— the same docs site, rebuilt with every Vercel deployment of `main`. The
+console preview lives at
+**[chaos-design.github.io/astro](https://chaos-design.github.io/astro/?demo=1)**.
 
 | Document | English | 简体中文 |
 | --- | --- | --- |

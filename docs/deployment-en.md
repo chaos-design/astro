@@ -150,6 +150,9 @@ whole build (`pnpm build && pnpm build:docs &&
 node scripts/merge-deploy-output.mjs`), producing docs at the root and the
 console under `/console/` (with a rewrite so `/console` resolves).
 
+The live deployment — and the online address of the documentation — is
+<https://astro-site-cyan-five.vercel.app/>.
+
 The reader side (data always stays on the reader's machine):
 
 1. Run the local service (§2);
@@ -169,7 +172,9 @@ explicit `?demo=1`, with a persistent "sample data" banner.
 
 ### 4.2 GitHub Pages (console preview only)
 
-`.github/workflows/console-preview.yml`:
+`.github/workflows/console-preview.yml` — the live preview page is
+<https://chaos-design.github.io/astro/>; append `?demo=1` to explore it with
+the sample dataset:
 
 - On every push/PR to `main`: build the console, run the
   `verify-console-build` assertions (relative assets, shipped icons and sample
@@ -197,7 +202,8 @@ under any sub-path; pair it with the CORS allowlist from §3.
 
 `pnpm build:docs` inlines every `docs/*.md` into `site/dist` at build time
 (`docs/*.html` decks go to `/decks/`, `docs/assets/` ships along); the output
-is self-contained. Three hosting routes:
+is self-contained. The published instance is the Vercel deployment from §4.1
+(<https://astro-site-cyan-five.vercel.app/>). Three hosting routes:
 
 1. The merged artifact: `pnpm deploy:preview` produces `deploy/` (docs at the
    root);

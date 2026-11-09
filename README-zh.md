@@ -1,6 +1,16 @@
 # ASTRO
 
+<div align="center">
+
+![ASTRO — Agent State Trace & Runtime Observations](docs/assets/astro-hero.png)
+
+**[📖 在线文档](https://astro-site-cyan-five.vercel.app/)** ·
+**[▶ 在线预览](https://chaos-design.github.io/astro/?demo=1)**
+（无需安装，浏览器内加载示例数据）
+
 [English](README.md) | 简体中文
+
+</div>
 
 **ASTRO** 是 **Agent State Trace & Runtime Observations** 的缩写，中文可理解为
 “智能体状态追踪与运行时观测”。它是编码智能体可观测系统，与 Astro Web 框架无关。
@@ -11,7 +21,7 @@ OpenCode、ZCode、Pi、浏览器扩展和自定义客户端接入统一的版�
 
 ![ASTRO 桌面控制台](docs/assets/astro-desktop.png)
 
-图中为完整展开的桌面工作区：左侧 `RUNS` 按 Session 和 Prompt 子运行组织历史，
+上图（即顶部主图中的控制台）为完整展开的桌面工作区：左侧 `RUNS` 按 Session 和 Prompt 子运行组织历史，
 中央画布展示执行拓扑及原子状态，右侧 `EVENTS` 同时提供事件流与详情检查器，
 底部控制条用于逐事件定位和历史回放。选中任一事件后，可以继续检查 Overview、
 Input、Output 与规范化 Raw JSON；拓扑节点、事件日志和回放游标保持双向联动。
@@ -177,8 +187,8 @@ RUN HISTORY 与拓扑实时更新。
 
 | 途径 | 做法 |
 | --- | --- |
-| Vercel | 仓库 `vercel.json` 已配置构建并合并：文档站在根路径，控制台预览在 `/console/`，导入仓库即可 |
-| GitHub Actions | `.github/workflows/console-preview.yml` 在 push/PR 时构建并上传 `console-dist` 构件；在 Actions 手动运行 "Deploy console preview to GitHub Pages" 可把**当前分支**的构建发布到 Pages（不依赖 main，在途分支即可拿到线上预览地址） |
+| Vercel | 仓库 `vercel.json` 已配置构建并合并：文档站在根路径，控制台预览在 `/console/`，导入仓库即可。线上地址：[astro-site-cyan-five.vercel.app](https://astro-site-cyan-five.vercel.app/)（在线文档） |
+| GitHub Pages | `.github/workflows/console-preview.yml` 在 push/PR 时构建控制台；push 到 `main` 自动发布到 [chaos-design.github.io/astro](https://chaos-design.github.io/astro/)（在线预览，追加 `?demo=1` 加载示例数据）。在 Actions 手动运行 "Deploy console preview to GitHub Pages" 可发布**任意分支**的构建 |
 | 任意静态托管 | `pnpm build` 产出相对资源路径的 `dist/`，直接托管 |
 
 部署页默认连接 `http://127.0.0.1:5678`，可用 `?api=<地址>` 覆盖（持久化为
@@ -1351,6 +1361,10 @@ curl http://127.0.0.1:5678/api/demo-events
 模式可能短暂阻塞渲染。
 
 ## 文档
+
+文档站已在线发布：**[astro-site-cyan-five.vercel.app](https://astro-site-cyan-five.vercel.app/)**
+—— 与仓库 `docs/` 同源，`main` 的每次 Vercel 部署自动更新。控制台预览位于
+**[chaos-design.github.io/astro](https://chaos-design.github.io/astro/?demo=1)**。
 
 | 文档 | English | 简体中文 |
 | --- | --- | --- |

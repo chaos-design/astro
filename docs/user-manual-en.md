@@ -247,6 +247,13 @@ cloud, the data still comes from the ASTRO service on your computer. The full
 deployment reference (CORS, data directory, `astrox` commands,
 troubleshooting) lives in the [Deployment Guide](deployment-en.md).
 
+The two live addresses: the **online preview (GitHub Pages)**
+<https://chaos-design.github.io/astro/> (append `?demo=1` for the sample
+dataset, no install needed) and the **online documentation (Vercel)**
+<https://astro-site-cyan-five.vercel.app/>. A deployed page targets
+`http://127.0.0.1:5678` by default; the deployment's origin must be added to
+the service's CORS allowlist (below).
+
 Deployment paths:
 
 | Path | How |

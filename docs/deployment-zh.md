@@ -136,6 +136,8 @@ astrox status|start|stop|restart|update|logs|doctor|path|open|info
 （`pnpm build && pnpm build:docs && node scripts/merge-deploy-output.mjs`），
 产物布局：文档在根、控制台在 `/console/`（`rewrites` 保证 `/console` 直达）。
 
+线上部署即在线文档地址：<https://astro-site-cyan-five.vercel.app/>。
+
 读者侧（数据永远在读者机器上）：
 
 1. 本机跑起服务（§2）；
@@ -151,7 +153,8 @@ astrox status|start|stop|restart|update|logs|doctor|path|open|info
 
 ### 4.2 GitHub Pages（仅控制台预览）
 
-`.github/workflows/console-preview.yml`：
+`.github/workflows/console-preview.yml` —— 在线预览地址是
+<https://chaos-design.github.io/astro/>，追加 `?demo=1` 即可用示例数据体验：
 
 - 每次 push/PR 到 `main`：构建控制台、跑 `verify-console-build` 校验（相对
   资源、自带图标与示例数据集、无文档站标记），上传 `console-dist` 工件。
@@ -174,7 +177,8 @@ astrox status|start|stop|restart|update|logs|doctor|path|open|info
 ## 5. 文档站
 
 `pnpm build:docs` 把 `docs/*.md` 在构建时内联进 `site/dist`（`docs/*.html`
-演示页到 `/decks/`，`docs/assets/` 随附），产物自包含。三条托管路径：
+演示页到 `/decks/`，`docs/assets/` 随附），产物自包含。已发布的实例即 §4.1
+的 Vercel 部署（<https://astro-site-cyan-five.vercel.app/>）。三条托管路径：
 
 1. 合并产物：`pnpm deploy:preview` 产出的 `deploy/`（文档在根）；
 2. Actions 工件：`docs-site.yml` 每次 push/PR 上传 `docs-dist`（无自动发布，
