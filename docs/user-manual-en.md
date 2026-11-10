@@ -547,7 +547,11 @@ The platform choice is stored in `ASTROX_PLATFORM`.
 The upper LOG area:
 
 - orders the newest event first;
-- groups rows by turn;
+- groups rows by turn; the number is the one the source reports (DeepSeek's
+  `data.turn` may start at 5 in a resumed session, and the pane says `TURN 05`),
+  otherwise it is inferred from prompts and ordering and restarts at 1 in each
+  prompt run — one separator per turn, never an oscillating number inside one
+  message;
 - searches any serialized field in the selected prompt run; matching follows
   the keystroke in the background (per-event serializations are cached, so
   typing stays smooth on long runs);

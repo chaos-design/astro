@@ -65,7 +65,14 @@
     (pi's `model`/`provider` keys, deepseek's model object, opencode's step
     notification, zcode's session-start model) into one display string; runs
     without their own observation fall back to the session-start model, and
-    the UI shows the `MODEL` tag only when a value exists.
+    the UI shows the `MODEL` tag only when a value exists;
+  - turn numbering lives only in `src/lib/trajectory-model.ts`
+    (`buildTraceTurnIndex`): a source that numbers its own turns keeps that
+    number (DeepSeek's `data.turn` can start at 5), an opaque identity gets the
+    next ordinal, identity-less events stay in the executing turn, and a leading
+    preamble belongs to the first turn it introduces. LOG grouping, the
+    trajectory view, and turn counts all read that one result — do not grow a
+    second turn inference.
   New consumers reuse those helpers; do not grow a second failure or live list.
 - Sample (Demo) data lives only in `data/demo-events.json`: the service reads it
   through `server/demo-dataset.mjs` and serves `GET /api/demo-events`, and the

@@ -56,7 +56,12 @@
     （pi 的 `model`/`provider`、deepseek 的模型对象、opencode 的 step 通知、
     zcode 的会话起始模型）在此归一成一个展示串；某条运行自身没上报模型时
     回退到会话起始模型（ZCode 只在 SessionStart 携带 model），界面只在有
-    可显示值时渲染 `MODEL` 标签。
+    可显示值时渲染 `MODEL` 标签；
+  - 轮次编号只在 `src/lib/trajectory-model.ts`（`buildTraceTurnIndex`）：来源
+    自带轮次标识时保留它印出的编号（DeepSeek 的 `data.turn` 可以从 5 开始），
+    仅有不透明标识时按首次出现给序号，无标识的事件跟随当前轮次，开头的前导
+    事件归入它引出的第一个轮次；LOG 分组、轨迹视图和轮次计数都读这一份结果，
+    不得另写一份轮次推断。
   新增消费方必须复用这些函数，不得再写一份“失败事件名单”或“live 名单”。
 - 示例（Demo）数据只在 `data/demo-events.json`：服务通过 `server/demo-dataset.mjs`
   读取并由 `GET /api/demo-events` 提供，控制台只在 `src/lib/demo-events.ts` 解析。

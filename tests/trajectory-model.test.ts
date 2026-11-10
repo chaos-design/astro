@@ -146,19 +146,21 @@ test("keeps one slot per node when the lane is already short", () => {
 /**
  * DeepSeek Harness names its turns with a stable native id (its `data.turn`)
  * that every event inside one loop shares, and that number is not 1-based nor
- * contiguous across turns (a resumed session can jump 2 -> 5 -> 9). Such a batch
- * must group purely by that identity, in first-seen order, so a step/loop inside
- * one turn never opens a new LOG separator and the sequence stays monotonic.
+ * contiguous across turns (a resumed session can start at 5). Such a batch must
+ * group purely by that identity and keep the number the source prints, so a
+ * step/loop inside one turn never opens a second LOG separator and the label
+ * agrees with what the harness and the canvas already show.
  */
 function deepseekEvent(
   id: string,
   eventName: TraceEvent["eventName"],
   turnId: string | null,
+  turn?: number,
 ): TraceEvent {
   return {
     capturedAt: new Date(0).toISOString(),
     id,
-    payload: {},
+    payload: turn === undefined ? {} : { turn },
     source: "deepseek",
     eventName,
     turnId,
@@ -170,16 +172,16 @@ test("groups a native-identified DeepSeek loop as a single monotonic turn", () =
     deepseekEvent("s", "SessionStart", null),
     deepseekEvent("p", "UserPromptSubmit", null),
     deepseekEvent("a1", "AgentMessage", "2"),
-    deepseekEvent("t1", "PreToolUse", "2"),
-    deepseekEvent("r1", "PostToolUse", "2"),
+    deepseekEvent("t1", "PreToolUse", "2", 2),
+    deepseekEvent("r1", "PostToolUse", "2", 2),
     // Loop back inside the same native turn 2: a message after a closed loop
     // used to increment a side counter and bounce the LOG back to turn 1.
     deepseekEvent("a2", "AgentMessage", "2"),
-    deepseekEvent("t2", "PreToolUse", "2"),
-    deepseekEvent("r2", "PostToolUse", "2"),
+    deepseekEvent("t2", "PreToolUse", "2", 2),
+    deepseekEvent("r2", "PostToolUse", "2", 2),
     deepseekEvent("p2", "UserPromptSubmit", null),
-    deepseekEvent("a3", "AgentMessage", "5"),
-    deepseekEvent("stop", "Stop", "5"),
+    deepseekEvent("a3", "AgentMessage", "5", 5),
+    deepseekEvent("stop", "Stop", "5", 5),
     deepseekEvent("e", "SessionEnd", null),
   ];
 
@@ -187,9 +189,61 @@ test("groups a native-identified DeepSeek loop as a single monotonic turn", () =
 
   assert.deepEqual(
     events.map((event) => index.get(event.id)),
-    // One ordinal per distinct native turn (2 -> 1st, 5 -> 2nd); identity-less
-    // events inherit the most recent one, so the whole sequence is monotonic.
-    [1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2],
+    // The harness's own numbers, not renumbered ordinals: the resumed session
+    // really is on turn 2 and then turn 5. Identity-less events stay in the
+    // turn that was executing; the leading preamble belongs to the first turn
+    // it introduces instead of opening a stray "TURN 01" group.
+    [2, 2, 2, 2, 2, 2, 2, 2, 2, 5, 5, 5],
+  );
+});
+
+test("reads the envelope turn id and the payload turn as one identity", () => {
+  // The recorder writes DeepSeek's `data.turn` to the envelope as the string
+  // "5" and to the payload as the number 5. Treating those spellings as two
+  // identities is what split one loop into "TURN 05" and "TURN 06" groups.
+  const events = [
+    deepseekEvent("a", "AgentMessage", "5"),
+    deepseekEvent("t", "PreToolUse", "5", 5),
+    deepseekEvent("r", "PostToolUse", "5", 5),
+  ];
+
+  const index = buildTraceTurnIndex(events);
+
+  assert.deepEqual(
+    events.map((event) => index.get(event.id)),
+    [5, 5, 5],
+  );
+});
+
+test("numbers opaque turn identities in order and keeps regressions distinct", () => {
+  const hook = (
+    id: string,
+    turnId: string | null,
+  ): TraceEvent => ({
+    capturedAt: new Date(0).toISOString(),
+    id,
+    payload: {},
+    source: "codex",
+    eventName: "AgentMessage",
+    turnId,
+  });
+  const events = [
+    // Codex reports opaque ids (`turn_1`), so they get ordinals …
+    hook("a", "turn_1"),
+    hook("b", "turn_2"),
+    // … and after a numeric identity, a lower one is a *new* group rather than
+    // a jump backwards: the LOG must never number a later turn below an
+    // earlier one.
+    hook("c", "7"),
+    hook("d", "1"),
+    hook("e", "7"),
+  ];
+
+  const index = buildTraceTurnIndex(events);
+
+  assert.deepEqual(
+    events.map((event) => index.get(event.id)),
+    [1, 2, 7, 8, 7],
   );
 });
 

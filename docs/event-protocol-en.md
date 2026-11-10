@@ -229,6 +229,23 @@ A `PreToolUse` event pairs with `PostToolUse` or `PostToolUseFailure` through `t
 
 An explicit `turnId` takes precedence. When a producer has no turn ID, the trajectory model infers boundaries from prompts, stop events, and ordering. Inference affects presentation only and never rewrites raw events.
 
+Turn numbers come from one place, `buildTraceTurnIndex` in
+`src/lib/trajectory-model.ts`; the LOG grouping and the trajectory view read
+that same result:
+
+- A source that numbers its own turns keeps that number. DeepSeek Harness
+  writes `data.turn` as `turnId` (a string) and as `payload.turn` (a number);
+  both spellings are one turn, and a resumed session may legitimately start at
+  turn 5 — the console shows `TURN 05` rather than renumbering it to `TURN 01`.
+- An opaque identity (for example `turn_1`) takes the next ordinal in
+  first-seen order. A numeric identity that regresses (a restarted counter)
+  takes a new ordinal, so a later turn never reads lower than an earlier one.
+- Events without an identity stay in the executing turn, and a leading preamble
+  (session start, the prompt itself) joins the first turn it introduces instead
+  of opening an empty `TURN 01` group.
+- Hook sources with no identity at all still infer turns from prompts and
+  ordering, numbered from 1 inside each prompt run.
+
 The console additionally derives a prompt run at every `UserPromptSubmit`.
 That run includes the prompt and all following events before the next prompt.
 The first run is classified as `initial`; later runs are `follow-up`. This is a

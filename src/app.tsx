@@ -2848,11 +2848,15 @@ const AtomicLog = memo(function AtomicLog({
               >
                 {slice.map((item) => {
                   if (item.kind === "turn") {
+                    // Key by position, never by the turn value: two groups can
+                    // legitimately repeat a number (a source that restarts its
+                    // counter), and duplicate keys left React with orphaned
+                    // chips that survived the next agent switch.
                     return (
                       <div
                         className="atomic-log__turn"
                         aria-label={`Turn ${item.turn}`}
-                        key={`turn-${item.turn}`}
+                        key={`turn-${item.entryIndex}`}
                       >
                         <span>TURN {String(item.turn).padStart(2, "0")}</span>
                       </div>

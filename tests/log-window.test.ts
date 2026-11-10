@@ -41,6 +41,28 @@ test("layout handles an empty log", () => {
   assert.equal(layout.total, 0);
 });
 
+test("turn separators keep a unique position even when a number repeats", () => {
+  // A source that restarts its counter can hand two groups the same number.
+  // The separator's React key comes from `entryIndex`, not from the value: a
+  // value-based key produced duplicate keys, and React left the stale chips in
+  // the DOM after the next agent switch.
+  const entries = [{ turn: 1 }, { turn: 1 }, { turn: 2 }, { turn: 1 }];
+  const layout = buildLogLayout(entries, metrics);
+
+  const keys = layout.items.map((item) => `${item.kind}-${item.entryIndex}`);
+  assert.equal(new Set(keys).size, layout.items.length);
+  assert.deepEqual(
+    layout.items
+      .filter((item) => item.kind === "turn")
+      .map((item) => [item.turn, item.entryIndex]),
+    [
+      [1, 0],
+      [2, 2],
+      [1, 3],
+    ],
+  );
+});
+
 test("lower bound finds the first offset at or above a value", () => {
   assert.equal(lowerBound([0, 10, 20, 30], 10), 1);
   assert.equal(lowerBound([0, 10, 20, 30], 11), 2);

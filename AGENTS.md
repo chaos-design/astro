@@ -64,6 +64,14 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   — pi's `model`/`provider` keys, deepseek's model source object, opencode's
   step notification, zcode's session-start model — into one display string;
   the UI shows the tag only when a run reports a model.
+  Turn numbering lives only in `src/lib/trajectory-model.ts`
+  (`buildTraceTurnIndex`): a numbered source keeps its own number (DeepSeek's
+  `data.turn` can start at 5), an opaque identity takes the next ordinal,
+  identity-less events stay in the executing turn, and a leading preamble joins
+  the first turn it introduces. LOG grouping, the trajectory view, and turn
+  counts read that one result; do not grow a second turn inference, and key a
+  separator by its position, never by the turn value (duplicate React keys leave
+  orphaned chips behind when a number repeats).
 - Treat unrelated working-tree changes as user-owned and do not revert them.
 - A behavior change is only complete when `docs/user-manual-*.md`,
   `docs/conventions-*.md`, this file, `docs/index.md`, and `site/src/docs.ts`
