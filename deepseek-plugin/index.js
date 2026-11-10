@@ -5,7 +5,13 @@ import recorder from "./plugin/trace-recorder.cjs";
 import runtimeConfigLoader from "./plugin/runtime-config.cjs";
 
 export const name = "astro-deepseek";
-export const inject = ["sessions"];
+
+// Capture subscribes to session/* events on the root context; it never reads
+// the `sessions` service. Declaring `inject = ["sessions"]` made activation
+// depend on that service being ready: dsh leaves a third-party entry whose
+// required services never resolve PENDING and prints only a stderr warning,
+// so apply() never runs and not a single listener is registered. Subscribe
+// unconditionally instead — event registration does not need the service.
 
 const pluginRoot = dirname(fileURLToPath(import.meta.url));
 
@@ -193,19 +199,30 @@ export function apply(ctx, config = {}) {
       ? {}
       : { ASTRO_AUTO_OPEN: config.autoOpen ? "1" : "0" }),
   };
-  const runtimeConfig = runtimeConfigLoader.loadRuntimeConfig({
-    astroHome: config.astroHome,
-    environment: process.env,
-    initialize: true,
-    overrides,
-    templateDir: pluginRoot,
-  });
-  for (const diagnostic of runtimeConfig.diagnostics) {
+  // A bad config.yaml / .env must not take the whole bundle down: Cordis marks
+  // a plugin whose apply() throws as FAILED, which again looks like "installed
+  // but nothing is recorded". Fall back to the process environment and keep
+  // the listeners alive so capture still has a chance to work.
+  let environment = process.env;
+  try {
+    const runtimeConfig = runtimeConfigLoader.loadRuntimeConfig({
+      astroHome: config.astroHome,
+      environment: process.env,
+      initialize: true,
+      overrides,
+      templateDir: pluginRoot,
+    });
+    for (const diagnostic of runtimeConfig.diagnostics) {
+      ctx.logger?.warn?.(
+        runtimeConfigLoader.formatRuntimeConfigDiagnostic(diagnostic),
+      );
+    }
+    environment = runtimeConfig.environment;
+  } catch (error) {
     ctx.logger?.warn?.(
-      runtimeConfigLoader.formatRuntimeConfigDiagnostic(diagnostic),
+      `ASTRO DeepSeek runtime config could not be loaded; using the process environment: ${String(error?.message || error)}`,
     );
   }
-  const environment = runtimeConfig.environment;
   const dashboardFile = join(pluginRoot, "server", "server.mjs");
   const record = (event) => {
     try {

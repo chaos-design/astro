@@ -5,13 +5,13 @@ import {
   readdirSync,
   rmSync,
 } from "node:fs";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import {
-  adaptDeepseekEvent,
-  apply,
-} from "../deepseek-plugin/index.js";
+import * as plugin from "../deepseek-plugin/index.js";
+
+const { adaptDeepseekEvent, apply } = plugin;
 
 function findTraceFile(root) {
   const entries = readdirSync(root, { recursive: true });
@@ -141,4 +141,46 @@ test("captures a complete DeepSeek Harness turn in the local trace store", (t) =
   );
   assert.ok(events.every((event) => event.source === "deepseek"));
   assert.equal(warnings.length, 0);
+});
+
+test("does not gate activation on the sessions service", () => {
+  // dsh leaves entries whose injected services never resolve PENDING without
+  // failing startup. Capture only subscribes to events, so it must not declare
+  // a service dependency that can silently prevent apply() from running.
+  assert.equal(plugin.inject, undefined);
+});
+
+test("keeps session listeners alive when the runtime config cannot be loaded", (t) => {
+  const loader = createRequire(import.meta.url)(
+    "../deepseek-plugin/plugin/runtime-config.cjs",
+  );
+  const original = loader.loadRuntimeConfig;
+  loader.loadRuntimeConfig = () => {
+    throw new Error("broken config.yaml");
+  };
+  t.after(() => {
+    loader.loadRuntimeConfig = original;
+  });
+
+  const handlers = new Map();
+  const warnings = [];
+  const ctx = {
+    logger: { warn: (message) => warnings.push(message) },
+    on(name, handler) {
+      handlers.set(name, handler);
+    },
+  };
+
+  const astroHome = mkdtempSync(join(tmpdir(), "astro-dsh-config-"));
+  t.after(() => rmSync(astroHome, { recursive: true, force: true }));
+  apply(ctx, { astroHome, autoOpen: false });
+
+  assert.deepEqual([...handlers.keys()].sort(), [
+    "session/created",
+    "session/disposed",
+    "session/event",
+  ]);
+  assert.ok(
+    warnings.some((message) => /runtime config could not be loaded/i.test(message)),
+  );
 });

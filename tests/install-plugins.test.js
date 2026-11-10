@@ -20,6 +20,35 @@ import {
   updateInstalledPlugins,
 } from "../scripts/install-plugins.mjs";
 
+// Stand-in for `dsh plugin add`: a successful command must leave the bundle
+// registered in the profile manifest, otherwise dsh never mounts its layer.
+function registerDeepseekProfile(dshHome, profile, { bundle = true } = {}) {
+  const profileDir = join(dshHome, "profiles", profile);
+  mkdirSync(profileDir, { recursive: true });
+  writeFileSync(
+    join(profileDir, "package.json"),
+    `${JSON.stringify(
+      {
+        name: `dsh-profile-${profile}`,
+        private: true,
+        dependencies: {
+          "dsh-astro-plugin": "file:/tmp/dsh-astro-plugin",
+        },
+        dsh: {
+          profile: {
+            bundles: [
+              "@deepseek-ai/dsh-base",
+              ...(bundle ? ["dsh-astro-plugin"] : []),
+            ],
+          },
+        },
+      },
+      null,
+      2,
+    )}\n`,
+  );
+}
+
 test("uses portable home-relative paths in hook commands", () => {
   const astroHome = join(homedir(), ".astrox");
   const recorderFile = join(
@@ -299,6 +328,7 @@ test("installs the DeepSeek Harness bundle through its profile manager", () => {
     deepseekCommand: "custom-dsh",
     deepseekRun(command, arguments_, options) {
       invocation = { command, arguments_, options };
+      registerDeepseekProfile(options.env.DSH_HOME, "headless");
       return { status: 0 };
     },
     clients: ["deepseek"],
@@ -339,11 +369,13 @@ test("falls back to the official npx launcher when dsh is not on PATH", () => {
     targetDir: root,
     astroHome: join(root, "astro-home"),
     dshHome: join(root, "dsh-home"),
-    deepseekRun(command, arguments_) {
+    deepseekRun(command, arguments_, options) {
       calls.push([command, arguments_]);
-      return command === "dsh"
-        ? { status: null, error: { code: "ENOENT" } }
-        : { status: 0 };
+      if (command === "dsh") {
+        return { status: null, error: { code: "ENOENT" } };
+      }
+      registerDeepseekProfile(options.env.DSH_HOME, "web");
+      return { status: 0 };
     },
     clients: ["deepseek"],
   });
@@ -355,6 +387,81 @@ test("falls back to the official npx launcher when dsh is not on PATH", () => {
     "--yes",
     "@deepseek-ai/dsh",
   ]);
+
+  rmSync(root, { recursive: true, force: true });
+});
+
+test("refuses to report success when dsh left the profile unregistered", () => {
+  const root = mkdtempSync(join(tmpdir(), "astro-deepseek-unregistered-"));
+
+  assert.throws(
+    () =>
+      installClients({
+        targetDir: root,
+        astroHome: join(root, "astro-home"),
+        dshHome: join(root, "dsh-home"),
+        // Exit code 0, but dsh wrote nothing (e.g. a reconcile skip or a
+        // launcher pointed at a different DSH_HOME).
+        deepseekRun: () => ({ status: 0 }),
+        clients: ["deepseek"],
+      }),
+    (error) => {
+      assert.match(error.message, /profile registration did not take effect/);
+      assert.match(error.message, /dsh\.profile\.bundles/);
+      assert.match(error.message, /--dump-config/);
+      return true;
+    },
+  );
+
+  rmSync(root, { recursive: true, force: true });
+});
+
+test("refuses a profile that installed the dependency but skipped the bundle layer", () => {
+  const root = mkdtempSync(join(tmpdir(), "astro-deepseek-no-layer-"));
+
+  assert.throws(
+    () =>
+      installClients({
+        targetDir: root,
+        astroHome: join(root, "astro-home"),
+        dshHome: join(root, "dsh-home"),
+        deepseekRun(command, arguments_, options) {
+          registerDeepseekProfile(options.env.DSH_HOME, "web", {
+            bundle: false,
+          });
+          return { status: 0 };
+        },
+        clients: ["deepseek"],
+      }),
+    /profile registration did not take effect/,
+  );
+
+  rmSync(root, { recursive: true, force: true });
+});
+
+test("explains the local source-checkout launcher when the npx fallback fails to register", () => {
+  const root = mkdtempSync(join(tmpdir(), "astro-deepseek-fallback-hint-"));
+
+  assert.throws(
+    () =>
+      installClients({
+        targetDir: root,
+        astroHome: join(root, "astro-home"),
+        dshHome: join(root, "dsh-home"),
+        deepseekRun(command) {
+          return command === "dsh"
+            ? { status: null, error: { code: "ENOENT" } }
+            : { status: 0 };
+        },
+        clients: ["deepseek"],
+      }),
+    (error) => {
+      assert.match(error.message, /npx --yes @deepseek-ai\/dsh/);
+      assert.match(error.message, /local source checkout/);
+      assert.match(error.message, /DSH_COMMAND/);
+      return true;
+    },
+  );
 
   rmSync(root, { recursive: true, force: true });
 });

@@ -188,9 +188,20 @@ pnpm install-plugins -- --clients=deepseek --deepseek-profile=web
 ```
 
 The installer falls back to `npx --yes @deepseek-ai/dsh` when `dsh` is not on
-PATH. Use `--dsh-home` for a custom home and `--deepseek-command` for a custom
-executable. Restart `dsh web` after installation. Events are appended to
-`~/.astrox/deepseek/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl`.
+PATH. A harness started from a source checkout (`pnpm start:web`) has no global
+`dsh`; in that case point `DSH_COMMAND` at a wrapper that launches that
+checkout, so the fallback does not write to a different build's `DSH_HOME`.
+Use `--dsh-home` for a custom home and `--deepseek-command` for a custom
+executable.
+
+After the add command, the installer verifies
+`$DSH_HOME/profiles/<profile>/package.json`: `dsh-astro-plugin` must appear in
+both `dependencies` and `dsh.profile.bundles`, otherwise installation fails
+loudly — a zero exit code alone does not mean dsh mounted the layer. Confirm
+with `dsh --profile web --dump-config` that `astro-trace` is in the composed
+tree, then restart `dsh web`. If events are still missing, check the
+`astro-trace` entry state in `$DSH_HOME/logs/startup-*.log`. Events are
+appended to `~/.astrox/deepseek/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl`.
 
 #### 4.2.4 Trae
 

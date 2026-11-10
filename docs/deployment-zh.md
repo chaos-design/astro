@@ -90,7 +90,7 @@ pnpm start        # 服务：127.0.0.1:5678，托管 dist/
   - Codex：`codex plugin add astro-codex-local`
   - Claude Code：`claude plugin add astro-claude-local`
   - WorkBuddy：`codebuddy plugin add astro-workbuddy-local`
-  - DeepSeek Harness：`dsh plugin add cordis --source ~/.astrox/plugins/astro`
+  - DeepSeek Harness：`dsh plugin --profile web add file:~/.astrox/plugins/astro/deepseek-plugin`（安装后用 `dsh --profile web --dump-config` 确认 `astro-trace` 已出现在配置树中）
 - **独立安装器**：ZCode（`pnpm install-zcode-plugin`）、OpenCode
   （`pnpm install-opencode-plugin`）、Pi（`pnpm install-pi-plugin`）。
 

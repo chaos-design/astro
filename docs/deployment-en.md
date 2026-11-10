@@ -98,7 +98,7 @@ installing — it cannot live in the plugin's own `.env`.
   - Codex: `codex plugin add astro-codex-local`
   - Claude Code: `claude plugin add astro-claude-local`
   - WorkBuddy: `codebuddy plugin add astro-workbuddy-local`
-  - DeepSeek Harness: `dsh plugin add cordis --source ~/.astrox/plugins/astro`
+  - DeepSeek Harness: `dsh plugin --profile web add file:~/.astrox/plugins/astro/deepseek-plugin` (verify with `dsh --profile web --dump-config` that `astro-trace` appears in the composed tree)
 - **Standalone installers**: ZCode (`pnpm install-zcode-plugin`), OpenCode
   (`pnpm install-opencode-plugin`), Pi (`pnpm install-pi-plugin`).
 

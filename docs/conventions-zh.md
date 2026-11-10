@@ -309,3 +309,4 @@ ASTRO_HOME=/tmp/astro-check ASTRO_PORT=4401 node server/server.mjs
 | 大历史首次加载主线程长任务明显 | 事件级判定里反复分配临时数组 | 模块级 `Set` + `getEventTimestamp` 缓存 |
 | 重启服务后列表还是旧的 | 保留了续传游标，服务端只回空 `resume` | 重启时清游标 + `forceSnapshot`，见 §10 |
 | 重启后状态先闪 `offline` | 把「等待下一个快照」当成断线 | 用 `restarting` / `reloading` 状态，见 §10 |
+| DeepSeek 插件「装好了」却没有任何 session 事件 | bundle 只被复制到 `ASTRO_HOME`，没有写进 profile 的 `dsh.profile.bundles`（`dsh plugin add` 退出 0 不代表成功，`npx` 回退常写入另一个构建的 `DSH_HOME`）；或多余的 `inject` 让 entry 一直 PENDING，`apply()` 从未执行 | 每次 add 后校验 `dependencies` + `bundles`，用 `--dump-config` 确认 `astro-trace`；事件订阅不声明服务依赖 |

@@ -174,10 +174,17 @@ pnpm install-plugins -- --clients=claude --scope=user
 pnpm install-plugins -- --clients=deepseek --deepseek-profile=web
 ```
 
-如果 PATH 中没有 `dsh`，安装器会回退到
-`npx --yes @deepseek-ai/dsh`。自定义位置使用 `--dsh-home`，自定义可执行文件
-使用 `--deepseek-command`。安装后重启 `dsh web`，事件写入
-`~/.astrox/deepseek/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl`。
+如果 PATH 中没有 `dsh`，安装器会回退到 `npx --yes @deepseek-ai/dsh`。从源码
+本地启动的 harness（`pnpm start:web`）没有全局 `dsh`，此时应把 `DSH_COMMAND`
+指向启动该源码仓库的包装脚本，避免回退到发布版、写入另一个 `DSH_HOME`。
+自定义位置使用 `--dsh-home`，自定义可执行文件使用 `--deepseek-command`。
+
+安装器会在命令结束后校验 `$DSH_HOME/profiles/<profile>/package.json`：只有
+`dsh-astro-plugin` 同时出现在 `dependencies` 与 `dsh.profile.bundles` 才算
+成功，否则直接报错——命令退出码为 0 并不代表 dsh 已挂载该层。用
+`dsh --profile web --dump-config` 确认输出含 `astro-trace` 后重启 `dsh web`；
+仍无事件时检查 `$DSH_HOME/logs/startup-*.log` 中 `astro-trace` 的状态。
+事件写入 `~/.astrox/deepseek/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl`。
 
 #### 4.2.4 Trae
 
