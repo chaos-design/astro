@@ -177,24 +177,30 @@ explicit `?demo=1`, with a persistent "sample data" banner.
 the sample dataset:
 
 - On every push/PR to `main`: build the console, run the
-  `verify-console-build` assertions (relative assets, shipped icons and sample
-  dataset, no docs-site markers), upload the `console-dist` artifact.
+  `verify-console-build` assertions (relative assets, the shipped favicon and
+  sample dataset, no docs-site markers), upload the `console-dist` artifact.
 - The **deploy** job publishes automatically on push to `main` (the formal
   release) or to any `feat/**`, `feature/**`, `fix/**` or `hotfix/**` branch.
   It publishes *that* branch's
   build over the single shared Pages site — the most recent qualifying build
   wins. The branch filters are prefixes, so a new branch deploys without a
   workflow edit and every commit is verifiable on the live page.
+- That "most recent wins" promise is kept across branches by the deploy job's
+  own job-level `concurrency` group (`console-preview-pages`,
+  `cancel-in-progress: true`): deployments from every branch serialize against
+  one another, and a superseded deploy is cancelled the moment a newer one
+  enqueues. The workflow-level group stays per-ref, so in-flight *builds* on
+  different branches keep running in parallel and do not cancel each other —
+  only the publish step is serialized.
 - The `github-pages` environment in the repository settings must allow the same
   prefixes: Settings → Environments → `github-pages` → Deployment branches and
-  tags, add `feat/*`, `feature/*`, `fix/*` and `hotfix/*`. The workflow globs alone are not enough — the
+  tags, add `feat/*`, `feature/*`, `fix/*` and `hotfix/*`. The workflow globs
+  alone are not enough — the
   environment rejects the job before a runner is assigned, and the only trace
   is "Branch is not allowed to deploy to github-pages" with zero steps.
 - A manual `workflow_dispatch` runs from **any** branch, for republishing a
   branch whose prefix does not match (for example `docs/**`) or one that was
   already deleted.
-- The manual `workflow_dispatch` can run from **any branch** to re-publish a
-  branch that is no longer a push trigger.
 
 Constraint: the Pages site hosts the **console only**, never the docs — the
 two cannot share the one site (the workflow comments and

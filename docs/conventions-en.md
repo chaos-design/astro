@@ -72,7 +72,11 @@
     next ordinal, identity-less events stay in the executing turn, and a leading
     preamble belongs to the first turn it introduces. LOG grouping, the
     trajectory view, and turn counts all read that one result — do not grow a
-    second turn inference.
+    second turn inference. The switch to identity mode is "any event names a
+    turn", not "most do": a source that names even one turn is authoritative
+    for the batch, so its unnumbered later prompts fold into the previous
+    turn rather than opening a new one (a partially-stamped source is a
+    contract, not a heuristic — see `docs/event-protocol-en.md` §6).
   New consumers reuse those helpers; do not grow a second failure or live list.
 - Sample (Demo) data lives only in `data/demo-events.json`: the service reads it
   through `server/demo-dataset.mjs` and serves `GET /api/demo-events`, and the
@@ -93,7 +97,10 @@
 - Files under `public/` are addressed through `assetUrl()` in
   `src/lib/asset-url.ts`, never with an origin-root path such as `/icons/...`:
   GitHub Pages mounts the page at `/astro/`, so a root path escapes the project
-  prefix and 404s (this broke the agent dropdown's brand marks).
+  prefix and 404s (this broke the agent dropdown's brand marks). The helper is
+  currently exercised only by its test — the last `public/` assets were inlined
+  into the bundle — but it stays the single definition to call if a `public/`
+  resource is added back.
   `scripts/verify-console-build.mjs` re-checks the build in CI for root-path
   assets and confirms the artifact is the console only, with no docs site mixed
   in.

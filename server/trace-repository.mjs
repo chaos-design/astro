@@ -80,6 +80,13 @@ export class TraceRepository extends EventEmitter {
   invalidateDerived() {
     this.mergedEvents = null;
     this.snapshotKey = "";
+    // Release the lazily-built resume index with the merged list it was made
+    // from, so the id cache has a single invalidation point. Without this it
+    // held a stale array plus a stale Map until the next `since=` reconnect
+    // happened to rebuild it — correct (the `eventIndexFor !== events` guard
+    // catches it) but it kept two live objects around for nothing.
+    this.eventIndexFor = null;
+    this.eventIndex = null;
   }
 
   /**

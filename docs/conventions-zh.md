@@ -61,7 +61,10 @@
     自带轮次标识时保留它印出的编号（DeepSeek 的 `data.turn` 可以从 5 开始），
     仅有不透明标识时按首次出现给序号，无标识的事件跟随当前轮次，开头的前导
     事件归入它引出的第一个轮次；LOG 分组、轨迹视图和轮次计数都读这一份结果，
-    不得另写一份轮次推断。
+    不得另写一份轮次推断。切到身份模式的判定是「批内任一带轮次标识」而非
+    「多数带」：来源只要给过一条事件标了轮次，整批即视为权威，其后无编号
+    的 prompt 折进上一轮、不另开新分组（部分标识来源是契约而非启发式，详见
+    `docs/event-protocol-en.md` §6）。
   新增消费方必须复用这些函数，不得再写一份“失败事件名单”或“live 名单”。
 - 示例（Demo）数据只在 `data/demo-events.json`：服务通过 `server/demo-dataset.mjs`
   读取并由 `GET /api/demo-events` 提供，控制台只在 `src/lib/demo-events.ts` 解析。
@@ -76,7 +79,9 @@
   硬编码 `/api/...`，也不要让服务默认放开 `*`。
 - `public/` 下的资源一律经 `src/lib/asset-url.ts` 的 `assetUrl()` 取地址，不得写
   `/icons/...` 这类根路径：GitHub Pages 把页面挂在 `/astro/`，根路径会逃出项目
-  前缀并 404（智能体下拉的品牌图标踩过）。`scripts/verify-console-build.mjs` 在
+  前缀并 404（智能体下拉的品牌图标踩过）。该工具目前只被测试引用——最后一批
+  `public/` 资源（智能体品牌图标）已内联进 bundle——它仍是「若再添加 public
+  资源」的唯一定义。`scripts/verify-console-build.mjs` 在
   CI 里复查构建产物没有根路径资源，并确认产物只有控制台、没有混入文档站。
 - 事件流快照按 `hours` 窗口下发，并拆成 `reset`（元数据）+ 分批 `trace` + `ready`，
   不得恢复成一次 `JSON.stringify` 全量事件：单帧几百 MB 会阻塞事件循环，实时事件、

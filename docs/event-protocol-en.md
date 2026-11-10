@@ -252,6 +252,18 @@ that same result:
   of opening an empty `TURN 01` group.
 - Hook sources with no identity at all still infer turns from prompts and
   ordering, numbered from 1 inside each prompt run.
+- The switch to the identity path is "any event in the batch carries an
+  identity", not "most events do". A source that names even one turn is
+  authoritative for the whole batch: unnumbered events ride in the turn that
+  was executing, and a later `UserPromptSubmit` does not open a new turn. The
+  official adapters honour this (DeepSeek/Codex stamp every turn,
+  Claude/ZCode/Pi/WorkBuddy stamp none). A *partially*-stamped source — a
+  third-party HTTP collector or a future adapter that names only some turns —
+  is the documented exception: its unnumbered later prompts fold into the
+  previous turn rather than opening a new group, because identity presence
+  already marked the source authoritative. This is a contract, not a
+  heuristic, so a new adapter that stamps turns unevenly must either stamp
+  every turn or none.
 
 The console additionally derives a prompt run at every `UserPromptSubmit`.
 That run includes the prompt and all following events before the next prompt.

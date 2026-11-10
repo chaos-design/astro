@@ -57,8 +57,22 @@ function turnStatus(reason) {
   return "completed";
 }
 
+// Mirrors `numericTurn` in `src/lib/trajectory-model.ts`: the harness prints
+// `data.turn` as the number `5` on the envelope and as the string `"5"` in the
+// payload, so both spellings must normalize to one identity. Accepting only a
+// number here meant a string `"6"` dropped the identity and the whole turn
+// inherited the previous turn's id — the persisted trace was mislabelled, not
+// just the display.
 function turnIdFrom(event) {
-  return Number.isFinite(event.data?.turn) ? String(event.data.turn) : null;
+  const value = event.data?.turn;
+  if (typeof value === "number") {
+    return Number.isSafeInteger(value) && value > 0 ? String(value) : null;
+  }
+  if (typeof value === "string" && /^\d+$/.test(value.trim())) {
+    const parsed = Number(value.trim());
+    return Number.isSafeInteger(parsed) && parsed > 0 ? String(parsed) : null;
+  }
+  return null;
 }
 
 /**

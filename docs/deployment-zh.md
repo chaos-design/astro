@@ -157,12 +157,16 @@ astrox status|start|stop|restart|update|logs|doctor|path|open|info
 <https://chaos-design.github.io/astro/>，追加 `?demo=1` 即可用示例数据体验：
 
 - 每次 push/PR 到 `main`：构建控制台、跑 `verify-console-build` 校验（相对
-  资源、自带图标与示例数据集、无文档站标记），上传 `console-dist` 工件。
+  资源、favicon 与示例数据集、无文档站标记），上传 `console-dist` 工件。
 - **Deploy 任务在 push 时自动发布**：推送到 `main`（正式发布）、`feat/**`、
   `feature/**`、`fix/**` 或 `hotfix/**` 分支都会把*该分支*的构建发布到**同一个**
   Pages 站点，最近一次命中的
   构建胜出。分支过滤用前缀匹配（`feat/**`、`feature/**`、`fix/**`、`hotfix/**`），新建分支不需要改工作流，
   每次提交都能在线上验证改动。
+- 「最近一次命中胜出」跨分支也成立，靠的是 deploy 任务自带的 job 级
+  `concurrency` 分组（`console-preview-pages`、`cancel-in-progress: true`）：
+  各分支的部署互相串行，被更新的部署取代时立即取消；而 workflow 级分组仍按
+  ref，不同分支的*构建*继续并行、互不取消，只有发布这一步被串行化。
 - 仓库设置里的 `github-pages` 环境也必须放行同样的前缀：Settings →
   Environments → `github-pages` → Deployment branches and tags 添加 `feat/*`、
   `feature/*`、`fix/*` 和

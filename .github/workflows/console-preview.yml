@@ -93,6 +93,17 @@ jobs:
     # build wins, so a feature or fix branch gets a live preview URL without
     # merging to main. Prefix matching (`startsWith`) mirrors the `branches`
     # globs above so a new branch needs no workflow edit.
+    #
+    # Concurrency is scoped to the *deploy* job alone, with a constant group,
+    # so deployments from every branch serialize against one another and the
+    # "most recent build wins" promise holds across branches. The workflow-level
+    # group (above) is per-ref, so in-flight *builds* on different branches keep
+    # running in parallel and do not cancel each other — only the publish step
+    # is serialized. `cancel-in-progress` drops a superseded deploy the moment a
+    # newer one enqueues: a stale build must not overwrite a newer page.
+    concurrency:
+      group: console-preview-pages
+      cancel-in-progress: true
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'push' &&

@@ -246,6 +246,18 @@ export function buildTraceTurnIndex(
   // would disagree with the client's own count — and hand an opaque identity
   // the next free ordinal. First-seen order keeps the sequence monotonic, and a
   // step/loop inside one turn never opens a new separator.
+  //
+  // The switch is "any event carries an identity", not "most events do": a
+  // source that names even one turn is treated as authoritative for the whole
+  // batch, and `UserPromptSubmit` stops incrementing the counter — identity-less
+  // events in the same batch ride in the turn that was executing (a source with
+  // *no* identity at all falls through to the structural prompt/loop inference
+  // below). The official adapters honour this: DeepSeek and Codex stamp every
+  // turn, Claude/ZCode/Pi/WorkBuddy stamp none. A *partially*-stamped source
+  // (a third-party HTTP collector or future adapter that names only some turns)
+  // is the documented exception: its unnumbered later prompts fold into the
+  // previous turn rather than opening a new one, because identity presence
+  // already marked the source authoritative.
   if (events.some((event) => turnKeyFor(event) !== null)) {
     const numberByTurnKey = new Map<string | number, number>();
     const used = new Set<number>();

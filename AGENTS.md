@@ -142,11 +142,14 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   recorder hook with no shell to carry the variable, so the same list also
   lives in `config.yaml` as `server.corsOrigins` (`plugin/runtime-config.cjs`),
   which survives every later launch.
-- Files under `public/` are addressed through `assetUrl()` in
+- A new `public/` file must be addressed through `assetUrl()` in
   `src/lib/asset-url.ts`, never with an origin-root path such as `/icons/…`:
   GitHub Pages mounts this console at `/astro/`, so a root path leaves the
   project prefix and 404s (it broke the agent dropdown's brand marks).
   `scripts/verify-console-build.mjs` fails the build on origin-root asset URLs.
+  The helper is currently exercised only by its test — the last `public/`
+  assets (the agent brand marks) were inlined into the bundle — but it stays as
+  the single definition to call if a `public/` resource is ever added back.
 - A deployed page that never connects announces it once (「无法连接本地服务」
   with the base and the `ASTRO_CORS_ORIGINS` line to add). Do not turn that
   into per-retry noise, and do not silently fall back to demo data — a
@@ -163,13 +166,19 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   prefix filters, so a new branch needs no workflow edit and every commit is
   verifiable on the live page — plus `workflow_dispatch` from *any* branch; the
   most recent qualifying build publishes over the single shared Pages site. The
+  `deploy-pages` job carries its own job-level `concurrency` group
+  (`console-preview-pages`, `cancel-in-progress`) so deploys from *different*
+  branches serialize against one another and "most recent build wins" holds
+  across branches, while the workflow-level per-ref group keeps in-flight
+  builds on other branches running in parallel and not cancelling each
+  other. The
   repository's `github-pages` environment must allow the same prefixes
   (Settings → Environments → deployment branch policies, `feat/*`, `feature/*`,
   `fix/*` and `hotfix/*`); without that the deploy job fails before a runner is assigned,
   with no steps and an "environment protection rules" annotation. The docs and
   console still must not fight over the one Pages site. The Pages artifact is
   *only* the console: `scripts/verify-console-build.mjs` asserts the relative
-  asset shape, the shipped icons/sample dataset, and the absence of docs-site
+  asset shape, the shipped favicon/sample dataset, and the absence of docs-site
   markers before the artifact is uploaded.
 
 ## Run Timeout Invariant

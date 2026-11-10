@@ -236,6 +236,44 @@ test("an event's own turn number wins over the carried one", () => {
   assert.equal(orphan.turnId, null);
 });
 
+test("normalizes a string turn number to the same identity as its number", () => {
+  // Some harness versions serialize `data.turn` as the string "6". The
+  // trajectory model's `numericTurn` already folds "6" and 6 into one
+  // identity, so the adapter must do the same — otherwise a string turn
+  // drops its own identity and the whole turn inherits the previous one.
+  const session = createSession();
+  const stringTurn = adaptDeepseekEvent(
+    session,
+    { type: "turn/start", seq: 20, time: 0, data: { turn: "6" } },
+  );
+  assert.equal(stringTurn.turnId, "6");
+  // A padded / trimmed string still normalizes.
+  const padded = adaptDeepseekEvent(
+    session,
+    { type: "turn/start", seq: 21, time: 0, data: { turn: " 7 " } },
+  );
+  assert.equal(padded.turnId, "7");
+  // Non-numeric strings and non-positive numbers stay turn-less.
+  assert.equal(
+    adaptDeepseekEvent(session, {
+      type: "turn/start",
+      seq: 22,
+      time: 0,
+      data: { turn: "abc" },
+    }).turnId,
+    null,
+  );
+  assert.equal(
+    adaptDeepseekEvent(session, {
+      type: "turn/start",
+      seq: 23,
+      time: 0,
+      data: { turn: 0 },
+    }).turnId,
+    null,
+  );
+});
+
 test("does not gate activation on the sessions service", () => {
   // dsh leaves entries whose injected services never resolve PENDING without
   // failing startup. Capture only subscribes to events, so it must not declare
