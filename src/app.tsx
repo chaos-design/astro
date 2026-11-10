@@ -199,6 +199,7 @@ import {
   LOG_TURN_ESTIMATE,
   buildLogLayout,
   findVisibleRange,
+  includeTurnRow,
   resolveScrollTopForRow,
 } from "./lib/log-window";
 import {
@@ -2615,7 +2616,10 @@ const AtomicLog = memo(function AtomicLog({
     () => findVisibleRange(layout.offsets, viewport.top, viewport.height),
     [layout.offsets, viewport.height, viewport.top],
   );
-  const slice = layout.items.slice(range.start, range.end);
+  // Never mount a window that ends on a turn separator: its row would sit just
+  // outside the window and the chip would label an empty slot at the bottom.
+  const mountedRange = includeTurnRow(layout.items, range);
+  const slice = layout.items.slice(mountedRange.start, mountedRange.end);
 
   const syncScrollPosition = useCallback(() => {
     const list = listRef.current;

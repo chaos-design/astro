@@ -6,6 +6,7 @@ import {
   LOG_TURN_ESTIMATE,
   buildLogLayout,
   findVisibleRange,
+  includeTurnRow,
   lowerBound,
   resolveScrollTopForRow,
 } from "../src/lib/log-window.ts";
@@ -131,6 +132,34 @@ test("scroll math only moves when the row is out of view", () => {
     }),
     null,
   );
+});
+
+test("a mounted window never ends on a turn separator", () => {
+  // The chip introduces the row below it; a window that stops on the chip
+  // paints a `TURN n` label over an empty slot at the bottom edge.
+  const items = [
+    { kind: "turn" as const },
+    { kind: "row" as const },
+    { kind: "row" as const },
+    { kind: "turn" as const },
+    { kind: "row" as const },
+  ];
+
+  assert.deepEqual(includeTurnRow(items, { start: 0, end: 4 }), {
+    start: 0,
+    end: 5,
+  });
+  // A window that already ends on a row is untouched.
+  assert.deepEqual(includeTurnRow(items, { start: 1, end: 3 }), {
+    start: 1,
+    end: 3,
+  });
+  // The end clamps to the list length when the separator is the last item.
+  const trailing = [...items, { kind: "turn" as const }];
+  assert.deepEqual(includeTurnRow(trailing, { start: 0, end: 6 }), {
+    start: 0,
+    end: 6,
+  });
 });
 
 test("fallback heights are usable before measurement", () => {

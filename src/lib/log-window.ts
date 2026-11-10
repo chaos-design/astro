@@ -140,6 +140,24 @@ export function findVisibleRange(
 }
 
 /**
+ * Grow a mounted window so it never ends on a turn separator.
+ *
+ * A separator introduces the row directly below it. When the window stops on
+ * the separator, that row is outside the window: the chip paints a `TURN n`
+ * label over an empty slot at the bottom edge of the list — the "empty turn"
+ * a reader sees while scrolling. One extra item always restores its row.
+ */
+export function includeTurnRow<T extends { kind: "row" | "turn" }>(
+  items: readonly T[],
+  range: { start: number; end: number },
+): { start: number; end: number } {
+  if (items[range.end - 1]?.kind !== "turn") {
+    return range;
+  }
+  return { start: range.start, end: Math.min(range.end + 1, items.length) };
+}
+
+/**
  * Scroll target that brings a row into view. Returns `null` when the row is
  * already visible so callers can skip a scroll write entirely.
  */
