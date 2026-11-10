@@ -195,6 +195,12 @@ DeepSeek Harness bundle 直接消费规范 Session 事件：`user/message` 映�
 `tool/call` 与 `tool/result` 映射为工具开始/结果，`turn/end` 映射为
 `Stop` 或 `Interrupt`。其他 Harness 事件保留为 `Notification`。
 
+Harness 只在 `turn/start`、`step/*`、工具调用、消息和 `turn/end` 上带
+`data.turn`；同一轮里的 Prompt 与 inbox 通知没有这个数字。适配器按会话记住
+当前轮次，在 `turn/start` 到 `turn/end` 之间把 `turnId` 补到每一条事件上，
+`turn/end` 之后清空，因此一轮事件在落盘时就共享同一个轮次 ID，读取端不需要
+再从邻居推断。
+
 ## 6. 标识与关联规则
 
 ### 6.1 会话隔离

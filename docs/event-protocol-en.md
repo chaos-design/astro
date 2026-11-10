@@ -205,6 +205,13 @@ The DeepSeek Harness bundle consumes canonical Session events directly:
 and `turn/end` becomes `Stop` or `Interrupt`. Other Harness events are retained
 as `Notification`.
 
+The Harness stamps `data.turn` only on `turn/start`, `step/*`, tool calls, the
+message, and `turn/end`; the prompt and the inbox notifications inside the same
+turn carry no number. The adapter remembers the current turn per session and
+writes that `turnId` onto every event between `turn/start` and `turn/end`
+(cleared afterwards), so one turn reaches the trace file with a single turn ID
+and no reader has to infer it from a neighbour.
+
 ## 6. Identity and Correlation
 
 ### 6.1 Session isolation

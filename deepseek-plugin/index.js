@@ -57,14 +57,28 @@ function turnStatus(reason) {
   return "completed";
 }
 
-export function adaptDeepseekEvent(session, event) {
+function turnIdFrom(event) {
+  return Number.isFinite(event.data?.turn) ? String(event.data.turn) : null;
+}
+
+/**
+ * Map one Harness event onto canonical ASTRO semantics.
+ *
+ * `carriedTurnId` is the turn the session is currently executing. Harness only
+ * stamps `data.turn` on the events it emits for that turn (`turn/start`,
+ * `step/*`, tool calls, the message, `turn/end`); the prompt and the inbox
+ * notifications that belong to the same turn carry no number at all. Without
+ * the carry-forward one logical turn reached the trace file with a mix of
+ * `turnId: "6"` and `turnId: null`, and every consumer had to guess which turn
+ * the null events belonged to.
+ */
+export function adaptDeepseekEvent(session, event, carriedTurnId = null) {
   const base = {
     id: `deepseek:${session.id}:${event.seq}`,
     capturedAt: new Date(event.time).toISOString(),
     source: "deepseek",
     sessionId: String(session.id),
-    turnId:
-      Number.isFinite(event.data?.turn) ? String(event.data.turn) : null,
+    turnId: turnIdFrom(event) ?? carriedTurnId ?? null,
     parentId: session.header?.parentSession
       ? String(session.header.parentSession)
       : null,
@@ -243,10 +257,25 @@ export function apply(ctx, config = {}) {
   ctx.on("session/created", (session) => {
     record(lifecycleEvent(session, "SessionStart"));
   });
+  // One turn identity per session, carried from `turn/start` through the last
+  // event before `turn/end`: every event inside a turn then records the same
+  // `turnId`, and the LOG groups by the source's own number instead of
+  // inferring a boundary from a neighbour that happens to carry one.
+  const turnBySession = new Map();
   ctx.on("session/event", (session, event) => {
-    record(adaptDeepseekEvent(session, event));
+    const key = String(session.id);
+    const nativeTurnId = turnIdFrom(event);
+    const turnId = nativeTurnId ?? turnBySession.get(key) ?? null;
+    if (nativeTurnId !== null) {
+      turnBySession.set(key, nativeTurnId);
+    }
+    if (event.type === "turn/end") {
+      turnBySession.delete(key);
+    }
+    record(adaptDeepseekEvent(session, event, turnId));
   });
   ctx.on("session/disposed", (session) => {
+    turnBySession.delete(String(session.id));
     record(lifecycleEvent(session, "SessionEnd"));
   });
 }
