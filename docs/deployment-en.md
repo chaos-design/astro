@@ -184,6 +184,11 @@ the sample dataset:
   build over the single shared Pages site — the most recent qualifying build
   wins. The branch filters are prefixes, so a new branch deploys without a
   workflow edit and every commit is verifiable on the live page.
+- The `github-pages` environment in the repository settings must allow the same
+  prefixes: Settings → Environments → `github-pages` → Deployment branches and
+  tags, add `feat/*` and `fix/*`. The workflow globs alone are not enough — the
+  environment rejects the job before a runner is assigned, and the only trace
+  is "Branch is not allowed to deploy to github-pages" with zero steps.
 - A manual `workflow_dispatch` runs from **any** branch, for republishing a
   branch whose prefix does not match (for example `docs/**`) or one that was
   already deleted.

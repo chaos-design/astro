@@ -162,6 +162,10 @@ astrox status|start|stop|restart|update|logs|doctor|path|open|info
   `fix/**` 分支都会把*该分支*的构建发布到**同一个** Pages 站点，最近一次命中的
   构建胜出。分支过滤用前缀匹配（`feat/**`、`fix/**`），新建分支不需要改工作流，
   每次提交都能在线上验证改动。
+- 仓库设置里的 `github-pages` 环境也必须放行同样的前缀：Settings →
+  Environments → `github-pages` → Deployment branches and tags 添加 `feat/*` 和
+  `fix/*`。只改工作流不够——环境策略在任务分配 runner 之前就会拒绝，日志表现
+  为「Branch is not allowed to deploy to github-pages」且没有任何步骤。
 - 手动 `workflow_dispatch` 从**任何分支**都能跑：用于重新发布前缀不匹配的分支
   （如 `docs/**` 或已删除的测试分支）。
 

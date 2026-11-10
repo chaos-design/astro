@@ -162,10 +162,14 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   prefix filters, so a new branch needs no workflow edit and every commit is
   verifiable on the live page — plus `workflow_dispatch` from *any* branch; the
   most recent qualifying build publishes over the single shared Pages site. The
-  docs and console still must not fight over the one Pages site. The Pages
-  artifact is *only* the console: `scripts/verify-console-build.mjs` asserts the
-  relative asset shape, the shipped icons/sample dataset, and the absence of
-  docs-site markers before the artifact is uploaded.
+  repository's `github-pages` environment must allow the same prefixes
+  (Settings → Environments → deployment branch policies, `feat/*` and
+  `fix/*`); without that the deploy job fails before a runner is assigned,
+  with no steps and an "environment protection rules" annotation. The docs and
+  console still must not fight over the one Pages site. The Pages artifact is
+  *only* the console: `scripts/verify-console-build.mjs` asserts the relative
+  asset shape, the shipped icons/sample dataset, and the absence of docs-site
+  markers before the artifact is uploaded.
 
 ## Run Timeout Invariant
 
