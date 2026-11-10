@@ -10,7 +10,8 @@
 #
 # Triggers:
 #   - push to `main`             -> build + verify + upload + deploy to Pages
-#   - push to a `feat/**` or `fix/**` branch -> build + verify + upload +
+#   - push to a `feat/**`, `feature/**`, `fix/**` or `hotfix/**` branch ->
+#     build + verify + upload +
 #     deploy to Pages (live preview of every in-flight branch without merging;
 #     the Pages site is a single rolling target, so the newest push wins)
 #   - pull request to `main`     -> build + verify + upload (no deploy)
@@ -29,8 +30,9 @@ name: Build console preview
 on:
   push:
     # `main` is the formal release. The branch filters are globs, so a new
-    # `feat/*` or `fix/*` branch publishes without editing this file.
-    branches: [main, "feat/**", "fix/**"]
+    # `feat/*`, `feature/*`, `fix/*` or `hotfix/*` branch publishes without
+    # editing this file.
+    branches: [main, "feat/**", "feature/**", "fix/**", "hotfix/**"]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -85,7 +87,8 @@ jobs:
     name: Deploy console preview to GitHub Pages
     needs: build
     # Publishing happens on push to the production branch (`main`), on push to
-    # any `feat/**` or `fix/**` branch, plus a manual dispatch from any branch.
+    # any `feat/**`, `feature/**`, `fix/**` or `hotfix/**` branch, plus a manual
+    # dispatch from any branch.
     # The Pages site is a single rolling target: the most recent qualifying
     # build wins, so a feature or fix branch gets a live preview URL without
     # merging to main. Prefix matching (`startsWith`) mirrors the `branches`
@@ -95,7 +98,9 @@ jobs:
       (github.event_name == 'push' &&
         (github.ref == 'refs/heads/main' ||
          startsWith(github.ref, 'refs/heads/feat/') ||
-         startsWith(github.ref, 'refs/heads/fix/')))
+         startsWith(github.ref, 'refs/heads/feature/') ||
+         startsWith(github.ref, 'refs/heads/fix/') ||
+         startsWith(github.ref, 'refs/heads/hotfix/')))
     runs-on: ubuntu-latest
     permissions:
       pages: write

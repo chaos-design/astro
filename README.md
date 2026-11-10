@@ -223,7 +223,7 @@ JSONL, the service pushes it, RUN HISTORY and the topology update in real time.
 | Path | How |
 | --- | --- |
 | Vercel | `vercel.json` builds the console and the docs site and merges them: docs at the root, the console preview at `/console/`. Import the repository — no extra settings. Live: [astro-site-cyan-five.vercel.app](https://astro-site-cyan-five.vercel.app/) — the online documentation. |
-| GitHub Pages | `.github/workflows/console-preview.yml` builds the console on push/PR; a push to `main`, `feat/**`, or `fix/**` publishes it to [chaos-design.github.io/astro](https://chaos-design.github.io/astro/) — the online preview (append `?demo=1` for the sample dataset; branch filters are prefixes, so a new branch needs no workflow edit). "Deploy console preview to GitHub Pages" publishes any other branch manually. |
+| GitHub Pages | `.github/workflows/console-preview.yml` builds the console on push/PR; a push to `main`, `feat/**`, `feature/**`, `fix/**` or `hotfix/**` publishes it to [chaos-design.github.io/astro](https://chaos-design.github.io/astro/) — the online preview (append `?demo=1` for the sample dataset; branch filters are prefixes, so a new branch needs no workflow edit). "Deploy console preview to GitHub Pages" publishes any other branch manually. |
 | Any static host | `pnpm build` produces `dist/` with relative asset URLs; serve it as-is. |
 
 A deployed page targets `http://127.0.0.1:5678` by default; override with

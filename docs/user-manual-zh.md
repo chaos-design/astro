@@ -244,7 +244,7 @@ node ~/.astrox/plugins/astro/server/server.mjs
 | 途径 | 做法 |
 | --- | --- |
 | Vercel | 仓库根目录的 `vercel.json` 已配置：构建控制台与文档站并合并输出（文档站在根路径，控制台在 `/console/`），导入仓库即可，无需额外设置 |
-| GitHub Actions | `.github/workflows/console-preview.yml` 在 push/PR 时构建控制台并上传 `console-dist` 构件；推送到 `main`、`feat/**` 或 `fix/**`（前缀匹配）会自动把当前分支构建发布到 GitHub Pages，在途分支即可拿到线上预览地址；也可以手动运行 "Deploy console preview to GitHub Pages" 发布其他分支（同一站点被最近一次触发覆盖） |
+| GitHub Actions | `.github/workflows/console-preview.yml` 在 push/PR 时构建控制台并上传 `console-dist` 构件；推送到 `main`、`feat/**`、`feature/**`、`fix/**` 或 `hotfix/**`（前缀匹配）会自动把当前分支构建发布到 GitHub Pages，在途分支即可拿到线上预览地址；也可以手动运行 "Deploy console preview to GitHub Pages" 发布其他分支（同一站点被最近一次触发覆盖） |
 | 任意静态托管 | `pnpm build` 产出 `dist/`（相对资源路径），直接托管即可 |
 
 部署页默认连接 `http://127.0.0.1:5678`，也可以用 `?api=<地址>` 指定（会保存到

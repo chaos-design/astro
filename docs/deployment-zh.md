@@ -158,13 +158,15 @@ astrox status|start|stop|restart|update|logs|doctor|path|open|info
 
 - 每次 push/PR 到 `main`：构建控制台、跑 `verify-console-build` 校验（相对
   资源、自带图标与示例数据集、无文档站标记），上传 `console-dist` 工件。
-- **Deploy 任务在 push 时自动发布**：推送到 `main`（正式发布）、`feat/**` 或
-  `fix/**` 分支都会把*该分支*的构建发布到**同一个** Pages 站点，最近一次命中的
-  构建胜出。分支过滤用前缀匹配（`feat/**`、`fix/**`），新建分支不需要改工作流，
+- **Deploy 任务在 push 时自动发布**：推送到 `main`（正式发布）、`feat/**`、
+  `feature/**`、`fix/**` 或 `hotfix/**` 分支都会把*该分支*的构建发布到**同一个**
+  Pages 站点，最近一次命中的
+  构建胜出。分支过滤用前缀匹配（`feat/**`、`feature/**`、`fix/**`、`hotfix/**`），新建分支不需要改工作流，
   每次提交都能在线上验证改动。
 - 仓库设置里的 `github-pages` 环境也必须放行同样的前缀：Settings →
-  Environments → `github-pages` → Deployment branches and tags 添加 `feat/*` 和
-  `fix/*`。只改工作流不够——环境策略在任务分配 runner 之前就会拒绝，日志表现
+  Environments → `github-pages` → Deployment branches and tags 添加 `feat/*`、
+  `feature/*`、`fix/*` 和
+  `hotfix/*`。只改工作流不够——环境策略在任务分配 runner 之前就会拒绝，日志表现
   为「Branch is not allowed to deploy to github-pages」且没有任何步骤。
 - 手动 `workflow_dispatch` 从**任何分支**都能跑：用于重新发布前缀不匹配的分支
   （如 `docs/**` 或已删除的测试分支）。

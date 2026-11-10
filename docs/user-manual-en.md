@@ -270,7 +270,7 @@ Deployment paths:
 | Path | How |
 | --- | --- |
 | Vercel | The repository's `vercel.json` is already wired: it builds the console and the docs site and merges them (docs at the root, the console at `/console/`). Import the repository — no extra settings. |
-| GitHub Actions | `.github/workflows/console-preview.yml` builds the console on push/PR and uploads a `console-dist` artifact; a push to `main`, `feat/**`, or `fix/**` (prefix match) publishes that branch's build to GitHub Pages, so an in-flight branch gets a live preview URL. Run "Deploy console preview to GitHub Pages" manually for any other branch (the single shared site is replaced by the most recent trigger) |
+| GitHub Actions | `.github/workflows/console-preview.yml` builds the console on push/PR and uploads a `console-dist` artifact; a push to `main`, `feat/**`, `feature/**`, `fix/**` or `hotfix/**` (prefix match) publishes that branch's build to GitHub Pages, so an in-flight branch gets a live preview URL. Run "Deploy console preview to GitHub Pages" manually for any other branch (the single shared site is replaced by the most recent trigger) |
 | Any static host | `pnpm build` produces `dist/` with relative asset URLs; serve it as-is. |
 
 A deployed page defaults to `http://127.0.0.1:5678`; pass `?api=<address>` to
