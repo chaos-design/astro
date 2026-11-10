@@ -195,36 +195,68 @@ export function buildTrajectoryMapSlots(
   return slots;
 }
 
+/**
+ * The turn a source reports for an event, or `null` when it names no turn.
+ *
+ * Some sources carry a stable native turn identity — DeepSeek Harness sets
+ * `event.turnId` (its `data.turn`) on every event inside one loop, and a few
+ * adapters surface a numeric `payload.turn` / `payload.iteration`. When a
+ * batch has *any* of that, the source is authoritative and we must group by
+ * it: mixing it with a separate prompt/loop counter is exactly what made the
+ * LOG pane fragment a single turn into many near-empty separators.
+ */
+function turnKeyFor(event: TraceEvent): string | number | null {
+  if (event.turnId) {
+    return event.turnId;
+  }
+  const payloadTurn = event.payload?.turn ?? event.payload?.iteration;
+  if (
+    typeof payloadTurn === "number" &&
+    Number.isSafeInteger(payloadTurn) &&
+    payloadTurn > 0
+  ) {
+    return payloadTurn;
+  }
+  return null;
+}
+
 export function buildTraceTurnIndex(
   events: readonly TraceEvent[],
 ): ReadonlyMap<string, number> {
   const turnByEventId = new Map<string, number>();
-  const explicitTurns = new Map<string, number>();
+
+  // Authoritative path: the source names its own turns (native turnId or a
+  // numeric payload turn/iteration). Collapse each distinct identity to a
+  // dense 1-based ordinal in first-seen order so the sequence stays monotonic
+  // and a step/loop inside one turn never opens a new separator. Events that
+  // carry no identity inherit the ordinal of the most recent one.
+  if (events.some((event) => turnKeyFor(event) !== null)) {
+    const ordinalByTurnKey = new Map<string | number, number>();
+    let ordinal = 0;
+    let lastOrdinal = 1;
+    for (const event of events) {
+      const key = turnKeyFor(event);
+      if (key !== null) {
+        const known = ordinalByTurnKey.get(key);
+        if (known === undefined) {
+          ordinal += 1;
+          ordinalByTurnKey.set(key, ordinal);
+        }
+        lastOrdinal = known ?? ordinal;
+      }
+      turnByEventId.set(event.id, lastOrdinal);
+    }
+    return turnByEventId;
+  }
+
+  // Fallback path: hook-based sources report no turn identity. Derive turns
+  // from prompt/loop structure instead — a new prompt opens a turn, and a
+  // message arriving right after a closed tool loop counts as a fresh one.
   let currentTurn = 1;
   let hasSeenPrompt = false;
   let loopClosed = false;
-
   for (const event of events) {
-    const payloadTurn = event.payload.turn ?? event.payload.iteration;
-    const numericTurn =
-      typeof payloadTurn === "number" &&
-      Number.isSafeInteger(payloadTurn) &&
-      payloadTurn > 0
-        ? payloadTurn
-        : undefined;
-
-    if (numericTurn !== undefined) {
-      currentTurn = numericTurn;
-    } else if (event.turnId) {
-      const knownTurn = explicitTurns.get(event.turnId);
-      if (knownTurn !== undefined) {
-        currentTurn = knownTurn;
-      } else {
-        const assignedTurn = Math.max(currentTurn, explicitTurns.size + 1);
-        explicitTurns.set(event.turnId, assignedTurn);
-        currentTurn = assignedTurn;
-      }
-    } else if (event.eventName === "UserPromptSubmit") {
+    if (event.eventName === "UserPromptSubmit") {
       if (hasSeenPrompt) {
         currentTurn += 1;
       }

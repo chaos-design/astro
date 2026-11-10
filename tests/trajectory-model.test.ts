@@ -8,6 +8,7 @@ import {
   getTrajectorySegmentPosition,
   orderTrajectoryNewestFirst,
 } from "../src/lib/trajectory-model.ts";
+import type { TraceEvent } from "../src/types/trace.ts";
 import { buildHarnessFlow } from "../src/lib/trace-model.ts";
 import { createDemoEvents } from "./helpers/demo-fixture.ts";
 
@@ -139,5 +140,85 @@ test("keeps one slot per node when the lane is already short", () => {
       [3, 3, 1],
       [4, 4, 1],
     ],
+  );
+});
+
+/**
+ * DeepSeek Harness names its turns with a stable native id (its `data.turn`)
+ * that every event inside one loop shares, and that number is not 1-based nor
+ * contiguous across turns (a resumed session can jump 2 -> 5 -> 9). Such a batch
+ * must group purely by that identity, in first-seen order, so a step/loop inside
+ * one turn never opens a new LOG separator and the sequence stays monotonic.
+ */
+function deepseekEvent(
+  id: string,
+  eventName: TraceEvent["eventName"],
+  turnId: string | null,
+): TraceEvent {
+  return {
+    capturedAt: new Date(0).toISOString(),
+    id,
+    payload: {},
+    source: "deepseek",
+    eventName,
+    turnId,
+  };
+}
+
+test("groups a native-identified DeepSeek loop as a single monotonic turn", () => {
+  const events = [
+    deepseekEvent("s", "SessionStart", null),
+    deepseekEvent("p", "UserPromptSubmit", null),
+    deepseekEvent("a1", "AgentMessage", "2"),
+    deepseekEvent("t1", "PreToolUse", "2"),
+    deepseekEvent("r1", "PostToolUse", "2"),
+    // Loop back inside the same native turn 2: a message after a closed loop
+    // used to increment a side counter and bounce the LOG back to turn 1.
+    deepseekEvent("a2", "AgentMessage", "2"),
+    deepseekEvent("t2", "PreToolUse", "2"),
+    deepseekEvent("r2", "PostToolUse", "2"),
+    deepseekEvent("p2", "UserPromptSubmit", null),
+    deepseekEvent("a3", "AgentMessage", "5"),
+    deepseekEvent("stop", "Stop", "5"),
+    deepseekEvent("e", "SessionEnd", null),
+  ];
+
+  const index = buildTraceTurnIndex(events);
+
+  assert.deepEqual(
+    events.map((event) => index.get(event.id)),
+    // One ordinal per distinct native turn (2 -> 1st, 5 -> 2nd); identity-less
+    // events inherit the most recent one, so the whole sequence is monotonic.
+    [1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2],
+  );
+});
+
+test("still infers turns from prompt/loop structure when no source names turns", () => {
+  const hook = (
+    id: string,
+    eventName: TraceEvent["eventName"],
+  ): TraceEvent => ({
+    capturedAt: new Date(0).toISOString(),
+    id,
+    payload: {},
+    source: "claude",
+    eventName,
+    turnId: null,
+  });
+  const events = [
+    hook("s", "SessionStart"),
+    hook("p1", "UserPromptSubmit"),
+    hook("t1", "PreToolUse"),
+    hook("r1", "PostToolUse"),
+    hook("m1", "AgentMessage"),
+    hook("p2", "UserPromptSubmit"),
+    hook("m2", "AgentMessage"),
+  ];
+
+  const index = buildTraceTurnIndex(events);
+
+  assert.deepEqual(
+    events.map((event) => index.get(event.id)),
+    [1, 1, 1, 1, 2, 3, 3],
   );
 });
