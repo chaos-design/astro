@@ -158,12 +158,12 @@ astrox status|start|stop|restart|update|logs|doctor|path|open|info
 
 - 每次 push/PR 到 `main`：构建控制台、跑 `verify-console-build` 校验（相对
   资源、自带图标与示例数据集、无文档站标记），上传 `console-dist` 工件。
-- **Deploy 任务在 push 时自动发布**：推送到 `main`（正式发布）或工作流
-  `push` 清单里登记的滚动预览分支（如进行中的 feature 分支——合并前即可拿到
-  预览 URL；分支合并后把它从清单移除）都会把*该分支*的构建发布到**同一个**
-  Pages 站点，最近一次命中的构建胜出。
-- 手动 `workflow_dispatch` 从**任何分支**都能跑：用于重新发布已不在
-  push 清单里的分支（如合并后删掉的测试分支）。
+- **Deploy 任务在 push 时自动发布**：推送到 `main`（正式发布）、`feat/**` 或
+  `fix/**` 分支都会把*该分支*的构建发布到**同一个** Pages 站点，最近一次命中的
+  构建胜出。分支过滤用前缀匹配（`feat/**`、`fix/**`），新建分支不需要改工作流，
+  每次提交都能在线上验证改动。
+- 手动 `workflow_dispatch` 从**任何分支**都能跑：用于重新发布前缀不匹配的分支
+  （如 `docs/**` 或已删除的测试分支）。
 
 约束：Pages 单站点只放**控制台**，不放文档站（两者互斥，workflow 注释与
 `verify-console-build` 都保证这一点）；文档站走自己的托管路径（Vercel 合并

@@ -180,10 +180,13 @@ the sample dataset:
   `verify-console-build` assertions (relative assets, shipped icons and sample
   dataset, no docs-site markers), upload the `console-dist` artifact.
 - The **deploy** job publishes automatically on push to `main` (the formal
-  release) or to a rolling-preview branch listed in the workflow's `push`
-  trigger (an in-flight feature branch gets a live preview URL without merging;
-  remove it from that list once it merges). It publishes *that* branch's build
-  over the single shared Pages site — the most recent qualifying build wins.
+  release) or to any `feat/**` / `fix/**` branch. It publishes *that* branch's
+  build over the single shared Pages site — the most recent qualifying build
+  wins. The branch filters are prefixes, so a new branch deploys without a
+  workflow edit and every commit is verifiable on the live page.
+- A manual `workflow_dispatch` runs from **any** branch, for republishing a
+  branch whose prefix does not match (for example `docs/**`) or one that was
+  already deleted.
 - The manual `workflow_dispatch` can run from **any branch** to re-publish a
   branch that is no longer a push trigger.
 

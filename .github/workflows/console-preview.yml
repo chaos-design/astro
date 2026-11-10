@@ -10,9 +10,9 @@
 #
 # Triggers:
 #   - push to `main`             -> build + verify + upload + deploy to Pages
-#   - push to the rolling-preview feature branch -> build + verify + upload
-#     + deploy to Pages (live preview of the in-flight branch without merging;
-#     remove it from the list once the branch is merged/deleted)
+#   - push to a `feat/**` or `fix/**` branch -> build + verify + upload +
+#     deploy to Pages (live preview of every in-flight branch without merging;
+#     the Pages site is a single rolling target, so the newest push wins)
 #   - pull request to `main`     -> build + verify + upload (no deploy)
 #   - workflow_dispatch (any branch) -> build + verify + upload + deploy to
 #     Pages from that branch's tip (manual override, e.g. to re-publish a
@@ -28,9 +28,9 @@ name: Build console preview
 
 on:
   push:
-    # `main` is the formal release. The feature branch is the rolling-preview
-    # test target for the in-flight work; delete it when that branch merges.
-    branches: [main, feat/demo-dataset-from-local-service]
+    # `main` is the formal release. The branch filters are globs, so a new
+    # `feat/*` or `fix/*` branch publishes without editing this file.
+    branches: [main, "feat/**", "fix/**"]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -84,16 +84,18 @@ jobs:
   deploy-pages:
     name: Deploy console preview to GitHub Pages
     needs: build
-    # Publishing happens on push to the production branch (`main`) and on push
-    # to the rolling-preview feature branch, plus a manual dispatch from any
-    # branch. The Pages site is a single rolling target: the most recent
-    # qualifying build wins, so a feature branch gets a live preview URL
-    # without merging to main.
+    # Publishing happens on push to the production branch (`main`), on push to
+    # any `feat/**` or `fix/**` branch, plus a manual dispatch from any branch.
+    # The Pages site is a single rolling target: the most recent qualifying
+    # build wins, so a feature or fix branch gets a live preview URL without
+    # merging to main. Prefix matching (`startsWith`) mirrors the `branches`
+    # globs above so a new branch needs no workflow edit.
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'push' &&
         (github.ref == 'refs/heads/main' ||
-         github.ref == 'refs/heads/feat/demo-dataset-from-local-service'))
+         startsWith(github.ref, 'refs/heads/feat/') ||
+         startsWith(github.ref, 'refs/heads/fix/')))
     runs-on: ubuntu-latest
     permissions:
       pages: write
