@@ -3427,6 +3427,58 @@ pre,
   font-size: 9px;
 }
 
+/* The duration value in the card carries the same heat class as the row, so a
+   number and its colour are one unit the reader already understands. */
+.trajectory-hover__duration {
+  font-style: normal;
+  font-family: var(--font-mono);
+}
+
+.trajectory-hover__duration.heat-fast {
+  color: var(--status-completed);
+}
+
+.trajectory-hover__duration.heat-normal {
+  color: var(--text);
+}
+
+.trajectory-hover__duration.heat-slow {
+  color: var(--amber);
+}
+
+.trajectory-hover__duration.heat-very-slow {
+  color: var(--status-failed);
+}
+
+/* Status in the card keeps its own semantic colour, deliberately not the
+   duration heat colour, so "how long" and "how it ended" never read as one. */
+.trajectory-hover__status {
+  font-style: normal;
+  font-family: var(--font-mono);
+  font-weight: var(--weight-medium);
+}
+
+.trajectory-hover__status.status-complete {
+  color: var(--status-completed);
+}
+
+.trajectory-hover__status.status-running,
+.trajectory-hover__status.status-active {
+  color: var(--status-running);
+}
+
+.trajectory-hover__status.status-waiting {
+  color: var(--status-waiting);
+}
+
+.trajectory-hover__status.status-failed {
+  color: var(--status-failed);
+}
+
+.trajectory-hover__status.status-idle {
+  color: var(--muted);
+}
+
 .canvas-column {
   background: var(--bg);
 }
@@ -4609,6 +4661,84 @@ pre,
 
 .trajectory-summary .has-failures {
   color: var(--red);
+}
+
+/* The view's key: what a status dot means and what a duration colour means.
+   The user found the colour + marker codes unclear, so the header carries this
+   legend — it reuses the same status variables and heat colours the dots and
+   badges use, so it can never drift from the marks it explains. */
+.trajectory-legend {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 7px;
+  white-space: nowrap;
+}
+
+.trajectory-legend__group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-left: 8px;
+  border-left: 1px solid var(--chrome-line);
+}
+
+.trajectory-legend__group:first-child {
+  padding-left: 0;
+  border-left: 0;
+}
+
+.trajectory-legend__group-label {
+  color: var(--muted-soft);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.trajectory-legend__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.trajectory-legend__dot.status-complete {
+  background: var(--status-completed);
+}
+
+.trajectory-legend__dot.status-running {
+  background: var(--status-running);
+}
+
+.trajectory-legend__dot.status-waiting {
+  background: var(--status-waiting);
+}
+
+.trajectory-legend__dot.status-failed {
+  background: var(--status-failed);
+}
+
+.trajectory-legend__heat {
+  padding: 1px 5px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+}
+
+.trajectory-legend__heat.heat-fast {
+  color: var(--status-completed);
+}
+
+.trajectory-legend__heat.heat-normal {
+  color: var(--text);
+}
+
+.trajectory-legend__heat.heat-slow {
+  color: var(--amber);
+}
+
+.trajectory-legend__heat.heat-very-slow {
+  color: var(--status-failed);
 }
 
 .trajectory-map {

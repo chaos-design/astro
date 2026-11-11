@@ -676,7 +676,8 @@ the footer's **Done** button only closes the dialog — there is no Apply step:
 
 **About**
 
-- The console version (`v0.0.3`), where the preferences actually live (browser
+- The console version (`v<appVersion>` — the value in `src/config/app-config.ts`,
+  shown in About), where the preferences actually live (browser
   localStorage under the `ASTROX_` prefix), and a note that settings only affect
   presentation and never rewrite captured events.
 
@@ -746,9 +747,11 @@ The summary displays:
 - completed count;
 - failed count.
 
-The lane map uses Input, Model, and Tools. The detailed list groups steps by turn and shows event type, summary, timestamp, duration, and status. Hovering a block — a list row or a lane slot — opens one shared card that reports the block's event name, its tool (when present), its closed-pair span (`PAIR`), its own wall-time span (`DURATION`, an atom), or the total of its closed-pair spans (`PAIRS` for a turn), and its status.
+The lane map uses Input, Model, and Tools. The detailed list groups steps by turn and shows event type, summary, timestamp, duration, and status. Hovering a block — a list row or a lane slot — opens one shared card that reports the block's **type** (its category, e.g. `SYSTEM` / `MODEL` / `TOOL`), event name, tool (when present), closed-pair span (`PAIR`), own wall-time span (`DURATION`, an atom), or the total of its closed-pair spans (`PAIRS` for a turn), and its status.
 
 Durations use a stepped unit rule that picks the smallest honest unit: under 10s as `ms`, 10–60s as `s`, under a minute as `m`, under a day as `h`, and days as `d` (one number per tier, never compounded as `1m 4s`). The colour of a duration is a magnitude heat scale, not a status colour: <10s calm (completed green), <1m neutral, <10m warm (amber), and ≥10m red, so a slow step stands out at a glance. A row that is a closed pair shows only that one paired number (no near-identical wall-time alongside it); unpaired rows show their own wall-time instead.
+
+The trajectory header carries a **legend**: four dots on the left key the status markers to `complete/running/waiting/failed`, and a `duration` set on the right keys each colour to its interval (`<10s / <1m / <10m / ≥10m`), matching the badges on the rows exactly.
 
 Matching `PreToolUse` and `PostToolUse` or `PostToolUseFailure` events with the same `toolUseId` become one tool step. Expand a row to inspect paired input and output. A closed pair's start→result span is shown as the paired duration (`PAIR`) on the row and in the hover card; unpaired events have no span and are excluded from every total.
 
@@ -1363,7 +1366,7 @@ pnpm build
 pnpm build:native-plugins
 ```
 
-The current automated suite contains 182 tests across the event model, hooks,
+The current automated suite contains 521 tests across the event model, hooks,
 continuous turns, SSE reconnects, storage, migration, projection, routing,
 preference persistence, environment boundaries, and Vite proxy configuration.
 

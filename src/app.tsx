@@ -451,6 +451,41 @@ function durationHeatClass(milliseconds: number): DurationHeat {
   return "very-slow";
 }
 
+/**
+ * The category label a block shows as its "type": the atom-specific label
+ * wins (a `prompt.input` is SYSTEM, not the broad input kind), then the kind
+ * label, then the raw key. The same resolution the trajectory row badge uses,
+ * so the hover card's TYPE reads exactly like the badge next to it.
+ */
+function atomTypeLabel(key: string, kind: string) {
+  return trajectoryKeyLabels[key] ?? trajectoryKindLabels[kind] ?? kind;
+}
+
+/**
+ * The trajectory legend: the status markers (what each dot colour means) and
+ * the duration heat tiers (what each duration colour means). The user reported
+ * the colour + marker codes as unclear, so the view carries this key — the
+ * same variables the dots and badges use, so the legend can never drift from
+ * the marks it explains.
+ */
+const STATUS_LEGEND: ReadonlyArray<{ label: string; tone: string }> = [
+  { label: "complete", tone: "complete" },
+  { label: "running", tone: "running" },
+  { label: "waiting", tone: "waiting" },
+  { label: "failed", tone: "failed" },
+];
+
+/**
+ * The duration heat tiers, labelled by the threshold that opens the tier (one
+ * number, matching the stepped units the row prints: <10s, <1m, <10m, ≥10m).
+ */
+const DURATION_LEGEND: ReadonlyArray<{ label: string; heat: DurationHeat }> = [
+  { heat: "fast", label: "<10s" },
+  { heat: "normal", label: "<1m" },
+  { heat: "slow", label: "<10m" },
+  { heat: "very-slow", label: "≥10m" },
+];
+
 function getEventAction(event: TraceEvent) {
   if (isUserQuestionStartEvent(event)) {
     return "WAITING";
@@ -3375,6 +3410,8 @@ type TrajectoryHoverDetails = {
   eventName?: string;
   /** The tool a tool atom runs, when its event carries one. */
   toolName?: string;
+  /** The atom's category (TYPE) — resolves the same way as the row badge. */
+  type?: string;
   status: string;
   subtitle: string;
   title: string;
@@ -3386,10 +3423,20 @@ type TrajectoryHoverCard = {
 };
 
 function TrajectoryDetailsCard({ details }: { details: TrajectoryHoverDetails }) {
+  const pairShown = details.pairDuration !== null;
+  // The duration value carries its heat class so the number and its colour are
+  // one unit; the status line below keeps its own semantic colour so the two
+  // never read as the same thing.
   return (
     <div className="trajectory-hover__card">
       <strong>{details.title}</strong>
       <span>{details.subtitle}</span>
+      {details.type ? (
+        <span>
+          <b className="trajectory-hover__label">TYPE</b> ·{" "}
+          {details.type}
+        </span>
+      ) : null}
       {details.eventName ? (
         <span>
           <b className="trajectory-hover__label">EVENT</b> ·{" "}
@@ -3399,16 +3446,28 @@ function TrajectoryDetailsCard({ details }: { details: TrajectoryHoverDetails })
           ) : null}
         </span>
       ) : null}
-      {details.pairDuration !== null ? (
+      {pairShown ? (
         <span>
           <b className="trajectory-hover__label">PAIR</b> ·{" "}
-          {formatDurationMs(details.pairDuration)}
+          <i
+            className={`trajectory-hover__duration heat-${durationHeatClass(
+              details.pairDuration as number,
+            )}`}
+          >
+            {formatDurationMs(details.pairDuration as number)}
+          </i>
         </span>
       ) : null}
-      {details.duration !== undefined ? (
+      {details.duration !== undefined && !pairShown ? (
         <span>
           <b className="trajectory-hover__label">DURATION</b> ·{" "}
-          {formatDurationMs(details.duration)}
+          <i
+            className={`trajectory-hover__duration heat-${durationHeatClass(
+              details.duration,
+            )}`}
+          >
+            {formatDurationMs(details.duration)}
+          </i>
         </span>
       ) : null}
       {details.pairTotal !== undefined ? (
@@ -3418,7 +3477,10 @@ function TrajectoryDetailsCard({ details }: { details: TrajectoryHoverDetails })
         </span>
       ) : null}
       <span>
-        <b className="trajectory-hover__label">STATUS</b> · {details.status}
+        <b className="trajectory-hover__label">STATUS</b> ·{" "}
+        <i className={`trajectory-hover__status status-${details.status}`}>
+          {details.status}
+        </i>
       </span>
     </div>
   );
@@ -3680,6 +3742,7 @@ const TrajectoryView = memo(function TrajectoryView({
       subtitle: `${atom.key} · turn ${atom.turn}`,
       title: atom.label,
       toolName: atom.event.toolName || undefined,
+      type: atomTypeLabel(atom.key, atom.kind),
     }),
     [],
   );
@@ -3690,16 +3753,21 @@ const TrajectoryView = memo(function TrajectoryView({
       status: turn.status,
       subtitle: `turn ${turn.turn} · ${turn.atoms.length} atoms`,
       title: "Loop Turn",
+      type: "LOOP",
     }),
     [],
   );
   // The lane overview's slots stand for a node range; hovering one shows the
   // range, the newest event it maps to, its tool and its status — the same
-  // lean, accurate card the rows use, so the map and the list agree.
+  // lean, accurate card the rows use, so the map and the list agree. A slot
+  // lives on one lane, so its TYPE is that lane's label (Input / Model / Tools)
+  // — the only category that is still true for a range of atoms.
   const slotHoverDetails = useCallback(
     (slot: TrajectoryMapSlot): TrajectoryHoverDetails => {
       const target = nodes[slot.end];
       const event = target?.data.endEvent || target?.data.startEvent;
+      const laneLabel =
+        trajectoryLanes.find((lane) => lane.lane === slot.lane)?.label;
       return {
         duration: undefined,
         eventName: event?.eventName,
@@ -3708,6 +3776,7 @@ const TrajectoryView = memo(function TrajectoryView({
         subtitle: `#${slot.start + 1}–#${slot.end + 1} · ${slot.count} 事件`,
         title: target?.data.label ?? "Atom",
         toolName: event?.toolName || undefined,
+        type: laneLabel,
       };
     },
     [nodes],
@@ -3867,6 +3936,30 @@ const TrajectoryView = memo(function TrajectoryView({
           <li>{completed} COMPLETE</li>
           <li className={failures ? "has-failures" : ""}>{failures} FAILED</li>
         </ul>
+        <div className="trajectory-legend" aria-label="图例：状态标记与时长色阶">
+          <span className="trajectory-legend__group">
+            <span className="trajectory-legend__group-label">状态</span>
+            {STATUS_LEGEND.map(({ label, tone }) => (
+              <i
+                className={`trajectory-legend__dot status-${tone}`}
+                key={label}
+                title={label}
+              />
+            ))}
+          </span>
+          <span className="trajectory-legend__group">
+            <span className="trajectory-legend__group-label">时长</span>
+            {DURATION_LEGEND.map(({ heat, label }) => (
+              <span
+                className={`trajectory-legend__heat heat-${heat}`}
+                key={heat}
+                title={`时长 ${label}`}
+              >
+                {label}
+              </span>
+            ))}
+          </span>
+        </div>
       </header>
       <div className="trajectory-map" aria-label="执行泳道概览">
         <div className="trajectory-map__labels" aria-hidden="true">
