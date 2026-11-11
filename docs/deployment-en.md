@@ -185,13 +185,15 @@ the sample dataset:
   build over the single shared Pages site — the most recent qualifying build
   wins. The branch filters are prefixes, so a new branch deploys without a
   workflow edit and every commit is verifiable on the live page.
-- That "most recent wins" promise is kept across branches by the deploy job's
-  own job-level `concurrency` group (`console-preview-pages`,
-  `cancel-in-progress: true`): deployments from every branch serialize against
-  one another, and a superseded deploy is cancelled the moment a newer one
-  enqueues. The workflow-level group stays per-ref, so in-flight *builds* on
-  different branches keep running in parallel and do not cancel each other —
-  only the publish step is serialized.
+- That "most recent wins" promise is kept across branches in two layers.
+  The workflow-level `concurrency` group is ref-agnostic
+  (`console-preview-ci`, `cancel-in-progress: true`), so a newly triggered
+  run cancels *every* in-flight run of this workflow across all branches —
+  the CI race: a slower, older build can no longer overtake and clobber a
+  fresher result. The deploy job adds a second, deploy-only belt
+  (`console-preview-pages`, `cancel-in-progress: true`): even if two deploys
+  reach the queue, they serialize and a superseded one is cancelled, so a
+  stale build must not overwrite a newer Pages page.
 - The `github-pages` environment in the repository settings must allow the same
   prefixes: Settings → Environments → `github-pages` → Deployment branches and
   tags, add `feat/*`, `feature/*`, `fix/*` and `hotfix/*`. The workflow globs

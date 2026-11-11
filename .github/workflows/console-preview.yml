@@ -37,8 +37,15 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# CI race: a newly triggered run cancels every in-flight run of this workflow,
+# across *all* branches, PRs and manual dispatches — not just same-ref ones.
+# The group is a constant (ref-agnostic) on purpose: `cancel-in-progress: true`
+# then makes the newest push/PR terminate a slower, older run the moment it
+# enqueues, so a stale build on one branch can no longer overtake and clobber
+# the freshest result. A per-ref group (`${{ github.ref }}`) would only cancel
+# runs on the *same* ref, leaving cross-branch builds running in parallel.
 concurrency:
-  group: console-preview-${{ github.ref }}
+  group: console-preview-ci
   cancel-in-progress: true
 
 permissions:
@@ -94,13 +101,13 @@ jobs:
     # merging to main. Prefix matching (`startsWith`) mirrors the `branches`
     # globs above so a new branch needs no workflow edit.
     #
-    # Concurrency is scoped to the *deploy* job alone, with a constant group,
-    # so deployments from every branch serialize against one another and the
-    # "most recent build wins" promise holds across branches. The workflow-level
-    # group (above) is per-ref, so in-flight *builds* on different branches keep
-    # running in parallel and do not cancel each other — only the publish step
-    # is serialized. `cancel-in-progress` drops a superseded deploy the moment a
-    # newer one enqueues: a stale build must not overwrite a newer page.
+    # Concurrency has two layers. The workflow-level group (above) is
+    # ref-agnostic, so a newly triggered run cancels *every* in-flight run of
+    # this workflow across all branches — the CI race: the newest trigger
+    # wins and no slower, older build can outlive it. The job-level group
+    # below is a second, deploy-only belt: even if two deploys ever reach the
+    # queue, they serialize against one another and a superseded one is
+    # cancelled, so a stale build must not overwrite a newer Pages page.
     concurrency:
       group: console-preview-pages
       cancel-in-progress: true

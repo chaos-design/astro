@@ -169,9 +169,10 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   `deploy-pages` job carries its own job-level `concurrency` group
   (`console-preview-pages`, `cancel-in-progress`) so deploys from *different*
   branches serialize against one another and "most recent build wins" holds
-  across branches, while the workflow-level per-ref group keeps in-flight
-  builds on other branches running in parallel and not cancelling each
-  other. The
+  across branches. The workflow-level group is ref-agnostic
+  (`console-preview-ci`): a newly triggered run cancels every in-flight run of
+  this workflow across all branches — the CI race — so a slower, older build
+  can no longer overtake a fresher result. The
   repository's `github-pages` environment must allow the same prefixes
   (Settings → Environments → deployment branch policies, `feat/*`, `feature/*`,
   `fix/*` and `hotfix/*`); without that the deploy job fails before a runner is assigned,
