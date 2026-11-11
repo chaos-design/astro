@@ -532,7 +532,9 @@ function buildLogEntries(events: TraceEvent[]) {
   const pairDurations = buildPairDurations(events);
   // Same pairing truth, for the marker: both halves of a pair carry a shared
   // token and each other's id, so a click can locate the other half.
-  const pairLinks = buildPairLinks(events);
+  // The same turn index that builds the LOG separators feeds the markers, so
+  // `T<n>` on a marker always names the separator above its row.
+  const pairLinks = buildPairLinks(events, turnByEventId);
   return events.map((event, index) => ({
     event,
     index,
@@ -2569,9 +2571,12 @@ const RunHistory = memo(function RunHistory({
 /**
  * The single marker shared by LOG rows and trajectory atoms. Both halves of a
  * closed pair carry the same token, so the rows read as one unit across the
- * two views; clicking jumps straight to the other half. Kept as a real button
- * so keyboard users get the same jump, and it stops propagation so the jump
- * never doubles as a plain row selection.
+ * two views; clicking jumps straight to the other half. The `T<n>` prefix is
+ * the pair's turn, tying the marker to the LOG separator and the trajectory
+ * group above it — a reader in the LOG can see which turn to look in without
+ * scrolling the trajectory. Kept as a real button so keyboard users get the
+ * same jump, and it stops propagation so the jump never doubles as a plain
+ * row selection.
  */
 function PairLinkMarker({
   link,
@@ -2586,8 +2591,8 @@ function PairLinkMarker({
     <button
       type="button"
       className={`pair-link-marker is-${link.role}`}
-      title={`成对${roleLabel} · ${link.token} · 点击定位${targetLabel}事件`}
-      aria-label={`成对${roleLabel} ${link.token}，定位${targetLabel}事件`}
+      title={`第 ${link.turn} 轮 · 成对${roleLabel} ${link.label} · 点击定位${targetLabel}事件`}
+      aria-label={`第 ${link.turn} 轮，成对${roleLabel} ${link.label}，定位${targetLabel}事件`}
       onClick={(clickEvent) => {
         clickEvent.stopPropagation();
         onLocate(link.partnerId);
@@ -2601,6 +2606,7 @@ function PairLinkMarker({
       }}
     >
       <Link2 aria-hidden="true" />
+      <b className="pair-link-marker__turn">T{link.turn}</b>
       <span>{link.token}</span>
     </button>
   );
@@ -3488,8 +3494,8 @@ function loopRowForTurn(turn: TrajectoryTurn): TrajectoryDisplayRow {
 type TrajectoryHoverDetails = {
   /** The atom's closed start→end span, `null` when it is not a closed pair. */
   pairDuration: number | null;
-  /** Shared token of a closed pair, so the card agrees with the row marker. */
-  pairToken?: string;
+  /** The row marker's full label (`T<turn>·<token>`), turn included. */
+  pairLabel?: string;
   /** Sum of the closed pair spans inside the block; a turn block only. */
   pairTotal?: number;
   /** The atom's own wall-time span; a single atom only. */
@@ -3537,7 +3543,7 @@ function TrajectoryDetailsCard({ details }: { details: TrajectoryHoverDetails })
       {pairShown ? (
         <span>
           <b className="trajectory-hover__label">PAIR</b> ·{" "}
-          {details.pairToken ? `${details.pairToken} · ` : null}
+          {details.pairLabel ? `${details.pairLabel} · ` : null}
           <i
             className={`trajectory-hover__duration heat-${durationHeatClass(
               details.pairDuration as number,
@@ -3829,7 +3835,7 @@ const TrajectoryView = memo(function TrajectoryView({
       duration: atom.duration,
       eventName: atom.event.eventName,
       pairDuration: atom.pairDuration,
-      pairToken: atom.pairLink?.token,
+      pairLabel: atom.pairLink?.label,
       status: atom.status,
       subtitle: `${atom.key} · turn ${atom.turn}`,
       title: atom.label,

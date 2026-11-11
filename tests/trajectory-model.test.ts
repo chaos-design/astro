@@ -26,7 +26,7 @@ test("carries closed-pair durations on atoms and turns", () => {
     topology.nodes,
   );
   const pairDurations = buildPairDurations(events);
-  const pairLinks = buildPairLinks(events);
+  const pairLinks = buildPairLinks(events, buildTraceTurnIndex(events));
 
   // Every atom reports a `pairDuration`; when set, it equals the single
   // pairing truth for its trace event, and when the event is unpaired it is
@@ -40,6 +40,12 @@ test("carries closed-pair durations on atoms and turns", () => {
       pairLinks.get(atom.event.id) ?? null,
     );
     assert.equal(atom.pairLink !== null, expected !== null);
+    // The marker's turn prefix must name the very Loop Turn group the atom is
+    // rendered under; otherwise the marker points the reader at the wrong
+    // group when they jump from the LOG.
+    if (atom.pairLink) {
+      assert.equal(atom.pairLink.turn, atom.turn);
+    }
   }
 
   // A turn's total is the sum of its closed-pair spans only.

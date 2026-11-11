@@ -371,7 +371,9 @@ export function buildTrajectoryModel(
   const pairDurations = buildPairDurations(events);
   // The partner of each event (the other half of its closed pair); `null`
   // when the event has no partner, so the link marker is omitted.
-  const pairLinks = buildPairLinks(events);
+  // Same turn index the atoms use, so a pair marker's turn prefix always
+  // agrees with the trajectory group that contains the atom.
+  const pairLinks = buildPairLinks(events, turnByEventId);
   const aggregated = new Map<string, MutableTrajectoryAtom>();
 
   for (const atomicEvent of atomicEvents) {

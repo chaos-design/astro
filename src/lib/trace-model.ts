@@ -1519,14 +1519,18 @@ export function buildPairDurations(
   return durations;
 }
 
-/** One half of a closed pair: its partner, its role and the shared token. */
+/** One half of a closed pair: its partner, role, turn and shared label. */
 export type TracePairLink = {
   /** The other half's event id — the jump target for the pair marker. */
   partnerId: string;
   /** Which half of the pair this event is. */
   role: "start" | "end";
-  /** Short label both halves display, so LOG and trajectory read as one unit. */
+  /** Short stable token both halves display, derived from the start event id. */
   token: string;
+  /** The turn this pair belongs to, from `buildTraceTurnIndex`. */
+  turn: number;
+  /** `T<turn>·<token>`: the full label shared by LOG, trajectory and hover. */
+  label: string;
 };
 
 /**
@@ -1556,9 +1560,19 @@ function pairToken(startEventId: string) {
  * at each other and carry the same token; the LOG and trajectory can therefore
  * show the same marker and jump straight to the other half. Unpaired events
  * are simply absent.
+ *
+ * `turnByEventId` is required and comes from `buildTraceTurnIndex`, the single
+ * turn-inference source. It is passed in (rather than recomputed here) because
+ * that function lives in `trajectory-model.ts`, which already imports this
+ * module — keeping the turn number out of this layer's own logic avoids a
+ * second inference and an import cycle. A required argument also stops a new
+ * caller from silently stamping every pair `T1`. Both halves of a pair share
+ * the *start* event's turn, so a marker always names the turn whose LOG
+ * separator / trajectory group holds it.
  */
 export function buildPairLinks(
   events: readonly TraceEvent[],
+  turnByEventId: ReadonlyMap<string, number>,
 ): ReadonlyMap<string, TracePairLink> {
   const links = new Map<string, TracePairLink>();
   for (const entry of createFlowEntries(events)) {
@@ -1566,15 +1580,23 @@ export function buildPairLinks(
       continue;
     }
     const token = pairToken(entry.startEvent.id);
+    const turn = turnByEventId.get(entry.startEvent.id) ?? 1;
+    // The turn prefix is display context, not identity: the token stays the
+    // stable id, so replaying a different prefix never relabels the pair.
+    const label = `T${turn}·${token}`;
     links.set(entry.startEvent.id, {
       partnerId: entry.endEvent.id,
       role: "start",
       token,
+      turn,
+      label,
     });
     links.set(entry.endEvent.id, {
       partnerId: entry.startEvent.id,
       role: "end",
       token,
+      turn,
+      label,
     });
   }
   return links;

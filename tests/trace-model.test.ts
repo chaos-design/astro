@@ -18,6 +18,7 @@ import {
   parseImportedTrace,
   searchTraceEvents,
 } from "../src/lib/trace-model.ts";
+import { buildTraceTurnIndex } from "../src/lib/trajectory-model.ts";
 import { createDemoEvents } from "./helpers/demo-fixture.ts";
 
 test("groups events by session and calculates duration", () => {
@@ -714,7 +715,8 @@ test("counts only closed pairs in buildPairDurations", () => {
 
 test("links both halves of a closed pair and keeps the token stable", () => {
   const events = createDemoEvents(2_000_000_000_000);
-  const links = buildPairLinks(events);
+  const turns = buildTraceTurnIndex(events);
+  const links = buildPairLinks(events, turns);
   const start = events.find(
     (event) =>
       event.eventName === "PreToolUse" && event.toolUseId === "tool-test",
@@ -723,20 +725,47 @@ test("links both halves of a closed pair and keeps the token stable", () => {
     (event) =>
       event.eventName === "PostToolUse" && event.toolUseId === "tool-test",
   )!;
+  const startLink = links.get(start.id)!;
+  const endLink = links.get(end.id)!;
+  const pairTurn = turns.get(start.id);
 
   // Each half points at the other, carries its own role, and shares one token
-  // so the LOG row and the trajectory atom read as a single unit.
-  assert.deepEqual(links.get(start.id), {
+  // so the LOG row and the trajectory atom read as a single unit. Both also
+  // name the same turn — the turn the *start* event opened — so the `T<n>`
+  // prefix agrees with the LOG separator and the trajectory group above them.
+  assert.deepEqual(startLink, {
     partnerId: end.id,
     role: "start",
-    token: links.get(end.id)?.token,
+    token: endLink.token,
+    turn: pairTurn,
+    label: `T${pairTurn}·${endLink.token}`,
   });
-  assert.deepEqual(links.get(end.id), {
+  assert.deepEqual(endLink, {
     partnerId: start.id,
     role: "end",
-    token: links.get(start.id)?.token,
+    token: startLink.token,
+    turn: pairTurn,
+    label: startLink.label,
   });
-  assert.match(links.get(start.id)!.token, /^P[0-9A-Z]{3}$/);
+  assert.match(startLink.token, /^P[0-9A-Z]{3}$/);
+  assert.match(startLink.label, /^T\d+·P[0-9A-Z]{3}$/);
+
+  // Markers are not all stamped with one global turn: a pair in a later turn
+  // names that turn, so the prefix is a usable locator rather than decoration.
+  const pairTurns = new Set(
+    [...links.values()]
+      .filter((link) => link.role === "start")
+      .map((link) => link.turn),
+  );
+  assert.ok(pairTurns.size > 1);
+  for (const [eventId, link] of links) {
+    if (link.role !== "start") {
+      continue;
+    }
+    assert.equal(link.turn, turns.get(eventId));
+    assert.equal(links.get(link.partnerId)?.turn, link.turn);
+    assert.equal(links.get(link.partnerId)?.label, link.label);
+  }
 
   // The marker set is exactly the duration set: a row never shows a link
   // marker without the paired duration badge (and vice versa).
@@ -745,12 +774,16 @@ test("links both halves of a closed pair and keeps the token stable", () => {
 
   // Tokens come from the start id, not an ordinal: feeding a different prefix
   // (replay mode) or adding another pair before/after must not relabel a pair.
+  // The turn prefix is only context — a shorter prefix may renumber turns —
+  // but the identity half of the label never changes.
   const endIndex = events.indexOf(end);
   const prefix = events.slice(0, endIndex + 1);
-  assert.equal(
-    buildPairLinks(prefix).get(start.id)?.token,
-    links.get(start.id)?.token,
-  );
+  const prefixLink = buildPairLinks(
+    prefix,
+    buildTraceTurnIndex(prefix),
+  ).get(start.id)!;
+  assert.equal(prefixLink.token, startLink.token);
+  assert.ok(prefixLink.label.endsWith(startLink.token));
 });
 
 test("parses JSONL hook payloads and normalized trace events", () => {
