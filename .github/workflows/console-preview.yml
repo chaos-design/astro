@@ -37,15 +37,22 @@ on:
     branches: [main]
   workflow_dispatch:
 
-# CI race: a newly triggered run cancels every in-flight run of this workflow,
-# across *all* branches, PRs and manual dispatches — not just same-ref ones.
-# The group is a constant (ref-agnostic) on purpose: `cancel-in-progress: true`
-# then makes the newest push/PR terminate a slower, older run the moment it
-# enqueues, so a stale build on one branch can no longer overtake and clobber
-# the freshest result. A per-ref group (`${{ github.ref }}`) would only cancel
-# runs on the *same* ref, leaving cross-branch builds running in parallel.
+# CI race: a newly triggered run cancels every in-flight run of this workflow
+# across *all* branches — not just same-ref ones — so a slower, older build can
+# no longer overtake a fresher result.
+#
+# The group is ref-agnostic on purpose: with `cancel-in-progress: true` the
+# superseded run is terminated the moment a newer one enqueues. A per-ref group
+# (`${{ github.ref }}`) would only cancel runs on the *same* ref, leaving
+# cross-branch builds racing into the one shared Pages site.
+#
+# PR builds sit in their own `pr` lane so they never cancel the
+# deploy-triggering push/dispatch runs: a feature branch that has an open PR
+# would otherwise lose its Pages preview, because the PR run (which never
+# deploys) enqueues just after the push run and cancels it. Push and manual
+# dispatches share the `run` lane, where the newest trigger wins.
 concurrency:
-  group: console-preview-ci
+  group: console-preview-ci-${{ github.event_name == 'pull_request' && 'pr' || 'run' }}
   cancel-in-progress: true
 
 permissions:
@@ -104,10 +111,13 @@ jobs:
     # Concurrency has two layers. The workflow-level group (above) is
     # ref-agnostic, so a newly triggered run cancels *every* in-flight run of
     # this workflow across all branches — the CI race: the newest trigger
-    # wins and no slower, older build can outlive it. The job-level group
-    # below is a second, deploy-only belt: even if two deploys ever reach the
-    # queue, they serialize against one another and a superseded one is
-    # cancelled, so a stale build must not overwrite a newer Pages page.
+    # wins and no slower, older build can outlive it. PR builds sit in their
+    # own lane (the group ends in `-pr`), so they verify without racing the
+    # deploy-triggering push/dispatch runs that share the `-run` lane. The
+    # job-level group below is a second, deploy-only belt: even if two deploys
+    # ever reach the queue, they serialize against one another and a
+    # superseded one is cancelled, so a stale build must not overwrite a newer
+    # Pages page.
     concurrency:
       group: console-preview-pages
       cancel-in-progress: true

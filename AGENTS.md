@@ -170,9 +170,13 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   (`console-preview-pages`, `cancel-in-progress`) so deploys from *different*
   branches serialize against one another and "most recent build wins" holds
   across branches. The workflow-level group is ref-agnostic
-  (`console-preview-ci`): a newly triggered run cancels every in-flight run of
-  this workflow across all branches — the CI race — so a slower, older build
-  can no longer overtake a fresher result. The
+  (`console-preview-ci-<lane>`, `cancel-in-progress`): a newly triggered
+  push/dispatch run cancels every in-flight push/dispatch run across all
+  branches — the CI race — so a slower, older build can no longer overtake a
+  fresher result. PR builds sit in their own lane (`-pr`) so they never cancel
+  the deploy-triggering runs: a feature branch with an open PR enqueues its PR
+  run just after the push run and would otherwise cancel it, losing the Pages
+  preview (the PR run never deploys). The
   repository's `github-pages` environment must allow the same prefixes
   (Settings → Environments → deployment branch policies, `feat/*`, `feature/*`,
   `fix/*` and `hotfix/*`); without that the deploy job fails before a runner is assigned,

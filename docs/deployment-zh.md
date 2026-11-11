@@ -164,12 +164,14 @@ astrox status|start|stop|restart|update|logs|doctor|path|open|info
   构建胜出。分支过滤用前缀匹配（`feat/**`、`feature/**`、`fix/**`、`hotfix/**`），新建分支不需要改工作流，
   每次提交都能在线上验证改动。
 - 「最近一次命中胜出」跨分支也成立，靠两层并发控制。workflow 级
-  `concurrency` 分组不按 ref（`console-preview-ci`、`cancel-in-progress: true`）：
-  任何新触发的运行都会取消本工作流**所有分支**上正在跑的运行——CI 竞速，
-  更慢的旧构建不再有机会反超更新的构建。deploy 任务另加一层 job 级
-  `concurrency` 分组（`console-preview-pages`、`cancel-in-progress: true`）：
-  即使两个部署同时进队列也会串行，被取代的立即取消，过期的构建不会覆盖
-  更新一次的 Pages 页面。
+  `concurrency` 分组不按 ref（`console-preview-ci-<lane>`、`cancel-in-progress:
+  true`）：任何新触发的 push/手动运行都会取消**所有分支**上正在跑的
+  push/手动运行——CI 竞速，更慢的旧构建不再有机会反超更新的构建。PR 构建走
+  独立 lane（`-pr`），不参与这条竞速——否则开了 PR 的 feature 分支会失去
+  Pages 预览（PR 运行在 push 运行刚入队后入队、不发布，会把它取消掉）。
+  deploy 任务另加一层 job 级 `concurrency` 分组（`console-preview-pages`、
+  `cancel-in-progress: true`）：即使两个部署同时进队列也会串行，被取代的
+  立即取消，过期的构建不会覆盖更新一次的 Pages 页面。
 - 仓库设置里的 `github-pages` 环境也必须放行同样的前缀：Settings →
   Environments → `github-pages` → Deployment branches and tags 添加 `feat/*`、
   `feature/*`、`fix/*` 和

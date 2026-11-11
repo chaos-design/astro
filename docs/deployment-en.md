@@ -187,10 +187,14 @@ the sample dataset:
   workflow edit and every commit is verifiable on the live page.
 - That "most recent wins" promise is kept across branches in two layers.
   The workflow-level `concurrency` group is ref-agnostic
-  (`console-preview-ci`, `cancel-in-progress: true`), so a newly triggered
-  run cancels *every* in-flight run of this workflow across all branches —
-  the CI race: a slower, older build can no longer overtake and clobber a
-  fresher result. The deploy job adds a second, deploy-only belt
+  (`console-preview-ci-<lane>`, `cancel-in-progress: true`): a newly
+  triggered *push or dispatch* run cancels every in-flight push/dispatch run
+  across all branches — the CI race: a slower, older build can no longer
+  overtake and clobber a fresher result. PR builds sit in their own lane
+  (`-pr`) so they verify without racing those deploy-triggering runs — a
+  feature branch with an open PR would otherwise lose its Pages preview,
+  because the PR run (which never deploys) enqueues just after the push run
+  and cancels it. The deploy job adds a second, deploy-only belt
   (`console-preview-pages`, `cancel-in-progress: true`): even if two deploys
   reach the queue, they serialize and a superseded one is cancelled, so a
   stale build must not overwrite a newer Pages page.
