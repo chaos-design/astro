@@ -1519,6 +1519,67 @@ export function buildPairDurations(
   return durations;
 }
 
+/** One half of a closed pair: its partner, its role and the shared token. */
+export type TracePairLink = {
+  /** The other half's event id — the jump target for the pair marker. */
+  partnerId: string;
+  /** Which half of the pair this event is. */
+  role: "start" | "end";
+  /** Short label both halves display, so LOG and trajectory read as one unit. */
+  token: string;
+};
+
+/**
+ * The token is derived from the pair's *start event id*, never from an
+ * ordinal: LOG and the trajectory can be fed different event prefixes (replay
+ * mode), and an ordinal would label the same pair differently in each view.
+ * A compact FNV-1a hash keeps the marker short; identity still comes from
+ * `partnerId`, so a hash collision can never misdirect a jump.
+ */
+function pairToken(startEventId: string) {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < startEventId.length; index += 1) {
+    hash ^= startEventId.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return `P${(hash >>> 0)
+    .toString(36)
+    .slice(-3)
+    .toUpperCase()
+    .padStart(3, "0")}`;
+}
+
+/**
+ * Marker identity of every *paired* flow entry, by event id. The pairing
+ * source is the same `createFlowEntries` that backs `buildPairDurations`, so
+ * a row has a marker exactly when it has a paired duration. Both halves point
+ * at each other and carry the same token; the LOG and trajectory can therefore
+ * show the same marker and jump straight to the other half. Unpaired events
+ * are simply absent.
+ */
+export function buildPairLinks(
+  events: readonly TraceEvent[],
+): ReadonlyMap<string, TracePairLink> {
+  const links = new Map<string, TracePairLink>();
+  for (const entry of createFlowEntries(events)) {
+    if (!entry.endEvent || entry.startEvent.id === entry.endEvent.id) {
+      continue;
+    }
+    const token = pairToken(entry.startEvent.id);
+    links.set(entry.startEvent.id, {
+      partnerId: entry.endEvent.id,
+      role: "start",
+      token,
+    });
+    links.set(entry.endEvent.id, {
+      partnerId: entry.startEvent.id,
+      role: "end",
+      token,
+    });
+  }
+  return links;
+}
+
 export function buildHarnessFlow(
   inputEvents: Array<TraceEvent | TraceEventInput>,
   platformId = "codex",

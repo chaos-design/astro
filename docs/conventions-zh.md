@@ -62,6 +62,10 @@
     收尾，如 `PreToolUse`→`PostToolUse`/`PostToolUseFailure`）给出开始→结果
     的时长，不成对的事件一律不计入；LOG 行、轨迹数据层（`pairDuration` /
     `totalPairDuration`）与悬停区块卡片都从这一处取值；
+  - 成对关联标记的身份同样只在 `src/lib/trace-model.ts`（`buildPairLinks`，
+    复用同一份 `createFlowEntries` 配对）：两半互指对方 ID、共用由起始事件
+    ID 派生的编号（不用序号，回放/前缀变化不会重新编号）；LOG 行与轨迹原子
+    的标记、跨视图定位和高亮都从这一处取值，不得另写一份配对推断；
   - 轮次编号只在 `src/lib/trajectory-model.ts`（`buildTraceTurnIndex`）：来源
     自带轮次标识时保留它印出的编号（DeepSeek 的 `data.turn` 可以从 5 开始），
     仅有不透明标识时按首次出现给序号，无标识的事件跟随当前轮次，开头的前导

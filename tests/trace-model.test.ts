@@ -4,6 +4,7 @@ import {
   buildFlow,
   buildHarnessFlow,
   buildPairDurations,
+  buildPairLinks,
   buildSessionPromptRuns,
   buildSessions,
   extractRunModel,
@@ -709,6 +710,47 @@ test("counts only closed pairs in buildPairDurations", () => {
   for (const open of openStarts) {
     assert.equal(durations.has(open.id), false);
   }
+});
+
+test("links both halves of a closed pair and keeps the token stable", () => {
+  const events = createDemoEvents(2_000_000_000_000);
+  const links = buildPairLinks(events);
+  const start = events.find(
+    (event) =>
+      event.eventName === "PreToolUse" && event.toolUseId === "tool-test",
+  )!;
+  const end = events.find(
+    (event) =>
+      event.eventName === "PostToolUse" && event.toolUseId === "tool-test",
+  )!;
+
+  // Each half points at the other, carries its own role, and shares one token
+  // so the LOG row and the trajectory atom read as a single unit.
+  assert.deepEqual(links.get(start.id), {
+    partnerId: end.id,
+    role: "start",
+    token: links.get(end.id)?.token,
+  });
+  assert.deepEqual(links.get(end.id), {
+    partnerId: start.id,
+    role: "end",
+    token: links.get(start.id)?.token,
+  });
+  assert.match(links.get(start.id)!.token, /^P[0-9A-Z]{3}$/);
+
+  // The marker set is exactly the duration set: a row never shows a link
+  // marker without the paired duration badge (and vice versa).
+  const durations = buildPairDurations(events);
+  assert.deepEqual([...links.keys()].sort(), [...durations.keys()].sort());
+
+  // Tokens come from the start id, not an ordinal: feeding a different prefix
+  // (replay mode) or adding another pair before/after must not relabel a pair.
+  const endIndex = events.indexOf(end);
+  const prefix = events.slice(0, endIndex + 1);
+  assert.equal(
+    buildPairLinks(prefix).get(start.id)?.token,
+    links.get(start.id)?.token,
+  );
 });
 
 test("parses JSONL hook payloads and normalized trace events", () => {

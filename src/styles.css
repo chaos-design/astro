@@ -295,18 +295,19 @@ button[aria-disabled="true"],
 }
 
 /* Strip the UA button border, except for controls that draw their own:
- * console/playback buttons, Radix triggers, and the two custom pills below.
- * Without the exclusions the LIVE chip and the service card's restart action
- * lost their borders and read as plain text. */
+ * console/playback buttons, Radix triggers, the custom pills below, and the
+ * pair-link marker shared by LOG / trajectory rows. Without the exclusions
+ * the LIVE chip, the service card's restart action and the pair marker lost
+ * their borders and read as plain text. */
 button:not([data-variant="console"]):not([data-variant="playback"]):not([data-slot="select-trigger"]):not(
     [data-slot="tabs-trigger"]
-  ):not(.run-history__live-jump):not(.service-card__restart):not(.settings-footer__button) {
+  ):not(.run-history__live-jump):not(.service-card__restart):not(.settings-footer__button):not(.pair-link-marker) {
   border: 0;
 }
 
 button:not([data-variant="console"]):not([data-variant="playback"]):not([data-slot="select-trigger"]):not(
     [data-slot="tabs-trigger"]
-  ):not(.run-history__live-jump):not(.service-card__restart):not(.settings-footer__button):focus-visible,
+  ):not(.run-history__live-jump):not(.service-card__restart):not(.settings-footer__button):not(.pair-link-marker):focus-visible,
 input:not([data-slot="input-group-control"]):focus-visible {
   outline: 1px solid var(--selection-border);
   outline-offset: 2px;
@@ -5213,6 +5214,15 @@ pre,
   line-height: 1.6;
 }
 
+/* The pair duration and its link marker share one line, so the marker reads
+   as a property of that duration instead of a fourth timestamp row. */
+.trajectory-row time .trajectory-row__pair-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
 /* The duration heat scale: a magnitude→colour spec, not a status colour. The
    badge only recolors; its shape stays content-sized. The tiers track the
    stepped units (<10s, <1m, <10m, beyond): <10s reads calm, <1m neutral,
@@ -5839,6 +5849,61 @@ pre,
   font-size: 8px;
   font-variant-numeric: tabular-nums;
   line-height: 1.4;
+}
+
+/* One shared marker for the two halves of a closed pair, rendered identically
+   on LOG rows and trajectory atoms. Both halves carry the same token (see
+   buildPairLinks), so the token is the association; the mirrored chain icon on
+   the result half is the only role cue. Colours are explicit: the global
+   `button { color: inherit }` / `button { border: 0 }` reset has no layer and
+   would otherwise swallow them (the marker is in its :not() exclusion list). */
+.pair-link-marker {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 2px;
+  padding: 0 3px 0 2px;
+  border: 1px solid color-mix(in srgb, var(--violet) 38%, var(--line));
+  border-radius: 3px;
+  color: color-mix(in srgb, var(--violet) 72%, var(--text));
+  background: color-mix(in srgb, var(--violet) 9%, transparent);
+  font-family: var(--font-mono);
+  font-size: 7px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.5;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.pair-link-marker svg {
+  width: 9px;
+  height: 9px;
+}
+
+.pair-link-marker.is-end svg {
+  transform: scaleX(-1);
+}
+
+.pair-link-marker:hover,
+.pair-link-marker:focus-visible {
+  border-color: var(--violet);
+  color: var(--text);
+  background: color-mix(in srgb, var(--violet) 22%, transparent);
+  outline: 1px solid var(--selection-border);
+  outline-offset: 1px;
+}
+
+/* Selecting one half highlights the other half in *both* views, so the pair
+   can be found without scrolling or reading every token. */
+.atomic-log__row.is-pair-partner {
+  border-color: color-mix(in srgb, var(--violet) 58%, var(--line));
+  background: color-mix(in srgb, var(--violet) 8%, transparent);
+  box-shadow: inset 2px 0 color-mix(in srgb, var(--violet) 68%, transparent);
+}
+
+.trajectory-row.is-pair-partner {
+  background: color-mix(in srgb, var(--violet) 8%, transparent);
+  box-shadow: inset 3px 0 var(--violet);
 }
 
 .atomic-log__row.tone-prompt {

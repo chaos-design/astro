@@ -16,6 +16,7 @@ import {
   FileInput,
   Focus,
   Folder,
+  Link2,
   ListTree,
   LocateFixed,
   Loader2,
@@ -163,6 +164,7 @@ import {
   buildFlow,
   buildHarnessFlow,
   buildPairDurations,
+  buildPairLinks,
   createSessionProjection,
   eventMeta,
   formatDuration,
@@ -172,6 +174,7 @@ import {
   getFlowNodeIdForEvent,
   normalizeTraceEvent,
   parseImportedTrace,
+  type TracePairLink,
 } from "./lib/trace-model";
 import {
   loadDemoEvents,
@@ -527,10 +530,14 @@ function buildLogEntries(events: TraceEvent[]) {
   // The paired duration map is the single place a LOG row learns how long a
   // closed pair took; unpaired events get `null` and show no badge.
   const pairDurations = buildPairDurations(events);
+  // Same pairing truth, for the marker: both halves of a pair carry a shared
+  // token and each other's id, so a click can locate the other half.
+  const pairLinks = buildPairLinks(events);
   return events.map((event, index) => ({
     event,
     index,
     pairDuration: pairDurations.get(event.id) ?? null,
+    pairLink: pairLinks.get(event.id) ?? null,
     turn: turnByEventId.get(event.id) ?? 1,
   }));
 }
@@ -2560,6 +2567,46 @@ const RunHistory = memo(function RunHistory({
 });
 
 /**
+ * The single marker shared by LOG rows and trajectory atoms. Both halves of a
+ * closed pair carry the same token, so the rows read as one unit across the
+ * two views; clicking jumps straight to the other half. Kept as a real button
+ * so keyboard users get the same jump, and it stops propagation so the jump
+ * never doubles as a plain row selection.
+ */
+function PairLinkMarker({
+  link,
+  onLocate,
+}: {
+  link: TracePairLink;
+  onLocate: (eventId: string) => void;
+}) {
+  const roleLabel = link.role === "start" ? "起始" : "结果";
+  const targetLabel = link.role === "start" ? "结果" : "起始";
+  return (
+    <button
+      type="button"
+      className={`pair-link-marker is-${link.role}`}
+      title={`成对${roleLabel} · ${link.token} · 点击定位${targetLabel}事件`}
+      aria-label={`成对${roleLabel} ${link.token}，定位${targetLabel}事件`}
+      onClick={(clickEvent) => {
+        clickEvent.stopPropagation();
+        onLocate(link.partnerId);
+      }}
+      onKeyDown={(keyEvent) => {
+        if (keyEvent.key === "Enter" || keyEvent.key === " ") {
+          keyEvent.preventDefault();
+          keyEvent.stopPropagation();
+          onLocate(link.partnerId);
+        }
+      }}
+    >
+      <Link2 aria-hidden="true" />
+      <span>{link.token}</span>
+    </button>
+  );
+}
+
+/**
  * One virtualized log row. Memoized on (event, index, selected, running): a
  * streaming batch, a selection change, or a running-marker move then only
  * re-renders the rows whose own state moved instead of re-reconciling every
@@ -2571,15 +2618,21 @@ const RunHistory = memo(function RunHistory({
 const AtomicLogRow = memo(function AtomicLogRow({
   event,
   index,
+  onLocatePartner,
   onSelect,
   pairDuration,
+  pairLink,
+  partnerSelected,
   running,
   selected,
 }: {
   event: TraceEvent;
   index: number;
+  onLocatePartner: (eventId: string) => void;
   onSelect: (eventId: string) => void;
   pairDuration: number | null;
+  pairLink: TracePairLink | null;
+  partnerSelected: boolean;
   running: boolean;
   selected: boolean;
 }) {
@@ -2609,6 +2662,7 @@ const AtomicLogRow = memo(function AtomicLogRow({
         `tone-${meta.tone}`,
         running && "is-running",
         selected && !running && "is-selected",
+        partnerSelected && !selected && "is-pair-partner",
       )}
       onClick={() => onSelectRef.current(event.id)}
       onKeyDown={(keyEvent) => {
@@ -2640,13 +2694,19 @@ const AtomicLogRow = memo(function AtomicLogRow({
             {durationLabel}
           </span>
         ) : null}
+        {pairLink ? (
+          <PairLinkMarker link={pairLink} onLocate={onLocatePartner} />
+        ) : null}
       </small>
     </div>
   );
 }, (before, after) =>
   before.event === after.event &&
   before.index === after.index &&
+  before.onLocatePartner === after.onLocatePartner &&
   before.pairDuration === after.pairDuration &&
+  before.pairLink === after.pairLink &&
+  before.partnerSelected === after.partnerSelected &&
   before.running === after.running &&
   before.selected === after.selected,
 );
@@ -2662,6 +2722,7 @@ const AtomicLog = memo(function AtomicLog({
   locateRequest,
   queryResetToken,
   onSelect,
+  onLocatePartner,
   onLocateSelectedAtom,
   canLocateSelectedAtom,
   live,
@@ -2672,6 +2733,7 @@ const AtomicLog = memo(function AtomicLog({
   locateRequest: number;
   queryResetToken: number;
   onSelect: (eventId: string) => void;
+  onLocatePartner: (eventId: string) => void;
   onLocateSelectedAtom: () => void;
   canLocateSelectedAtom: boolean;
   live: boolean;
@@ -2987,15 +3049,20 @@ const AtomicLog = memo(function AtomicLog({
                       </div>
                     );
                   }
-                  const { event, index, pairDuration } =
+                  const { event, index, pairDuration, pairLink } =
                     visibleEntries[item.index];
                   return (
                     <AtomicLogRow
                       event={event}
                       index={index}
                       key={event.id}
-                      pairDuration={pairDuration}
+                      onLocatePartner={onLocatePartner}
                       onSelect={onSelect}
+                      pairDuration={pairDuration}
+                      pairLink={pairLink}
+                      partnerSelected={
+                        pairLink?.partnerId === selectedEventId
+                      }
                       running={event.id === runningEventId}
                       selected={event.id === selectedEventId}
                     />
@@ -3254,6 +3321,7 @@ type TrajectoryDisplayRow = Pick<
   | "kind"
   | "label"
   | "pairDuration"
+  | "pairLink"
   | "occurredAt"
   | "status"
   | "summary"
@@ -3267,9 +3335,12 @@ function TrajectoryRow({
   expanded = false,
   onActivate,
   onHover,
+  onLocatePartner,
   onToggle,
+  partnerSelected = false,
   row,
   selected,
+  showPairMarker = true,
   showTurn = true,
 }: {
   depth: number;
@@ -3277,9 +3348,13 @@ function TrajectoryRow({
   expanded?: boolean;
   onActivate: () => void;
   onHover?: (event: ReactPointerEvent<HTMLDivElement>) => void;
+  onLocatePartner?: (eventId: string) => void;
   onToggle?: () => void;
+  partnerSelected?: boolean;
   row: TrajectoryDisplayRow;
   selected: boolean;
+  /** One trace event projects into several atoms; only the pair's owner draws the marker. */
+  showPairMarker?: boolean;
   showTurn?: boolean;
 }) {
   return (
@@ -3292,6 +3367,7 @@ function TrajectoryRow({
         "trajectory-row",
         expandable && "is-loop",
         selected && "is-selected",
+        partnerSelected && !selected && "is-pair-partner",
       )}
       style={{ "--depth": depth } as CSSProperties}
       onClick={onActivate}
@@ -3348,15 +3424,23 @@ function TrajectoryRow({
         {row.pairDuration !== null ? (
           /* The closed pair is the meaningful span; printing the wall-time
              next to it shows two numbers for one duration (a 6s wall and a
-             6s pair). So the pair badge is the single readout when present. */
-          <small
-            className={`trajectory-row__pair heat-${durationHeatClass(
-              row.pairDuration,
-            )}`}
-            title="成对耗时"
-          >
-            {formatDurationMs(row.pairDuration)}
-          </small>
+             6s pair). The pair badge and its link marker share one line. */
+          <span className="trajectory-row__pair-line">
+            <small
+              className={`trajectory-row__pair heat-${durationHeatClass(
+                row.pairDuration,
+              )}`}
+              title="成对耗时"
+            >
+              {formatDurationMs(row.pairDuration)}
+            </small>
+            {row.pairLink && showPairMarker && onLocatePartner ? (
+              <PairLinkMarker
+                link={row.pairLink}
+                onLocate={onLocatePartner}
+              />
+            ) : null}
+          </span>
         ) : (
           <small
             className={`trajectory-row__duration heat-${durationHeatClass(
@@ -3380,9 +3464,11 @@ function loopRowForTurn(turn: TrajectoryTurn): TrajectoryDisplayRow {
     key: "loop.turn",
     kind: "loop",
     label: "Loop Turn",
-    // A turn block is not itself a paired event, so it carries no pair span;
-    // its closed-pair total surfaces through the hover card instead.
+    // A turn block is not itself a paired event, so it carries no pair span
+    // and no link marker; its closed-pair total surfaces through the hover
+    // card instead.
     pairDuration: null,
+    pairLink: null,
     occurredAt: turn.occurredAt,
     status: turn.status,
     summary: turn.summary,
@@ -3402,6 +3488,8 @@ function loopRowForTurn(turn: TrajectoryTurn): TrajectoryDisplayRow {
 type TrajectoryHoverDetails = {
   /** The atom's closed start→end span, `null` when it is not a closed pair. */
   pairDuration: number | null;
+  /** Shared token of a closed pair, so the card agrees with the row marker. */
+  pairToken?: string;
   /** Sum of the closed pair spans inside the block; a turn block only. */
   pairTotal?: number;
   /** The atom's own wall-time span; a single atom only. */
@@ -3449,6 +3537,7 @@ function TrajectoryDetailsCard({ details }: { details: TrajectoryHoverDetails })
       {pairShown ? (
         <span>
           <b className="trajectory-hover__label">PAIR</b> ·{" "}
+          {details.pairToken ? `${details.pairToken} · ` : null}
           <i
             className={`trajectory-hover__duration heat-${durationHeatClass(
               details.pairDuration as number,
@@ -3596,6 +3685,7 @@ const TrajectoryView = memo(function TrajectoryView({
   selectedNodeId,
   canLocateSelection,
   onLocateSelection,
+  onLocatePartner,
   onSelect,
 }: {
   atomNodes: HarnessNode[];
@@ -3608,6 +3698,7 @@ const TrajectoryView = memo(function TrajectoryView({
   selectedNodeId: string;
   canLocateSelection: boolean;
   onLocateSelection: () => void;
+  onLocatePartner: (eventId: string) => void;
   onSelect: (eventId: string, atomId?: string) => void;
 }) {
   const model = useMemo(
@@ -3738,6 +3829,7 @@ const TrajectoryView = memo(function TrajectoryView({
       duration: atom.duration,
       eventName: atom.event.eventName,
       pairDuration: atom.pairDuration,
+      pairToken: atom.pairLink?.token,
       status: atom.status,
       subtitle: `${atom.key} · turn ${atom.turn}`,
       title: atom.label,
@@ -3789,6 +3881,30 @@ const TrajectoryView = memo(function TrajectoryView({
     ],
     [model],
   );
+  /**
+   * A single tool event fans out into several atoms (a `PreToolUse` projects
+   * five, its `PostToolUse` six). Stamping the shared pair token on every one
+   * of them would print the same marker half a dozen times for one tool call.
+   * Exactly one atom owns the marker: the aggregated `tool.call` step that
+   * spans start→result, or the first atom of the pair when a platform has no
+   * such step. The data (pairLink) stays on every atom, so the hover card can
+   * still identify the pair from any atom.
+   */
+  const pairMarkerOwnerIds = useMemo(() => {
+    const byToken = new Map<string, { id: string; isToolStep: boolean }>();
+    for (const atom of allAtoms) {
+      if (!atom.pairLink) {
+        continue;
+      }
+      const token = atom.pairLink.token;
+      const isToolStep = atom.key === "tool.call";
+      const owner = byToken.get(token);
+      if (!owner || (isToolStep && !owner.isToolStep)) {
+        byToken.set(token, { id: atom.id, isToolStep });
+      }
+    }
+    return new Set([...byToken.values()].map((entry) => entry.id));
+  }, [allAtoms]);
   const selectedTrajectoryAtom = useMemo(
     () =>
       allAtoms.find(
@@ -4111,8 +4227,14 @@ const TrajectoryView = memo(function TrajectoryView({
                           atomHoverDetails(atom),
                         )
                       }
+                      onLocatePartner={onLocatePartner}
+                      partnerSelected={
+                        pairMarkerOwnerIds.has(atom.id) &&
+                        atom.pairLink?.partnerId === selectedEventId
+                      }
                       row={atom}
                       selected={atom.id === selectedTrajectoryAtomId}
+                      showPairMarker={pairMarkerOwnerIds.has(atom.id)}
                     />
                   ))}
                 </div>
@@ -4139,8 +4261,14 @@ const TrajectoryView = memo(function TrajectoryView({
                     atomHoverDetails(atom),
                   )
                 }
+                onLocatePartner={onLocatePartner}
+                partnerSelected={
+                  pairMarkerOwnerIds.has(atom.id) &&
+                  atom.pairLink?.partnerId === selectedEventId
+                }
                 row={atom}
                 selected={atom.id === selectedTrajectoryAtomId}
+                showPairMarker={pairMarkerOwnerIds.has(atom.id)}
                 showTurn={false}
               />
             ))}
@@ -6554,6 +6682,32 @@ export default function App() {
     [activeEvents, platformId],
   );
 
+  /**
+   * Jump to the other half of a closed pair from either view's link marker.
+   * Both panels get a fresh locate request, so the LOG centers the partner row
+   * and the trajectory reveals its atom at the same time. A log search could
+   * hide that row, so the query is reset first — otherwise the jump would
+   * silently do nothing.
+   */
+  const handleLocatePairPartner = useCallback(
+    (partnerId: string) => {
+      setPlaying(false);
+      setReplayMode(false);
+      setConsoleOpen(true);
+      setLogQueryResetToken((current) => current + 1);
+      const event = activeEvents.find(
+        (candidate) => candidate.id === partnerId,
+      );
+      setSelectedAtomId(
+        getAtomIdForEvent(event || null, platformId) || null,
+      );
+      setSelectedEventId(partnerId);
+      setTrajectoryLocateRequest((current) => current + 1);
+      setLogLocateRequest((current) => current + 1);
+    },
+    [activeEvents, platformId],
+  );
+
   const handleCanvasSelectNode = useCallback(
     (node: HarnessNode) => {
       const deselecting = selectedAtomId === node.id;
@@ -7184,6 +7338,7 @@ export default function App() {
                   selectedNodeId={selectedNodeId}
                   canLocateSelection={Boolean(locateAtomId && locateAtomEvent)}
                   onLocateSelection={locateTrajectorySelection}
+                  onLocatePartner={handleLocatePairPartner}
                   onSelect={handleTrajectorySelect}
                 />
               ) : null}
@@ -7223,6 +7378,7 @@ export default function App() {
                 locateRequest={logLocateRequest}
                 queryResetToken={logQueryResetToken}
                 onSelect={handleLogSelect}
+                onLocatePartner={handleLocatePairPartner}
                 canLocateSelectedAtom={Boolean(currentAtomId)}
                 onLocateSelectedAtom={handleLogLocateAtom}
               />

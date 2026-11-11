@@ -9,7 +9,11 @@ import {
   orderTrajectoryNewestFirst,
 } from "../src/lib/trajectory-model.ts";
 import type { TraceEvent } from "../src/types/trace.ts";
-import { buildHarnessFlow, buildPairDurations } from "../src/lib/trace-model.ts";
+import {
+  buildHarnessFlow,
+  buildPairDurations,
+  buildPairLinks,
+} from "../src/lib/trace-model.ts";
 import { createDemoEvents } from "./helpers/demo-fixture.ts";
 
 test("carries closed-pair durations on atoms and turns", () => {
@@ -22,13 +26,20 @@ test("carries closed-pair durations on atoms and turns", () => {
     topology.nodes,
   );
   const pairDurations = buildPairDurations(events);
+  const pairLinks = buildPairLinks(events);
 
   // Every atom reports a `pairDuration`; when set, it equals the single
   // pairing truth for its trace event, and when the event is unpaired it is
-  // null so the UI omits the badge instead of printing 0.
+  // null so the UI omits the badge instead of printing 0. The link marker
+  // comes from the same pairing truth, so it never appears without the badge.
   for (const atom of model.turns.flatMap((turn) => turn.atoms)) {
     const expected = pairDurations.get(atom.event.id) ?? null;
     assert.equal(atom.pairDuration, expected);
+    assert.deepEqual(
+      atom.pairLink,
+      pairLinks.get(atom.event.id) ?? null,
+    );
+    assert.equal(atom.pairLink !== null, expected !== null);
   }
 
   // A turn's total is the sum of its closed-pair spans only.

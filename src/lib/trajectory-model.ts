@@ -1,6 +1,10 @@
 import type { AtomicFlowEvent, AtomicPhase } from "../vendor/atomic-flow/browser.ts";
 import type { HarnessNode, TraceEvent } from "../types/trace.ts";
-import { buildPairDurations } from "./trace-model.ts";
+import {
+  buildPairDurations,
+  buildPairLinks,
+  type TracePairLink,
+} from "./trace-model.ts";
 
 const RUN_CONTEXT_KEYS = new Set([
   "session.resume",
@@ -26,6 +30,13 @@ export type TrajectoryAtom = {
    * closed pair. Sourced from `buildPairDurations`, the single pairing truth.
    */
   pairDuration: number | null;
+  /**
+   * The marker for the closed pair this atom belongs to, `null` when the event
+   * has no partner. Sourced from `buildPairLinks`; both halves carry the same
+   * token so the LOG and trajectory can mark the rows as one unit and jump
+   * between them.
+   */
+  pairLink: TracePairLink | null;
   occurredAt: string;
   sequence: number;
   status: "complete" | "failed" | "idle" | "running" | "waiting";
@@ -358,6 +369,9 @@ export function buildTrajectoryModel(
   // Single pairing truth: closed start→end spans by trace-event id. Unpaired
   // events are absent, so an atom reads `null` and the UI omits its badge.
   const pairDurations = buildPairDurations(events);
+  // The partner of each event (the other half of its closed pair); `null`
+  // when the event has no partner, so the link marker is omitted.
+  const pairLinks = buildPairLinks(events);
   const aggregated = new Map<string, MutableTrajectoryAtom>();
 
   for (const atomicEvent of atomicEvents) {
@@ -380,6 +394,7 @@ export function buildTrajectoryModel(
     const node = nodeByKey.get(atomicEvent.atom.key);
     const nextStatus = statusForPhase(atomicEvent.phase);
     const pairDuration = pairDurations.get(traceEvent.id) ?? null;
+    const pairLink = pairLinks.get(traceEvent.id) ?? null;
 
     if (existing) {
       existing.count += 1;
@@ -390,6 +405,7 @@ export function buildTrajectoryModel(
       existing.event = traceEvent;
       existing.lastOccurredAt = atomicEvent.occurredAt;
       existing.pairDuration = pairDuration;
+      existing.pairLink = pairLink;
       existing.status =
         existing.status === "failed" ? "failed" : nextStatus;
       existing.summary =
@@ -411,6 +427,7 @@ export function buildTrajectoryModel(
       lastOccurredAt: atomicEvent.occurredAt,
       occurredAt: atomicEvent.occurredAt,
       pairDuration,
+      pairLink,
       sequence: atomicEvent.sequence,
       status: nextStatus,
       summary:

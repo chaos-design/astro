@@ -565,7 +565,13 @@ The upper LOG area:
   opening and closing half of a matched pair (for example a `PreToolUse` and
   its `PostToolUse` / `PostToolUseFailure`) report the same span from start to
   result; events that never paired — a lone `Reasoning`, an open tool call —
-  show no badge.
+  show no badge;
+- puts a **pair-link marker** next to that badge (a chain icon plus a short
+  token such as `P3CM`). Both halves of a pair and the corresponding trajectory
+  atom share the same token. Clicking it selects and locates the other half,
+  centering its row in both the LOG and the trajectory; selecting one half
+  outlines the other in violet in both views. The marker clears the log search
+  first, so a partner hidden by a filter is still reachable.
 
 The inspector provides:
 
@@ -756,6 +762,8 @@ Durations use a stepped unit rule that picks the smallest honest unit: under 10s
 The trajectory header carries a **legend**: four dots on the left key the status markers to `complete/running/waiting/failed`, and a `duration` set on the right keys each colour to its interval (`<10s / <1m / <10m / ≥10m`), matching the badges on the rows exactly.
 
 Matching `PreToolUse` and `PostToolUse` or `PostToolUseFailure` events with the same `toolUseId` become one tool step. Expand a row to inspect paired input and output. A closed pair's start→result span is shown as the paired duration (`PAIR`) on the row and in the hover card; unpaired events have no span and are excluded from every total.
+
+Next to the paired duration sits the **pair-link marker**: a chain icon and a short token (e.g. `P3CM`) shared with both LOG rows of that pair; the hover card's `PAIR` line carries the same token. One tool event projects into several atoms, so to avoid repeating the same token across a whole turn the trajectory draws one marker per pair, on the aggregated tool step (`tool.call`); the other atoms keep their paired duration and still report the token on hover. Clicking the marker locates the other half (start ↔ result) and centres the matching row in the LOG and the trajectory together; selecting one half outlines the other in violet in both views. The token derives from the pair's start-event id, not a sequence number, so replaying or switching views never renumbers it.
 
 ## 8. Replay
 
