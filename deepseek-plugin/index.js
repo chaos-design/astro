@@ -5,7 +5,13 @@ import recorder from "./plugin/trace-recorder.cjs";
 import runtimeConfigLoader from "./plugin/runtime-config.cjs";
 
 export const name = "astro-deepseek";
-export const inject = ["sessions"];
+
+// Capture subscribes to session/* events on the root context; it never reads
+// the `sessions` service. Declaring `inject = ["sessions"]` made activation
+// depend on that service being ready: dsh leaves a third-party entry whose
+// required services never resolve PENDING and prints only a stderr warning,
+// so apply() never runs and not a single listener is registered. Subscribe
+// unconditionally instead — event registration does not need the service.
 
 const pluginRoot = dirname(fileURLToPath(import.meta.url));
 
@@ -51,14 +57,42 @@ function turnStatus(reason) {
   return "completed";
 }
 
-export function adaptDeepseekEvent(session, event) {
+// Mirrors `numericTurn` in `src/lib/trajectory-model.ts`: the harness prints
+// `data.turn` as the number `5` on the envelope and as the string `"5"` in the
+// payload, so both spellings must normalize to one identity. Accepting only a
+// number here meant a string `"6"` dropped the identity and the whole turn
+// inherited the previous turn's id — the persisted trace was mislabelled, not
+// just the display.
+function turnIdFrom(event) {
+  const value = event.data?.turn;
+  if (typeof value === "number") {
+    return Number.isSafeInteger(value) && value > 0 ? String(value) : null;
+  }
+  if (typeof value === "string" && /^\d+$/.test(value.trim())) {
+    const parsed = Number(value.trim());
+    return Number.isSafeInteger(parsed) && parsed > 0 ? String(parsed) : null;
+  }
+  return null;
+}
+
+/**
+ * Map one Harness event onto canonical ASTRO semantics.
+ *
+ * `carriedTurnId` is the turn the session is currently executing. Harness only
+ * stamps `data.turn` on the events it emits for that turn (`turn/start`,
+ * `step/*`, tool calls, the message, `turn/end`); the prompt and the inbox
+ * notifications that belong to the same turn carry no number at all. Without
+ * the carry-forward one logical turn reached the trace file with a mix of
+ * `turnId: "6"` and `turnId: null`, and every consumer had to guess which turn
+ * the null events belonged to.
+ */
+export function adaptDeepseekEvent(session, event, carriedTurnId = null) {
   const base = {
     id: `deepseek:${session.id}:${event.seq}`,
     capturedAt: new Date(event.time).toISOString(),
     source: "deepseek",
     sessionId: String(session.id),
-    turnId:
-      Number.isFinite(event.data?.turn) ? String(event.data.turn) : null,
+    turnId: turnIdFrom(event) ?? carriedTurnId ?? null,
     parentId: session.header?.parentSession
       ? String(session.header.parentSession)
       : null,
@@ -193,19 +227,30 @@ export function apply(ctx, config = {}) {
       ? {}
       : { ASTRO_AUTO_OPEN: config.autoOpen ? "1" : "0" }),
   };
-  const runtimeConfig = runtimeConfigLoader.loadRuntimeConfig({
-    astroHome: config.astroHome,
-    environment: process.env,
-    initialize: true,
-    overrides,
-    templateDir: pluginRoot,
-  });
-  for (const diagnostic of runtimeConfig.diagnostics) {
+  // A bad config.yaml / .env must not take the whole bundle down: Cordis marks
+  // a plugin whose apply() throws as FAILED, which again looks like "installed
+  // but nothing is recorded". Fall back to the process environment and keep
+  // the listeners alive so capture still has a chance to work.
+  let environment = process.env;
+  try {
+    const runtimeConfig = runtimeConfigLoader.loadRuntimeConfig({
+      astroHome: config.astroHome,
+      environment: process.env,
+      initialize: true,
+      overrides,
+      templateDir: pluginRoot,
+    });
+    for (const diagnostic of runtimeConfig.diagnostics) {
+      ctx.logger?.warn?.(
+        runtimeConfigLoader.formatRuntimeConfigDiagnostic(diagnostic),
+      );
+    }
+    environment = runtimeConfig.environment;
+  } catch (error) {
     ctx.logger?.warn?.(
-      runtimeConfigLoader.formatRuntimeConfigDiagnostic(diagnostic),
+      `ASTRO DeepSeek runtime config could not be loaded; using the process environment: ${String(error?.message || error)}`,
     );
   }
-  const environment = runtimeConfig.environment;
   const dashboardFile = join(pluginRoot, "server", "server.mjs");
   const record = (event) => {
     try {
@@ -226,10 +271,25 @@ export function apply(ctx, config = {}) {
   ctx.on("session/created", (session) => {
     record(lifecycleEvent(session, "SessionStart"));
   });
+  // One turn identity per session, carried from `turn/start` through the last
+  // event before `turn/end`: every event inside a turn then records the same
+  // `turnId`, and the LOG groups by the source's own number instead of
+  // inferring a boundary from a neighbour that happens to carry one.
+  const turnBySession = new Map();
   ctx.on("session/event", (session, event) => {
-    record(adaptDeepseekEvent(session, event));
+    const key = String(session.id);
+    const nativeTurnId = turnIdFrom(event);
+    const turnId = nativeTurnId ?? turnBySession.get(key) ?? null;
+    if (nativeTurnId !== null) {
+      turnBySession.set(key, nativeTurnId);
+    }
+    if (event.type === "turn/end") {
+      turnBySession.delete(key);
+    }
+    record(adaptDeepseekEvent(session, event, turnId));
   });
   ctx.on("session/disposed", (session) => {
+    turnBySession.delete(String(session.id));
     record(lifecycleEvent(session, "SessionEnd"));
   });
 }

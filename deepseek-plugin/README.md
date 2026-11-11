@@ -33,10 +33,12 @@ Edit `config.yaml` for normal settings. Put local or sensitive values in
 `${NAME:-fallback}`. Restart the DeepSeek Harness profile after editing either
 file.
 
-The equivalent native command is:
+The equivalent native command is (point it at the **installed** copy, whose
+generated `cordis.patch.yml` carries `config.astroHome`; the source checkout's
+patch does not):
 
 ```sh
-dsh plugin --profile web add file:/absolute/path/to/deepseek-plugin
+dsh plugin --profile web add file:/absolute/path/to/astro-home/plugins/astro/deepseek-plugin
 ```
 
 Restart the profile after installation:
@@ -45,11 +47,33 @@ Restart the profile after installation:
 dsh web
 ```
 
+If your harness runs from a local source checkout (`pnpm start:web` inside
+`deepseek-harness`), `dsh` is not on PATH and the installer's `npx` fallback is
+the published build, not that checkout. Set `DSH_COMMAND` (or pass
+`--deepseek-command`) to a wrapper such as:
+
+```sh
+#!/bin/sh
+exec node --import tsx/esm /path/to/deepseek-harness/apps/cli/src/bin.ts "$@"
+```
+
+Make sure the profile and home match the running service
+(`--deepseek-profile`, `--dsh-home`). The installer fails if the add command
+does not leave `dsh-astro-plugin` in both `dependencies` and
+`dsh.profile.bundles` of the profile manifest — a zero exit code alone is not
+proof that dsh mounted the layer.
+
 Verify the integration:
 
 ```sh
 node bin/astro.mjs doctor --deepseek-profile=web
+dsh --profile web --dump-config | grep -A3 "dsh-astro-plugin"
 ```
+
+The dump must show a `# == dsh-astro-plugin` layer with an `astro-trace` entry.
+If no events appear after restarting, check
+`$DSH_HOME/logs/startup-*.log` for `astro-trace` and any `pending` / `failed`
+entry.
 
 Remove it with:
 

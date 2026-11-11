@@ -24,6 +24,13 @@ export type LogRowMetrics = {
 };
 
 export type LogLayoutItem = {
+  /**
+   * Index of the entry this item belongs to; for a turn separator, the first
+   * entry of its group. Unlike `turn`, this stays unique across the layout —
+   * two groups can legitimately show the same turn number (a source that
+   * restarts its counter), so React keys must not be derived from the value.
+   */
+  entryIndex: number;
   height: number;
   /** Index into the entry list, or -1 for a turn separator. */
   index: number;
@@ -76,6 +83,7 @@ export function buildLogLayout(
     const entry = entries[index];
     if (index === 0 || entries[index - 1].turn !== entry.turn) {
       push({
+        entryIndex: index,
         height: metrics.turn,
         index: -1,
         kind: "turn",
@@ -84,6 +92,7 @@ export function buildLogLayout(
     }
     rowTops[index] = items.length ? top + metrics.gap : top;
     push({
+      entryIndex: index,
       height: metrics.row,
       index,
       kind: "row",
@@ -128,6 +137,24 @@ export function findVisibleRange(
     lowerBound(offsets, scrollTop + viewportHeight) + overscan,
   );
   return { end: Math.max(start, end), start };
+}
+
+/**
+ * Grow a mounted window so it never ends on a turn separator.
+ *
+ * A separator introduces the row directly below it. When the window stops on
+ * the separator, that row is outside the window: the chip paints a `TURN n`
+ * label over an empty slot at the bottom edge of the list — the "empty turn"
+ * a reader sees while scrolling. One extra item always restores its row.
+ */
+export function includeTurnRow<T extends { kind: "row" | "turn" }>(
+  items: readonly T[],
+  range: { start: number; end: number },
+): { start: number; end: number } {
+  if (items[range.end - 1]?.kind !== "turn") {
+    return range;
+  }
+  return { start: range.start, end: Math.min(range.end + 1, items.length) };
 }
 
 /**

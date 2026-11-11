@@ -7,8 +7,10 @@
  * show up on the deployment:
  *
  * 1. A `public/` file referenced from the origin root (`/icons/x.svg`). The
- *    request escapes the project path and 404s — the agent dropdown lost its
- *    raster marks that way.
+ *    request escapes the project path and 404s. The agent marks used to be
+ *    `public/icons` rasters referenced this way, which is also why the dropdown
+ *    painted an empty icon slot before each mark loaded; they are inlined into
+ *    the bundle now, and the scan keeps any new asset on a base-relative path.
  * 2. The docs build leaking into the console artifact, which would publish a
  *    second, unrelated page from the console's URL.
  *
@@ -29,8 +31,6 @@ for (const file of [
   "index.html",
   "chaos.png",
   "data/demo-events.json",
-  "icons/deepseek.svg",
-  "icons/workbuddy-logo.png",
 ]) {
   if (!existsSync(join(distDir, file))) {
     fail(`missing ${file}`);

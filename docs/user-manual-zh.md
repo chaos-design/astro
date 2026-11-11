@@ -174,10 +174,17 @@ pnpm install-plugins -- --clients=claude --scope=user
 pnpm install-plugins -- --clients=deepseek --deepseek-profile=web
 ```
 
-如果 PATH 中没有 `dsh`，安装器会回退到
-`npx --yes @deepseek-ai/dsh`。自定义位置使用 `--dsh-home`，自定义可执行文件
-使用 `--deepseek-command`。安装后重启 `dsh web`，事件写入
-`~/.astrox/deepseek/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl`。
+如果 PATH 中没有 `dsh`，安装器会回退到 `npx --yes @deepseek-ai/dsh`。从源码
+本地启动的 harness（`pnpm start:web`）没有全局 `dsh`，此时应把 `DSH_COMMAND`
+指向启动该源码仓库的包装脚本，避免回退到发布版、写入另一个 `DSH_HOME`。
+自定义位置使用 `--dsh-home`，自定义可执行文件使用 `--deepseek-command`。
+
+安装器会在命令结束后校验 `$DSH_HOME/profiles/<profile>/package.json`：只有
+`dsh-astro-plugin` 同时出现在 `dependencies` 与 `dsh.profile.bundles` 才算
+成功，否则直接报错——命令退出码为 0 并不代表 dsh 已挂载该层。用
+`dsh --profile web --dump-config` 确认输出含 `astro-trace` 后重启 `dsh web`；
+仍无事件时检查 `$DSH_HOME/logs/startup-*.log` 中 `astro-trace` 的状态。
+事件写入 `~/.astrox/deepseek/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl`。
 
 #### 4.2.4 Trae
 
@@ -237,7 +244,7 @@ node ~/.astrox/plugins/astro/server/server.mjs
 | 途径 | 做法 |
 | --- | --- |
 | Vercel | 仓库根目录的 `vercel.json` 已配置：构建控制台与文档站并合并输出（文档站在根路径，控制台在 `/console/`），导入仓库即可，无需额外设置 |
-| GitHub Actions | `.github/workflows/console-preview.yml` 在 push/PR 时构建控制台并上传 `console-dist` 构件；在 Actions 页面手动运行 "Deploy console preview to GitHub Pages" 可把**当前分支**的构建发布到 GitHub Pages（不依赖 main，在途分支即可拿到线上预览地址；同一站点被最近一次触发覆盖） |
+| GitHub Actions | `.github/workflows/console-preview.yml` 在 push/PR 时构建控制台并上传 `console-dist` 构件；推送到 `main`、`feat/**`、`feature/**`、`fix/**` 或 `hotfix/**`（前缀匹配）会自动把当前分支构建发布到 GitHub Pages，在途分支即可拿到线上预览地址；也可以手动运行 "Deploy console preview to GitHub Pages" 发布其他分支（同一站点被最近一次触发覆盖） |
 | 任意静态托管 | `pnpm build` 产出 `dist/`（相对资源路径），直接托管即可 |
 
 部署页默认连接 `http://127.0.0.1:5678`，也可以用 `?api=<地址>` 指定（会保存到
@@ -453,7 +460,10 @@ codex 的 Hook）不显示该标签，与「没有模型」不加区分。一个
 上半部分是 LOG：
 
 - 最新事件显示在前；
-- 按 Turn 分组；
+- 按 Turn 分组；轮次号优先采用来源自己上报的编号（如 DeepSeek 的 `data.turn`，
+  恢复的会话可能从 5 开始，就显示 `TURN 05`），来源没有编号时按提示词和事件
+  顺序推断，每个 Prompt 子运行内从 1 开始；一个轮次只出现一条分隔，不会在同一条
+  消息里来回跳号；
 - 可搜索当前 Prompt 子运行事件的任意序列化字段；输入即时生效，过滤在后台跟进
   （长会话下连续输入不卡顿，序列化结果已按事件缓存）；
 - 点击事件可选择，再次点击同一事件可取消；

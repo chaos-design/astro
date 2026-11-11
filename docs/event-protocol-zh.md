@@ -195,6 +195,12 @@ DeepSeek Harness bundle 直接消费规范 Session 事件：`user/message` 映�
 `tool/call` 与 `tool/result` 映射为工具开始/结果，`turn/end` 映射为
 `Stop` 或 `Interrupt`。其他 Harness 事件保留为 `Notification`。
 
+Harness 只在 `turn/start`、`step/*`、工具调用、消息和 `turn/end` 上带
+`data.turn`；同一轮里的 Prompt 与 inbox 通知没有这个数字。适配器按会话记住
+当前轮次，在 `turn/start` 到 `turn/end` 之间把 `turnId` 补到每一条事件上，
+`turn/end` 之后清空，因此一轮事件在落盘时就共享同一个轮次 ID，读取端不需要
+再从邻居推断。
+
 ## 6. 标识与关联规则
 
 ### 6.1 会话隔离
@@ -218,6 +224,19 @@ source::workspaceId::sessionId
 ### 6.4 轮次关系
 
 优先使用显式 `turnId`。来源没有轮次 ID 时，轨迹模型会依据提示词、停止和事件顺序推断轮次边界。推断结果只用于展示，不会回写原始事件。
+
+轮次编号由 `src/lib/trajectory-model.ts` 的 `buildTraceTurnIndex` 统一给出，日志分组与轨迹视图共用同一份结果：
+
+- 来源自己编号时保留它给出的数字。DeepSeek Harness 的 `data.turn` 落在
+  `turnId`（字符串）和 `payload.turn`（数字）两种写法上，两者视为同一个轮次；
+  恢复的会话可以不是从 1 开始（例如整段只跑第 5 轮），界面照实显示 `TURN 05`
+  而不是重排成 `TURN 01`。
+- 只有不透明标识（如 `turn_1`）时，按首次出现顺序给序号；数字标识回退（计数器
+  重新开始）时分配新的序号，保证后出现的轮次编号不会小于先出现的。
+- 没有标识的事件跟随当前轮次；会话开始、Prompt 这类前导事件归入它引出的第一个
+  轮次，不会额外生成一个空的 `TURN 01` 分组。
+- 完全没有标识的 Hook 来源仍按提示词和事件顺序推断，每个 Prompt 子运行内从 1
+  开始编号。
 
 控制台还会从每条 `UserPromptSubmit` 派生一个 Prompt 子运行。该子运行包含当前 Prompt
 及下一条 Prompt 之前的全部事件；第一项分类为 `initial`，后续项分类为

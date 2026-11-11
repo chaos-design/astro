@@ -1,11 +1,14 @@
 import type { CSSProperties } from "react";
-import { assetUrl } from "../lib/asset-url";
+// `?inline` forces a data URI: the tile must be decoded with the first paint,
+// never fetched after the dropdown mounts.
+import workbuddyIcon from "../assets/workbuddy-icon.png?inline";
 import type { PlatformId } from "../types/trace";
 import {
   ClaudeIcon,
   ClineIcon,
   CopilotIcon,
   CursorIcon,
+  DeepSeekIcon,
   GeminiIcon,
   GptIcon,
   IflowIcon,
@@ -21,14 +24,16 @@ import {
 /**
  * Agents with an official brand mark render it through a lucide icon so the
  * dropdown keeps one sizing and coloring contract for every entry. Codex uses
- * the OpenAI knot. DeepSeek and WorkBuddy ship raster logos and are
- * special-cased below.
+ * the OpenAI knot, DeepSeek inlines its whale path, and WorkBuddy is the one
+ * raster tile (inlined at build time) — every mark is available synchronously,
+ * so opening the dropdown never paints an empty icon slot first.
  */
 const brandIcons: Readonly<
   Partial<Record<PlatformId, typeof ClaudeIcon>>
 > = {
   claude: ClaudeIcon,
   codex: GptIcon,
+  deepseek: DeepSeekIcon,
   gemini: GeminiIcon,
   llama: LlamaIcon,
   pi: PiAgentIcon,
@@ -64,35 +69,22 @@ export function PlatformIcon({
     .filter(Boolean)
     .join(" ");
 
-  if (platform === "deepseek") {
+  if (platform === "workbuddy") {
+    // The mark is a raster app tile. Vite inlines it (well under the asset
+    // limit), and `decoding="sync"` forces the decode before the first paint:
+    // a lazily fetched `<img>`/`<image>` painted an empty square for a frame
+    // every time the picker opened.
     return (
       <img
         alt=""
         aria-hidden="true"
         className={iconClassName}
-        decoding="async"
-        loading="lazy"
-        src={assetUrl("icons/deepseek.svg")}
+        decoding="sync"
+        draggable={false}
+        loading="eager"
+        src={workbuddyIcon}
         {...props}
       />
-    );
-  }
-  if (platform === "workbuddy") {
-    return (
-      <svg
-        aria-hidden="true"
-        className={iconClassName}
-        focusable="false"
-        viewBox="0 0 560 560"
-        {...props}
-      >
-        <image
-          height="560"
-          href={assetUrl("icons/workbuddy-logo.png")}
-          preserveAspectRatio="xMinYMid slice"
-          width="1620"
-        />
-      </svg>
     );
   }
   const BrandIcon = brandIcons[platform];

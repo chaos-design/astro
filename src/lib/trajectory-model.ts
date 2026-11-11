@@ -195,36 +195,126 @@ export function buildTrajectoryMapSlots(
   return slots;
 }
 
+/**
+ * A numeric turn identity, or `null` for an opaque one.
+ *
+ * Numbered sources print the number themselves (DeepSeek Harness writes its
+ * `data.turn` as `"5"` on the envelope and as `5` in the payload), so the two
+ * spellings have to normalize to one identity — otherwise they read as two
+ * different turns and the LOG splits one loop into two groups.
+ */
+function numericTurn(value: unknown): number | null {
+  if (typeof value === "number") {
+    return Number.isSafeInteger(value) && value > 0 ? value : null;
+  }
+  if (typeof value === "string" && /^\d+$/.test(value.trim())) {
+    const parsed = Number(value.trim());
+    return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+  }
+  return null;
+}
+
+/**
+ * The turn a source reports for an event, or `null` when it names no turn.
+ *
+ * Some sources carry a stable native turn identity — DeepSeek Harness sets
+ * `event.turnId` (its `data.turn`) on every event inside one loop, and a few
+ * adapters surface a numeric `payload.turn` / `payload.iteration`. When a
+ * batch has *any* of that, the source is authoritative and we must group by
+ * it: mixing it with a separate prompt/loop counter is exactly what made the
+ * LOG pane fragment a single turn into many near-empty separators.
+ */
+function turnKeyFor(event: TraceEvent): string | number | null {
+  const native = numericTurn(event.turnId);
+  if (native !== null) {
+    return native;
+  }
+  if (event.turnId) {
+    return event.turnId;
+  }
+  return numericTurn(event.payload?.turn ?? event.payload?.iteration);
+}
+
 export function buildTraceTurnIndex(
   events: readonly TraceEvent[],
 ): ReadonlyMap<string, number> {
   const turnByEventId = new Map<string, number>();
-  const explicitTurns = new Map<string, number>();
+
+  // Authoritative path: the source names its own turns (native turnId or a
+  // numeric payload turn/iteration). Keep the number the source prints — a
+  // resumed session legitimately starts at turn 5, and renumbering it to 1
+  // would disagree with the client's own count — and hand an opaque identity
+  // the next free ordinal. First-seen order keeps the sequence monotonic, and a
+  // step/loop inside one turn never opens a new separator.
+  //
+  // The switch is "any event carries an identity", not "most events do": a
+  // source that names even one turn is treated as authoritative for the whole
+  // batch, and `UserPromptSubmit` stops incrementing the counter — identity-less
+  // events in the same batch ride in the turn that was executing (a source with
+  // *no* identity at all falls through to the structural prompt/loop inference
+  // below). The official adapters honour this: DeepSeek and Codex stamp every
+  // turn, Claude/ZCode/Pi/WorkBuddy stamp none. A *partially*-stamped source
+  // (a third-party HTTP collector or future adapter that names only some turns)
+  // is the documented exception: its unnumbered later prompts fold into the
+  // previous turn rather than opening a new one, because identity presence
+  // already marked the source authoritative.
+  if (events.some((event) => turnKeyFor(event) !== null)) {
+    const numberByTurnKey = new Map<string | number, number>();
+    const used = new Set<number>();
+    let nextOrdinal = 1;
+    let highest = 0;
+    for (const event of events) {
+      const key = turnKeyFor(event);
+      if (key === null || numberByTurnKey.has(key)) {
+        continue;
+      }
+      const native = typeof key === "number" ? key : null;
+      let assigned: number;
+      if (native !== null && native > highest) {
+        assigned = native;
+      } else {
+        // Opaque identity, or a number that regressed (a restarted counter):
+        // give it the next unused ordinal so the group still reads as its own
+        // turn and the LOG never numbers a later turn lower than an earlier one.
+        while (used.has(nextOrdinal)) {
+          nextOrdinal += 1;
+        }
+        assigned = nextOrdinal;
+      }
+      numberByTurnKey.set(key, assigned);
+      used.add(assigned);
+      if (assigned > highest) {
+        highest = assigned;
+      }
+      if (assigned >= nextOrdinal) {
+        nextOrdinal = assigned + 1;
+      }
+    }
+
+    // Every event reads its own identity's number; identity-less events stay in
+    // the turn that was executing. A leading preamble (session start, the prompt
+    // itself) belongs to the first turn it introduces rather than to an invented
+    // turn 1 that would split the LOG into a stray extra group.
+    const firstNumber = numberByTurnKey.values().next().value ?? 1;
+    let current = firstNumber;
+    for (const event of events) {
+      const key = turnKeyFor(event);
+      if (key !== null) {
+        current = numberByTurnKey.get(key) ?? current;
+      }
+      turnByEventId.set(event.id, current);
+    }
+    return turnByEventId;
+  }
+
+  // Fallback path: hook-based sources report no turn identity. Derive turns
+  // from prompt/loop structure instead — a new prompt opens a turn, and a
+  // message arriving right after a closed tool loop counts as a fresh one.
   let currentTurn = 1;
   let hasSeenPrompt = false;
   let loopClosed = false;
-
   for (const event of events) {
-    const payloadTurn = event.payload.turn ?? event.payload.iteration;
-    const numericTurn =
-      typeof payloadTurn === "number" &&
-      Number.isSafeInteger(payloadTurn) &&
-      payloadTurn > 0
-        ? payloadTurn
-        : undefined;
-
-    if (numericTurn !== undefined) {
-      currentTurn = numericTurn;
-    } else if (event.turnId) {
-      const knownTurn = explicitTurns.get(event.turnId);
-      if (knownTurn !== undefined) {
-        currentTurn = knownTurn;
-      } else {
-        const assignedTurn = Math.max(currentTurn, explicitTurns.size + 1);
-        explicitTurns.set(event.turnId, assignedTurn);
-        currentTurn = assignedTurn;
-      }
-    } else if (event.eventName === "UserPromptSubmit") {
+    if (event.eventName === "UserPromptSubmit") {
       if (hasSeenPrompt) {
         currentTurn += 1;
       }

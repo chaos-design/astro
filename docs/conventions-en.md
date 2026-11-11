@@ -65,7 +65,18 @@
     (pi's `model`/`provider` keys, deepseek's model object, opencode's step
     notification, zcode's session-start model) into one display string; runs
     without their own observation fall back to the session-start model, and
-    the UI shows the `MODEL` tag only when a value exists.
+    the UI shows the `MODEL` tag only when a value exists;
+  - turn numbering lives only in `src/lib/trajectory-model.ts`
+    (`buildTraceTurnIndex`): a source that numbers its own turns keeps that
+    number (DeepSeek's `data.turn` can start at 5), an opaque identity gets the
+    next ordinal, identity-less events stay in the executing turn, and a leading
+    preamble belongs to the first turn it introduces. LOG grouping, the
+    trajectory view, and turn counts all read that one result — do not grow a
+    second turn inference. The switch to identity mode is "any event names a
+    turn", not "most do": a source that names even one turn is authoritative
+    for the batch, so its unnumbered later prompts fold into the previous
+    turn rather than opening a new one (a partially-stamped source is a
+    contract, not a heuristic — see `docs/event-protocol-en.md` §6).
   New consumers reuse those helpers; do not grow a second failure or live list.
 - Sample (Demo) data lives only in `data/demo-events.json`: the service reads it
   through `server/demo-dataset.mjs` and serves `GET /api/demo-events`, and the
@@ -86,7 +97,10 @@
 - Files under `public/` are addressed through `assetUrl()` in
   `src/lib/asset-url.ts`, never with an origin-root path such as `/icons/...`:
   GitHub Pages mounts the page at `/astro/`, so a root path escapes the project
-  prefix and 404s (this broke the agent dropdown's brand marks).
+  prefix and 404s (this broke the agent dropdown's brand marks). The helper is
+  currently exercised only by its test — the last `public/` assets were inlined
+  into the bundle — but it stays the single definition to call if a `public/`
+  resource is added back.
   `scripts/verify-console-build.mjs` re-checks the build in CI for root-path
   assets and confirms the artifact is the console only, with no docs site mixed
   in.
@@ -408,3 +422,4 @@ ASTRO_HOME=/tmp/astro-check ASTRO_PORT=4401 node server/server.mjs
 | A large history produces a long first-load task | per-event predicates allocated temporary arrays | module-level `Set`s plus the `getEventTimestamp` cache |
 | The list is stale after a service restart | the resume cursor was kept, so the server answered an empty `resume` | clear the cursor and force the snapshot, §10 |
 | A restart flashes `offline` first | "waiting for the next snapshot" was treated as a dropped connection | use `restarting` / `reloading`, §10 |
+| DeepSeek plugin is "installed" but no session events appear | the bundle was copied to `ASTRO_HOME` but never entered the profile's `dsh.profile.bundles` (a zero exit code from `dsh plugin add` proves nothing, especially with the `npx` fallback writing to another build's `DSH_HOME`), or an unnecessary `inject` kept the entry PENDING so `apply()` never ran | verify `dependencies` + `bundles` after every add and confirm `astro-trace` with `--dump-config`; subscribe to session events without a service dependency |

@@ -23,6 +23,10 @@ import {
 } from "./migrate-data.mjs";
 import recorder from "../plugin/trace-recorder.cjs";
 import runtimeConfig from "../plugin/runtime-config.cjs";
+import {
+  deepseekPluginPackage,
+  hasDeepseekPlugin,
+} from "../plugin/client-status.mjs";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const packageDir = resolve(scriptDir, "..");
@@ -447,6 +451,42 @@ export function resolveHomePath(value, fallback) {
   return resolve(selected);
 }
 
+/**
+ * dsh composes its plugin tree only from the bundles declared in the active
+ * profile. A zero exit code from `dsh plugin add` is not proof of registration:
+ * pnpm can succeed while dsh's reconcile step skips the layer (a missing
+ * `dsh.bundle`, a failed platform check, or an unparsable patch), and a
+ * launcher from another install can write to a different DSH_HOME. Reporting
+ * success in those cases used to look exactly like "plugin installed, but no
+ * execution is captured", so verify the profile manifest before returning.
+ */
+function verifyDeepseekProfileRegistration({
+  dshHome,
+  profile,
+  profileFile,
+  pluginDirectory,
+  launcher,
+  usedFallback,
+}) {
+  if (hasDeepseekPlugin(dshHome, profile).installed) {
+    return;
+  }
+  const lines = [
+    `DeepSeek Harness profile registration did not take effect: ${profileFile} does not list "${deepseekPluginPackage}" in both "dependencies" and "dsh.profile.bundles".`,
+    `The bundle was copied to ${pluginDirectory}, but dsh loads only the bundles declared by the active profile, so no session events would be recorded.`,
+    `Launcher used: ${launcher}.`,
+  ];
+  if (usedFallback) {
+    lines.push(
+      '"dsh" was not on PATH, so the installer fell back to the npm-published launcher. A harness started from a local source checkout is a different build and may use a different DSH_HOME. Point DSH_COMMAND or --deepseek-command at a wrapper that runs that checkout, for example: `exec node --import tsx/esm /path/to/deepseek-harness/apps/cli/src/bin.ts "$@"`.',
+    );
+  }
+  lines.push(
+    `Check that --deepseek-profile matches the running profile, then run \`dsh --profile ${profile} --dump-config\` and confirm an \`# == ${deepseekPluginPackage}\` layer with an \`astro-trace\` entry is present. Restart the profile after a successful registration.`,
+  );
+  throw new Error(lines.join("\n"));
+}
+
 export function installDeepseekPlugin({
   runtime,
   profile = "web",
@@ -478,8 +518,10 @@ export function installDeepseekPlugin({
     stdio: "inherit",
   };
   let invokedCommand = command;
+  let usedFallback = false;
   let result = run(invokedCommand, pluginArguments, runOptions);
   if (result.error?.code === "ENOENT" && command === "dsh") {
+    usedFallback = true;
     invokedCommand = "npx";
     result = run(
       invokedCommand,
@@ -500,7 +542,21 @@ export function installDeepseekPlugin({
       `DeepSeek Harness plugin installation failed with exit code ${result.status}.`,
     );
   }
-  return join(resolvedDshHome, "profiles", profile, "package.json");
+  const profileFile = join(
+    resolvedDshHome,
+    "profiles",
+    profile,
+    "package.json",
+  );
+  verifyDeepseekProfileRegistration({
+    dshHome: resolvedDshHome,
+    profile,
+    profileFile,
+    pluginDirectory,
+    launcher: usedFallback ? "npx --yes @deepseek-ai/dsh" : invokedCommand,
+    usedFallback,
+  });
+  return profileFile;
 }
 
 export function installClients({
