@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   buildFlow,
   buildHarnessFlow,
+  buildPairDurations,
   buildSessionPromptRuns,
   buildSessions,
   extractRunModel,
@@ -665,6 +666,49 @@ test("combines pre and post hook events into one tool node", () => {
   assert.ok(toolNodes.every((node) => node.data.endEvent));
   assert.ok(toolNodes.every((node) => node.data.duration > 0));
   assert.equal(flow.edges.length, flow.nodes.length - 1);
+});
+
+test("counts only closed pairs in buildPairDurations", () => {
+  const events = createDemoEvents(2_000_000_000_000);
+  const durations = buildPairDurations(events);
+
+  // A closed tool pair maps both its start and end ids to the same span.
+  const start = events.find(
+    (event) =>
+      event.eventName === "PreToolUse" && event.toolUseId === "tool-test",
+  )!;
+  const end = events.find(
+    (event) =>
+      event.eventName === "PostToolUse" && event.toolUseId === "tool-test",
+  )!;
+  const span =
+    Date.parse(end.capturedAt) - Date.parse(start.capturedAt);
+  assert.equal(durations.get(start.id), span);
+  assert.equal(durations.get(end.id), span);
+
+  // An unpaired event (no closing result) is absent from the map, so it is
+  // never counted. A lone `Reasoning` has no pair and no entry.
+  const reasoning = events.find(
+    (event) => event.eventName === "Reasoning",
+  );
+  if (reasoning) {
+    assert.equal(durations.has(reasoning.id), false);
+  }
+
+  // An open tool (start with no matching result in the dataset) is skipped.
+  const openStarts = events.filter(
+    (event) =>
+      event.eventName === "PreToolUse" &&
+      !events.some(
+        (candidate) =>
+          (candidate.eventName === "PostToolUse" ||
+            candidate.eventName === "PostToolUseFailure") &&
+          candidate.toolUseId === event.toolUseId,
+      ),
+  );
+  for (const open of openStarts) {
+    assert.equal(durations.has(open.id), false);
+  }
 });
 
 test("parses JSONL hook payloads and normalized trace events", () => {

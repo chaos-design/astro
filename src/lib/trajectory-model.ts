@@ -1,5 +1,6 @@
 import type { AtomicFlowEvent, AtomicPhase } from "../vendor/atomic-flow/browser.ts";
 import type { HarnessNode, TraceEvent } from "../types/trace.ts";
+import { buildPairDurations } from "./trace-model.ts";
 
 const RUN_CONTEXT_KEYS = new Set([
   "session.resume",
@@ -19,6 +20,12 @@ export type TrajectoryAtom = {
   key: string;
   kind: string;
   label: string;
+  /**
+   * The span of the *paired* event this atom stands for (e.g. a `PreToolUse`
+   * closing on its `PostToolUse`), `null` when the event is not part of a
+   * closed pair. Sourced from `buildPairDurations`, the single pairing truth.
+   */
+  pairDuration: number | null;
   occurredAt: string;
   sequence: number;
   status: "complete" | "failed" | "idle" | "running" | "waiting";
@@ -32,6 +39,8 @@ export type TrajectoryTurn = {
   duration: number;
   event: TraceEvent;
   occurredAt: string;
+  /** Sum of the closed-pair spans in this turn (unpaired events excluded). */
+  totalPairDuration: number;
   status: TrajectoryAtom["status"];
   summary: string;
   turn: number;
@@ -256,6 +265,9 @@ export function buildTrajectoryModel(
   const traceEventById = new Map(events.map((event) => [event.id, event]));
   const turnByEventId = buildTraceTurnIndex(events);
   const nodeByKey = new Map(nodes.map((node) => [node.data.key, node]));
+  // Single pairing truth: closed start→end spans by trace-event id. Unpaired
+  // events are absent, so an atom reads `null` and the UI omits its badge.
+  const pairDurations = buildPairDurations(events);
   const aggregated = new Map<string, MutableTrajectoryAtom>();
 
   for (const atomicEvent of atomicEvents) {
@@ -277,6 +289,7 @@ export function buildTrajectoryModel(
     const existing = aggregated.get(aggregateKey);
     const node = nodeByKey.get(atomicEvent.atom.key);
     const nextStatus = statusForPhase(atomicEvent.phase);
+    const pairDuration = pairDurations.get(traceEvent.id) ?? null;
 
     if (existing) {
       existing.count += 1;
@@ -286,6 +299,7 @@ export function buildTrajectoryModel(
       );
       existing.event = traceEvent;
       existing.lastOccurredAt = atomicEvent.occurredAt;
+      existing.pairDuration = pairDuration;
       existing.status =
         existing.status === "failed" ? "failed" : nextStatus;
       existing.summary =
@@ -306,6 +320,7 @@ export function buildTrajectoryModel(
       label: atomicEvent.atom.label,
       lastOccurredAt: atomicEvent.occurredAt,
       occurredAt: atomicEvent.occurredAt,
+      pairDuration,
       sequence: atomicEvent.sequence,
       status: nextStatus,
       summary:
@@ -340,6 +355,12 @@ export function buildTrajectoryModel(
       const hasFailure = turnAtoms.some((atom) => atom.status === "failed");
       const hasWaiting = turnAtoms.some((atom) => atom.status === "waiting");
       const hasRunning = turnAtoms.some((atom) => atom.status === "running");
+      // Only closed pairs contribute; an open tool call or a lone reasoning
+      // atom has no span to add and is excluded from the total.
+      const totalPairDuration = turnAtoms.reduce(
+        (total, atom) => total + (atom.pairDuration ?? 0),
+        0,
+      );
       return {
         atoms: turnAtoms,
         duration: Math.max(
@@ -356,6 +377,7 @@ export function buildTrajectoryModel(
               ? "running"
               : "complete",
         summary: last.summary,
+        totalPairDuration,
         turn,
       };
     }),

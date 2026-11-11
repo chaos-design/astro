@@ -162,6 +162,7 @@ import {
   buildSessionPromptRuns,
   buildFlow,
   buildHarnessFlow,
+  buildPairDurations,
   createSessionProjection,
   eventMeta,
   formatDuration,
@@ -421,9 +422,13 @@ function getShortId(id: unknown) {
 
 function buildLogEntries(events: TraceEvent[]) {
   const turnByEventId = buildTraceTurnIndex(events);
+  // The paired duration map is the single place a LOG row learns how long a
+  // closed pair took; unpaired events get `null` and show no badge.
+  const pairDurations = buildPairDurations(events);
   return events.map((event, index) => ({
     event,
     index,
+    pairDuration: pairDurations.get(event.id) ?? null,
     turn: turnByEventId.get(event.id) ?? 1,
   }));
 }
@@ -2465,12 +2470,14 @@ const AtomicLogRow = memo(function AtomicLogRow({
   event,
   index,
   onSelect,
+  pairDuration,
   running,
   selected,
 }: {
   event: TraceEvent;
   index: number;
   onSelect: (eventId: string) => void;
+  pairDuration: number | null;
   running: boolean;
   selected: boolean;
 }) {
@@ -2484,6 +2491,10 @@ const AtomicLogRow = memo(function AtomicLogRow({
   const clockLabel = useMemo(
     () => formatClock(event.capturedAt),
     [event.capturedAt],
+  );
+  const durationLabel = useMemo(
+    () => (pairDuration === null ? null : formatDuration(pairDuration)),
+    [pairDuration],
   );
   return (
     <div
@@ -2519,12 +2530,21 @@ const AtomicLogRow = memo(function AtomicLogRow({
         <span className="atomic-log__summary">
           {getEventSummary(event)}
         </span>
+        {durationLabel !== null ? (
+          <span
+            className="atomic-log__duration"
+            title={`成对耗时 ${formatDuration(pairDuration as number)}`}
+          >
+            {durationLabel}
+          </span>
+        ) : null}
       </small>
     </div>
   );
 }, (before, after) =>
   before.event === after.event &&
   before.index === after.index &&
+  before.pairDuration === after.pairDuration &&
   before.running === after.running &&
   before.selected === after.selected,
 );
@@ -2858,12 +2878,14 @@ const AtomicLog = memo(function AtomicLog({
                       </div>
                     );
                   }
-                  const { event, index } = visibleEntries[item.index];
+                  const { event, index, pairDuration } =
+                    visibleEntries[item.index];
                   return (
                     <AtomicLogRow
                       event={event}
                       index={index}
                       key={event.id}
+                      pairDuration={pairDuration}
                       onSelect={onSelect}
                       running={event.id === runningEventId}
                       selected={event.id === selectedEventId}
@@ -3122,6 +3144,7 @@ type TrajectoryDisplayRow = Pick<
   | "key"
   | "kind"
   | "label"
+  | "pairDuration"
   | "occurredAt"
   | "status"
   | "summary"
@@ -3134,6 +3157,7 @@ function TrajectoryRow({
   expandable = false,
   expanded = false,
   onActivate,
+  onHover,
   onToggle,
   row,
   selected,
@@ -3143,6 +3167,7 @@ function TrajectoryRow({
   expandable?: boolean;
   expanded?: boolean;
   onActivate: () => void;
+  onHover?: (event: ReactPointerEvent<HTMLDivElement>) => void;
   onToggle?: () => void;
   row: TrajectoryDisplayRow;
   selected: boolean;
@@ -3161,6 +3186,7 @@ function TrajectoryRow({
       )}
       style={{ "--depth": depth } as CSSProperties}
       onClick={onActivate}
+      onPointerOver={onHover}
       onKeyDown={(keyEvent) => {
         if (keyEvent.key === "Enter" || keyEvent.key === " ") {
           keyEvent.preventDefault();
@@ -3211,6 +3237,11 @@ function TrajectoryRow({
         <span>{formatDate(row.occurredAt)}</span>
         <span>{formatClock(row.occurredAt)}</span>
         <small>{formatDuration(row.duration)}</small>
+        {row.pairDuration !== null ? (
+          <small className="trajectory-row__pair" title="成对耗时">
+            {formatDuration(row.pairDuration)}
+          </small>
+        ) : null}
       </time>
       <i className={`trajectory-row__status status-${row.status}`} />
     </div>
@@ -3225,6 +3256,9 @@ function loopRowForTurn(turn: TrajectoryTurn): TrajectoryDisplayRow {
     key: "loop.turn",
     kind: "loop",
     label: "Loop Turn",
+    // A turn block is not itself a paired event, so it carries no pair span;
+    // its closed-pair total surfaces through the hover card instead.
+    pairDuration: null,
     occurredAt: turn.occurredAt,
     status: turn.status,
     summary: turn.summary,
@@ -3232,6 +3266,148 @@ function loopRowForTurn(turn: TrajectoryTurn): TrajectoryDisplayRow {
     turn: turn.turn,
   };
 }
+
+/**
+ * The hover card's body, fed by the *paired* duration statistics:
+ * `pairDuration` is the hovered block's own closed start→end span (null when
+ * it is not part of a closed pair), and `pairTotal` is the sum of the closed
+ * pair spans in the block — set for a turn block, undefined for a single atom.
+ * Unpaired events contribute nothing to either, so a block with no closed pair
+ * simply omits the badge instead of printing a 0.
+ */
+type TrajectoryHoverDetails = {
+  pairDuration: number | null;
+  pairTotal?: number;
+  status: string;
+  subtitle: string;
+  title: string;
+};
+
+type TrajectoryHoverCard = {
+  details: TrajectoryHoverDetails;
+  key: string;
+};
+
+function TrajectoryDetailsCard({ details }: { details: TrajectoryHoverDetails }) {
+  return (
+    <div className="trajectory-hover__card">
+      <strong>{details.title}</strong>
+      <span>{details.subtitle}</span>
+      {details.pairDuration !== null ? (
+        <span>
+          <b className="trajectory-hover__label">PAIR</b> ·{" "}
+          {formatDuration(details.pairDuration)}
+        </span>
+      ) : null}
+      {details.pairTotal !== undefined ? (
+        <span>
+          <b className="trajectory-hover__label">PAIRS</b> ·{" "}
+          {formatDuration(details.pairTotal)}
+        </span>
+      ) : null}
+      <span>
+        <b className="trajectory-hover__label">STATUS</b> · {details.status}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * One hover card serves the whole trajectory list, mirroring the RUN HISTORY
+ * controlled layer: a single fixed layer that follows the hovered block and
+ * re-positions imperatively, so a fast sweep across rows never leaves a stale
+ * card behind and the card stays open while the pointer moves onto it.
+ */
+const TrajectoryHoverCardLayer = memo(function TrajectoryHoverCardLayer({
+  anchorRef,
+  card,
+  cardRef,
+  onCardPointerLeave,
+}: {
+  anchorRef: RefObject<HTMLElement | null>;
+  card: TrajectoryHoverCard | null;
+  cardRef: RefObject<HTMLDivElement | null>;
+  onCardPointerLeave: (event: ReactPointerEvent<HTMLDivElement>) => void;
+}) {
+  useLayoutEffect(() => {
+    if (!card) {
+      return undefined;
+    }
+    const element = cardRef.current;
+    if (!element) {
+      return undefined;
+    }
+    let frame = 0;
+    const place = () => {
+      frame = 0;
+      const anchor = anchorRef.current;
+      if (!anchor || !anchor.isConnected) {
+        element.style.visibility = "hidden";
+        return;
+      }
+      const listBounds = anchor
+        .closest(".trajectory-list")
+        ?.getBoundingClientRect();
+      const anchorBounds = anchor.getBoundingClientRect();
+      if (
+        listBounds &&
+        (anchorBounds.bottom < listBounds.top ||
+          anchorBounds.top > listBounds.bottom)
+      ) {
+        element.style.visibility = "hidden";
+        return;
+      }
+      const cardBounds = element.getBoundingClientRect();
+      const gap = 8;
+      const onRight = anchorBounds.right + gap;
+      const onLeft = anchorBounds.left - gap - cardBounds.width;
+      const left =
+        onRight + cardBounds.width <= window.innerWidth - gap
+          ? onRight
+          : Math.max(
+              gap,
+              Math.min(onLeft, window.innerWidth - gap - cardBounds.width),
+            );
+      const top = Math.min(
+        Math.max(gap, anchorBounds.top),
+        Math.max(gap, window.innerHeight - gap - cardBounds.height),
+      );
+      element.style.transform = `translate3d(${Math.round(left)}px, ${Math.round(top)}px, 0)`;
+      element.style.visibility = "visible";
+    };
+    const schedule = () => {
+      if (frame) {
+        return;
+      }
+      frame = window.requestAnimationFrame(place);
+    };
+    place();
+    document.addEventListener("scroll", schedule, true);
+    window.addEventListener("resize", schedule);
+    return () => {
+      if (frame) {
+        window.cancelAnimationFrame(frame);
+      }
+      document.removeEventListener("scroll", schedule, true);
+      window.removeEventListener("resize", schedule);
+    };
+  }, [anchorRef, card, cardRef]);
+
+  if (!card) {
+    return null;
+  }
+
+  return (
+    <div
+      className="trajectory-hover__layer"
+      onPointerLeave={onCardPointerLeave}
+      ref={cardRef}
+      role="tooltip"
+    >
+      <TrajectoryDetailsCard key={card.key} details={card.details} />
+    </div>
+  );
+});
 
 const TrajectoryView = memo(function TrajectoryView({
   atomNodes,
@@ -3272,6 +3448,134 @@ const TrajectoryView = memo(function TrajectoryView({
   );
   const listRef = useRef<HTMLDivElement | null>(null);
   const locateRequestRef = useRef(locateRequest);
+  // One controlled hover layer per list (mirrors RUN HISTORY): the card is a
+  // single fixed layer that follows the hovered block, so sweeping across the
+  // trajectory rows never leaves a stale tooltip behind.
+  const [hoverCard, setHoverCard] = useState<TrajectoryHoverCard | null>(null);
+  const hoverCardRef = useRef<HTMLDivElement | null>(null);
+  const hoverAnchorRef = useRef<HTMLElement | null>(null);
+
+  const closeHoverCard = useCallback(() => {
+    hoverAnchorRef.current = null;
+    setHoverCard((current) => (current === null ? current : null));
+  }, []);
+
+  const hasHoverCard = hoverCard !== null;
+  // Capture-phase watchdog: hide the card the moment the pointer is over
+  // neither the card nor its anchor row (leaving through a gap, scrolling the
+  // row away, or the window losing focus).
+  useEffect(() => {
+    if (!hasHoverCard) {
+      return undefined;
+    }
+    const handlePointerMove = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) {
+        return;
+      }
+      if (
+        hoverCardRef.current?.contains(target) ||
+        hoverAnchorRef.current?.contains(target)
+      ) {
+        return;
+      }
+      closeHoverCard();
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        closeHoverCard();
+      }
+    };
+    window.addEventListener("pointermove", handlePointerMove, true);
+    window.addEventListener("blur", closeHoverCard);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove, true);
+      window.removeEventListener("blur", closeHoverCard);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [closeHoverCard, hasHoverCard]);
+
+  // Entering a block (any part of it) shows the card; the state update is
+  // skipped when nothing changed so a fast sweep doesn't re-render at
+  // pointer-event rate.
+  const handleRowHover = useCallback(
+    (
+      event: ReactPointerEvent<HTMLDivElement>,
+      key: string,
+      details: TrajectoryHoverDetails,
+    ) => {
+      hoverAnchorRef.current = event.currentTarget;
+      setHoverCard((current) =>
+        current !== null && current.key === key
+          ? current
+          : { details, key },
+      );
+    },
+    [],
+  );
+
+  // Leaving the list only dismisses the card when the pointer did not move
+  // onto it; leaving the card only dismisses when it did not move back onto a
+  // row.
+  const handleListPointerLeave = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      const card = hoverCardRef.current;
+      if (
+        card &&
+        event.relatedTarget instanceof Node &&
+        card.contains(event.relatedTarget)
+      ) {
+        return;
+      }
+      closeHoverCard();
+    },
+    [closeHoverCard],
+  );
+
+  const handleCardPointerLeave = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      const list = listRef.current;
+      if (
+        list &&
+        event.relatedTarget instanceof Node &&
+        list.contains(event.relatedTarget)
+      ) {
+        return;
+      }
+      closeHoverCard();
+    },
+    [closeHoverCard],
+  );
+
+  // A changed set of blocks invalidates the card anchored to one of them.
+  useEffect(() => {
+    closeHoverCard();
+  }, [closeHoverCard, model]);
+
+  // The two kinds of block each carry their closed-pair statistics: an atom
+  // block shows its own pair span, a turn block shows the sum of the pair
+  // spans inside it.
+  const atomHoverDetails = useCallback(
+    (atom: TrajectoryAtom): TrajectoryHoverDetails => ({
+      pairDuration: atom.pairDuration,
+      status: atom.status,
+      subtitle: `${atom.key} · turn ${atom.turn}`,
+      title: atom.label,
+    }),
+    [],
+  );
+  const turnHoverDetails = useCallback(
+    (turn: TrajectoryTurn): TrajectoryHoverDetails => ({
+      pairDuration: null,
+      pairTotal: turn.totalPairDuration,
+      status: turn.status,
+      subtitle: `turn ${turn.turn} · ${turn.atoms.length} atoms`,
+      title: "Loop Turn",
+    }),
+    [],
+  );
+
   const allAtoms = useMemo(
     () => [
       ...model.context,
@@ -3522,10 +3826,15 @@ const TrajectoryView = memo(function TrajectoryView({
           </div>
         </div>
       </div>
-      <div className="trajectory-list" ref={listRef}>
+      <div
+        className="trajectory-list"
+        onPointerLeave={handleListPointerLeave}
+        ref={listRef}
+      >
         {display.turns.map((turn) => {
           const isExpanded = expandedTurns.has(turn.turn);
           const loopRow = loopRowForTurn(turn);
+          const turnKey = `turn-${turn.turn}`;
           return (
             <section
               key={turn.turn}
@@ -3541,6 +3850,13 @@ const TrajectoryView = memo(function TrajectoryView({
                 expandable
                 expanded={isExpanded}
                 onActivate={() => onSelect(turn.event.id)}
+                onHover={(hoverEvent) =>
+                  handleRowHover(
+                    hoverEvent,
+                    turnKey,
+                    turnHoverDetails(turn),
+                  )
+                }
                 onToggle={() => toggleTurn(turn.turn)}
                 row={loopRow}
                 selected={false}
@@ -3552,6 +3868,13 @@ const TrajectoryView = memo(function TrajectoryView({
                       depth={1}
                       key={atom.id}
                       onActivate={() => onSelect(atom.event.id, atom.atomId)}
+                      onHover={(hoverEvent) =>
+                        handleRowHover(
+                          hoverEvent,
+                          atom.id,
+                          atomHoverDetails(atom),
+                        )
+                      }
                       row={atom}
                       selected={atom.id === selectedTrajectoryAtomId}
                     />
@@ -3573,6 +3896,13 @@ const TrajectoryView = memo(function TrajectoryView({
                 depth={0}
                 key={atom.id}
                 onActivate={() => onSelect(atom.event.id, atom.atomId)}
+                onHover={(hoverEvent) =>
+                  handleRowHover(
+                    hoverEvent,
+                    atom.id,
+                    atomHoverDetails(atom),
+                  )
+                }
                 row={atom}
                 selected={atom.id === selectedTrajectoryAtomId}
                 showTurn={false}
@@ -3581,6 +3911,12 @@ const TrajectoryView = memo(function TrajectoryView({
           </section>
         ) : null}
       </div>
+      <TrajectoryHoverCardLayer
+        anchorRef={hoverAnchorRef}
+        card={hoverCard}
+        cardRef={hoverCardRef}
+        onCardPointerLeave={handleCardPointerLeave}
+      />
     </section>
   );
 });

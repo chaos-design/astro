@@ -64,6 +64,12 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   — pi's `model`/`provider` keys, deepseek's model source object, opencode's
   step notification, zcode's session-start model — into one display string;
   the UI shows the tag only when a run reports a model.
+  Paired-event duration (the start→result span of a closed pair, e.g.
+  `PreToolUse` → `PostToolUse`/`PostToolUseFailure`) lives only in
+  `src/lib/trace-model.ts` (`buildPairDurations`, reusing `createFlowEntries`
+  pairing); unpaired events are never counted. The LOG row, the trajectory
+  data layer (`pairDuration` / `totalPairDuration`), and the hover block card
+  all read from this one source.
 - Treat unrelated working-tree changes as user-owned and do not revert them.
 - A behavior change is only complete when `docs/user-manual-*.md`,
   `docs/conventions-*.md`, this file, `docs/index.md`, and `site/src/docs.ts`

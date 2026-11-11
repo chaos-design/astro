@@ -544,7 +544,12 @@ The upper LOG area:
 - locates the mapped atom in the topology;
 - puts the top/bottom scroll controls in the panel header (only the edge that is
   actually out of view shows a control), so no floating button ever covers the
-  first visible atom.
+  first visible atom;
+- shows a paired-duration badge on the events of a closed pair. Both the
+  opening and closing half of a matched pair (for example a `PreToolUse` and
+  its `PostToolUse` / `PostToolUseFailure`) report the same span from start to
+  result; events that never paired — a lone `Reasoning`, an open tool call —
+  show no badge.
 
 The inspector provides:
 
@@ -726,9 +731,9 @@ The summary displays:
 - completed count;
 - failed count.
 
-The lane map uses Input, Model, and Tools. The detailed list groups steps by turn and shows event type, summary, timestamp, duration, and status.
+The lane map uses Input, Model, and Tools. The detailed list groups steps by turn and shows event type, summary, timestamp, duration, and status. Hovering a block opens a small card that reports the block's closed-pair span (`PAIR`), the total of its closed-pair spans (`PAIRS` for a turn), and its status.
 
-Matching `PreToolUse` and `PostToolUse` or `PostToolUseFailure` events with the same `toolUseId` become one tool step. Expand a row to inspect paired input and output.
+Matching `PreToolUse` and `PostToolUse` or `PostToolUseFailure` events with the same `toolUseId` become one tool step. Expand a row to inspect paired input and output. A closed pair's start→result span is shown as the paired duration (`PAIR`) on the row and in the hover card; unpaired events have no span and are excluded from every total.
 
 ## 8. Replay
 

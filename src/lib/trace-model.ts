@@ -1351,7 +1351,7 @@ function getToolStatus(postEvent: TraceEvent | null) {
   return isToolFailureEvent(postEvent) ? "failed" : "complete";
 }
 
-function createFlowEntries(events: TraceEvent[]): FlowEntry[] {
+function createFlowEntries(events: readonly TraceEvent[]): FlowEntry[] {
   const entries: FlowEntry[] = [];
   const toolEntries = new Map<string, FlowEntry[]>();
   const usedIds = new Set<string>();
@@ -1490,6 +1490,33 @@ export function buildFlow(
   }));
 
   return { nodes, edges };
+}
+
+/**
+ * Duration of every *paired* flow entry, by event id. The single pairing
+ * source is `createFlowEntries` (the same one `buildFlow` pairs with); an entry
+ * only carries a duration when a result event closed its start
+ * (`entry.endEvent`), which is exactly the "成对原子事件" rule — unpaired
+ * events (a lone `Reasoning`, an open `PreToolUse` with no result, …) are
+ * skipped and never counted. Both the start and the end id of a pair map to
+ * the same span so the LOG row on either half of the pair can show it.
+ */
+export function buildPairDurations(
+  events: readonly TraceEvent[],
+): ReadonlyMap<string, number> {
+  const durations = new Map<string, number>();
+  for (const entry of createFlowEntries(events)) {
+    if (!entry.endEvent) {
+      continue;
+    }
+    const duration = Math.max(
+      0,
+      getEventTimestamp(entry.endEvent) - getEventTimestamp(entry.startEvent),
+    );
+    durations.set(entry.startEvent.id, duration);
+    durations.set(entry.endEvent.id, duration);
+  }
+  return durations;
 }
 
 export function buildHarnessFlow(

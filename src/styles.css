@@ -3368,6 +3368,56 @@ pre,
   }
 }
 
+/* Trajectory view's block hover card: one fixed layer per list, following the
+   hovered block (same mechanics as the RUN HISTORY hover card). */
+.trajectory-hover__layer {
+  position: fixed;
+  z-index: 60;
+  top: 0;
+  left: 0;
+  visibility: hidden;
+  animation: run-history-hovercard-in 120ms ease-out;
+}
+
+.trajectory-hover__card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 180px;
+  max-width: 320px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-bright);
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--panel-raised);
+  box-shadow: 0 10px 28px rgb(0 0 0 / 38%);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.trajectory-hover__card strong {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.trajectory-hover__card > span:nth-child(2) {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 9px;
+}
+
+.trajectory-hover__card .trajectory-hover__label {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.trajectory-hover__card b + * {
+  font-variant-numeric: tabular-nums;
+}
+
 .canvas-column {
   background: var(--bg);
 }
@@ -5013,6 +5063,18 @@ pre,
   color: var(--muted);
 }
 
+/* The paired start→end span, distinguished from the wall-time span above it:
+   only present when the block belongs to a closed pair. */
+.trajectory-row time .trajectory-row__pair {
+  padding: 0 4px;
+  border: 1px solid color-mix(in srgb, var(--violet) 38%, var(--line));
+  border-radius: 999px;
+  color: color-mix(in srgb, var(--violet) 74%, var(--text));
+  background: color-mix(in srgb, var(--violet) 10%, transparent);
+  font-size: 7px;
+  line-height: 1.6;
+}
+
 .trajectory-row__status {
   width: 6px;
   height: 6px;
@@ -5594,6 +5656,22 @@ pre,
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Paired-event duration badge: both halves of a *closed* pair map to the
+   same span (see buildPairDurations), so the badge only ever appears on
+   events that actually took time; unpaired events render no badge. */
+.atomic-log__row .atomic-log__duration {
+  flex: 0 0 auto;
+  padding: 1px 5px;
+  border: 1px solid color-mix(in srgb, var(--log-tone) 42%, var(--line));
+  border-radius: 999px;
+  color: color-mix(in srgb, var(--log-tone) 72%, var(--text));
+  background: color-mix(in srgb, var(--log-tone) 12%, transparent);
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.4;
 }
 
 .atomic-log__row.tone-prompt {

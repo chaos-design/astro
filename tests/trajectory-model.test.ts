@@ -8,8 +8,37 @@ import {
   getTrajectorySegmentPosition,
   orderTrajectoryNewestFirst,
 } from "../src/lib/trajectory-model.ts";
-import { buildHarnessFlow } from "../src/lib/trace-model.ts";
+import { buildHarnessFlow, buildPairDurations } from "../src/lib/trace-model.ts";
 import { createDemoEvents } from "./helpers/demo-fixture.ts";
+
+test("carries closed-pair durations on atoms and turns", () => {
+  const events = createDemoEvents(2_000_000_000_000);
+  const projection = projectTraceEvents(events, "codex");
+  const topology = buildHarnessFlow(events, "codex");
+  const model = buildTrajectoryModel(
+    events,
+    projection.events,
+    topology.nodes,
+  );
+  const pairDurations = buildPairDurations(events);
+
+  // Every atom reports a `pairDuration`; when set, it equals the single
+  // pairing truth for its trace event, and when the event is unpaired it is
+  // null so the UI omits the badge instead of printing 0.
+  for (const atom of model.turns.flatMap((turn) => turn.atoms)) {
+    const expected = pairDurations.get(atom.event.id) ?? null;
+    assert.equal(atom.pairDuration, expected);
+  }
+
+  // A turn's total is the sum of its closed-pair spans only.
+  for (const turn of model.turns) {
+    const expected = turn.atoms.reduce(
+      (total, atom) => total + (atom.pairDuration ?? 0),
+      0,
+    );
+    assert.equal(turn.totalPairDuration, expected);
+  }
+});
 
 test("builds loop turns with expandable atomic children", () => {
   const events = createDemoEvents(2_000_000_000_000);

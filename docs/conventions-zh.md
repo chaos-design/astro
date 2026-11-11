@@ -56,7 +56,12 @@
     （pi 的 `model`/`provider`、deepseek 的模型对象、opencode 的 step 通知、
     zcode 的会话起始模型）在此归一成一个展示串；某条运行自身没上报模型时
     回退到会话起始模型（ZCode 只在 SessionStart 携带 model），界面只在有
-    可显示值时渲染 `MODEL` 标签。
+    可显示值时渲染 `MODEL` 标签；
+  - 成对原子事件的耗时只在 `src/lib/trace-model.ts`（`buildPairDurations`，
+    复用 `createFlowEntries` 的配对）：仅对已闭合的成对事件（起始有结果
+    收尾，如 `PreToolUse`→`PostToolUse`/`PostToolUseFailure`）给出开始→结果
+    的时长，不成对的事件一律不计入；LOG 行、轨迹数据层（`pairDuration` /
+    `totalPairDuration`）与悬停区块卡片都从这一处取值。
   新增消费方必须复用这些函数，不得再写一份“失败事件名单”或“live 名单”。
 - 示例（Demo）数据只在 `data/demo-events.json`：服务通过 `server/demo-dataset.mjs`
   读取并由 `GET /api/demo-events` 提供，控制台只在 `src/lib/demo-events.ts` 解析。

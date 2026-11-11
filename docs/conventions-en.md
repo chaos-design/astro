@@ -65,7 +65,14 @@
     (pi's `model`/`provider` keys, deepseek's model object, opencode's step
     notification, zcode's session-start model) into one display string; runs
     without their own observation fall back to the session-start model, and
-    the UI shows the `MODEL` tag only when a value exists.
+    the UI shows the `MODEL` tag only when a value exists;
+  - the paired-event duration lives only in `src/lib/trace-model.ts`
+    (`buildPairDurations`, reusing `createFlowEntries` pairing): a span is
+    reported only for a *closed* pair (a start event with a matching result,
+    e.g. `PreToolUse` → `PostToolUse`/`PostToolUseFailure`); unpaired events
+    are never counted. The LOG row, the trajectory data layer
+    (`pairDuration` / `totalPairDuration`), and the hover block card all read
+    from this single source.
   New consumers reuse those helpers; do not grow a second failure or live list.
 - Sample (Demo) data lives only in `data/demo-events.json`: the service reads it
   through `server/demo-dataset.mjs` and serves `GET /api/demo-events`, and the
