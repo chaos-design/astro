@@ -1519,7 +1519,16 @@ export function buildPairDurations(
   return durations;
 }
 
-/** One half of a closed pair: its partner, role, turn and readable label. */
+/**
+ * The LOG's 1-based row number (`#027`). LOG rows, the pair tooltip, the
+ * hover card and the pair marker all read this one formatter, so the number
+ * on a marker is always the exact string printed at the left of that row.
+ */
+export function formatLogSequence(index: number) {
+  return `#${String(index).padStart(3, "0")}`;
+}
+
+/** One half of a closed pair: its partner, role, turn and readable labels. */
 export type TracePairLink = {
   /** The other half's event id — the jump target for the pair marker. */
   partnerId: string;
@@ -1535,11 +1544,23 @@ export type TracePairLink = {
   turn: number;
   /** 1-based position of this pair among the closed pairs of its turn. */
   ordinal: number;
-  /** 1-based LOG sequence numbers of the two halves, for the tooltip. */
+  /** 1-based LOG sequence numbers of the two halves. */
   startIndex: number;
   endIndex: number;
-  /** `T<turn>·#<ordinal>`: the readable label shared by LOG, trajectory, hover. */
+  /**
+   * The other half's 1-based LOG sequence number. This is the number the
+   * marker prints: from row `#029`, `T7·#027` names the exact row to look
+   * for, and it is also the row a click jumps to.
+   */
+  partnerIndex: number;
+  /**
+   * `T<turn>·#<partnerIndex>`: the *per-half* visible marker text. The two
+   * halves cross-reference each other (`T7·#029` / `T7·#027`), so nobody has
+   * to guess which row is the other half of the pair.
+   */
   label: string;
+  /** `#<start> ↔ #<end>`: the shared pair identity for tooltip and hover. */
+  rows: string;
 };
 
 /**
@@ -1564,16 +1585,17 @@ function pairToken(startEventId: string) {
  * Marker identity of every *paired* flow entry, by event id. The pairing
  * source is the same `createFlowEntries` that backs `buildPairDurations`, so
  * a row has a marker exactly when it has a paired duration. Both halves point
- * at each other and carry the same readable label, so the LOG and trajectory
- * show one identifiable pair and can jump to its other half. Unpaired events
- * are simply absent.
+ * at each other, so the LOG and trajectory can jump to the other half.
+ * Unpaired events are simply absent.
  *
- * The label is `T<turn>·#<ordinal>` (turn 8, first closed pair of that turn).
- * It is deliberately readable instead of an opaque hash: the reader can match
- * the two halves at a glance. `startIndex` / `endIndex` are the 1-based LOG
- * sequence numbers of the halves, so the tooltip can name the exact two rows
- * (`#031 ↔ #033`). Both come from `stepIndex` / `endStepIndex` on the flow
- * entry — the same indices the LOG prints — never from a second lookup.
+ * The visible label is `T<turn>·#<partner row>`: on LOG row `#029` it reads
+ * `T7·#027`, i.e. turn 7 and the exact LOG row number of its partner. The two
+ * halves cross-reference instead of repeating one opaque pair id, which is
+ * the direct answer to "which event is this paired with". `rows`
+ * (`#027 ↔ #029`) names both halves for the tooltip and the hover card. Every
+ * number comes from `stepIndex` / `endStepIndex` on the flow entry — the very
+ * indices the LOG prints — never from a second lookup. `ordinal` is retained
+ * as tooltip context only; it is no longer printed on the marker.
  *
  * `turnByEventId` is required and comes from `buildTraceTurnIndex`, the single
  * turn-inference source. It is passed in (rather than recomputed here) because
@@ -1582,8 +1604,9 @@ function pairToken(startEventId: string) {
  * second inference and an import cycle. A required argument also stops a new
  * caller from silently stamping every pair `T1`. Both halves of a pair share
  * the *start* event's turn, so a marker always names the turn whose LOG
- * separator / trajectory group holds it. Replaying a shorter prefix can
- * renumber the ordinals; identity and jumps still come from `partnerId`.
+ * separator / trajectory group holds it. Replaying a shorter prefix can shift
+ * the LOG row numbers and renumber the ordinals; identity and jumps still come
+ * from `partnerId`.
  */
 export function buildPairLinks(
   events: readonly TraceEvent[],
@@ -1605,23 +1628,31 @@ export function buildPairLinks(
     const turn = turnByEventId.get(entry.startEvent.id) ?? 1;
     const ordinal = (ordinalByTurn.get(turn) ?? 0) + 1;
     ordinalByTurn.set(turn, ordinal);
+    const startIndex = entry.stepIndex + 1;
+    const endIndex = (entry.endStepIndex ?? entry.stepIndex) + 1;
+    // The marker names the *other* half's LOG row, so from either row the
+    // reader sees exactly where to look (and where a click will jump).
     const shared = {
       token,
       turn,
       ordinal,
-      startIndex: entry.stepIndex + 1,
-      endIndex: (entry.endStepIndex ?? entry.stepIndex) + 1,
-      label: `T${turn}·#${ordinal}`,
+      startIndex,
+      endIndex,
+      rows: `${formatLogSequence(startIndex)} ↔ ${formatLogSequence(endIndex)}`,
     };
     links.set(entry.startEvent.id, {
       ...shared,
       partnerId: endEvent.id,
       role: "start",
+      partnerIndex: endIndex,
+      label: `T${turn}·${formatLogSequence(endIndex)}`,
     });
     links.set(endEvent.id, {
       ...shared,
       partnerId: entry.startEvent.id,
       role: "end",
+      partnerIndex: startIndex,
+      label: `T${turn}·${formatLogSequence(startIndex)}`,
     });
   }
   return links;

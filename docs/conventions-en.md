@@ -73,6 +73,21 @@
     are never counted. The LOG row, the trajectory data layer
     (`pairDuration` / `totalPairDuration`), and the hover block card all read
     from this single source;
+  - the pair-link marker's identity also lives only in
+    `src/lib/trace-model.ts` (`buildPairLinks`, reusing the same
+    `createFlowEntries` pairing): the two halves point at each other's event
+    id, and the visible label is `T<turn>·#<the other half's LOG row>` (the
+    turn comes from `buildTraceTurnIndex` on the start event; the row numbers
+    come from the flow entry's `stepIndex` / `endStepIndex`, i.e. the numbers
+    the LOG prints — a `#027` ↔ `#029` pair reads `T7·#029` / `T7·#027`).
+    `rows` spells out `#027 ↔ #029` for the tooltip and hover card, while
+    `ordinal` is tooltip-only context and is never printed on the marker. The
+    hash `token` derived from the start id is an *internal* grouping key (one
+    trajectory marker per pair) and is never displayed; row numbers shift with
+    the current event window, so identity and jumps always rely on
+    `partnerId`. LOG rows, trajectory atoms, cross-view location and the
+    highlight all read this one source — do not grow a second pairing
+    inference;
   - turn numbering lives only in `src/lib/trajectory-model.ts`
     (`buildTraceTurnIndex`): a source that numbers its own turns keeps that
     number (DeepSeek's `data.turn` can start at 5), an opaque identity gets the

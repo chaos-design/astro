@@ -168,6 +168,7 @@ import {
   createSessionProjection,
   eventMeta,
   formatDuration,
+  formatLogSequence,
   getEventSummary,
   getEventTimestamp,
   getExecutionInstruction,
@@ -525,20 +526,15 @@ function getShortId(id: unknown) {
     : value;
 }
 
-/** The LOG's 1-based row number, shared by the row and the pair tooltip. */
-function formatLogSequence(index: number) {
-  return `#${String(index).padStart(3, "0")}`;
-}
-
 function buildLogEntries(events: TraceEvent[]) {
   const turnByEventId = buildTraceTurnIndex(events);
   // The paired duration map is the single place a LOG row learns how long a
   // closed pair took; unpaired events get `null` and show no badge.
   const pairDurations = buildPairDurations(events);
   // Same pairing truth, for the marker: both halves of a pair carry a shared
-  // token and each other's id, so a click can locate the other half.
-  // The same turn index that builds the LOG separators feeds the markers, so
-  // `T<n>` on a marker always names the separator above its row.
+  // token and each other's id, so a click can locate the other half. `T<n>`
+  // names the LOG separator above the row and `#<row>` names the partner's
+  // LOG row — both come from the same indices this row is printed with.
   const pairLinks = buildPairLinks(events, turnByEventId);
   return events.map((event, index) => ({
     event,
@@ -2574,13 +2570,14 @@ const RunHistory = memo(function RunHistory({
 });
 
 /**
- * The single marker shared by LOG rows and trajectory atoms. Both halves of a
- * closed pair carry the same readable label `T<turn>·#<ordinal>`, so the rows
- * read as one unit across the two views; clicking jumps straight to the other
- * half. The tooltip names the exact two LOG rows (`#031 ↔ #033`) — that is the
- * "which rows are paired" answer a hash like `PFNJ` could never give. Kept as
- * a real button so keyboard users get the same jump, and it stops propagation
- * so the jump never doubles as a plain row selection.
+ * The single marker shared by LOG rows and trajectory atoms. Its `#number` is
+ * the *other half's* LOG row, not a pair ordinal: a pair made of `#027` and
+ * `#029` reads `T7·#029` on `#027` and `T7·#027` on `#029`. The two halves
+ * cross-reference each other, so "who is paired with whom" is visible without
+ * hovering, and clicking jumps straight to that numbered row. The tooltip
+ * spells out both rows and the jump target. Kept as a real button so keyboard
+ * users get the same jump, and it stops propagation so the jump never doubles
+ * as a plain row selection.
  */
 function PairLinkMarker({
   link,
@@ -2591,15 +2588,14 @@ function PairLinkMarker({
 }) {
   const roleLabel = link.role === "start" ? "起始" : "结果";
   const targetLabel = link.role === "start" ? "结果" : "起始";
-  const pairHint = `第 ${link.turn} 轮第 ${link.ordinal} 对 · ${formatLogSequence(
-    link.startIndex,
-  )} ↔ ${formatLogSequence(link.endIndex)}`;
+  const targetRow = formatLogSequence(link.partnerIndex);
+  const pairHint = `${link.label} · 第 ${link.turn} 轮第 ${link.ordinal} 对 · ${link.rows} · #号是另一半的 LOG 行号`;
   return (
     <button
       type="button"
       className={`pair-link-marker is-${link.role}`}
-      title={`${pairHint} · 成对${roleLabel}，点击定位${targetLabel}事件`}
-      aria-label={`${pairHint}，成对${roleLabel}，定位${targetLabel}事件`}
+      title={`${pairHint}，成对${roleLabel}，点击定位${targetLabel}事件 ${targetRow}`}
+      aria-label={`${pairHint}，成对${roleLabel}，定位${targetLabel}事件 ${targetRow}`}
       onClick={(clickEvent) => {
         clickEvent.stopPropagation();
         onLocate(link.partnerId);
@@ -2614,7 +2610,7 @@ function PairLinkMarker({
     >
       <Link2 aria-hidden="true" />
       <b className="pair-link-marker__turn">T{link.turn}</b>
-      <span className="pair-link-marker__ordinal">#{link.ordinal}</span>
+      <span className="pair-link-marker__target">{targetRow}</span>
     </button>
   );
 }
@@ -3501,7 +3497,7 @@ function loopRowForTurn(turn: TrajectoryTurn): TrajectoryDisplayRow {
 type TrajectoryHoverDetails = {
   /** The atom's closed start→end span, `null` when it is not a closed pair. */
   pairDuration: number | null;
-  /** The row marker's readable label (`T<turn>·#<ordinal>`), turn included. */
+  /** `T<turn>·#<start> ↔ #<end>`: both LOG rows of the pair, turn included. */
   pairLabel?: string;
   /** Sum of the closed pair spans inside the block; a turn block only. */
   pairTotal?: number;
@@ -3858,7 +3854,11 @@ const TrajectoryView = memo(function TrajectoryView({
       duration: atom.duration,
       eventName: atom.event.eventName,
       pairDuration: atom.pairDuration,
-      pairLabel: atom.pairLink?.label,
+      // The hover card names *both* rows of the pair, while the compact row
+      // marker names only the other half. Both come from the same link.
+      pairLabel: atom.pairLink
+        ? `T${atom.pairLink.turn}·${atom.pairLink.rows}`
+        : undefined,
       status: atom.status,
       subtitle: `${atom.key} · turn ${atom.turn}`,
       title: atom.label,

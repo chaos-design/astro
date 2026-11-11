@@ -3441,7 +3441,7 @@ pre,
   font-variant-numeric: tabular-nums;
 }
 
-/* Field colours: category violet, event blue, tool amber, pair id violet
+/* Field colours: category violet, event blue, tool amber, pair rows violet
    (matching the row marker), duration heat, status semantic. Labels stay
    muted so the coloured values are the only thing drawing the eye. */
 .trajectory-hover__card .trajectory-hover__value.is-type,
@@ -5918,11 +5918,12 @@ pre,
 }
 
 /* One shared marker for the two halves of a closed pair, rendered identically
-   on LOG rows and trajectory atoms. Both halves carry the same token (see
-   buildPairLinks), so the token is the association; the mirrored chain icon on
-   the result half is the only role cue. Colours are explicit: the global
-   `button { color: inherit }` / `button { border: 0 }` reset has no layer and
-   would otherwise swallow them (the marker is in its :not() exclusion list). */
+   on LOG rows and trajectory atoms. Each half prints the *other* half's LOG
+   row number (T7·#027 / T7·#029), so the two chips cross-reference instead of
+   repeating an opaque pair id; the mirrored chain icon on the result half is
+   the role cue. Colours are explicit: the global `button { color: inherit }` /
+   `button { border: 0 }` reset has no layer and would otherwise swallow them
+   (the marker is in its :not() exclusion list). */
 .pair-link-marker {
   display: inline-flex;
   flex: 0 0 auto;
@@ -5943,9 +5944,9 @@ pre,
   cursor: pointer;
 }
 
-/* Muted turn context, bright ordinal: the pair number is what the reader
-   matches between the two halves, so it is the strongest part of the chip. */
-.pair-link-marker__ordinal {
+/* Muted turn context, bright LOG row number: the partner's row is the one
+   thing the reader has to find, so it is the strongest part of the chip. */
+.pair-link-marker__target {
   color: color-mix(in srgb, var(--violet) 88%, var(--text));
   font-weight: var(--weight-medium);
 }
@@ -5956,8 +5957,9 @@ pre,
 }
 
 /* The turn prefix ties the marker to the LOG separator and the trajectory
-   group above it. It stays muted so the stable token remains the readable
-   identity; the separator is decorative (the button has an aria-label). */
+   group above it. It stays muted so the partner row number remains the
+   readable identity; the separator is decorative (the button has an
+   aria-label). */
 .pair-link-marker__turn {
   color: var(--muted);
   font-weight: 600;

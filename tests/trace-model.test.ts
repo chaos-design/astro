@@ -9,6 +9,7 @@ import {
   buildSessions,
   extractRunModel,
   formatDuration,
+  formatLogSequence,
   getExecutionInstruction,
   getFlowNodeIdForEvent,
   getPromptInput,
@@ -713,7 +714,7 @@ test("counts only closed pairs in buildPairDurations", () => {
   }
 });
 
-test("labels paired rows readably and names both LOG row numbers", () => {
+test("labels each pair half with the other half's LOG row number", () => {
   const events = createDemoEvents(2_000_000_000_000);
   const turns = buildTraceTurnIndex(events);
   const links = buildPairLinks(events, turns);
@@ -730,27 +731,48 @@ test("labels paired rows readably and names both LOG row numbers", () => {
   const pairTurn = turns.get(start.id);
   const startIndex = events.indexOf(start) + 1;
   const endIndex = events.indexOf(end) + 1;
+  const startRow = formatLogSequence(startIndex);
+  const endRow = formatLogSequence(endIndex);
 
-  // Both halves share one *readable* label (turn + which pair in that turn),
-  // not an opaque hash. `startIndex`/`endIndex` are the very numbers the LOG
-  // prints beside the rows, so the tooltip can say `#012 ↔ #013`.
+  // The chip on each row names the *other* half's LOG row: from `#029` a
+  // reader sees `T7·#027` and knows exactly which row belongs to this pair
+  // (and where a click will jump). `rows` names both halves for the tooltip
+  // and hover card; the ordinal is display context only, never the chip.
   const shared = {
     token: endLink.token,
     turn: pairTurn,
     ordinal: startLink.ordinal,
     startIndex,
     endIndex,
-    label: `T${pairTurn}·#${startLink.ordinal}`,
+    rows: `${startRow} ↔ ${endRow}`,
   };
-  assert.deepEqual(startLink, { ...shared, partnerId: end.id, role: "start" });
-  assert.deepEqual(endLink, { ...shared, partnerId: start.id, role: "end" });
+  assert.deepEqual(startLink, {
+    ...shared,
+    partnerId: end.id,
+    role: "start",
+    partnerIndex: endIndex,
+    label: `T${pairTurn}·${endRow}`,
+  });
+  assert.deepEqual(endLink, {
+    ...shared,
+    partnerId: start.id,
+    role: "end",
+    partnerIndex: startIndex,
+    label: `T${pairTurn}·${startRow}`,
+  });
   assert.match(startLink.token, /^P[0-9A-Z]{3}$/);
   assert.match(startLink.label, /^T\d+·#\d+$/);
   assert.equal(startLink.ordinal, 1);
   assert.ok(startIndex < endIndex);
+  assert.equal(startLink.partnerIndex, endIndex);
+  assert.equal(endLink.partnerIndex, startIndex);
+  assert.equal(startLink.rows, endLink.rows);
+  assert.equal(links.get(startLink.partnerId)?.partnerIndex, startIndex);
+  assert.equal(links.get(endLink.partnerId)?.partnerIndex, endIndex);
 
   // Ordinals run 1..n inside each turn in LOG order, and a pair in a later
-  // turn names that turn — the prefix is a locator, not decoration.
+  // turn names that turn — the prefix is a locator, not decoration. Both
+  // halves cross-reference each other's printed LOG row number.
   const starts = [...links.entries()]
     .filter(([, link]) => link.role === "start")
     .map(([eventId, link]) => ({ eventId, link }))
@@ -763,9 +785,15 @@ test("labels paired rows readably and names both LOG row numbers", () => {
   for (const { eventId, link } of starts) {
     const expected = (seen.get(link.turn) ?? 0) + 1;
     assert.equal(link.ordinal, expected);
-    assert.equal(link.label, `T${link.turn}·#${expected}`);
     assert.equal(link.turn, turns.get(eventId));
-    assert.equal(links.get(link.partnerId)?.label, link.label);
+    assert.equal(link.label, `T${link.turn}·${formatLogSequence(link.endIndex)}`);
+    const partner = links.get(link.partnerId)!;
+    assert.equal(
+      partner.label,
+      `T${link.turn}·${formatLogSequence(link.startIndex)}`,
+    );
+    assert.equal(partner.rows, link.rows);
+    assert.equal(partner.partnerIndex, link.startIndex);
     seen.set(link.turn, expected);
   }
   assert.ok(seen.size > 1);
@@ -776,8 +804,8 @@ test("labels paired rows readably and names both LOG row numbers", () => {
   assert.deepEqual([...links.keys()].sort(), [...durations.keys()].sort());
 
   // The internal grouping key still comes from the start id, so replaying a
-  // shorter prefix never changes it or the jump target. The readable ordinal
-  // is display context and may be renumbered by that shorter window.
+  // shorter prefix never changes it or the jump target. Row numbers follow the
+  // LOG rows of that window, so the label always names the row actually shown.
   const prefix = events.slice(0, events.indexOf(end) + 1);
   const prefixLink = buildPairLinks(
     prefix,
@@ -785,7 +813,11 @@ test("labels paired rows readably and names both LOG row numbers", () => {
   ).get(start.id)!;
   assert.equal(prefixLink.token, startLink.token);
   assert.equal(prefixLink.partnerId, end.id);
-  assert.match(prefixLink.label, /^T\d+·#\d+$/);
+  assert.equal(prefixLink.partnerIndex, endIndex);
+  assert.equal(
+    prefixLink.label,
+    `T${prefixLink.turn}·${formatLogSequence(prefixLink.partnerIndex)}`,
+  );
 });
 
 test("parses JSONL hook payloads and normalized trace events", () => {
