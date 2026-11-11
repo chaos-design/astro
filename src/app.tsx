@@ -387,40 +387,52 @@ function formatRunDate(timestamp: string | number) {
 }
 
 /**
- * Millisecond-precision duration for the trajectory's own spans (wall-time and
- * closed-pair). Whole-second `formatDuration` turns a 400ms tool call into
- * "0s", so the trajectory reads its durations in `ms` for sub-second spans,
- * falls back to `s` under a minute, and reuses the shared formatter beyond.
+ * The trajectory's own durations (wall-time and closed-pair) use a stepped
+ * unit rule so a value reads in the smallest honest unit: under 10s it is a
+ * `ms` span, 10–60s a `s` span, then `m`, `h`, and `d` as it grows. Whole-second
+ * `formatDuration` would print a 4s tool call as "4s" with no sub-second
+ * siblings, so the trajectory resolves each span to its dominant unit instead
+ * of compounding (`1m 4s`) — one number per tier, stepping ms → s → m → h → d.
  */
 function formatDurationMs(milliseconds: number) {
   if (!Number.isFinite(milliseconds) || milliseconds < 0) {
     return "--";
   }
-  const ms = Math.round(milliseconds);
-  if (ms < 1000) {
-    return `${ms}ms`;
+  const s = milliseconds / 1000;
+  if (s < 10) {
+    return `${Math.round(milliseconds)}ms`;
   }
-  const seconds = ms / 1000;
-  if (seconds < 60) {
-    return `${seconds < 10 ? seconds.toFixed(1) : String(Math.round(seconds))}s`;
+  const m = s / 60;
+  if (m < 1) {
+    return `${Math.round(s)}s`;
   }
-  return formatDuration(ms);
+  const h = m / 60;
+  if (h < 1) {
+    return `${Math.round(m)}m`;
+  }
+  const d = h / 24;
+  if (d < 1) {
+    return `${Math.round(h)}h`;
+  }
+  return `${Math.round(d)}d`;
 }
 
 /**
  * The duration colour spec, a single source for how a span's magnitude is
  * coloured. It is a heat scale, not a status colour: a fast tool call reads
  * calm (completed), a slow one warms to amber, and a long one reads failed-red
- * so a hot spot is visible at a glance. Applied to the trajectory's wall-time
- * and pair badges; the badge keeps its shape but lets the colour encode speed.
+ * so a hot spot is visible at a glance. The tiers track the stepped units —
+ * <10s, <1m, <10m, beyond — so the colour answers "is this slow" at a glance.
+ * Applied to the trajectory's wall-time and pair badges; the badge keeps its
+ * shape but lets the colour encode speed.
  */
 type DurationHeat = "idle" | "fast" | "normal" | "slow" | "very-slow";
 
 const DURATION_HEAT = {
   idle: 0,
-  fast: 500,
-  normal: 5_000,
-  slow: 30_000,
+  fast: 10_000,
+  normal: 60_000,
+  slow: 600_000,
 } as const;
 
 function durationHeatClass(milliseconds: number): DurationHeat {
@@ -3298,14 +3310,10 @@ function TrajectoryRow({
       <time dateTime={row.occurredAt}>
         <span>{formatDate(row.occurredAt)}</span>
         <span>{formatClock(row.occurredAt)}</span>
-        <small
-          className={`trajectory-row__duration heat-${durationHeatClass(
-            row.duration,
-          )}`}
-        >
-          {formatDurationMs(row.duration)}
-        </small>
         {row.pairDuration !== null ? (
+          /* The closed pair is the meaningful span; printing the wall-time
+             next to it shows two numbers for one duration (a 6s wall and a
+             6s pair). So the pair badge is the single readout when present. */
           <small
             className={`trajectory-row__pair heat-${durationHeatClass(
               row.pairDuration,
@@ -3314,7 +3322,15 @@ function TrajectoryRow({
           >
             {formatDurationMs(row.pairDuration)}
           </small>
-        ) : null}
+        ) : (
+          <small
+            className={`trajectory-row__duration heat-${durationHeatClass(
+              row.duration,
+            )}`}
+          >
+            {formatDurationMs(row.duration)}
+          </small>
+        )}
       </time>
       <i className={`trajectory-row__status status-${row.status}`} />
     </div>

@@ -5084,8 +5084,9 @@ pre,
 }
 
 /* The duration heat scale: a magnitude→colour spec, not a status colour. The
-   badge only recolors; its border/shape stays content-sized. 0–500ms reads
-   calm, 500ms–5s neutral, 5–30s warm, ≥30s reads failed. */
+   badge only recolors; its shape stays content-sized. The tiers track the
+   stepped units (<10s, <1m, <10m, beyond): <10s reads calm, <1m neutral,
+   <10m warm, ≥10m reads failed. */
 .trajectory-row__duration.heat-idle,
 .trajectory-row__pair.heat-idle {
   color: var(--muted);

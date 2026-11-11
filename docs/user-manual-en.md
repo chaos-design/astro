@@ -748,7 +748,7 @@ The summary displays:
 
 The lane map uses Input, Model, and Tools. The detailed list groups steps by turn and shows event type, summary, timestamp, duration, and status. Hovering a block — a list row or a lane slot — opens one shared card that reports the block's event name, its tool (when present), its closed-pair span (`PAIR`), its own wall-time span (`DURATION`, an atom), or the total of its closed-pair spans (`PAIRS` for a turn), and its status.
 
-Durations are shown in milliseconds: under a second as `ms`, one to sixty seconds as `s`, longer values reuse the shared `m/h` format. The colour of a duration is a magnitude heat scale, not a status colour: 0–500ms calm (completed green), 0.5–5s neutral, 5–30s warm (amber), and ≥30s red, so a slow step stands out at a glance.
+Durations use a stepped unit rule that picks the smallest honest unit: under 10s as `ms`, 10–60s as `s`, under a minute as `m`, under a day as `h`, and days as `d` (one number per tier, never compounded as `1m 4s`). The colour of a duration is a magnitude heat scale, not a status colour: <10s calm (completed green), <1m neutral, <10m warm (amber), and ≥10m red, so a slow step stands out at a glance. A row that is a closed pair shows only that one paired number (no near-identical wall-time alongside it); unpaired rows show their own wall-time instead.
 
 Matching `PreToolUse` and `PostToolUse` or `PostToolUseFailure` events with the same `toolUseId` become one tool step. Expand a row to inspect paired input and output. A closed pair's start→result span is shown as the paired duration (`PAIR`) on the row and in the hover card; unpaired events have no span and are excluded from every total.
 
