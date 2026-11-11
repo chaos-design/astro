@@ -3418,6 +3418,15 @@ pre,
   font-variant-numeric: tabular-nums;
 }
 
+/* The tool a tool atom runs, set in italics and muted so it reads as a
+   detail on the event line, not a new field. */
+.trajectory-hover__card .trajectory-hover__tool {
+  color: var(--muted);
+  font-style: normal;
+  font-family: var(--font-mono);
+  font-size: 9px;
+}
+
 .canvas-column {
   background: var(--bg);
 }
@@ -5064,15 +5073,42 @@ pre,
 }
 
 /* The paired start→end span, distinguished from the wall-time span above it:
-   only present when the block belongs to a closed pair. */
+   only present when the block belongs to a closed pair. It sizes to its
+   content — no fixed pill, no border box — and lets the duration heat class
+   below encode how long the closed pair ran. */
 .trajectory-row time .trajectory-row__pair {
-  padding: 0 4px;
-  border: 1px solid color-mix(in srgb, var(--violet) 38%, var(--line));
-  border-radius: 999px;
-  color: color-mix(in srgb, var(--violet) 74%, var(--text));
-  background: color-mix(in srgb, var(--violet) 10%, transparent);
+  display: inline-block;
+  padding: 0;
   font-size: 7px;
   line-height: 1.6;
+}
+
+/* The duration heat scale: a magnitude→colour spec, not a status colour. The
+   badge only recolors; its border/shape stays content-sized. 0–500ms reads
+   calm, 500ms–5s neutral, 5–30s warm, ≥30s reads failed. */
+.trajectory-row__duration.heat-idle,
+.trajectory-row__pair.heat-idle {
+  color: var(--muted);
+}
+
+.trajectory-row__duration.heat-fast,
+.trajectory-row__pair.heat-fast {
+  color: var(--status-completed);
+}
+
+.trajectory-row__duration.heat-normal,
+.trajectory-row__pair.heat-normal {
+  color: var(--text);
+}
+
+.trajectory-row__duration.heat-slow,
+.trajectory-row__pair.heat-slow {
+  color: var(--amber);
+}
+
+.trajectory-row__duration.heat-very-slow,
+.trajectory-row__pair.heat-very-slow {
+  color: var(--status-failed);
 }
 
 .trajectory-row__status {

@@ -225,6 +225,7 @@ import {
   getTrajectorySegmentPosition,
   orderTrajectoryNewestFirst,
   type TrajectoryAtom,
+  type TrajectoryMapSlot,
   type TrajectoryTurn,
 } from "./lib/trajectory-model";
 import {
@@ -383,6 +384,59 @@ function formatDate(timestamp: string | number) {
 
 function formatRunDate(timestamp: string | number) {
   return `${formatDate(timestamp)} ${runTimeFormatter.format(new Date(timestamp))}`;
+}
+
+/**
+ * Millisecond-precision duration for the trajectory's own spans (wall-time and
+ * closed-pair). Whole-second `formatDuration` turns a 400ms tool call into
+ * "0s", so the trajectory reads its durations in `ms` for sub-second spans,
+ * falls back to `s` under a minute, and reuses the shared formatter beyond.
+ */
+function formatDurationMs(milliseconds: number) {
+  if (!Number.isFinite(milliseconds) || milliseconds < 0) {
+    return "--";
+  }
+  const ms = Math.round(milliseconds);
+  if (ms < 1000) {
+    return `${ms}ms`;
+  }
+  const seconds = ms / 1000;
+  if (seconds < 60) {
+    return `${seconds < 10 ? seconds.toFixed(1) : String(Math.round(seconds))}s`;
+  }
+  return formatDuration(ms);
+}
+
+/**
+ * The duration colour spec, a single source for how a span's magnitude is
+ * coloured. It is a heat scale, not a status colour: a fast tool call reads
+ * calm (completed), a slow one warms to amber, and a long one reads failed-red
+ * so a hot spot is visible at a glance. Applied to the trajectory's wall-time
+ * and pair badges; the badge keeps its shape but lets the colour encode speed.
+ */
+type DurationHeat = "idle" | "fast" | "normal" | "slow" | "very-slow";
+
+const DURATION_HEAT = {
+  idle: 0,
+  fast: 500,
+  normal: 5_000,
+  slow: 30_000,
+} as const;
+
+function durationHeatClass(milliseconds: number): DurationHeat {
+  if (!Number.isFinite(milliseconds) || milliseconds <= 0) {
+    return "idle";
+  }
+  if (milliseconds < DURATION_HEAT.fast) {
+    return "fast";
+  }
+  if (milliseconds < DURATION_HEAT.normal) {
+    return "normal";
+  }
+  if (milliseconds < DURATION_HEAT.slow) {
+    return "slow";
+  }
+  return "very-slow";
 }
 
 function getEventAction(event: TraceEvent) {
@@ -3244,10 +3298,21 @@ function TrajectoryRow({
       <time dateTime={row.occurredAt}>
         <span>{formatDate(row.occurredAt)}</span>
         <span>{formatClock(row.occurredAt)}</span>
-        <small>{formatDuration(row.duration)}</small>
+        <small
+          className={`trajectory-row__duration heat-${durationHeatClass(
+            row.duration,
+          )}`}
+        >
+          {formatDurationMs(row.duration)}
+        </small>
         {row.pairDuration !== null ? (
-          <small className="trajectory-row__pair" title="成对耗时">
-            {formatDuration(row.pairDuration)}
+          <small
+            className={`trajectory-row__pair heat-${durationHeatClass(
+              row.pairDuration,
+            )}`}
+            title="成对耗时"
+          >
+            {formatDurationMs(row.pairDuration)}
           </small>
         ) : null}
       </time>
@@ -3284,8 +3349,16 @@ function loopRowForTurn(turn: TrajectoryTurn): TrajectoryDisplayRow {
  * simply omits the badge instead of printing a 0.
  */
 type TrajectoryHoverDetails = {
+  /** The atom's closed start→end span, `null` when it is not a closed pair. */
   pairDuration: number | null;
+  /** Sum of the closed pair spans inside the block; a turn block only. */
   pairTotal?: number;
+  /** The atom's own wall-time span; a single atom only. */
+  duration?: number;
+  /** The concrete event name this atom stands for (e.g. `Read`). */
+  eventName?: string;
+  /** The tool a tool atom runs, when its event carries one. */
+  toolName?: string;
   status: string;
   subtitle: string;
   title: string;
@@ -3301,16 +3374,31 @@ function TrajectoryDetailsCard({ details }: { details: TrajectoryHoverDetails })
     <div className="trajectory-hover__card">
       <strong>{details.title}</strong>
       <span>{details.subtitle}</span>
+      {details.eventName ? (
+        <span>
+          <b className="trajectory-hover__label">EVENT</b> ·{" "}
+          {details.eventName}
+          {details.toolName ? (
+            <i className="trajectory-hover__tool"> {details.toolName}</i>
+          ) : null}
+        </span>
+      ) : null}
       {details.pairDuration !== null ? (
         <span>
           <b className="trajectory-hover__label">PAIR</b> ·{" "}
-          {formatDuration(details.pairDuration)}
+          {formatDurationMs(details.pairDuration)}
+        </span>
+      ) : null}
+      {details.duration !== undefined ? (
+        <span>
+          <b className="trajectory-hover__label">DURATION</b> ·{" "}
+          {formatDurationMs(details.duration)}
         </span>
       ) : null}
       {details.pairTotal !== undefined ? (
         <span>
           <b className="trajectory-hover__label">PAIRS</b> ·{" "}
-          {formatDuration(details.pairTotal)}
+          {formatDurationMs(details.pairTotal)}
         </span>
       ) : null}
       <span>
@@ -3353,14 +3441,16 @@ const TrajectoryHoverCardLayer = memo(function TrajectoryHoverCardLayer({
         element.style.visibility = "hidden";
         return;
       }
-      const listBounds = anchor
-        .closest(".trajectory-list")
+      // The card anchors to a block in either the list or the lane overview;
+      // hide it when that block has scrolled vertically out of its panel.
+      const panelBounds = anchor
+        .closest(".trajectory-list, .trajectory-map")
         ?.getBoundingClientRect();
       const anchorBounds = anchor.getBoundingClientRect();
       if (
-        listBounds &&
-        (anchorBounds.bottom < listBounds.top ||
-          anchorBounds.top > listBounds.bottom)
+        panelBounds &&
+        (anchorBounds.bottom < panelBounds.top ||
+          anchorBounds.top > panelBounds.bottom)
       ) {
         element.style.visibility = "hidden";
         return;
@@ -3509,7 +3599,7 @@ const TrajectoryView = memo(function TrajectoryView({
   // pointer-event rate.
   const handleRowHover = useCallback(
     (
-      event: ReactPointerEvent<HTMLDivElement>,
+      event: ReactPointerEvent<HTMLElement>,
       key: string,
       details: TrajectoryHoverDetails,
     ) => {
@@ -3544,10 +3634,11 @@ const TrajectoryView = memo(function TrajectoryView({
   const handleCardPointerLeave = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
       const list = listRef.current;
+      const anchor = hoverAnchorRef.current;
       if (
-        list &&
         event.relatedTarget instanceof Node &&
-        list.contains(event.relatedTarget)
+        (list?.contains(event.relatedTarget) ||
+          anchor?.contains(event.relatedTarget))
       ) {
         return;
       }
@@ -3566,10 +3657,13 @@ const TrajectoryView = memo(function TrajectoryView({
   // spans inside it.
   const atomHoverDetails = useCallback(
     (atom: TrajectoryAtom): TrajectoryHoverDetails => ({
+      duration: atom.duration,
+      eventName: atom.event.eventName,
       pairDuration: atom.pairDuration,
       status: atom.status,
       subtitle: `${atom.key} · turn ${atom.turn}`,
       title: atom.label,
+      toolName: atom.event.toolName || undefined,
     }),
     [],
   );
@@ -3582,6 +3676,25 @@ const TrajectoryView = memo(function TrajectoryView({
       title: "Loop Turn",
     }),
     [],
+  );
+  // The lane overview's slots stand for a node range; hovering one shows the
+  // range, the newest event it maps to, its tool and its status — the same
+  // lean, accurate card the rows use, so the map and the list agree.
+  const slotHoverDetails = useCallback(
+    (slot: TrajectoryMapSlot): TrajectoryHoverDetails => {
+      const target = nodes[slot.end];
+      const event = target?.data.endEvent || target?.data.startEvent;
+      return {
+        duration: undefined,
+        eventName: event?.eventName,
+        pairDuration: null,
+        status: slot.status,
+        subtitle: `#${slot.start + 1}–#${slot.end + 1} · ${slot.count} 事件`,
+        title: target?.data.label ?? "Atom",
+        toolName: event?.toolName || undefined,
+      };
+    },
+    [nodes],
   );
 
   const allAtoms = useMemo(
@@ -3796,7 +3909,6 @@ const TrajectoryView = memo(function TrajectoryView({
                       data-cursor={isCursor ? "true" : undefined}
                       aria-label={`选择第 ${slot.start + 1}-${slot.end + 1} 个原子（${slot.count} 个事件）`}
                       aria-pressed={isCursor}
-                      title={`#${slot.start + 1}-${slot.end + 1} · ${slot.count} 个事件 · ${target.data.label}`}
                       className={cn(
                         `tone-bg-${slot.tone}`,
                         isCursor && "is-selected",
@@ -3807,6 +3919,13 @@ const TrajectoryView = memo(function TrajectoryView({
                       onClick={() =>
                         onSelect(
                           (target.data.endEvent || target.data.startEvent).id,
+                        )
+                      }
+                      onPointerOver={(hoverEvent) =>
+                        handleRowHover(
+                          hoverEvent,
+                          `slot-${slot.key}`,
+                          slotHoverDetails(slot),
                         )
                       }
                       onKeyDown={(keyEvent) => {
