@@ -445,7 +445,8 @@ codex 的 Hook）不显示该标签，与「没有模型」不加区分。一个
 
 工具栏功能：
 
-- 平台语义：Codex、Claude Code、Trae；
+- 平台语义：Codex、Claude Code、Trae，以及其他已配置的智能体，外加末尾的
+  **Others** 兜底项；
 - 拓扑/轨迹切换；
 - 原子与连线指南；
 - 全部原子/仅运行时原子切换；
@@ -516,8 +517,9 @@ codex 的 Hook）不显示该标签，与「没有模型」不加区分。一个
 超时不代表 ASTRO 已经杀死外部 Agent 进程，只表示 ASTRO 不再把该记录区间视为实时
 执行。如果需要判断进程是否仍运行，应检查来源客户端和 JSONL 中的最新事件。
 
-父子行状态允许有意不同。Session 父行只有在最新 Prompt 为 `active` 时才增加；最新
-Prompt 为 waiting 时父行冻结。waiting 子行仍继续计算自身时长，并可独立达到超时。
+父子行状态允许有意不同。Session 父行在最新 Prompt 为 `active` 或 `waiting`
+时持续计时；最新 Prompt 为终态（`complete`、`failed` 或 `terminated`）时父行
+冻结。waiting 子行仍继续计算自身时长，并可独立达到超时。
 历史 complete、failed 或 terminated 运行即使长于当前阈值，也保留其已记录时长。
 
 ### 5.8 设置
@@ -967,7 +969,7 @@ astro-trace doctor
 | 键 | 值 | 说明 |
 | --- | --- | --- |
 | `ASTROX_THEME` | `light` / `dark` / `system` | 主题 |
-| `ASTROX_PLATFORM` | `codex` / `claude` / `trae` | 平台上下文 |
+| `ASTROX_PLATFORM` | 如 `codex` / `claude` / `deepseek` / `trae` / `workbuddy` | 平台上下文 |
 | `ASTROX_HISTORY_OPEN` | `true` / `false` | 左侧 History 展开状态 |
 | `ASTROX_CONSOLE_OPEN` | `true` / `false` | 右侧 Events/Inspector 展开状态 |
 | `ASTROX_HISTORY_RANGE` | `1h` / `3h` / `6h` / `12h` / `1d` / `3d` / `5d` / `7d` | 默认时间范围，默认 `3h` |

@@ -95,9 +95,9 @@ installing — it cannot live in the plugin's own `.env`.
   `pnpm build` first when `dist/` is missing (`--no-build` skips it).
 - **Native plugins**: `pnpm build:native-plugins` first (syncs the runtime into
   `*-plugin/` and stamps versions), then install per client:
-  - Codex: `codex plugin add astro-codex-local`
-  - Claude Code: `claude plugin add astro-claude-local`
-  - WorkBuddy: `codebuddy plugin add astro-workbuddy-local`
+  - Codex: `codex plugin add astro@astro-local`
+  - Claude Code: `claude plugin install astro@astro-local --scope user`
+  - WorkBuddy: `codebuddy plugin add astro@astro-local`
   - DeepSeek Harness: `dsh plugin --profile web add file:~/.astrox/plugins/astro/deepseek-plugin` (verify with `dsh --profile web --dump-config` that `astro-trace` appears in the composed tree)
 - **Standalone installers**: ZCode (`pnpm install-zcode-plugin`), OpenCode
   (`pnpm install-opencode-plugin`), Pi (`pnpm install-pi-plugin`).

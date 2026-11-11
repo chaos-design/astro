@@ -313,9 +313,9 @@ The frontend compares that value with
 | `> timeout` | timeout | `terminated` |
 
 Terminal event-derived states bypass the live calculation; their recorded
-duration and status are preserved. The Session parent row is stricter than a
-Prompt row: it advances only when its latest Prompt is `active`, while the
-nested Prompt row advances for `active` and `waiting`.
+duration and status are preserved. The Session parent row and the nested Prompt
+row advance under the same rule: for `active` or `waiting`, and freeze for
+`complete`, `failed`, or `terminated`.
 
 The timeout is an effective UI projection. It does not append an event, replace
 the stored session state, or change JSONL. It stops selected-run live animation
@@ -330,8 +330,9 @@ With a 24-hour limit:
 - `23:59:59.999` remains live;
 - `24:00:00.000` is capped and displayed as `terminated`;
 - a 30-hour completed historical run remains complete with a 30-hour duration;
-- a waiting nested Prompt times out, while its parent row remains frozen as
-  waiting because only an active latest Prompt advances the parent;
+- a waiting nested Prompt times out while its parent row keeps advancing,
+  because a `waiting` latest Prompt still counts as live; only a terminal
+  latest Prompt freezes the parent;
 - changing the limit affects presentation after rebuilding the frontend and
   does not migrate stored events.
 

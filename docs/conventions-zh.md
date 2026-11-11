@@ -69,7 +69,7 @@
     不得另写一份轮次推断。切到身份模式的判定是「批内任一带轮次标识」而非
     「多数带」：来源只要给过一条事件标了轮次，整批即视为权威，其后无编号
     的 prompt 折进上一轮、不另开新分组（部分标识来源是契约而非启发式，详见
-    `docs/event-protocol-en.md` §6）。
+    `docs/event-protocol-zh.md` §6）。
   新增消费方必须复用这些函数，不得再写一份“失败事件名单”或“live 名单”。
 - 示例（Demo）数据只在 `data/demo-events.json`：服务通过 `server/demo-dataset.mjs`
   读取并由 `GET /api/demo-events` 提供，控制台只在 `src/lib/demo-events.ts` 解析。

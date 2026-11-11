@@ -384,7 +384,8 @@ applies to that search only.
 
 Available filters include:
 
-- 3, 6, 12, or 24 hours, today, yesterday, seven days, or a custom date range;
+- 1, 3, 6, or 12 hours, 1 day, today, yesterday, 3, 5, or 7 days, or a custom
+  date range;
 - one or more agents: the list contains configured agents only; every other
   source (browser, generic, a custom HTTP collector) is grouped under the
   trailing **Others** entry instead of getting a pseudo-agent of its own;
@@ -613,9 +614,10 @@ The timeout does not prove that the external agent process was killed. It means
 ASTRO no longer treats that recorded interval as a live execution. Check the
 source client and the latest JSONL event when process state matters.
 
-Parent and child rows can differ by design. The Session parent advances only
-while its latest Prompt is `active`; a waiting latest Prompt freezes the parent.
-The waiting child continues its own duration and can independently reach the
+Parent and child rows can differ by design. The Session parent advances while
+its latest Prompt is `active` or `waiting`; a terminal latest Prompt
+(`complete`, `failed`, or `terminated`) freezes it. The waiting child continues
+its own duration and can independently reach the
 timeout. A historical complete, failed, or terminated run keeps its recorded
 duration even when it is longer than the current limit.
 
@@ -1122,7 +1124,7 @@ only effective display state.
 | Key | Values | Purpose |
 | --- | --- | --- |
 | `ASTROX_THEME` | `light` / `dark` / `system` | Theme |
-| `ASTROX_PLATFORM` | `codex` / `claude` / `trae` | Platform context |
+| `ASTROX_PLATFORM` | e.g. `codex` / `claude` / `deepseek` / `trae` / `workbuddy` | Platform context |
 | `ASTROX_HISTORY_OPEN` | `true` / `false` | Left History panel |
 | `ASTROX_CONSOLE_OPEN` | `true` / `false` | Right Events/Inspector panel |
 | `ASTROX_HISTORY_RANGE` | `1h` / `3h` / `6h` / `12h` / `1d` / `3d` / `5d` / `7d` | Default time range, `3h` unless changed |
