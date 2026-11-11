@@ -3380,7 +3380,16 @@ pre,
   animation: run-history-hovercard-in 120ms ease-out;
 }
 
+/* Hover-card type scale: exactly one size each for the title, every field
+   value, every field label and the meta subtitle. The card used to mix
+   12/11/9/8/9px hard-coded sizes, so two values on adjacent lines read as
+   different kinds of information. Colour now separates fields, not size. */
 .trajectory-hover__card {
+  --hover-title-size: var(--text-label);
+  --hover-value-size: var(--text-body);
+  --hover-label-size: var(--text-caption);
+  --hover-meta-size: var(--text-overline);
+
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -3392,40 +3401,68 @@ pre,
   color: var(--text);
   background: var(--panel-raised);
   box-shadow: 0 10px 28px rgb(0 0 0 / 38%);
-  font-size: 11px;
+  font-size: var(--hover-value-size);
   line-height: 1.5;
 }
 
 .trajectory-hover__card strong {
-  color: var(--text);
-  font-size: 12px;
+  color: var(--text-strong);
+  font-size: var(--hover-title-size);
+  font-weight: var(--weight-medium);
 }
 
-.trajectory-hover__card > span:nth-child(2) {
+.trajectory-hover__card .trajectory-hover__subtitle {
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--line);
   color: var(--muted);
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: var(--hover-meta-size);
+}
+
+.trajectory-hover__card .trajectory-hover__field {
+  font-size: var(--hover-value-size);
 }
 
 .trajectory-hover__card .trajectory-hover__label {
   color: var(--muted);
   font-family: var(--font-mono);
-  font-size: 8px;
+  font-size: var(--hover-label-size);
   text-transform: uppercase;
   letter-spacing: 0.04em;
+}
+
+.trajectory-hover__card .trajectory-hover__value,
+.trajectory-hover__card .trajectory-hover__pair {
+  font-size: var(--hover-value-size, var(--text-body));
+  font-style: normal;
 }
 
 .trajectory-hover__card b + * {
   font-variant-numeric: tabular-nums;
 }
 
-/* The tool a tool atom runs, set in italics and muted so it reads as a
-   detail on the event line, not a new field. */
+/* Field colours: category violet, event blue, tool amber, pair id violet
+   (matching the row marker), duration heat, status semantic. Labels stay
+   muted so the coloured values are the only thing drawing the eye. */
+.trajectory-hover__card .trajectory-hover__value.is-type,
+.trajectory-hover__card .trajectory-hover__pair {
+  color: var(--violet);
+  font-family: var(--font-mono);
+  font-weight: var(--weight-medium);
+}
+
+.trajectory-hover__card .trajectory-hover__value.is-event {
+  color: var(--blue);
+  font-family: var(--font-mono);
+}
+
+/* The tool a tool atom runs, only shown when the title does not already name
+   it. Amber keeps it distinct from the blue event name on the same line. */
 .trajectory-hover__card .trajectory-hover__tool {
-  color: var(--muted);
+  color: var(--amber);
   font-style: normal;
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: var(--hover-value-size, var(--text-body));
 }
 
 /* The duration value in the card carries the same heat class as the row, so a
@@ -3433,6 +3470,11 @@ pre,
 .trajectory-hover__duration {
   font-style: normal;
   font-family: var(--font-mono);
+  font-size: var(--hover-value-size, var(--text-body));
+}
+
+.trajectory-hover__duration.heat-idle {
+  color: var(--muted);
 }
 
 .trajectory-hover__duration.heat-fast {
@@ -3456,6 +3498,7 @@ pre,
 .trajectory-hover__status {
   font-style: normal;
   font-family: var(--font-mono);
+  font-size: var(--hover-value-size, var(--text-body));
   font-weight: var(--weight-medium);
 }
 
@@ -5846,9 +5889,32 @@ pre,
   color: color-mix(in srgb, var(--log-tone) 72%, var(--text));
   background: color-mix(in srgb, var(--log-tone) 12%, transparent);
   font-family: var(--font-mono);
-  font-size: 8px;
+  font-size: var(--text-overline);
   font-variant-numeric: tabular-nums;
   line-height: 1.4;
+}
+
+/* The LOG badge reads the same stepped ms/s/m/h/d value and the same heat
+   colour as the trajectory. Its border keeps the event tone, so tone and
+   duration are still distinguishable at a glance. */
+.atomic-log__row .atomic-log__duration.heat-idle {
+  color: var(--muted);
+}
+
+.atomic-log__row .atomic-log__duration.heat-fast {
+  color: var(--status-completed);
+}
+
+.atomic-log__row .atomic-log__duration.heat-normal {
+  color: var(--text);
+}
+
+.atomic-log__row .atomic-log__duration.heat-slow {
+  color: var(--amber);
+}
+
+.atomic-log__row .atomic-log__duration.heat-very-slow {
+  color: var(--status-failed);
 }
 
 /* One shared marker for the two halves of a closed pair, rendered identically
@@ -5868,11 +5934,20 @@ pre,
   color: color-mix(in srgb, var(--violet) 72%, var(--text));
   background: color-mix(in srgb, var(--violet) 9%, transparent);
   font-family: var(--font-mono);
-  font-size: 7px;
+  /* Same size as the paired-duration badge beside it: the marker is a peer
+     of the duration, not a smaller footnote (7px was unreadable). */
+  font-size: var(--text-overline);
   font-variant-numeric: tabular-nums;
   line-height: 1.5;
   white-space: nowrap;
   cursor: pointer;
+}
+
+/* Muted turn context, bright ordinal: the pair number is what the reader
+   matches between the two halves, so it is the strongest part of the chip. */
+.pair-link-marker__ordinal {
+  color: color-mix(in srgb, var(--violet) 88%, var(--text));
+  font-weight: var(--weight-medium);
 }
 
 .pair-link-marker svg {

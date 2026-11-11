@@ -63,12 +63,13 @@
     的时长，不成对的事件一律不计入；LOG 行、轨迹数据层（`pairDuration` /
     `totalPairDuration`）与悬停区块卡片都从这一处取值；
   - 成对关联标记的身份同样只在 `src/lib/trace-model.ts`（`buildPairLinks`，
-    复用同一份 `createFlowEntries` 配对）：两半互指对方 ID、共用由起始事件
-    ID 派生的编号（不用序号，回放/前缀变化不会重新编号），并共用
-    `T<轮次>·<编号>` 形式的显示标签；轮次序号由调用方传入的
-    `buildTraceTurnIndex` 结果决定（取起始事件的轮次，两半相同），标记本身
-    不另做轮次推断；LOG 行与轨迹原子的标记、跨视图定位和高亮都从这一处取值，
-    不得另写一份配对推断；
+    复用同一份 `createFlowEntries` 配对）：两半互指对方 ID、共用**可读**标签
+    `T<轮次>·#<序号>`（轮次取起始事件的 `buildTraceTurnIndex` 结果，序号按该轮内
+    闭合配对的 LOG 顺序编排）、共用 `startIndex`/`endIndex`（取自 flow entry 的
+    `stepIndex`/`endStepIndex`，即 LOG 打印的行号，供 tooltip 写出 `#031 ↔ #033`）。
+    由起始事件 ID 派生的哈希 `token` 只作**内部**分组键（轨迹每对只画一个标记），
+    不显示给读者；序号在回放窗口变短时可能重排，身份与跳转一律靠 `partnerId`；
+    LOG 行与轨迹原子的标记、跨视图定位和高亮都从这一处取值，不得另写一份配对推断；
   - 轮次编号只在 `src/lib/trajectory-model.ts`（`buildTraceTurnIndex`）：来源
     自带轮次标识时保留它印出的编号（DeepSeek 的 `data.turn` 可以从 5 开始），
     仅有不透明标识时按首次出现给序号，无标识的事件跟随当前轮次，开头的前导

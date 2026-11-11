@@ -713,7 +713,7 @@ test("counts only closed pairs in buildPairDurations", () => {
   }
 });
 
-test("links both halves of a closed pair and keeps the token stable", () => {
+test("labels paired rows readably and names both LOG row numbers", () => {
   const events = createDemoEvents(2_000_000_000_000);
   const turns = buildTraceTurnIndex(events);
   const links = buildPairLinks(events, turns);
@@ -728,62 +728,64 @@ test("links both halves of a closed pair and keeps the token stable", () => {
   const startLink = links.get(start.id)!;
   const endLink = links.get(end.id)!;
   const pairTurn = turns.get(start.id);
+  const startIndex = events.indexOf(start) + 1;
+  const endIndex = events.indexOf(end) + 1;
 
-  // Each half points at the other, carries its own role, and shares one token
-  // so the LOG row and the trajectory atom read as a single unit. Both also
-  // name the same turn — the turn the *start* event opened — so the `T<n>`
-  // prefix agrees with the LOG separator and the trajectory group above them.
-  assert.deepEqual(startLink, {
-    partnerId: end.id,
-    role: "start",
+  // Both halves share one *readable* label (turn + which pair in that turn),
+  // not an opaque hash. `startIndex`/`endIndex` are the very numbers the LOG
+  // prints beside the rows, so the tooltip can say `#012 ↔ #013`.
+  const shared = {
     token: endLink.token,
     turn: pairTurn,
-    label: `T${pairTurn}·${endLink.token}`,
-  });
-  assert.deepEqual(endLink, {
-    partnerId: start.id,
-    role: "end",
-    token: startLink.token,
-    turn: pairTurn,
-    label: startLink.label,
-  });
+    ordinal: startLink.ordinal,
+    startIndex,
+    endIndex,
+    label: `T${pairTurn}·#${startLink.ordinal}`,
+  };
+  assert.deepEqual(startLink, { ...shared, partnerId: end.id, role: "start" });
+  assert.deepEqual(endLink, { ...shared, partnerId: start.id, role: "end" });
   assert.match(startLink.token, /^P[0-9A-Z]{3}$/);
-  assert.match(startLink.label, /^T\d+·P[0-9A-Z]{3}$/);
+  assert.match(startLink.label, /^T\d+·#\d+$/);
+  assert.equal(startLink.ordinal, 1);
+  assert.ok(startIndex < endIndex);
 
-  // Markers are not all stamped with one global turn: a pair in a later turn
-  // names that turn, so the prefix is a usable locator rather than decoration.
-  const pairTurns = new Set(
-    [...links.values()]
-      .filter((link) => link.role === "start")
-      .map((link) => link.turn),
-  );
-  assert.ok(pairTurns.size > 1);
-  for (const [eventId, link] of links) {
-    if (link.role !== "start") {
-      continue;
-    }
+  // Ordinals run 1..n inside each turn in LOG order, and a pair in a later
+  // turn names that turn — the prefix is a locator, not decoration.
+  const starts = [...links.entries()]
+    .filter(([, link]) => link.role === "start")
+    .map(([eventId, link]) => ({ eventId, link }))
+    .sort(
+      (left, right) =>
+        left.link.turn - right.link.turn ||
+        left.link.startIndex - right.link.startIndex,
+    );
+  const seen = new Map<number, number>();
+  for (const { eventId, link } of starts) {
+    const expected = (seen.get(link.turn) ?? 0) + 1;
+    assert.equal(link.ordinal, expected);
+    assert.equal(link.label, `T${link.turn}·#${expected}`);
     assert.equal(link.turn, turns.get(eventId));
-    assert.equal(links.get(link.partnerId)?.turn, link.turn);
     assert.equal(links.get(link.partnerId)?.label, link.label);
+    seen.set(link.turn, expected);
   }
+  assert.ok(seen.size > 1);
 
   // The marker set is exactly the duration set: a row never shows a link
   // marker without the paired duration badge (and vice versa).
   const durations = buildPairDurations(events);
   assert.deepEqual([...links.keys()].sort(), [...durations.keys()].sort());
 
-  // Tokens come from the start id, not an ordinal: feeding a different prefix
-  // (replay mode) or adding another pair before/after must not relabel a pair.
-  // The turn prefix is only context — a shorter prefix may renumber turns —
-  // but the identity half of the label never changes.
-  const endIndex = events.indexOf(end);
-  const prefix = events.slice(0, endIndex + 1);
+  // The internal grouping key still comes from the start id, so replaying a
+  // shorter prefix never changes it or the jump target. The readable ordinal
+  // is display context and may be renumbered by that shorter window.
+  const prefix = events.slice(0, events.indexOf(end) + 1);
   const prefixLink = buildPairLinks(
     prefix,
     buildTraceTurnIndex(prefix),
   ).get(start.id)!;
   assert.equal(prefixLink.token, startLink.token);
-  assert.ok(prefixLink.label.endsWith(startLink.token));
+  assert.equal(prefixLink.partnerId, end.id);
+  assert.match(prefixLink.label, /^T\d+·#\d+$/);
 });
 
 test("parses JSONL hook payloads and normalized trace events", () => {

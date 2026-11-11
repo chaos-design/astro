@@ -565,16 +565,18 @@ The upper LOG area:
   opening and closing half of a matched pair (for example a `PreToolUse` and
   its `PostToolUse` / `PostToolUseFailure`) report the same span from start to
   result; events that never paired — a lone `Reasoning`, an open tool call —
-  show no badge;
+  show no badge. The badge uses the same stepped units (`ms/s/m/h/d`) and the
+  same duration heat colour as the trajectory;
 - puts a **pair-link marker** next to that badge (a chain icon plus
-  `T<turn>·<token>`, e.g. `T2·P3CM`). The `T2` prefix is the pair's turn number:
-  it matches the `TURN 02` separator above it and the trajectory's `Loop Turn 2`
-  group, so a reader in the LOG knows which turn to look in; the `P3CM` token is
-  shared by both halves and the corresponding trajectory atom. Clicking it
-  selects and locates the other half, centering its row in both the LOG and the
-  trajectory; selecting one half outlines the other in violet in both views. The
-  marker clears the log search first, so a partner hidden by a filter is still
-  reachable.
+  `T<turn>·#<ordinal>`, e.g. `T8·#1`). `T8` is the pair's turn — matching the
+  `TURN 08` separator above it and the trajectory's `Loop Turn 8` group — and
+  `#1` is the first closed pair in that turn. Both halves and the corresponding
+  trajectory atom share the same label, so they can be matched at a glance;
+  hovering the marker also names the exact two LOG rows (e.g. `#031 ↔ #033`).
+  Clicking it selects and locates the other half, centering its row in both the
+  LOG and the trajectory; selecting one half outlines the other in violet in
+  both views. The marker clears the log search first, so a partner hidden by a
+  filter is still reachable.
 
 The inspector provides:
 
@@ -760,13 +762,15 @@ The summary displays:
 
 The lane map uses Input, Model, and Tools. The detailed list groups steps by turn and shows event type, summary, timestamp, duration, and status. Hovering a block — a list row or a lane slot — opens one shared card that reports the block's **type** (its category, e.g. `SYSTEM` / `MODEL` / `TOOL`), event name, tool (when present), closed-pair span (`PAIR`), own wall-time span (`DURATION`, an atom), or the total of its closed-pair spans (`PAIRS` for a turn), and its status.
 
+The card uses one three-step type scale (title / field value / field label) and separates fields by **colour**, not font size: `TYPE` violet, `EVENT` blue, tool name amber, the `PAIR` label violet (matching the row marker), duration by its heat tier, status by its own semantic colour. When the title already names the tool (a lane slot titled `Read`), the `EVENT` line does not repeat it.
+
 Durations use a stepped unit rule that picks the smallest honest unit: under 10s as `ms`, 10–60s as `s`, under a minute as `m`, under a day as `h`, and days as `d` (one number per tier, never compounded as `1m 4s`). The colour of a duration is a magnitude heat scale, not a status colour: <10s calm (completed green), <1m neutral, <10m warm (amber), and ≥10m red, so a slow step stands out at a glance. A row that is a closed pair shows only that one paired number (no near-identical wall-time alongside it); unpaired rows show their own wall-time instead.
 
 The trajectory header carries a **legend**: four dots on the left key the status markers to `complete/running/waiting/failed`, and a `duration` set on the right keys each colour to its interval (`<10s / <1m / <10m / ≥10m`), matching the badges on the rows exactly.
 
 Matching `PreToolUse` and `PostToolUse` or `PostToolUseFailure` events with the same `toolUseId` become one tool step. Expand a row to inspect paired input and output. A closed pair's start→result span is shown as the paired duration (`PAIR`) on the row and in the hover card; unpaired events have no span and are excluded from every total.
 
-Next to the paired duration sits the **pair-link marker**: a chain icon and a label such as `T2·P3CM`, identical on both LOG rows of that pair; the hover card's `PAIR` line carries the same label. `T2` is the pair's turn number, taken from its start event, and matches the enclosing `Loop Turn` group and the LOG's `TURN 02` separator — the marker is a turn locator as well as a pair id. `P3CM` derives from the start-event id, not a sequence number, so replaying or switching views never renumbers it (the turn prefix is only display context and can be renumbered by a shorter replay window; the token half never changes). One tool event projects into several atoms, so to avoid repeating the label across a whole turn the trajectory draws one marker per pair, on the aggregated tool step (`tool.call`); the other atoms keep their paired duration and still report the label on hover. Clicking the marker locates the other half (start ↔ result) and centres the matching row in the LOG and the trajectory together; selecting one half outlines the other in violet in both views.
+Next to the paired duration sits the **pair-link marker**: a chain icon and a readable label such as `T8·#1`, identical on both LOG rows of that pair; the hover card's `PAIR` line carries the same label. `T8` is the pair's turn, taken from its start event, matching the enclosing `Loop Turn` group and the LOG's `TURN 08` separator; `#1` is the first closed pair in that turn. Hovering the marker names the exact two LOG rows (e.g. `#031 ↔ #033`) — the direct answer to "which rows belong together". Ordinals are assigned for the current event window, so a shorter replay prefix can renumber them; identity and jumps always come from the event ids, and an invisible stable grouping key de-duplicates the trajectory markers. One tool event projects into several atoms, so to avoid repeating the label across a whole turn the trajectory draws one marker per pair, on the aggregated tool step (`tool.call`); the other atoms keep their paired duration and still report the label on hover. Clicking the marker locates the other half (start ↔ result) and centres the matching row in the LOG and the trajectory together; selecting one half outlines the other in violet in both views.
 
 ## 8. Replay
 

@@ -1519,26 +1519,33 @@ export function buildPairDurations(
   return durations;
 }
 
-/** One half of a closed pair: its partner, role, turn and shared label. */
+/** One half of a closed pair: its partner, role, turn and readable label. */
 export type TracePairLink = {
   /** The other half's event id — the jump target for the pair marker. */
   partnerId: string;
   /** Which half of the pair this event is. */
   role: "start" | "end";
-  /** Short stable token both halves display, derived from the start event id. */
+  /**
+   * Stable *internal* grouping key from the start event id. Not shown: a
+   * hash like `PFNJ` tells the reader nothing about which rows belong
+   * together. It still keys the trajectory's one-marker-per-pair pass.
+   */
   token: string;
   /** The turn this pair belongs to, from `buildTraceTurnIndex`. */
   turn: number;
-  /** `T<turn>·<token>`: the full label shared by LOG, trajectory and hover. */
+  /** 1-based position of this pair among the closed pairs of its turn. */
+  ordinal: number;
+  /** 1-based LOG sequence numbers of the two halves, for the tooltip. */
+  startIndex: number;
+  endIndex: number;
+  /** `T<turn>·#<ordinal>`: the readable label shared by LOG, trajectory, hover. */
   label: string;
 };
 
 /**
- * The token is derived from the pair's *start event id*, never from an
- * ordinal: LOG and the trajectory can be fed different event prefixes (replay
- * mode), and an ordinal would label the same pair differently in each view.
- * A compact FNV-1a hash keeps the marker short; identity still comes from
- * `partnerId`, so a hash collision can never misdirect a jump.
+ * An opaque grouping key derived from the start event id. It never decides a
+ * jump (`partnerId` does) and is never displayed, so a hash collision can only
+ * merge two trajectory markers, not misdirect the reader.
  */
 function pairToken(startEventId: string) {
   let hash = 0x811c9dc5;
@@ -1557,9 +1564,16 @@ function pairToken(startEventId: string) {
  * Marker identity of every *paired* flow entry, by event id. The pairing
  * source is the same `createFlowEntries` that backs `buildPairDurations`, so
  * a row has a marker exactly when it has a paired duration. Both halves point
- * at each other and carry the same token; the LOG and trajectory can therefore
- * show the same marker and jump straight to the other half. Unpaired events
+ * at each other and carry the same readable label, so the LOG and trajectory
+ * show one identifiable pair and can jump to its other half. Unpaired events
  * are simply absent.
+ *
+ * The label is `T<turn>·#<ordinal>` (turn 8, first closed pair of that turn).
+ * It is deliberately readable instead of an opaque hash: the reader can match
+ * the two halves at a glance. `startIndex` / `endIndex` are the 1-based LOG
+ * sequence numbers of the halves, so the tooltip can name the exact two rows
+ * (`#031 ↔ #033`). Both come from `stepIndex` / `endStepIndex` on the flow
+ * entry — the same indices the LOG prints — never from a second lookup.
  *
  * `turnByEventId` is required and comes from `buildTraceTurnIndex`, the single
  * turn-inference source. It is passed in (rather than recomputed here) because
@@ -1568,35 +1582,46 @@ function pairToken(startEventId: string) {
  * second inference and an import cycle. A required argument also stops a new
  * caller from silently stamping every pair `T1`. Both halves of a pair share
  * the *start* event's turn, so a marker always names the turn whose LOG
- * separator / trajectory group holds it.
+ * separator / trajectory group holds it. Replaying a shorter prefix can
+ * renumber the ordinals; identity and jumps still come from `partnerId`.
  */
 export function buildPairLinks(
   events: readonly TraceEvent[],
   turnByEventId: ReadonlyMap<string, number>,
 ): ReadonlyMap<string, TracePairLink> {
   const links = new Map<string, TracePairLink>();
-  for (const entry of createFlowEntries(events)) {
-    if (!entry.endEvent || entry.startEvent.id === entry.endEvent.id) {
+  // Number pairs in LOG order (not timestamp order), so `#1` in a marker is
+  // the first pair a reader meets in that turn.
+  const closed = createFlowEntries(events)
+    .filter((entry) => entry.endEvent !== null)
+    .sort((left, right) => left.stepIndex - right.stepIndex);
+  const ordinalByTurn = new Map<number, number>();
+  for (const entry of closed) {
+    const endEvent = entry.endEvent;
+    if (!endEvent || entry.startEvent.id === endEvent.id) {
       continue;
     }
     const token = pairToken(entry.startEvent.id);
     const turn = turnByEventId.get(entry.startEvent.id) ?? 1;
-    // The turn prefix is display context, not identity: the token stays the
-    // stable id, so replaying a different prefix never relabels the pair.
-    const label = `T${turn}·${token}`;
-    links.set(entry.startEvent.id, {
-      partnerId: entry.endEvent.id,
-      role: "start",
+    const ordinal = (ordinalByTurn.get(turn) ?? 0) + 1;
+    ordinalByTurn.set(turn, ordinal);
+    const shared = {
       token,
       turn,
-      label,
+      ordinal,
+      startIndex: entry.stepIndex + 1,
+      endIndex: (entry.endStepIndex ?? entry.stepIndex) + 1,
+      label: `T${turn}·#${ordinal}`,
+    };
+    links.set(entry.startEvent.id, {
+      ...shared,
+      partnerId: endEvent.id,
+      role: "start",
     });
-    links.set(entry.endEvent.id, {
+    links.set(endEvent.id, {
+      ...shared,
       partnerId: entry.startEvent.id,
       role: "end",
-      token,
-      turn,
-      label,
     });
   }
   return links;

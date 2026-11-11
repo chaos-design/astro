@@ -525,6 +525,11 @@ function getShortId(id: unknown) {
     : value;
 }
 
+/** The LOG's 1-based row number, shared by the row and the pair tooltip. */
+function formatLogSequence(index: number) {
+  return `#${String(index).padStart(3, "0")}`;
+}
+
 function buildLogEntries(events: TraceEvent[]) {
   const turnByEventId = buildTraceTurnIndex(events);
   // The paired duration map is the single place a LOG row learns how long a
@@ -2570,13 +2575,12 @@ const RunHistory = memo(function RunHistory({
 
 /**
  * The single marker shared by LOG rows and trajectory atoms. Both halves of a
- * closed pair carry the same token, so the rows read as one unit across the
- * two views; clicking jumps straight to the other half. The `T<n>` prefix is
- * the pair's turn, tying the marker to the LOG separator and the trajectory
- * group above it — a reader in the LOG can see which turn to look in without
- * scrolling the trajectory. Kept as a real button so keyboard users get the
- * same jump, and it stops propagation so the jump never doubles as a plain
- * row selection.
+ * closed pair carry the same readable label `T<turn>·#<ordinal>`, so the rows
+ * read as one unit across the two views; clicking jumps straight to the other
+ * half. The tooltip names the exact two LOG rows (`#031 ↔ #033`) — that is the
+ * "which rows are paired" answer a hash like `PFNJ` could never give. Kept as
+ * a real button so keyboard users get the same jump, and it stops propagation
+ * so the jump never doubles as a plain row selection.
  */
 function PairLinkMarker({
   link,
@@ -2587,12 +2591,15 @@ function PairLinkMarker({
 }) {
   const roleLabel = link.role === "start" ? "起始" : "结果";
   const targetLabel = link.role === "start" ? "结果" : "起始";
+  const pairHint = `第 ${link.turn} 轮第 ${link.ordinal} 对 · ${formatLogSequence(
+    link.startIndex,
+  )} ↔ ${formatLogSequence(link.endIndex)}`;
   return (
     <button
       type="button"
       className={`pair-link-marker is-${link.role}`}
-      title={`第 ${link.turn} 轮 · 成对${roleLabel} ${link.label} · 点击定位${targetLabel}事件`}
-      aria-label={`第 ${link.turn} 轮，成对${roleLabel} ${link.label}，定位${targetLabel}事件`}
+      title={`${pairHint} · 成对${roleLabel}，点击定位${targetLabel}事件`}
+      aria-label={`${pairHint}，成对${roleLabel}，定位${targetLabel}事件`}
       onClick={(clickEvent) => {
         clickEvent.stopPropagation();
         onLocate(link.partnerId);
@@ -2607,7 +2614,7 @@ function PairLinkMarker({
     >
       <Link2 aria-hidden="true" />
       <b className="pair-link-marker__turn">T{link.turn}</b>
-      <span>{link.token}</span>
+      <span className="pair-link-marker__ordinal">#{link.ordinal}</span>
     </button>
   );
 }
@@ -2654,7 +2661,7 @@ const AtomicLogRow = memo(function AtomicLogRow({
     [event.capturedAt],
   );
   const durationLabel = useMemo(
-    () => (pairDuration === null ? null : formatDuration(pairDuration)),
+    () => (pairDuration === null ? null : formatDurationMs(pairDuration)),
     [pairDuration],
   );
   return (
@@ -2678,9 +2685,7 @@ const AtomicLogRow = memo(function AtomicLogRow({
         }
       }}
     >
-      <span className="log-sequence">
-        #{String(index + 1).padStart(3, "0")}
-      </span>
+      <span className="log-sequence">{formatLogSequence(index + 1)}</span>
       <i className="phase-dot" />
       <strong>{getTraceEventKey(event)}</strong>
       <time dateTime={event.capturedAt} title={event.capturedAt}>
@@ -2694,8 +2699,10 @@ const AtomicLogRow = memo(function AtomicLogRow({
         </span>
         {durationLabel !== null ? (
           <span
-            className="atomic-log__duration"
-            title={`成对耗时 ${formatDuration(pairDuration as number)}`}
+            className={`atomic-log__duration heat-${durationHeatClass(
+              pairDuration as number,
+            )}`}
+            title={`成对耗时 ${durationLabel}`}
           >
             {durationLabel}
           </span>
@@ -3494,7 +3501,7 @@ function loopRowForTurn(turn: TrajectoryTurn): TrajectoryDisplayRow {
 type TrajectoryHoverDetails = {
   /** The atom's closed start→end span, `null` when it is not a closed pair. */
   pairDuration: number | null;
-  /** The row marker's full label (`T<turn>·<token>`), turn included. */
+  /** The row marker's readable label (`T<turn>·#<ordinal>`), turn included. */
   pairLabel?: string;
   /** Sum of the closed pair spans inside the block; a turn block only. */
   pairTotal?: number;
@@ -3518,32 +3525,46 @@ type TrajectoryHoverCard = {
 
 function TrajectoryDetailsCard({ details }: { details: TrajectoryHoverDetails }) {
   const pairShown = details.pairDuration !== null;
-  // The duration value carries its heat class so the number and its colour are
-  // one unit; the status line below keeps its own semantic colour so the two
-  // never read as the same thing.
+  // A lane slot's title is already the tool (`Read`), so repeating the same
+  // tool on the EVENT line reads as a second, unexplained field. Only show it
+  // when it adds information the title does not already carry.
+  const toolName =
+    details.toolName &&
+    details.toolName !== details.title &&
+    !details.title.includes(details.toolName)
+      ? details.toolName
+      : null;
+  // Every field uses one value size and one label size (see the card's CSS
+  // type scale); colour, not font size, tells the fields apart. The duration
+  // carries its heat class and the status keeps its own semantic colour, so
+  // "how long" and "how it ended" never read as the same thing.
   return (
     <div className="trajectory-hover__card">
       <strong>{details.title}</strong>
-      <span>{details.subtitle}</span>
+      <span className="trajectory-hover__subtitle">{details.subtitle}</span>
       {details.type ? (
-        <span>
+        <span className="trajectory-hover__field">
           <b className="trajectory-hover__label">TYPE</b> ·{" "}
-          {details.type}
+          <i className="trajectory-hover__value is-type">{details.type}</i>
         </span>
       ) : null}
       {details.eventName ? (
-        <span>
+        <span className="trajectory-hover__field">
           <b className="trajectory-hover__label">EVENT</b> ·{" "}
-          {details.eventName}
-          {details.toolName ? (
-            <i className="trajectory-hover__tool"> {details.toolName}</i>
+          <i className="trajectory-hover__value is-event">
+            {details.eventName}
+          </i>
+          {toolName ? (
+            <i className="trajectory-hover__tool"> {toolName}</i>
           ) : null}
         </span>
       ) : null}
       {pairShown ? (
-        <span>
+        <span className="trajectory-hover__field">
           <b className="trajectory-hover__label">PAIR</b> ·{" "}
-          {details.pairLabel ? `${details.pairLabel} · ` : null}
+          {details.pairLabel ? (
+            <i className="trajectory-hover__pair">{details.pairLabel} · </i>
+          ) : null}
           <i
             className={`trajectory-hover__duration heat-${durationHeatClass(
               details.pairDuration as number,
@@ -3554,7 +3575,7 @@ function TrajectoryDetailsCard({ details }: { details: TrajectoryHoverDetails })
         </span>
       ) : null}
       {details.duration !== undefined && !pairShown ? (
-        <span>
+        <span className="trajectory-hover__field">
           <b className="trajectory-hover__label">DURATION</b> ·{" "}
           <i
             className={`trajectory-hover__duration heat-${durationHeatClass(
@@ -3566,12 +3587,14 @@ function TrajectoryDetailsCard({ details }: { details: TrajectoryHoverDetails })
         </span>
       ) : null}
       {details.pairTotal !== undefined ? (
-        <span>
+        <span className="trajectory-hover__field">
           <b className="trajectory-hover__label">PAIRS</b> ·{" "}
-          {formatDurationMs(details.pairTotal)}
+          <i className="trajectory-hover__duration">
+            {formatDurationMs(details.pairTotal)}
+          </i>
         </span>
       ) : null}
-      <span>
+      <span className="trajectory-hover__field">
         <b className="trajectory-hover__label">STATUS</b> ·{" "}
         <i className={`trajectory-hover__status status-${details.status}`}>
           {details.status}
