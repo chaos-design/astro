@@ -149,6 +149,45 @@ defaults. Restart the profile after installation:
 dsh web
 ```
 
+#### Installing into a harness started from a source checkout
+
+A harness launched from a local source checkout (`pnpm start:web` inside
+`deepseek-harness`, or `node --import tsx/esm apps/cli/src/bin.ts web`) has no
+`dsh` on PATH. The `npx` fallback runs the *published* launcher, which is a
+different build and may write to a different `DSH_HOME` than the running
+service. In that setup, point `DSH_COMMAND` (or `--deepseek-command`) at a
+wrapper that launches the checkout:
+
+```sh
+#!/bin/sh
+exec node --import tsx/esm /path/to/deepseek-harness/apps/cli/src/bin.ts "$@"
+```
+
+Also confirm `--deepseek-profile` names the profile the service actually booted
+and `--dsh-home` matches its `DSH_HOME`.
+
+#### Verify the registration
+
+Copying the bundle to `~/.astrox` is not enough: dsh composes its plugin tree
+only from `dsh.profile.bundles` in the profile manifest. A `dsh plugin add`
+that exits 0 can still skip the bundle layer (for example when the launcher
+belongs to a different install). The installer therefore reads
+`$DSH_HOME/profiles/<profile>/package.json` afterwards and fails loudly if
+`dsh-astro-plugin` is missing from `dependencies` or `dsh.profile.bundles`,
+instead of reporting a misleading success.
+
+You can confirm the composed tree without booting the service:
+
+```bash
+dsh --profile web --dump-config | grep -A3 "dsh-astro-plugin"
+```
+
+The output must contain a `# == dsh-astro-plugin` layer with an `astro-trace`
+entry. Restart the profile afterwards — a long-running profile may print
+`restart required` on hot reload. If events are still missing, inspect
+`$DSH_HOME/logs/startup-*.log` for `astro-trace` and for `pending` / `failed`
+entries.
+
 Remove the bundle with:
 
 ```bash

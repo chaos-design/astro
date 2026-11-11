@@ -205,6 +205,13 @@ The DeepSeek Harness bundle consumes canonical Session events directly:
 and `turn/end` becomes `Stop` or `Interrupt`. Other Harness events are retained
 as `Notification`.
 
+The Harness stamps `data.turn` only on `turn/start`, `step/*`, tool calls, the
+message, and `turn/end`; the prompt and the inbox notifications inside the same
+turn carry no number. The adapter remembers the current turn per session and
+writes that `turnId` onto every event between `turn/start` and `turn/end`
+(cleared afterwards), so one turn reaches the trace file with a single turn ID
+and no reader has to infer it from a neighbour.
+
 ## 6. Identity and Correlation
 
 ### 6.1 Session isolation
@@ -228,6 +235,35 @@ A `PreToolUse` event pairs with `PostToolUse` or `PostToolUseFailure` through `t
 ### 6.4 Turns
 
 An explicit `turnId` takes precedence. When a producer has no turn ID, the trajectory model infers boundaries from prompts, stop events, and ordering. Inference affects presentation only and never rewrites raw events.
+
+Turn numbers come from one place, `buildTraceTurnIndex` in
+`src/lib/trajectory-model.ts`; the LOG grouping and the trajectory view read
+that same result:
+
+- A source that numbers its own turns keeps that number. DeepSeek Harness
+  writes `data.turn` as `turnId` (a string) and as `payload.turn` (a number);
+  both spellings are one turn, and a resumed session may legitimately start at
+  turn 5 — the console shows `TURN 05` rather than renumbering it to `TURN 01`.
+- An opaque identity (for example `turn_1`) takes the next ordinal in
+  first-seen order. A numeric identity that regresses (a restarted counter)
+  takes a new ordinal, so a later turn never reads lower than an earlier one.
+- Events without an identity stay in the executing turn, and a leading preamble
+  (session start, the prompt itself) joins the first turn it introduces instead
+  of opening an empty `TURN 01` group.
+- Hook sources with no identity at all still infer turns from prompts and
+  ordering, numbered from 1 inside each prompt run.
+- The switch to the identity path is "any event in the batch carries an
+  identity", not "most events do". A source that names even one turn is
+  authoritative for the whole batch: unnumbered events ride in the turn that
+  was executing, and a later `UserPromptSubmit` does not open a new turn. The
+  official adapters honour this (DeepSeek/Codex stamp every turn,
+  Claude/ZCode/Pi/WorkBuddy stamp none). A *partially*-stamped source — a
+  third-party HTTP collector or a future adapter that names only some turns —
+  is the documented exception: its unnumbered later prompts fold into the
+  previous turn rather than opening a new group, because identity presence
+  already marked the source authoritative. This is a contract, not a
+  heuristic, so a new adapter that stamps turns unevenly must either stamp
+  every turn or none.
 
 The console additionally derives a prompt run at every `UserPromptSubmit`.
 That run includes the prompt and all following events before the next prompt.

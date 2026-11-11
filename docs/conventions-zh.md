@@ -61,7 +61,15 @@
     复用 `createFlowEntries` 的配对）：仅对已闭合的成对事件（起始有结果
     收尾，如 `PreToolUse`→`PostToolUse`/`PostToolUseFailure`）给出开始→结果
     的时长，不成对的事件一律不计入；LOG 行、轨迹数据层（`pairDuration` /
-    `totalPairDuration`）与悬停区块卡片都从这一处取值。
+    `totalPairDuration`）与悬停区块卡片都从这一处取值；
+  - 轮次编号只在 `src/lib/trajectory-model.ts`（`buildTraceTurnIndex`）：来源
+    自带轮次标识时保留它印出的编号（DeepSeek 的 `data.turn` 可以从 5 开始），
+    仅有不透明标识时按首次出现给序号，无标识的事件跟随当前轮次，开头的前导
+    事件归入它引出的第一个轮次；LOG 分组、轨迹视图和轮次计数都读这一份结果，
+    不得另写一份轮次推断。切到身份模式的判定是「批内任一带轮次标识」而非
+    「多数带」：来源只要给过一条事件标了轮次，整批即视为权威，其后无编号
+    的 prompt 折进上一轮、不另开新分组（部分标识来源是契约而非启发式，详见
+    `docs/event-protocol-en.md` §6）。
   新增消费方必须复用这些函数，不得再写一份“失败事件名单”或“live 名单”。
 - 示例（Demo）数据只在 `data/demo-events.json`：服务通过 `server/demo-dataset.mjs`
   读取并由 `GET /api/demo-events` 提供，控制台只在 `src/lib/demo-events.ts` 解析。
@@ -76,7 +84,9 @@
   硬编码 `/api/...`，也不要让服务默认放开 `*`。
 - `public/` 下的资源一律经 `src/lib/asset-url.ts` 的 `assetUrl()` 取地址，不得写
   `/icons/...` 这类根路径：GitHub Pages 把页面挂在 `/astro/`，根路径会逃出项目
-  前缀并 404（智能体下拉的品牌图标踩过）。`scripts/verify-console-build.mjs` 在
+  前缀并 404（智能体下拉的品牌图标踩过）。该工具目前只被测试引用——最后一批
+  `public/` 资源（智能体品牌图标）已内联进 bundle——它仍是「若再添加 public
+  资源」的唯一定义。`scripts/verify-console-build.mjs` 在
   CI 里复查构建产物没有根路径资源，并确认产物只有控制台、没有混入文档站。
 - 事件流快照按 `hours` 窗口下发，并拆成 `reset`（元数据）+ 分批 `trace` + `ready`，
   不得恢复成一次 `JSON.stringify` 全量事件：单帧几百 MB 会阻塞事件循环，实时事件、
@@ -314,3 +324,4 @@ ASTRO_HOME=/tmp/astro-check ASTRO_PORT=4401 node server/server.mjs
 | 大历史首次加载主线程长任务明显 | 事件级判定里反复分配临时数组 | 模块级 `Set` + `getEventTimestamp` 缓存 |
 | 重启服务后列表还是旧的 | 保留了续传游标，服务端只回空 `resume` | 重启时清游标 + `forceSnapshot`，见 §10 |
 | 重启后状态先闪 `offline` | 把「等待下一个快照」当成断线 | 用 `restarting` / `reloading` 状态，见 §10 |
+| DeepSeek 插件「装好了」却没有任何 session 事件 | bundle 只被复制到 `ASTRO_HOME`，没有写进 profile 的 `dsh.profile.bundles`（`dsh plugin add` 退出 0 不代表成功，`npx` 回退常写入另一个构建的 `DSH_HOME`）；或多余的 `inject` 让 entry 一直 PENDING，`apply()` 从未执行 | 每次 add 后校验 `dependencies` + `bundles`，用 `--dump-config` 确认 `astro-trace`；事件订阅不声明服务依赖 |

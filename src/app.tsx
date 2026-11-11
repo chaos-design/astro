@@ -200,6 +200,7 @@ import {
   LOG_TURN_ESTIMATE,
   buildLogLayout,
   findVisibleRange,
+  includeTurnRow,
   resolveScrollTopForRow,
 } from "./lib/log-window";
 import {
@@ -2635,7 +2636,10 @@ const AtomicLog = memo(function AtomicLog({
     () => findVisibleRange(layout.offsets, viewport.top, viewport.height),
     [layout.offsets, viewport.height, viewport.top],
   );
-  const slice = layout.items.slice(range.start, range.end);
+  // Never mount a window that ends on a turn separator: its row would sit just
+  // outside the window and the chip would label an empty slot at the bottom.
+  const mountedRange = includeTurnRow(layout.items, range);
+  const slice = layout.items.slice(mountedRange.start, mountedRange.end);
 
   const syncScrollPosition = useCallback(() => {
     const list = listRef.current;
@@ -2868,11 +2872,15 @@ const AtomicLog = memo(function AtomicLog({
               >
                 {slice.map((item) => {
                   if (item.kind === "turn") {
+                    // Key by position, never by the turn value: two groups can
+                    // legitimately repeat a number (a source that restarts its
+                    // counter), and duplicate keys left React with orphaned
+                    // chips that survived the next agent switch.
                     return (
                       <div
                         className="atomic-log__turn"
                         aria-label={`Turn ${item.turn}`}
-                        key={`turn-${item.turn}`}
+                        key={`turn-${item.entryIndex}`}
                       >
                         <span>TURN {String(item.turn).padStart(2, "0")}</span>
                       </div>

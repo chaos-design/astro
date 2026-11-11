@@ -188,9 +188,20 @@ pnpm install-plugins -- --clients=deepseek --deepseek-profile=web
 ```
 
 The installer falls back to `npx --yes @deepseek-ai/dsh` when `dsh` is not on
-PATH. Use `--dsh-home` for a custom home and `--deepseek-command` for a custom
-executable. Restart `dsh web` after installation. Events are appended to
-`~/.astrox/deepseek/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl`.
+PATH. A harness started from a source checkout (`pnpm start:web`) has no global
+`dsh`; in that case point `DSH_COMMAND` at a wrapper that launches that
+checkout, so the fallback does not write to a different build's `DSH_HOME`.
+Use `--dsh-home` for a custom home and `--deepseek-command` for a custom
+executable.
+
+After the add command, the installer verifies
+`$DSH_HOME/profiles/<profile>/package.json`: `dsh-astro-plugin` must appear in
+both `dependencies` and `dsh.profile.bundles`, otherwise installation fails
+loudly — a zero exit code alone does not mean dsh mounted the layer. Confirm
+with `dsh --profile web --dump-config` that `astro-trace` is in the composed
+tree, then restart `dsh web`. If events are still missing, check the
+`astro-trace` entry state in `$DSH_HOME/logs/startup-*.log`. Events are
+appended to `~/.astrox/deepseek/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl`.
 
 #### 4.2.4 Trae
 
@@ -259,7 +270,7 @@ Deployment paths:
 | Path | How |
 | --- | --- |
 | Vercel | The repository's `vercel.json` is already wired: it builds the console and the docs site and merges them (docs at the root, the console at `/console/`). Import the repository — no extra settings. |
-| GitHub Actions | `.github/workflows/console-preview.yml` builds the console on push/PR and uploads a `console-dist` artifact; run "Deploy console preview to GitHub Pages" manually from the Actions tab to publish the **current branch's** build to GitHub Pages (no main merge required; the single shared Pages site is republished by the most recent dispatch) |
+| GitHub Actions | `.github/workflows/console-preview.yml` builds the console on push/PR and uploads a `console-dist` artifact; a push to `main`, `feat/**`, `feature/**`, `fix/**` or `hotfix/**` (prefix match) publishes that branch's build to GitHub Pages, so an in-flight branch gets a live preview URL. Run "Deploy console preview to GitHub Pages" manually for any other branch (the single shared site is replaced by the most recent trigger) |
 | Any static host | `pnpm build` produces `dist/` with relative asset URLs; serve it as-is. |
 
 A deployed page defaults to `http://127.0.0.1:5678`; pass `?api=<address>` to
@@ -536,7 +547,11 @@ The platform choice is stored in `ASTROX_PLATFORM`.
 The upper LOG area:
 
 - orders the newest event first;
-- groups rows by turn;
+- groups rows by turn; the number is the one the source reports (DeepSeek's
+  `data.turn` may start at 5 in a resumed session, and the pane says `TURN 05`),
+  otherwise it is inferred from prompts and ordering and restarts at 1 in each
+  prompt run — one separator per turn, never an oscillating number inside one
+  message;
 - searches any serialized field in the selected prompt run; matching follows
   the keystroke in the background (per-event serializations are cached, so
   typing stays smooth on long runs);

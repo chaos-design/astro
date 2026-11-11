@@ -6,6 +6,7 @@ import {
   LOG_TURN_ESTIMATE,
   buildLogLayout,
   findVisibleRange,
+  includeTurnRow,
   lowerBound,
   resolveScrollTopForRow,
 } from "../src/lib/log-window.ts";
@@ -39,6 +40,28 @@ test("layout handles an empty log", () => {
   const layout = buildLogLayout([], metrics);
   assert.deepEqual(layout.items, []);
   assert.equal(layout.total, 0);
+});
+
+test("turn separators keep a unique position even when a number repeats", () => {
+  // A source that restarts its counter can hand two groups the same number.
+  // The separator's React key comes from `entryIndex`, not from the value: a
+  // value-based key produced duplicate keys, and React left the stale chips in
+  // the DOM after the next agent switch.
+  const entries = [{ turn: 1 }, { turn: 1 }, { turn: 2 }, { turn: 1 }];
+  const layout = buildLogLayout(entries, metrics);
+
+  const keys = layout.items.map((item) => `${item.kind}-${item.entryIndex}`);
+  assert.equal(new Set(keys).size, layout.items.length);
+  assert.deepEqual(
+    layout.items
+      .filter((item) => item.kind === "turn")
+      .map((item) => [item.turn, item.entryIndex]),
+    [
+      [1, 0],
+      [2, 2],
+      [1, 3],
+    ],
+  );
 });
 
 test("lower bound finds the first offset at or above a value", () => {
@@ -109,6 +132,34 @@ test("scroll math only moves when the row is out of view", () => {
     }),
     null,
   );
+});
+
+test("a mounted window never ends on a turn separator", () => {
+  // The chip introduces the row below it; a window that stops on the chip
+  // paints a `TURN n` label over an empty slot at the bottom edge.
+  const items = [
+    { kind: "turn" as const },
+    { kind: "row" as const },
+    { kind: "row" as const },
+    { kind: "turn" as const },
+    { kind: "row" as const },
+  ];
+
+  assert.deepEqual(includeTurnRow(items, { start: 0, end: 4 }), {
+    start: 0,
+    end: 5,
+  });
+  // A window that already ends on a row is untouched.
+  assert.deepEqual(includeTurnRow(items, { start: 1, end: 3 }), {
+    start: 1,
+    end: 3,
+  });
+  // The end clamps to the list length when the separator is the last item.
+  const trailing = [...items, { kind: "turn" as const }];
+  assert.deepEqual(includeTurnRow(trailing, { start: 0, end: 6 }), {
+    start: 0,
+    end: 6,
+  });
 });
 
 test("fallback heights are usable before measurement", () => {

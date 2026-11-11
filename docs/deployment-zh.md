@@ -90,7 +90,7 @@ pnpm start        # 服务：127.0.0.1:5678，托管 dist/
   - Codex：`codex plugin add astro-codex-local`
   - Claude Code：`claude plugin add astro-claude-local`
   - WorkBuddy：`codebuddy plugin add astro-workbuddy-local`
-  - DeepSeek Harness：`dsh plugin add cordis --source ~/.astrox/plugins/astro`
+  - DeepSeek Harness：`dsh plugin --profile web add file:~/.astrox/plugins/astro/deepseek-plugin`（安装后用 `dsh --profile web --dump-config` 确认 `astro-trace` 已出现在配置树中）
 - **独立安装器**：ZCode（`pnpm install-zcode-plugin`）、OpenCode
   （`pnpm install-opencode-plugin`）、Pi（`pnpm install-pi-plugin`）。
 
@@ -157,13 +157,28 @@ astrox status|start|stop|restart|update|logs|doctor|path|open|info
 <https://chaos-design.github.io/astro/>，追加 `?demo=1` 即可用示例数据体验：
 
 - 每次 push/PR 到 `main`：构建控制台、跑 `verify-console-build` 校验（相对
-  资源、自带图标与示例数据集、无文档站标记），上传 `console-dist` 工件。
-- **Deploy 任务在 push 时自动发布**：推送到 `main`（正式发布）或工作流
-  `push` 清单里登记的滚动预览分支（如进行中的 feature 分支——合并前即可拿到
-  预览 URL；分支合并后把它从清单移除）都会把*该分支*的构建发布到**同一个**
-  Pages 站点，最近一次命中的构建胜出。
-- 手动 `workflow_dispatch` 从**任何分支**都能跑：用于重新发布已不在
-  push 清单里的分支（如合并后删掉的测试分支）。
+  资源、favicon 与示例数据集、无文档站标记），上传 `console-dist` 工件。
+- **Deploy 任务在 push 时自动发布**：推送到 `main`（正式发布）、`feat/**`、
+  `feature/**`、`fix/**` 或 `hotfix/**` 分支都会把*该分支*的构建发布到**同一个**
+  Pages 站点，最近一次命中的
+  构建胜出。分支过滤用前缀匹配（`feat/**`、`feature/**`、`fix/**`、`hotfix/**`），新建分支不需要改工作流，
+  每次提交都能在线上验证改动。
+- 「最近一次命中胜出」跨分支也成立，靠两层并发控制。workflow 级
+  `concurrency` 分组不按 ref（`console-preview-ci-<lane>`、`cancel-in-progress:
+  true`）：任何新触发的 push/手动运行都会取消**所有分支**上正在跑的
+  push/手动运行——CI 竞速，更慢的旧构建不再有机会反超更新的构建。PR 构建走
+  独立 lane（`-pr`），不参与这条竞速——否则开了 PR 的 feature 分支会失去
+  Pages 预览（PR 运行在 push 运行刚入队后入队、不发布，会把它取消掉）。
+  deploy 任务另加一层 job 级 `concurrency` 分组（`console-preview-pages`、
+  `cancel-in-progress: true`）：即使两个部署同时进队列也会串行，被取代的
+  立即取消，过期的构建不会覆盖更新一次的 Pages 页面。
+- 仓库设置里的 `github-pages` 环境也必须放行同样的前缀：Settings →
+  Environments → `github-pages` → Deployment branches and tags 添加 `feat/*`、
+  `feature/*`、`fix/*` 和
+  `hotfix/*`。只改工作流不够——环境策略在任务分配 runner 之前就会拒绝，日志表现
+  为「Branch is not allowed to deploy to github-pages」且没有任何步骤。
+- 手动 `workflow_dispatch` 从**任何分支**都能跑：用于重新发布前缀不匹配的分支
+  （如 `docs/**` 或已删除的测试分支）。
 
 约束：Pages 单站点只放**控制台**，不放文档站（两者互斥，workflow 注释与
 `verify-console-build` 都保证这一点）；文档站走自己的托管路径（Vercel 合并
