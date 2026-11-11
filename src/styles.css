@@ -5829,12 +5829,42 @@ pre,
   text-align: right;
 }
 
-.atomic-log__row strong {
+/* The name cell carries the atom TYPE badge plus the event key. Both keep the
+   row's one meta text size; colour separates the category from the key, not a
+   second font size (the LOG used to mix sizes and read as two kinds of data). */
+.atomic-log__row strong.atomic-log__name {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
   overflow: hidden;
   color: var(--text);
   font-size: var(--text-meta);
+  white-space: nowrap;
+}
+
+.atomic-log__row .atomic-log__key {
+  min-width: 0;
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* TYPE is resolved from the atom's key/kind by src/lib/atom-types.ts — the
+   very same label the trajectory badge and hover card print. Violet matches
+   the hover card's TYPE field; a hairline border and a small radius keep the
+   badge compact instead of the large duration pill. */
+.atomic-log__row .atomic-log__type {
+  flex: 0 0 auto;
+  padding: 0 4px;
+  border: 1px solid color-mix(in srgb, var(--violet) 45%, var(--line));
+  border-radius: 3px;
+  color: var(--violet);
+  background: color-mix(in srgb, var(--violet-deep) 12%, transparent);
+  font-family: var(--font-mono);
+  font-size: var(--text-overline);
+  font-weight: var(--weight-medium);
+  line-height: 1.5;
 }
 
 .atomic-log__row time {

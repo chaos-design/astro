@@ -72,6 +72,13 @@
     （轨迹每对只画一个标记），不显示给读者；行号随当前事件窗口变化，身份与跳转
     一律靠 `partnerId`；LOG 行与轨迹原子的标记、跨视图定位和高亮都从这一处取值，
     不得另写一份配对推断；
+  - 原子 `TYPE` 的定义只在 `src/lib/atom-types.ts`：`atomTypeLabel(key, kind)` 按
+    「原子 key 覆盖 → 归一化 kind 标签 → 原值回退」产出封闭的大写短标签；
+    `eventAtomType(event, platformId)` 取 `getAtomIdForEvent` 选出的主原子（与画布
+    定位同一映射）的 `key` 和经 `toAtomicDefinition` 归一化的 `kind`。LOG 行徽标、
+    轨迹行徽标、悬停卡片 `TYPE` 全部调用这一个函数，不得从 `eventName`、payload
+    或另写的分类表推导类型；查表按 `platformId` 做模块级缓存，长会话不逐行重建
+    原子定义。一条事件投影多个原子时，LOG 只显示主原子一个标签；
   - 轮次编号只在 `src/lib/trajectory-model.ts`（`buildTraceTurnIndex`）：来源
     自带轮次标识时保留它印出的编号（DeepSeek 的 `data.turn` 可以从 5 开始），
     仅有不透明标识时按首次出现给序号，无标识的事件跟随当前轮次，开头的前导

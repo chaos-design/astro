@@ -145,8 +145,6 @@ import {
   shouldShowDemo,
   storageKeys,
   themeOptions,
-  trajectoryKeyLabels,
-  trajectoryKindLabels,
   trajectoryLanes,
   type ActiveView,
   type HistoryRangeId,
@@ -222,6 +220,11 @@ import {
 } from "./lib/run-history-window";
 import { capChangeResumesSync, getSyncStopDelay } from "./lib/sync-budget";
 import { atomLevel, projectTraceEvents } from "./lib/atomic-projection";
+import {
+  atomTypeLabel,
+  eventAtomType,
+  type EventAtomType,
+} from "./lib/atom-types";
 import {
   buildTraceTurnIndex,
   buildTrajectoryMapSlots,
@@ -456,16 +459,6 @@ function durationHeatClass(milliseconds: number): DurationHeat {
 }
 
 /**
- * The category label a block shows as its "type": the atom-specific label
- * wins (a `prompt.input` is SYSTEM, not the broad input kind), then the kind
- * label, then the raw key. The same resolution the trajectory row badge uses,
- * so the hover card's TYPE reads exactly like the badge next to it.
- */
-function atomTypeLabel(key: string, kind: string) {
-  return trajectoryKeyLabels[key] ?? trajectoryKindLabels[kind] ?? kind;
-}
-
-/**
  * The trajectory legend: the status markers (what each dot colour means) and
  * the duration heat tiers (what each duration colour means). The user reported
  * the colour + marker codes as unclear, so the view carries this key — the
@@ -526,7 +519,7 @@ function getShortId(id: unknown) {
     : value;
 }
 
-function buildLogEntries(events: TraceEvent[]) {
+function buildLogEntries(events: TraceEvent[], platformId: string) {
   const turnByEventId = buildTraceTurnIndex(events);
   // The paired duration map is the single place a LOG row learns how long a
   // closed pair took; unpaired events get `null` and show no badge.
@@ -539,6 +532,9 @@ function buildLogEntries(events: TraceEvent[]) {
   return events.map((event, index) => ({
     event,
     index,
+    // The TYPE badge reads the primary atom's key/kind, the same atom data
+    // the trajectory badge and hover card use — never the event name.
+    atomType: eventAtomType(event, platformId),
     pairDuration: pairDurations.get(event.id) ?? null,
     pairLink: pairLinks.get(event.id) ?? null,
     turn: turnByEventId.get(event.id) ?? 1,
@@ -2625,6 +2621,7 @@ function PairLinkMarker({
  * `getEventSummary` additionally caches per event across re-mounts.
  */
 const AtomicLogRow = memo(function AtomicLogRow({
+  atomType,
   event,
   index,
   onLocatePartner,
@@ -2635,6 +2632,7 @@ const AtomicLogRow = memo(function AtomicLogRow({
   running,
   selected,
 }: {
+  atomType: EventAtomType | null;
   event: TraceEvent;
   index: number;
   onLocatePartner: (eventId: string) => void;
@@ -2683,7 +2681,17 @@ const AtomicLogRow = memo(function AtomicLogRow({
     >
       <span className="log-sequence">{formatLogSequence(index + 1)}</span>
       <i className="phase-dot" />
-      <strong>{getTraceEventKey(event)}</strong>
+      <strong className="atomic-log__name">
+        {atomType ? (
+          <span
+            className="atomic-log__type"
+            title={`原子类型 ${atomType.label} · ${atomType.key} / ${atomType.kind}`}
+          >
+            {atomType.label}
+          </span>
+        ) : null}
+        <span className="atomic-log__key">{getTraceEventKey(event)}</span>
+      </strong>
       <time dateTime={event.capturedAt} title={event.capturedAt}>
         <span>{dateLabel}</span>
         {clockLabel}
@@ -2710,6 +2718,7 @@ const AtomicLogRow = memo(function AtomicLogRow({
     </div>
   );
 }, (before, after) =>
+  before.atomType === after.atomType &&
   before.event === after.event &&
   before.index === after.index &&
   before.onLocatePartner === after.onLocatePartner &&
@@ -2726,6 +2735,7 @@ const AtomicLogRow = memo(function AtomicLogRow({
  */
 const AtomicLog = memo(function AtomicLog({
   events,
+  platformId,
   runningEventId,
   selectedEventId,
   locateRequest,
@@ -2737,6 +2747,7 @@ const AtomicLog = memo(function AtomicLog({
   live,
 }: {
   events: TraceEvent[];
+  platformId: string;
   runningEventId: string;
   selectedEventId: string;
   locateRequest: number;
@@ -2787,7 +2798,10 @@ const AtomicLog = memo(function AtomicLog({
   // Entries are built once per events change; the deferred needle only
   // re-runs the (cached-haystack) filter, so a keystroke never pays for
   // rebuilding every turn separator.
-  const entries = useMemo(() => buildLogEntries(events), [events]);
+  const entries = useMemo(
+    () => buildLogEntries(events, platformId),
+    [events, platformId],
+  );
   const visibleEntries = useMemo(() => {
     const needle = deferredQuery.trim().toLowerCase();
     const matched = needle
@@ -3058,10 +3072,11 @@ const AtomicLog = memo(function AtomicLog({
                       </div>
                     );
                   }
-                  const { event, index, pairDuration, pairLink } =
+                  const { atomType, event, index, pairDuration, pairLink } =
                     visibleEntries[item.index];
                   return (
                     <AtomicLogRow
+                      atomType={atomType}
                       event={event}
                       index={index}
                       key={event.id}
@@ -3414,9 +3429,7 @@ function TrajectoryRow({
         ) : null}
       </span>
       <span className={`trajectory-row__badge tone-${row.tone}`}>
-        {trajectoryKeyLabels[row.key] ??
-          trajectoryKindLabels[row.kind] ??
-          row.kind}
+        {atomTypeLabel(row.key, row.kind)}
       </span>
       <span className="trajectory-row__identity">
         <strong>{row.label}</strong>
@@ -7399,6 +7412,7 @@ export default function App() {
             <>
               <AtomicLog
                 events={activeEvents}
+                platformId={platformId}
                 runningEventId={
                   executingLive && pendingEvent ? pendingEvent.id : ""
                 }

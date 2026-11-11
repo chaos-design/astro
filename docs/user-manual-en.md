@@ -548,6 +548,18 @@ The platform choice is stored in `ASTROX_PLATFORM`.
 The upper LOG area:
 
 - orders the newest event first;
+- prints a violet `TYPE` badge before each event key (`SYSTEM` / `MODEL` /
+  `TOOL` / `MEMORY` / `RESPONSE` / `TRACE`, …). It is the **primary atom's type
+  data**: the atom's `key` and its projection-normalised `kind`, resolved into a
+  closed set of short labels. It is neither the event name nor a payload field;
+  the trajectory row badge and the hover card's `TYPE` read the same data, so
+  the three views agree. One LOG event projects into several atoms, so the row
+  shows just the primary one (`getAtomIdForEvent` — the same atom highlighted
+  in the canvas when the row is selected) instead of stacking labels. Hovering
+  the badge reports `atom type <label> · <key> / <kind>`; e.g. the
+  `tool.result` atom belongs to the `context` kind, so it reads `MEMORY`, not
+  `TOOL` — TYPE is the atom's responsibility category, not a tool or event
+  name;
 - groups rows by turn; the number is the one the source reports (DeepSeek's
   `data.turn` may start at 5 in a resumed session, and the pane says `TURN 05`),
   otherwise it is inferred from prompts and ordering and restarts at 1 in each
@@ -764,7 +776,7 @@ The summary displays:
 - completed count;
 - failed count.
 
-The lane map uses Input, Model, and Tools. The detailed list groups steps by turn and shows event type, summary, timestamp, duration, and status. Hovering a block — a list row or a lane slot — opens one shared card that reports the block's **type** (its category, e.g. `SYSTEM` / `MODEL` / `TOOL`), event name, tool (when present), closed-pair span (`PAIR`), own wall-time span (`DURATION`, an atom), or the total of its closed-pair spans (`PAIRS` for a turn), and its status.
+The lane map uses Input, Model, and Tools. The detailed list groups steps by turn and shows event type, summary, timestamp, duration, and status. Hovering a block — a list row or a lane slot — opens one shared card that reports the block's **type** (its category, e.g. `SYSTEM` / `MODEL` / `TOOL`), event name, tool (when present), closed-pair span (`PAIR`), own wall-time span (`DURATION`, an atom), or the total of its closed-pair spans (`PAIRS` for a turn), and its status. The `TYPE` badge in front of a LOG event key comes from the same `atomTypeLabel` source and uses the same violet.
 
 The card uses one three-step type scale (title / field value / field label) and separates fields by **colour**, not font size: `TYPE` violet, `EVENT` blue, tool name amber, the `PAIR` label violet (matching the row marker), duration by its heat tier, status by its own semantic colour. When the title already names the tool (a lane slot titled `Read`), the `EVENT` line does not repeat it.
 

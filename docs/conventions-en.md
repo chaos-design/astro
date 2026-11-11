@@ -88,6 +88,18 @@
     `partnerId`. LOG rows, trajectory atoms, cross-view location and the
     highlight all read this one source — do not grow a second pairing
     inference;
+  - the atom `TYPE` definition lives only in `src/lib/atom-types.ts`:
+    `atomTypeLabel(key, kind)` resolves a closed set of short uppercase labels
+    (atom-key override → normalised kind label → raw kind fallback), and
+    `eventAtomType(event, platformId)` reads the `key` and the
+    `toAtomicDefinition`-normalised `kind` of the primary atom chosen by
+    `getAtomIdForEvent` (the same mapping that locates the atom in the canvas).
+    The LOG row badge, the trajectory row badge and the hover card's `TYPE`
+    all call this one function — never derive a type from `eventName`, a
+    payload field or a second classification table. Lookups are cached per
+    `platformId` at module level so a long run does not rebuild the atom
+    definitions per row; when one event projects into several atoms, the LOG
+    prints only the primary atom's label;
   - turn numbering lives only in `src/lib/trajectory-model.ts`
     (`buildTraceTurnIndex`): a source that numbers its own turns keeps that
     number (DeepSeek's `data.turn` can start at 5), an opaque identity gets the
