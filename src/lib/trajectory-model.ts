@@ -33,7 +33,7 @@ export type TrajectoryAtom = {
   /**
    * The marker for the closed pair this atom belongs to, `null` when the event
    * has no partner. Sourced from `buildPairLinks`; both halves carry the same
-   * token so the LOG and trajectory can mark the rows as one unit and jump
+   * `pairId` so the LOG and trajectory can mark the rows as one unit and jump
    * between them.
    */
   pairLink: TracePairLink | null;
@@ -50,7 +50,15 @@ export type TrajectoryTurn = {
   duration: number;
   event: TraceEvent;
   occurredAt: string;
-  /** Sum of the closed-pair spans in this turn (unpaired events excluded). */
+  /**
+   * Number of closed pairs whose start event belongs to this turn. One tool
+   * call projects into several atoms, so the atom count is not the pair count.
+   */
+  pairCount: number;
+  /**
+   * Sum of the closed-pair spans in this turn (unpaired events excluded).
+   * Each pair contributes once, however many atoms it projects into.
+   */
   totalPairDuration: number;
   status: TrajectoryAtom["status"];
   summary: string;
@@ -465,9 +473,22 @@ export function buildTrajectoryModel(
       const hasWaiting = turnAtoms.some((atom) => atom.status === "waiting");
       const hasRunning = turnAtoms.some((atom) => atom.status === "running");
       // Only closed pairs contribute; an open tool call or a lone reasoning
-      // atom has no span to add and is excluded from the total.
-      const totalPairDuration = turnAtoms.reduce(
-        (total, atom) => total + (atom.pairDuration ?? 0),
+      // atom has no span to add and is excluded from the total. One closed
+      // pair projects into several atoms (and both halves carry the same
+      // span), so group by pair identity before summing — a plain atom sum
+      // multiplied every pair by its atom count. `pairLink.turn` is the start
+      // event's turn, so a pair is counted in exactly one turn even when its
+      // result lands in a later one.
+      const pairDurationsByPair = new Map<string, number>();
+      for (const atom of turnAtoms) {
+        const link = atom.pairLink;
+        if (!link || link.turn !== turn || atom.pairDuration === null) {
+          continue;
+        }
+        pairDurationsByPair.set(link.pairId, atom.pairDuration);
+      }
+      const totalPairDuration = [...pairDurationsByPair.values()].reduce(
+        (total, duration) => total + duration,
         0,
       );
       return {
@@ -486,6 +507,7 @@ export function buildTrajectoryModel(
               ? "running"
               : "complete",
         summary: last.summary,
+        pairCount: pairDurationsByPair.size,
         totalPairDuration,
         turn,
       };

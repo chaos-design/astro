@@ -70,9 +70,11 @@
     (`buildPairDurations`, reusing `createFlowEntries` pairing): a span is
     reported only for a *closed* pair (a start event with a matching result,
     e.g. `PreToolUse` → `PostToolUse`/`PostToolUseFailure`); unpaired events
-    are never counted. The LOG row, the trajectory data layer
-    (`pairDuration` / `totalPairDuration`), and the hover block card all read
-    from this single source;
+    are never counted, and a turn's `totalPairDuration` sums each unique pair
+    once even though both halves and every projected atom carry the same span.
+    The LOG row, the trajectory data layer (`pairDuration` /
+    `totalPairDuration`), and the hover block card all read from this single
+    source;
   - the pair-link marker's identity also lives only in
     `src/lib/trace-model.ts` (`buildPairLinks`, reusing the same
     `createFlowEntries` pairing): the two halves point at each other's event
@@ -81,13 +83,13 @@
     come from the flow entry's `stepIndex` / `endStepIndex`, i.e. the numbers
     the LOG prints — a `#027` ↔ `#029` pair reads `T7·#029` / `T7·#027`).
     `rows` spells out `#027 ↔ #029` for the tooltip and hover card, while
-    `ordinal` is tooltip-only context and is never printed on the marker. The
-    hash `token` derived from the start id is an *internal* grouping key (one
-    trajectory marker per pair) and is never displayed; row numbers shift with
-    the current event window, so identity and jumps always rely on
-    `partnerId`. LOG rows, trajectory atoms, cross-view location and the
-    highlight all read this one source — do not grow a second pairing
-    inference;
+    `ordinal` is tooltip-only context and is never printed on the marker.
+    `pairId` (the start event id) is an *internal* grouping key (one trajectory
+    marker per pair, one contribution to a turn's total) and is never
+    displayed; row numbers shift with the current event window, so jumps
+    always rely on `partnerId`. LOG rows, trajectory atoms, cross-view
+    location and the highlight all read this one source — do not grow a
+    second pairing inference;
   - the atom `TYPE` definition lives only in `src/lib/atom-types.ts`:
     `atomTypeLabel(key, kind)` resolves a closed set of short uppercase labels
     (atom-key override → normalised kind label → raw kind fallback), and

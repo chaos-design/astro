@@ -525,7 +525,7 @@ function buildLogEntries(events: TraceEvent[], platformId: string) {
   // closed pair took; unpaired events get `null` and show no badge.
   const pairDurations = buildPairDurations(events);
   // Same pairing truth, for the marker: both halves of a pair carry a shared
-  // token and each other's id, so a click can locate the other half. `T<n>`
+  // pairId and each other's id, so a click can locate the other half. `T<n>`
   // names the LOG separator above the row and `#<row>` names the partner's
   // LOG row — both come from the same indices this row is printed with.
   const pairLinks = buildPairLinks(events, turnByEventId);
@@ -2612,6 +2612,36 @@ function PairLinkMarker({
 }
 
 /**
+ * `buildLogEntries` rebuilds every pair link when a streamed batch appends an
+ * event, so the row memo cannot compare links by identity. Compare the fields
+ * the row and its tooltip render instead: a batch that leaves a pair unchanged
+ * then leaves both of its rows memoized.
+ */
+function isSamePairLink(
+  before: TracePairLink | null,
+  after: TracePairLink | null,
+) {
+  if (before === after) {
+    return true;
+  }
+  if (!before || !after) {
+    return false;
+  }
+  return (
+    before.pairId === after.pairId &&
+    before.partnerId === after.partnerId &&
+    before.role === after.role &&
+    before.turn === after.turn &&
+    before.ordinal === after.ordinal &&
+    before.startIndex === after.startIndex &&
+    before.endIndex === after.endIndex &&
+    before.partnerIndex === after.partnerIndex &&
+    before.label === after.label &&
+    before.rows === after.rows
+  );
+}
+
+/**
  * One virtualized log row. Memoized on (event, index, selected, running): a
  * streaming batch, a selection change, or a running-marker move then only
  * re-renders the rows whose own state moved instead of re-reconciling every
@@ -2723,7 +2753,7 @@ const AtomicLogRow = memo(function AtomicLogRow({
   before.index === after.index &&
   before.onLocatePartner === after.onLocatePartner &&
   before.pairDuration === after.pairDuration &&
-  before.pairLink === after.pairLink &&
+  isSamePairLink(before.pairLink, after.pairLink) &&
   before.partnerSelected === after.partnerSelected &&
   before.running === after.running &&
   before.selected === after.selected,
@@ -3854,11 +3884,6 @@ const TrajectoryView = memo(function TrajectoryView({
     [closeHoverCard],
   );
 
-  // A changed set of blocks invalidates the card anchored to one of them.
-  useEffect(() => {
-    closeHoverCard();
-  }, [closeHoverCard, model]);
-
   // The two kinds of block each carry their closed-pair statistics: an atom
   // block shows its own pair span, a turn block shows the sum of the pair
   // spans inside it.
@@ -3883,7 +3908,9 @@ const TrajectoryView = memo(function TrajectoryView({
   const turnHoverDetails = useCallback(
     (turn: TrajectoryTurn): TrajectoryHoverDetails => ({
       pairDuration: null,
-      pairTotal: turn.totalPairDuration,
+      // A turn with no closed pair omits PAIRS entirely; a pair that really
+      // spans 0ms still prints `0ms`.
+      pairTotal: turn.pairCount > 0 ? turn.totalPairDuration : undefined,
       status: turn.status,
       subtitle: `turn ${turn.turn} · ${turn.atoms.length} atoms`,
       title: "Loop Turn",
@@ -3925,27 +3952,27 @@ const TrajectoryView = memo(function TrajectoryView({
   );
   /**
    * A single tool event fans out into several atoms (a `PreToolUse` projects
-   * five, its `PostToolUse` six). Stamping the shared pair token on every one
-   * of them would print the same marker half a dozen times for one tool call.
+   * five, its `PostToolUse` six). Stamping the shared pair id on every one of
+   * them would print the same marker half a dozen times for one tool call.
    * Exactly one atom owns the marker: the aggregated `tool.call` step that
    * spans start→result, or the first atom of the pair when a platform has no
    * such step. The data (pairLink) stays on every atom, so the hover card can
    * still identify the pair from any atom.
    */
   const pairMarkerOwnerIds = useMemo(() => {
-    const byToken = new Map<string, { id: string; isToolStep: boolean }>();
+    const byPair = new Map<string, { id: string; isToolStep: boolean }>();
     for (const atom of allAtoms) {
       if (!atom.pairLink) {
         continue;
       }
-      const token = atom.pairLink.token;
+      const pairId = atom.pairLink.pairId;
       const isToolStep = atom.key === "tool.call";
-      const owner = byToken.get(token);
+      const owner = byPair.get(pairId);
       if (!owner || (isToolStep && !owner.isToolStep)) {
-        byToken.set(token, { id: atom.id, isToolStep });
+        byPair.set(pairId, { id: atom.id, isToolStep });
       }
     }
-    return new Set([...byToken.values()].map((entry) => entry.id));
+    return new Set([...byPair.values()].map((entry) => entry.id));
   }, [allAtoms]);
   const selectedTrajectoryAtom = useMemo(
     () =>
@@ -4024,6 +4051,36 @@ const TrajectoryView = memo(function TrajectoryView({
     () => buildTrajectoryMapSlots(nodes, TRAJECTORY_MAP_MAX_SLOTS),
     [nodes],
   );
+  // A card anchored to a block stays open while that block is still rendered.
+  // The model is rebuilt on every streamed batch, so keying this off `model`
+  // identity closed the card on every event while the pointer sat still (a
+  // pointerenter does not fire again by itself). Only a block that disappears
+  // — a collapsed turn, an atom that leaves the window, a re-bucketed slot —
+  // invalidates its card; a live batch that appends atoms leaves it open.
+  useEffect(() => {
+    if (!hoverCard) {
+      return;
+    }
+    const rendered = new Set<string>();
+    for (const turn of model.turns) {
+      rendered.add(`turn-${turn.turn}`);
+      if (!expandedTurns.has(turn.turn)) {
+        continue;
+      }
+      for (const atom of turn.atoms) {
+        rendered.add(atom.id);
+      }
+    }
+    for (const atom of model.context) {
+      rendered.add(atom.id);
+    }
+    for (const slot of mapSlots) {
+      rendered.add(`slot-${slot.key}`);
+    }
+    if (!rendered.has(hoverCard.key)) {
+      closeHoverCard();
+    }
+  }, [closeHoverCard, expandedTurns, hoverCard, mapSlots, model]);
   // Width comes from the *busiest* lane: every slot then has room for at least
   // TRAJECTORY_MIN_SLOT_PX and the track scrolls instead of compressing.
   const maxLaneSlotCount = useMemo(() => {

@@ -1535,11 +1535,12 @@ export type TracePairLink = {
   /** Which half of the pair this event is. */
   role: "start" | "end";
   /**
-   * Stable *internal* grouping key from the start event id. Not shown: a
-   * hash like `PFNJ` tells the reader nothing about which rows belong
-   * together. It still keys the trajectory's one-marker-per-pair pass.
+   * The pair's shared identity: its start event id. Internal and never
+   * displayed; it groups both halves for the trajectory's
+   * one-marker-per-pair pass and a turn's closed-pair total, without a hash
+   * that could collide.
    */
-  token: string;
+  pairId: string;
   /** The turn this pair belongs to, from `buildTraceTurnIndex`. */
   turn: number;
   /** 1-based position of this pair among the closed pairs of its turn. */
@@ -1564,24 +1565,6 @@ export type TracePairLink = {
 };
 
 /**
- * An opaque grouping key derived from the start event id. It never decides a
- * jump (`partnerId` does) and is never displayed, so a hash collision can only
- * merge two trajectory markers, not misdirect the reader.
- */
-function pairToken(startEventId: string) {
-  let hash = 0x811c9dc5;
-  for (let index = 0; index < startEventId.length; index += 1) {
-    hash ^= startEventId.charCodeAt(index);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return `P${(hash >>> 0)
-    .toString(36)
-    .slice(-3)
-    .toUpperCase()
-    .padStart(3, "0")}`;
-}
-
-/**
  * Marker identity of every *paired* flow entry, by event id. The pairing
  * source is the same `createFlowEntries` that backs `buildPairDurations`, so
  * a row has a marker exactly when it has a paired duration. Both halves point
@@ -1590,8 +1573,9 @@ function pairToken(startEventId: string) {
  *
  * The visible label is `T<turn>·#<partner row>`: on LOG row `#029` it reads
  * `T7·#027`, i.e. turn 7 and the exact LOG row number of its partner. The two
- * halves cross-reference instead of repeating one opaque pair id, which is
- * the direct answer to "which event is this paired with". `rows`
+ * halves cross-reference instead of repeating one opaque pair identity, which
+ * is the direct answer to "which event is this paired with". `pairId` (the
+ * start event id) groups the two halves internally. `rows`
  * (`#027 ↔ #029`) names both halves for the tooltip and the hover card. Every
  * number comes from `stepIndex` / `endStepIndex` on the flow entry — the very
  * indices the LOG prints — never from a second lookup. `ordinal` is retained
@@ -1624,7 +1608,7 @@ export function buildPairLinks(
     if (!endEvent || entry.startEvent.id === endEvent.id) {
       continue;
     }
-    const token = pairToken(entry.startEvent.id);
+    const pairId = entry.startEvent.id;
     const turn = turnByEventId.get(entry.startEvent.id) ?? 1;
     const ordinal = (ordinalByTurn.get(turn) ?? 0) + 1;
     ordinalByTurn.set(turn, ordinal);
@@ -1633,7 +1617,7 @@ export function buildPairLinks(
     // The marker names the *other* half's LOG row, so from either row the
     // reader sees exactly where to look (and where a click will jump).
     const shared = {
-      token,
+      pairId,
       turn,
       ordinal,
       startIndex,

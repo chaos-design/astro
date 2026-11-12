@@ -739,7 +739,7 @@ test("labels each pair half with the other half's LOG row number", () => {
   // (and where a click will jump). `rows` names both halves for the tooltip
   // and hover card; the ordinal is display context only, never the chip.
   const shared = {
-    token: endLink.token,
+    pairId: endLink.pairId,
     turn: pairTurn,
     ordinal: startLink.ordinal,
     startIndex,
@@ -760,7 +760,10 @@ test("labels each pair half with the other half's LOG row number", () => {
     partnerIndex: startIndex,
     label: `T${pairTurn}·${startRow}`,
   });
-  assert.match(startLink.token, /^P[0-9A-Z]{3}$/);
+  // The pair's internal identity is the start event id itself: no hash to
+  // collide, and both halves share it.
+  assert.equal(startLink.pairId, start.id);
+  assert.equal(endLink.pairId, start.id);
   assert.match(startLink.label, /^T\d+·#\d+$/);
   assert.equal(startLink.ordinal, 1);
   assert.ok(startIndex < endIndex);
@@ -811,7 +814,8 @@ test("labels each pair half with the other half's LOG row number", () => {
     prefix,
     buildTraceTurnIndex(prefix),
   ).get(start.id)!;
-  assert.equal(prefixLink.token, startLink.token);
+  assert.equal(prefixLink.pairId, startLink.pairId);
+  assert.equal(prefixLink.pairId, start.id);
   assert.equal(prefixLink.partnerId, end.id);
   assert.equal(prefixLink.partnerIndex, endIndex);
   assert.equal(

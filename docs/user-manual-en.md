@@ -780,7 +780,7 @@ The lane map uses Input, Model, and Tools. The detailed list groups steps by tur
 
 The card uses one three-step type scale (title / field value / field label) and separates fields by **colour**, not font size: `TYPE` violet, `EVENT` blue, tool name amber, the `PAIR` label violet (matching the row marker), duration by its heat tier, status by its own semantic colour. When the title already names the tool (a lane slot titled `Read`), the `EVENT` line does not repeat it.
 
-Durations use a stepped unit rule that picks the smallest honest unit: under 10s as `ms`, 10–60s as `s`, under a minute as `m`, under a day as `h`, and days as `d` (one number per tier, never compounded as `1m 4s`). The colour of a duration is a magnitude heat scale, not a status colour: <10s calm (completed green), <1m neutral, <10m warm (amber), and ≥10m red, so a slow step stands out at a glance. A row that is a closed pair shows only that one paired number (no near-identical wall-time alongside it); unpaired rows show their own wall-time instead.
+Durations use a stepped unit rule that picks the smallest honest unit: under 10s as `ms`, 10–60s as `s`, under an hour as `m`, under a day as `h`, and days as `d` (one number per tier, never compounded as `1m 4s`). The colour of a duration is a magnitude heat scale, not a status colour: <10s calm (completed green), <1m neutral, <10m warm (amber), and ≥10m red, so a slow step stands out at a glance. A row that is a closed pair shows only that one paired number (no near-identical wall-time alongside it); unpaired rows show their own wall-time instead.
 
 The trajectory header carries a **legend**: four dots on the left key the status markers to `complete/running/waiting/failed`, and a `duration` set on the right keys each colour to its interval (`<10s / <1m / <10m / ≥10m`), matching the badges on the rows exactly.
 
@@ -1399,7 +1399,7 @@ pnpm build
 pnpm build:native-plugins
 ```
 
-The current automated suite contains 521 tests across the event model, hooks,
+The current automated suite contains 527 tests across the event model, hooks,
 continuous turns, SSE reconnects, storage, migration, projection, routing,
 preference persistence, environment boundaries, and Vite proxy configuration.
 

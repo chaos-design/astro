@@ -67,9 +67,11 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   Paired-event duration (the start→result span of a closed pair, e.g.
   `PreToolUse` → `PostToolUse`/`PostToolUseFailure`) lives only in
   `src/lib/trace-model.ts` (`buildPairDurations`, reusing `createFlowEntries`
-  pairing); unpaired events are never counted. The LOG row, the trajectory
-  data layer (`pairDuration` / `totalPairDuration`), and the hover block card
-  all read from this one source.
+  pairing); unpaired events are never counted, and a turn's
+  `totalPairDuration` counts each closed pair once even though both halves and
+  every projected atom carry the same span. The LOG row, the trajectory data
+  layer (`pairDuration` / `totalPairDuration`), and the hover block card all
+  read from this one source.
   Turn numbering lives only in `src/lib/trajectory-model.ts`
   (`buildTraceTurnIndex`): a numbered source keeps its own number (DeepSeek's
   `data.turn` can start at 5), an opaque identity takes the next ordinal,
