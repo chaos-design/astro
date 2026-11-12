@@ -1852,44 +1852,6 @@
               "a": "Step 1 语义映射。它在最前面却依赖对协议的理解，一旦偏差后面全要改。降低返工的办法是把映射抽成纯函数加表驱动测试（如 <code>mapping.ts</code>），使修正只发生在一个文件里，并先用真实样本校准映射表。"
             }
           ]
-        },
-        {
-          "id": "33",
-          "module": "前端领域建模",
-          "difficulty": 5,
-          "tags": ["单一真相源", "派生一致性", "未配对边界"],
-          "question": "ASTRO 把「成对事件的耗时」抽成 <code>buildPairDurations()</code> 这一个函数，让 LOG 行徽章、轨迹数据层与悬停卡三处消费。为什么必须是「单一真相源 + 复用 <code>createFlowEntries</code> 的配对」，而不是各视图自己算 start→result？「未闭合的成对事件」应如何处理？marker 为什么显示<b>对方</b>的 LOG 行号而不是 pair 序号？",
-          "focus": ["单一真相源", "派生一致性", "未配对边界"],
-          "thinking": [
-            "先列出三个消费方：LOG 行的成对耗时徽章、轨迹数据层的 <code>pairDuration</code>/<code>totalPairDuration</code>、悬停卡的 PAIR / PAIRS。若各自算一遍，同一对事件会算出三个略有差异的数，界面自相矛盾。",
-            "再问「配对逻辑该归谁」：配对（哪条 start 配哪条 result）本就在 <code>createFlowEntries</code> 里完成（<code>buildFlow</code> 也用它）。复用它，耗时口径就天然和拓扑里的「同一对」一致。",
-            "最后是边界：只有 start 没 result（还在跑）、只有 result 没 start（历史截断）、孤立的 <code>Reasoning</code>，都<b>不</b>该有耗时。"
-          ],
-          "answer": [
-            "<b>单一真相源</b>：<code>buildPairDurations(events)</code> 遍历 <code>createFlowEntries(events)</code>（与 <code>buildFlow</code> 同一份配对结果），对每个 <code>entry.endEvent</code> 非空的条目算 <code>max(0, ts(end) - ts(start))</code>，并把这个 span 同时写到 <b>起始和结果两个 id</b> 上——这样一对里任意一半的 LOG 行都能取到同一耗时。",
-            "<b>三处同取</b>：LOG 行读 <code>buildPairDurations</code>；轨迹原子读 <code>pairDuration</code>、轨迹轮次读 <code>totalPairDuration</code>；悬停卡读 atom 上的 <code>pairDuration</code> 与轮次上的 <code>pairTotal</code>。新增任何消费方都必须调这个函数，不许再写第二份 start→result 计算（这是 AGENTS.md 的「唯一定义」约定）。",
-            "<b>未配对一律不计</b>：<code>entry.endEvent</code> 为 null 时直接 <code>continue</code>。孤立的 <code>Reasoning</code>、只有 <code>PreToolUse</code> 没有结果的调用、只有结果没有调用的片段，耗时都是 <code>null</code>，界面不渲染徽章——「没有闭合就没有耗时」是不可谈判的边界。",
-            "<b>marker 显示对方行号</b>：<code>buildPairLinks()</code> 给每对生成 <code>label = T&lt;turn&gt;·#&lt;对方 LOG 行号&gt;</code>，两半交叉指向（<code>#027</code> 上显示 <code>T7·#029</code>，<code>#029</code> 上显示 <code>T7·#027</code>）。理由是用户问「这条和谁成对」的答案本身就是「看第 029 行」，直接印出对方行号比一个抽象 pair 序号更可读；点击则跳 <code>partnerId</code>。",
-            "<b>turn 号由外部传入</b>：<code>buildPairLinks(events, turnByEventId)</code> 把轮次号作为必选参数传进（来自 <code>buildTraceTurnIndex</code>），不在此层重算——既避免二次轮次推断，也避免 trace-model 反向 import trajectory-model 造成环；必选参数还挡住新调用方悄悄把每对都写成 T1。"
-          ],
-          "code": {
-            "lang": "ts",
-            "text": "export function buildPairDurations(events: readonly TraceEvent[]): ReadonlyMap<string, number> {\n  const durations = new Map<string, number>();\n  for (const entry of createFlowEntries(events)) {\n    if (!entry.endEvent) continue; // unpaired: no closed span, never counted\n    const duration = Math.max(0, getEventTimestamp(entry.endEvent) - getEventTimestamp(entry.startEvent));\n    durations.set(entry.startEvent.id, duration); // both halves share one span\n    durations.set(entry.endEvent.id, duration);\n  }\n  return durations;\n}"
-          },
-          "followups": [
-            {
-              "q": "为什么 totalPairDuration 不能直接对 atom.pairDuration 求和？",
-              "a": "一个成对事件会投影成多个原子（起始、结果，甚至推断出的中间原子），它们都携带<b>同一个</b> start→result span。若按原子求和，同一对会被重复累加。正确做法是按 <code>pairId</code>（起始事件 id）分组、每组只计一次——<code>totalPairDuration</code> 因此等于「该轮所有闭合成对的跨度之和」，与原子数量无关。"
-            },
-            {
-              "q": "成对耗时和整轮墙钟时长的关系？",
-              "a": "成对耗时是「一次工具调用从发出到拿到结果」的局部跨度；整轮时长是 <code>UserPromptSubmit</code>→<code>Stop</code> 的墙钟。所有成对耗时之和 ≤ 墙钟，差值是等待、空闲与未闭合调用的部分——所以 hover 卡同时给 PAIR（单对）与 PAIRS（该轮闭合对之和），再配 DURATION（墙钟）三者互不替代。"
-            },
-            {
-              "q": "热力色（heat-）在这里的作用？",
-              "a": "徽标颜色不是状态色而是「速度热标」：<code>formatDurationMs</code> 按 ms/s/m/h/d 阶梯出可读数字，<code>heat-*</code> 类按 10s/60s/600s 阈值把耗时染成 快→中→慢（慢点对应偏红），让「有没有热点」一眼可见。颜色回答『慢不慢』，数字回答『多慢』，两者解耦。"
-            }
-          ]
         }
       ]
     </script>

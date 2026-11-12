@@ -24,7 +24,7 @@ This directory separates task-oriented guides from protocol, architecture, and o
 | [项目约定与执行规则](conventions-zh.md) | 贡献者与编码智能体 | 目录职责、分支与提交、代码约定、时间窗口与 Live 筛选不变量、设置与偏好、文档同步和验证清单。 |
 | [插件安装](plugin-installation.md) | 客户端管理员 | Codex、Claude Code、DeepSeek Harness、WorkBuddy、Trae、直接 Hook 和便携包安装。 |
 | [项目架构与功能演示](project-overview-slides-zh.html) | 分享与评审 | 自包含、可离线打开和打印的 22 页 16:9 交互演示，含设计落地地图、实时状态边界与共享运行时配置。 |
-| [技术面试项目深讲](project-interview-zh.html) | 面试与答辩 | 14 页演示与 41 题交互题库，区分事实与规划，并提供详细答案、递进追问、筛选及考试复盘。 |
+| [技术面试项目深讲](project-interview-zh.html) | 面试与答辩 | 14 页演示与 40 题交互题库，区分事实与规划，并提供详细答案、递进追问、筛选及考试复盘。 |
 
 ## English
 
@@ -56,4 +56,4 @@ This directory separates task-oriented guides from protocol, architecture, and o
 
 - `assets/astro-desktop.png`: source dashboard screenshot used by Markdown documents.
 - `project-overview-slides-zh.html`: fully self-contained 22-page presentation. Screenshots, diagrams, CSS, and JavaScript are embedded; it includes a delivery map and a clearly labeled configuration plan.
-- `project-interview-zh.html`: self-contained 14-page technical interview deck and 41-question practice bank with fact-versus-plan guidance, implementation evidence, follow-ups, exam scoring, responsive layouts, and local progress persistence.
+- `project-interview-zh.html`: self-contained 14-page technical interview deck and 40-question practice bank with fact-versus-plan guidance, implementation evidence, follow-ups, exam scoring, responsive layouts, and local progress persistence.

@@ -49,9 +49,9 @@ export const deckPages: DeckPage[] = [
     title: "技术面试项目深讲",
     titleEn: "Technical Interview Deep Dive",
     description:
-      "14 页演示与 41 题交互题库，区分事实与规划，并提供详细答案、递进追问、筛选及考试复盘。",
+      "14 页演示与 40 题交互题库，区分事实与规划，并提供详细答案、递进追问、筛选及考试复盘。",
     descriptionEn:
-      "A 14-page walkthrough plus a 41-question interactive bank that separates fact from plan, with detailed answers, progressive follow-ups, filtering, and exam review.",
+      "A 14-page walkthrough plus a 40-question interactive bank that separates fact from plan, with detailed answers, progressive follow-ups, filtering, and exam review.",
     file: "decks/project-interview-zh.html",
     tags: ["面试", "题库"],
     tagsEn: ["interview", "bank"],

@@ -2981,7 +2981,7 @@
             <div class="stat"><strong>17</strong><span>规范化生命周期、消息、工具与子智能体事件</span></div>
             <div class="stat"><strong>27</strong><span>跨 Codex / Claude Code / Trae 稳定基础原子</span></div>
             <div class="stat"><strong>6</strong><span>会话、执行、记忆、能力、质量与遥测领域</span></div>
-            <div class="stat"><strong>520+</strong><span>自动化回归测试覆盖采集、服务端与前端领域</span></div>
+            <div class="stat"><strong>182</strong><span>当前自动化测试全部通过</span></div>
           </div>
         </section>
 
@@ -3371,8 +3371,8 @@
             </figure>
             <aside class="product-notes" aria-label="控制台区域说明">
               <div class="product-note"><b>1</b><div><strong>Session / Prompt 运行记录</strong><small>按来源与 Session 组织历史；active 时长默认在 24 小时封顶并显示 terminated。</small></div></div>
-              <div class="product-note"><b>2</b><div><strong>执行拓扑与轨迹</strong><small>切换平台、Topology / Trajectory 与 Deep View，并联动定位当前原子和路径；已闭合的成对事件额外显示 start→result 耗时与热力色。</small></div></div>
-              <div class="product-note"><b>3</b><div><strong>事件日志与搜索</strong><small>按 Turn 聚合事件；LOG 行带原子 TYPE 徽章与成对耗时徽章，「T轮·#行」标记可跳到配对的另一半，可检索工具名、文本、ID、输入输出及嵌套 Payload。</small></div></div>
+              <div class="product-note"><b>2</b><div><strong>执行拓扑与轨迹</strong><small>切换平台、Topology / Trajectory 与 Deep View，并联动定位当前原子和路径。</small></div></div>
+              <div class="product-note"><b>3</b><div><strong>事件日志与搜索</strong><small>按 Turn 聚合事件；可检索工具名、文本、ID、输入输出及嵌套 Payload。</small></div></div>
               <div class="product-note"><b>4</b><div><strong>四类详情检查</strong><small>Overview、Input、Output、Raw JSON 统一展示状态、参数、结果和原始证据。</small></div></div>
               <div class="product-note"><b>5</b><div><strong>逐事件回放</strong><small>支持重启、前后步进、播放暂停、拖动定位及 0.5x / 1x / 2x / 4x。</small></div></div>
             </aside>
@@ -3517,9 +3517,8 @@
               <ul class="feature-list">
                 <li><strong>Prompt Scope</strong><p>先选择 Prompt 子运行，再以 events.slice(0, cursor + 1) 重建当前世界。</p></li>
                 <li><strong>状态同步</strong><p>轨迹、原子折叠、选中事件和检查器保持一致；运行超时后停止 Live 动画。</p></li>
-              <li><strong>工具配对</strong><p>相同 toolUseId 的开始与结果合并为一个可展开步骤；已闭合的成对事件额外显示 start→result 耗时徽章，未闭合的一律不计入。</p></li>
-              <li><strong>成对耗时单一真相源</strong><p>buildPairDurations 复用 createFlowEntries 配对，LOG 行、轨迹数据层（pairDuration / totalPairDuration）与悬停卡 PAIR / PAIRS 同取一处；徽标按 ms/s/m/h/d 阶梯配热力色，LOG 与轨迹共享「T轮·#行」标记可互跳。</p></li>
-              <li><strong>PC 工作区</strong><p>1920 × 1200 下运行记录、拓扑、日志与检查器完整并行呈现，回放控制始终固定在底部。</p></li>
+                <li><strong>工具配对</strong><p>相同 toolUseId 的开始与结果合并为一个可展开步骤。</p></li>
+                <li><strong>PC 工作区</strong><p>1920 × 1200 下运行记录、拓扑、日志与检查器完整并行呈现，回放控制始终固定在底部。</p></li>
               </ul>
             </div>
           </div>
@@ -3607,7 +3606,7 @@
             <div class="tradeoff-row"><strong>配置位置</strong><p><code>plugins/astro/config.yaml</code> 与插件级 <code>.env</code>。</p><p>不搜索项目级配置，避免工作目录漂移。</p><p>安装创建，升级保留用户文件。</p></div>
             <div class="tradeoff-row"><strong>统一解析</strong><p>Recorder、CLI、服务、DeepSeek、安装器与 Vite 共用加载器。</p><p>CLI → process → legacy → .env → YAML → default。</p><p>逐字段优先级与入口集成测试。</p></div>
             <div class="tradeoff-row"><strong>安全边界</strong><p>YAML 保存结构，.env 保存本机或私密值。</p><p>只插值变量，不执行 shell；诊断不输出配置值。</p><p>无效输入降级且保持 Hook 放行。</p></div>
-            <div class="tradeoff-row"><strong>生命周期</strong><p>普通修改重启相关 Agent 或 ASTRO 进程即可。</p><p>ASTRO_HOME 是引导值，迁移时重新安装集成。</p><p>doctor、520+ 项测试、构建与 Hook 校验通过。</p></div>
+            <div class="tradeoff-row"><strong>生命周期</strong><p>普通修改重启相关 Agent 或 ASTRO 进程即可。</p><p>ASTRO_HOME 是引导值，迁移时重新安装集成。</p><p>doctor、182 项测试、构建与 Hook 校验通过。</p></div>
           </div>
         </section>
 
@@ -3619,7 +3618,7 @@
           </header>
           <div class="quality-layout">
             <div class="quality-meter">
-              <div class="quality-count"><strong>520+</strong><span>自动化回归 · 采集 / 服务端 / 前端领域</span></div>
+              <div class="quality-count"><strong>182</strong><span>tests passed<br>0 failed</span></div>
               <div class="test-bars">
                 <div class="test-bar"><span>EVENT MODEL</span><i style="--bar:100%"></i><b>PASS</b></div>
                 <div class="test-bar"><span>ATOMIC FOLD</span><i style="--bar:100%"></i><b>PASS</b></div>
