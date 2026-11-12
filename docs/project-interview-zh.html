@@ -3718,10 +3718,10 @@
         <header class="question-bank__header">
           <div class="question-bank__title">
             <strong id="question-bank-title">ASTRO 面试题库</strong>
-            <small id="question-bank-subtitle">40 questions · evidence-backed answers · progressive follow-ups</small>
+            <small id="question-bank-subtitle">41 questions · evidence-backed answers · progressive follow-ups</small>
           </div>
           <div class="question-bank__stats" aria-live="polite">
-            <span class="question-bank__stat"><b id="question-visible-count">40</b><span>当前题目</span></span>
+            <span class="question-bank__stat"><b id="question-visible-count">41</b><span>当前题目</span></span>
             <span class="question-bank__stat"><b id="question-mastered-count">0</b><span>已掌握</span></span>
           </div>
           <div class="question-bank__tabs" role="tablist" aria-label="题库模式">
@@ -4993,6 +4993,38 @@
             ["第一项怎样拆成两个迭代？", "先做健康指标和结构化错误，再加 revision/offset 与告警 UI；每一步都要有故障注入测试。"],
             ["怎样证明分页没有破坏回放？", "分页只改变事件获取方式；选定 PromptRun 后必须能补齐完整有序事件，再对比旧全量模式的投影结果哈希。"],
             ["哪些功能应该明确不做？", "在本地诊断定位不变时，不急于做 Agent 编排、远程模型调用、团队社交功能或与事实模型无关的装饰性可视化。"],
+          ],
+        },
+        {
+          id: "frontend-09",
+          category: "前端状态",
+          difficulty: "专家",
+          type: "派生一致性",
+          minutes: 6,
+          question: "ASTRO 把「成对事件的耗时」抽成 buildPairDurations() 这一处，让 LOG 行徽章、轨迹数据层（pairDuration / totalPairDuration）与悬停卡（PAIR / PAIRS）三处同取。为什么必须单一真相源并复用 createFlowEntries 的配对，而不是各视图各算一遍 start→result？未闭合的成对事件应如何处理？跨视图 marker 为什么印的是<b>对方</b>的 LOG 行号而不是 pair 序号？",
+          guidance: "分三层答：单一真相源消除多视图数字不一致；复用 createFlowEntries 让耗时口径与拓扑里的『同一对』天然对齐；未闭合一律 null、marker 印对方行号。",
+          lead: "成对耗时是同一份配对派生的纯函数输出，三处消费、一处定义，未闭合的调用根本没有可显示的时长。",
+          answer: [
+            ["单一真相源", "buildPairDurations(events) 遍历 createFlowEntries(events)——和 buildFlow 是同一份配对结果——对每个 endEvent 非空的条目算 max(0, ts(end)-ts(start))，并把该 span 同时写到起始与结果两个事件 id 上。这样一对里任意一半的 LOG 行都能取到同一耗时；三处（LOG 徽章、轨迹 pairDuration、悬停卡 PAIR/PAIRS）读的就是这一份，界面上绝不会三处不同。"],
+            ["复用而非重算", "『哪条 start 配哪条 result』的配对逻辑本就在 createFlowEntries 里完成；复用它，耗时口径就和拓扑里的同一对天然一致。若各视图各写一份配对，两个视图对『哪两个事件算一对』的判断一旦漂移，同一个工具调用会在 LOG 显示 120ms、在拓扑显示 90ms——自相矛盾。新增消费方必须调这个函数，不得再写第二份 start→result 计算（AGENTS.md 的『成对原子事件耗时只在 trace-model.ts』约定）。"],
+            ["未闭合一律不计", "entry.endEvent 为 null 时直接 continue：孤立的 Reasoning、只有 PreToolUse 没有结果、只有结果没有起始，耗时都是 null，界面不渲染徽章。『没有闭合就没有耗时』是不可谈判的边界。"],
+            ["marker 印对方行号", "buildPairLinks() 生成 label = T<turn>·#<对方 LOG 行号>，两半交叉指向（#027 显示 T7·#029，#029 显示 T7·#027）。用户问『这条和谁成对』的答案本身就是『看第 029 行』，直接印出对方行号比一个抽象 pair 序号更可读，点击则跳 partnerId。"],
+            ["turn 号由外部传入", "buildPairLinks(events, turnByEventId) 把轮次号作为必选参数传入（来自 buildTraceTurnIndex），不在本层重算——既避免二次轮次推断、避免 trace-model 反向 import trajectory-model 造成环，也挡住新调用方把每对都悄悄写成 T1。"],
+          ],
+          evidence: [
+            ["src/lib/trace-model.ts · buildPairDurations / buildPairLinks", "../src/lib/trace-model.ts"],
+            ["src/lib/trajectory-model.ts · pairDuration / totalPairDuration", "../src/lib/trajectory-model.ts"],
+            ["src/app.tsx · LOG 行徽章与 PairLinkMarker", "../src/app.tsx"],
+          ],
+          pitfalls: [
+            "不要为某张视图单独写 start→result，否则同一对事件在不同视图给出不同耗时。",
+            "不要给未闭合调用凑一个 0 或省略号，null（不渲染）才是诚实的表达。",
+            "不要在 trace-model 里重算 turn，保持它由 buildTraceTurnIndex 外部注入。",
+          ],
+          followUps: [
+            ["totalPairDuration 为什么不能直接对 atom.pairDuration 求和？", "一个成对事件会投影成多个原子（起始、结果、推断中间原子），它们携带同一个 start→result span；按原子求和会把同一对重复累加。正确做法按 pairId（起始事件 id）分组、每组计一次。"],
+            ["成对耗时和整轮墙钟时长是什么关系？", "成对耗时是一次工具调用从发出到拿到结果的局部跨度；整轮是 UserPromptSubmit→Stop 的墙钟。所有成对耗时之和 ≤ 墙钟，差值是等待、空闲与未闭合部分，所以 hover 卡同时给 PAIR（单对）、PAIRS（该轮闭合对之和）与 DURATION（墙钟），三者互不替代。"],
+            ["热力色 heat-* 在这里起什么作用？", "徽标颜色是『速度热标』不是状态色：formatDurationMs 按 ms/s/m/h/d 阶梯出数字，heat-* 按 10s/60s/600s 阈值把耗时染成 快→中→慢（慢点对应偏红），让热点一眼可见；颜色回答『慢不慢』，数字回答『多慢』，两者解耦。"],
           ],
         },
       ];
