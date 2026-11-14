@@ -366,7 +366,10 @@ HTTP service.
 - Theme: light, dark, or system; stored in `ASTROX_THEME`.
 - Service chip (the local service's uptime): opens the service card with the
   console/service versions, process details, session counts, the data directory
-  and "restart local service". The "change" control next to the data directory
+  and "restart local service". The uptime follows a sync pause: while the sync
+  is stopped at its cap (`paused`) the clock stops counting too, it continues
+  from the frozen reading when sync resumes, and restarting the local service
+  recounts from the new process. The "change" control next to the data directory
   accepts another existing absolute path (or `~/…`); "save and restart" writes
   it to the installed runtime's `.env` (`ASTRO_TRACE_DIR`) and restarts, so the
   new process reads that directory and later recorder sessions write there too.
@@ -560,11 +563,11 @@ The upper LOG area:
   `tool.result` atom belongs to the `context` kind, so it reads `MEMORY`, not
   `TOOL` — TYPE is the atom's responsibility category, not a tool or event
   name;
-- groups rows by turn; the number is the one the source reports (DeepSeek's
-  `data.turn` may start at 5 in a resumed session, and the pane says `TURN 05`),
-  otherwise it is inferred from prompts and ordering and restarts at 1 in each
-  prompt run — one separator per turn, never an oscillating number inside one
-  message;
+- groups rows by turn, and the turn separator shows only the turn number
+  (e.g. `05`); the number is the one the source reports (DeepSeek's `data.turn`
+  may start at 5 in a resumed session), otherwise it is inferred from prompts
+  and ordering and restarts at 1 in each prompt run — one separator per turn,
+  never an oscillating number inside one message;
 - searches any serialized field in the selected prompt run; matching follows
   the keystroke in the background (per-event serializations are cached, so
   typing stays smooth on long runs);
@@ -580,24 +583,31 @@ The upper LOG area:
   show no badge. The badge uses the same stepped units (`ms/s/m/h/d`) and the
   same duration heat colour as the trajectory;
 - puts a **pair-link marker** next to that badge (a chain icon plus
-  `T<turn>·#<the other half's LOG row>`, e.g. `T7·#027`). For a pair made of
-  LOG rows `#027` (START) and `#029` (END), the `#027` row reads `T7·#029`
-  and the `#029` row reads `T7·#027`: the two halves point at each other, so
-  "who is paired with whom" is visible without hovering. `T7` is the pair's
-  turn — matching the `TURN 07` separator above it and the trajectory's
-  `Loop Turn 7` group — and the `#number` is the exact row number printed at
-  the left of that LOG row, not a pair ordinal or a hash. The trajectory atom
-  uses the same marker. Hovering it also reports the pair's order in the turn,
-  both rows (e.g. `#027 ↔ #029`) and the row a click will jump to. Clicking it
-  selects and locates the other half, centering its row in both the LOG and
-  the trajectory; selecting one half outlines the other in violet in both
-  views. The marker clears the log search first, so a partner hidden by a
+  `#<the other half's LOG row>`, e.g. `#027`). For a pair made of
+  LOG rows `#027` (START) and `#029` (END), the `#027` row reads `#029`
+  and the `#029` row reads `#027`: the two halves point at each other, so
+  "who is paired with whom" is visible without hovering. The chip shows only
+  the row number; the pair's turn and its order within the turn are spelled
+  out in the tooltip and the accessible name. The `#number` is the exact row
+  number printed at the left of that LOG row, not a pair ordinal or a hash.
+  The trajectory atom uses the same marker. Hovering it also reports the
+  pair's order in the turn, both rows (e.g. `#027 ↔ #029`) and the row a click
+  will jump to. Clicking it selects and locates the other half, centering its
+  row in both the LOG and the trajectory; selecting one half outlines the
+  other in violet in both views. The marker clears the log search first, so a
+  partner hidden by a
   filter is still reachable.
 
 The inspector provides:
 
 - `Overview`: state, source, type, time, tool, and call ID;
-- `Input`: tool input or prompt;
+- `Input`: tool input or prompt. Prompt and `user.question` events (user
+  questions, `AskUserQuestion`, question-shaped `Notification`s) offer a
+  `Preview` / `Code` pair: `Preview` renders the question content the way the
+  reader's client showed it — the markdown source is validated, then rendered
+  as rich text (headings, lists, code blocks) with acting markup stripped;
+  invalid or empty sources fall back to the captured text, and structured
+  questions also list the captured options; `Code` shows the raw payload;
 - `Output`: tool result or response;
 - `Raw`: full normalized event;
 - copy control for structured JSON.
@@ -679,7 +689,9 @@ the footer's **Done** button only closes the dialog — there is no Apply step:
   When it runs out the stream is closed and no new event is accepted; the header
   marker turns from `synced` to `paused`. Clicking that marker, or restarting
   the local service from its card, reloads the current snapshot and restarts
-  the clock. Changing the value applies at once — the timer is re-armed for the
+  the clock. While paused, the service card's uptime stops counting too (it
+  continues from the frozen reading on resume and recounts after a restart).
+  Changing the value applies at once — the timer is re-armed for the
   time left under the new cap — and if the console is paused while the new cap
   still has time left (or is `No limit`) it resumes on its own.
 
@@ -786,7 +798,7 @@ The trajectory header carries a **legend**: four dots on the left key the status
 
 Matching `PreToolUse` and `PostToolUse` or `PostToolUseFailure` events with the same `toolUseId` become one tool step. Expand a row to inspect paired input and output. A closed pair's start→result span is shown as the paired duration (`PAIR`) on the row and in the hover card; unpaired events have no span and are excluded from every total.
 
-Next to the paired duration sits the **pair-link marker**: a chain icon and a label such as `T7·#027` that names the other half's LOG row. The two halves cross-reference each other (`#027` shows `T7·#029`, `#029` shows `T7·#027`); the hover card's `PAIR` line gives both rows as `T7·#027 ↔ #029`. `T7` is the pair's turn, taken from its start event, matching the enclosing `Loop Turn` group and the LOG's `TURN 07` separator; the `#` numbers are the exact LOG row labels for the current event window, so a shorter replay prefix shifts them. Hovering the marker reports the pair's order in the turn, both rows and the jump target — the direct answer to "which rows belong together". Identity and jumps always come from the event ids, and an invisible stable grouping key de-duplicates the trajectory markers. One tool event projects into several atoms, so to avoid repeating the label across a whole turn the trajectory draws one marker per pair, on the aggregated tool step (`tool.call`); the other atoms keep their paired duration and still report both rows on hover. Clicking the marker locates the other half (start ↔ result) and centres the matching row in the LOG and the trajectory together; selecting one half outlines the other in violet in both views.
+Next to the paired duration sits the **pair-link marker**: a chain icon and a label such as `#027` that names the other half's LOG row. The two halves cross-reference each other (`#027` shows `#029`, `#029` shows `#027`); the hover card's `PAIR` line gives both rows together with the pair's turn. The `#` numbers are the exact LOG row labels for the current event window, so a shorter replay prefix shifts them. Hovering the marker reports the pair's order in the turn, both rows and the jump target — the direct answer to "which rows belong together". Identity and jumps always come from the event ids, and an invisible stable grouping key de-duplicates the trajectory markers. One tool event projects into several atoms, so to avoid repeating the label across a whole turn the trajectory draws one marker per pair, on the aggregated tool step (`tool.call`); the other atoms keep their paired duration and still report both rows on hover. Clicking the marker locates the other half (start ↔ result) and centres the matching row in the LOG and the trajectory together; selecting one half outlines the other in violet in both views.
 
 ## 8. Replay
 
