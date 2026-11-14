@@ -583,18 +583,19 @@ The upper LOG area:
   show no badge. The badge uses the same stepped units (`ms/s/m/h/d`) and the
   same duration heat colour as the trajectory;
 - puts a **pair-link marker** next to that badge (a chain icon plus
-  `T<turn>·#<the other half's LOG row>`, e.g. `T7·#027`). For a pair made of
-  LOG rows `#027` (START) and `#029` (END), the `#027` row reads `T7·#029`
-  and the `#029` row reads `T7·#027`: the two halves point at each other, so
-  "who is paired with whom" is visible without hovering. `T7` is the pair's
-  turn — matching the `TURN 07` separator above it and the trajectory's
-  `Loop Turn 7` group — and the `#number` is the exact row number printed at
-  the left of that LOG row, not a pair ordinal or a hash. The trajectory atom
-  uses the same marker. Hovering it also reports the pair's order in the turn,
-  both rows (e.g. `#027 ↔ #029`) and the row a click will jump to. Clicking it
-  selects and locates the other half, centering its row in both the LOG and
-  the trajectory; selecting one half outlines the other in violet in both
-  views. The marker clears the log search first, so a partner hidden by a
+  `#<the other half's LOG row>`, e.g. `#027`). For a pair made of
+  LOG rows `#027` (START) and `#029` (END), the `#027` row reads `#029`
+  and the `#029` row reads `#027`: the two halves point at each other, so
+  "who is paired with whom" is visible without hovering. The chip shows only
+  the row number; the pair's turn and its order within the turn are spelled
+  out in the tooltip and the accessible name. The `#number` is the exact row
+  number printed at the left of that LOG row, not a pair ordinal or a hash.
+  The trajectory atom uses the same marker. Hovering it also reports the
+  pair's order in the turn, both rows (e.g. `#027 ↔ #029`) and the row a click
+  will jump to. Clicking it selects and locates the other half, centering its
+  row in both the LOG and the trajectory; selecting one half outlines the
+  other in violet in both views. The marker clears the log search first, so a
+  partner hidden by a
   filter is still reachable.
 
 The inspector provides:
@@ -797,7 +798,7 @@ The trajectory header carries a **legend**: four dots on the left key the status
 
 Matching `PreToolUse` and `PostToolUse` or `PostToolUseFailure` events with the same `toolUseId` become one tool step. Expand a row to inspect paired input and output. A closed pair's start→result span is shown as the paired duration (`PAIR`) on the row and in the hover card; unpaired events have no span and are excluded from every total.
 
-Next to the paired duration sits the **pair-link marker**: a chain icon and a label such as `T7·#027` that names the other half's LOG row. The two halves cross-reference each other (`#027` shows `T7·#029`, `#029` shows `T7·#027`); the hover card's `PAIR` line gives both rows as `T7·#027 ↔ #029`. `T7` is the pair's turn, taken from its start event, matching the enclosing `Loop Turn` group and the LOG's `TURN 07` separator; the `#` numbers are the exact LOG row labels for the current event window, so a shorter replay prefix shifts them. Hovering the marker reports the pair's order in the turn, both rows and the jump target — the direct answer to "which rows belong together". Identity and jumps always come from the event ids, and an invisible stable grouping key de-duplicates the trajectory markers. One tool event projects into several atoms, so to avoid repeating the label across a whole turn the trajectory draws one marker per pair, on the aggregated tool step (`tool.call`); the other atoms keep their paired duration and still report both rows on hover. Clicking the marker locates the other half (start ↔ result) and centres the matching row in the LOG and the trajectory together; selecting one half outlines the other in violet in both views.
+Next to the paired duration sits the **pair-link marker**: a chain icon and a label such as `#027` that names the other half's LOG row. The two halves cross-reference each other (`#027` shows `#029`, `#029` shows `#027`); the hover card's `PAIR` line gives both rows together with the pair's turn. The `#` numbers are the exact LOG row labels for the current event window, so a shorter replay prefix shifts them. Hovering the marker reports the pair's order in the turn, both rows and the jump target — the direct answer to "which rows belong together". Identity and jumps always come from the event ids, and an invisible stable grouping key de-duplicates the trajectory markers. One tool event projects into several atoms, so to avoid repeating the label across a whole turn the trajectory draws one marker per pair, on the aggregated tool step (`tool.call`); the other atoms keep their paired duration and still report both rows on hover. Clicking the marker locates the other half (start ↔ result) and centres the matching row in the LOG and the trajectory together; selecting one half outlines the other in violet in both views.
 
 ## 8. Replay
 

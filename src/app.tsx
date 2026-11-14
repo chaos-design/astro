@@ -2598,12 +2598,13 @@ const RunHistory = memo(function RunHistory({
 /**
  * The single marker shared by LOG rows and trajectory atoms. Its `#number` is
  * the *other half's* LOG row, not a pair ordinal: a pair made of `#027` and
- * `#029` reads `T7·#029` on `#027` and `T7·#027` on `#029`. The two halves
+ * `#029` reads `#029` on `#027` and `#027` on `#029`. The two halves
  * cross-reference each other, so "who is paired with whom" is visible without
- * hovering, and clicking jumps straight to that numbered row. The tooltip
- * spells out both rows and the jump target. Kept as a real button so keyboard
- * users get the same jump, and it stops propagation so the jump never doubles
- * as a plain row selection.
+ * hovering, and clicking jumps straight to that numbered row. The turn and the
+ * pair's order stay in the tooltip and the accessible name — the chip itself
+ * keeps only the row number. Kept as a real button so keyboard users get the
+ * same jump, and it stops propagation so the jump never doubles as a plain row
+ * selection.
  */
 function PairLinkMarker({
   link,
@@ -2635,7 +2636,6 @@ function PairLinkMarker({
       }}
     >
       <Link2 aria-hidden="true" />
-      <b className="pair-link-marker__turn">T{link.turn}</b>
       <span className="pair-link-marker__target">{targetRow}</span>
     </button>
   );

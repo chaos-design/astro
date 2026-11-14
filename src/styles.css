@@ -6120,26 +6120,6 @@ pre,
   height: 9px;
 }
 
-/* The turn prefix ties the marker to the LOG separator and the trajectory
-   group above it. It stays muted so the partner row number remains the
-   readable identity; the separator is decorative (the button has an
-   aria-label). */
-.pair-link-marker__turn {
-  color: var(--muted);
-  font-weight: 600;
-}
-
-.pair-link-marker__turn::after {
-  content: "·";
-  margin: 0 1px;
-  color: color-mix(in srgb, var(--violet) 55%, var(--line));
-}
-
-.pair-link-marker:hover .pair-link-marker__turn,
-.pair-link-marker:focus-visible .pair-link-marker__turn {
-  color: color-mix(in srgb, var(--violet) 70%, var(--text));
-}
-
 .pair-link-marker.is-end svg {
   transform: scaleX(-1);
 }
