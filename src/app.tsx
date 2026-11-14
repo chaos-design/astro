@@ -2855,7 +2855,7 @@ const AtomicLog = memo(function AtomicLog({
                         aria-label={`Turn ${item.turn}`}
                         key={`turn-${item.turn}`}
                       >
-                        <span>TURN {String(item.turn).padStart(2, "0")}</span>
+                        <span>{String(item.turn).padStart(2, "0")}</span>
                       </div>
                     );
                   }
