@@ -1,5 +1,10 @@
 import type { AtomicFlowEvent, AtomicPhase } from "../vendor/atomic-flow/browser.ts";
 import type { HarnessNode, TraceEvent } from "../types/trace.ts";
+import {
+  buildPairDurations,
+  buildPairLinks,
+  type TracePairLink,
+} from "./trace-model.ts";
 
 const RUN_CONTEXT_KEYS = new Set([
   "session.resume",
@@ -19,6 +24,19 @@ export type TrajectoryAtom = {
   key: string;
   kind: string;
   label: string;
+  /**
+   * The span of the *paired* event this atom stands for (e.g. a `PreToolUse`
+   * closing on its `PostToolUse`), `null` when the event is not part of a
+   * closed pair. Sourced from `buildPairDurations`, the single pairing truth.
+   */
+  pairDuration: number | null;
+  /**
+   * The marker for the closed pair this atom belongs to, `null` when the event
+   * has no partner. Sourced from `buildPairLinks`; both halves carry the same
+   * `pairId` so the LOG and trajectory can mark the rows as one unit and jump
+   * between them.
+   */
+  pairLink: TracePairLink | null;
   occurredAt: string;
   sequence: number;
   status: "complete" | "failed" | "idle" | "running" | "waiting";
@@ -32,6 +50,16 @@ export type TrajectoryTurn = {
   duration: number;
   event: TraceEvent;
   occurredAt: string;
+  /**
+   * Number of closed pairs whose start event belongs to this turn. One tool
+   * call projects into several atoms, so the atom count is not the pair count.
+   */
+  pairCount: number;
+  /**
+   * Sum of the closed-pair spans in this turn (unpaired events excluded).
+   * Each pair contributes once, however many atoms it projects into.
+   */
+  totalPairDuration: number;
   status: TrajectoryAtom["status"];
   summary: string;
   turn: number;
@@ -346,6 +374,14 @@ export function buildTrajectoryModel(
   const traceEventById = new Map(events.map((event) => [event.id, event]));
   const turnByEventId = buildTraceTurnIndex(events);
   const nodeByKey = new Map(nodes.map((node) => [node.data.key, node]));
+  // Single pairing truth: closed start→end spans by trace-event id. Unpaired
+  // events are absent, so an atom reads `null` and the UI omits its badge.
+  const pairDurations = buildPairDurations(events);
+  // The partner of each event (the other half of its closed pair); `null`
+  // when the event has no partner, so the link marker is omitted.
+  // Same turn index the atoms use, so a pair marker's turn prefix always
+  // agrees with the trajectory group that contains the atom.
+  const pairLinks = buildPairLinks(events, turnByEventId);
   const aggregated = new Map<string, MutableTrajectoryAtom>();
 
   for (const atomicEvent of atomicEvents) {
@@ -367,6 +403,8 @@ export function buildTrajectoryModel(
     const existing = aggregated.get(aggregateKey);
     const node = nodeByKey.get(atomicEvent.atom.key);
     const nextStatus = statusForPhase(atomicEvent.phase);
+    const pairDuration = pairDurations.get(traceEvent.id) ?? null;
+    const pairLink = pairLinks.get(traceEvent.id) ?? null;
 
     if (existing) {
       existing.count += 1;
@@ -376,6 +414,8 @@ export function buildTrajectoryModel(
       );
       existing.event = traceEvent;
       existing.lastOccurredAt = atomicEvent.occurredAt;
+      existing.pairDuration = pairDuration;
+      existing.pairLink = pairLink;
       existing.status =
         existing.status === "failed" ? "failed" : nextStatus;
       existing.summary =
@@ -396,6 +436,8 @@ export function buildTrajectoryModel(
       label: atomicEvent.atom.label,
       lastOccurredAt: atomicEvent.occurredAt,
       occurredAt: atomicEvent.occurredAt,
+      pairDuration,
+      pairLink,
       sequence: atomicEvent.sequence,
       status: nextStatus,
       summary:
@@ -430,6 +472,25 @@ export function buildTrajectoryModel(
       const hasFailure = turnAtoms.some((atom) => atom.status === "failed");
       const hasWaiting = turnAtoms.some((atom) => atom.status === "waiting");
       const hasRunning = turnAtoms.some((atom) => atom.status === "running");
+      // Only closed pairs contribute; an open tool call or a lone reasoning
+      // atom has no span to add and is excluded from the total. One closed
+      // pair projects into several atoms (and both halves carry the same
+      // span), so group by pair identity before summing — a plain atom sum
+      // multiplied every pair by its atom count. `pairLink.turn` is the start
+      // event's turn, so a pair is counted in exactly one turn even when its
+      // result lands in a later one.
+      const pairDurationsByPair = new Map<string, number>();
+      for (const atom of turnAtoms) {
+        const link = atom.pairLink;
+        if (!link || link.turn !== turn || atom.pairDuration === null) {
+          continue;
+        }
+        pairDurationsByPair.set(link.pairId, atom.pairDuration);
+      }
+      const totalPairDuration = [...pairDurationsByPair.values()].reduce(
+        (total, duration) => total + duration,
+        0,
+      );
       return {
         atoms: turnAtoms,
         duration: Math.max(
@@ -446,6 +507,8 @@ export function buildTrajectoryModel(
               ? "running"
               : "complete",
         summary: last.summary,
+        pairCount: pairDurationsByPair.size,
+        totalPairDuration,
         turn,
       };
     }),

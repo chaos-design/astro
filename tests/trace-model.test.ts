@@ -3,10 +3,13 @@ import test from "node:test";
 import {
   buildFlow,
   buildHarnessFlow,
+  buildPairDurations,
+  buildPairLinks,
   buildSessionPromptRuns,
   buildSessions,
   extractRunModel,
   formatDuration,
+  formatLogSequence,
   getExecutionInstruction,
   getFlowNodeIdForEvent,
   getPromptInput,
@@ -16,6 +19,7 @@ import {
   parseImportedTrace,
   searchTraceEvents,
 } from "../src/lib/trace-model.ts";
+import { buildTraceTurnIndex } from "../src/lib/trajectory-model.ts";
 import { createDemoEvents } from "./helpers/demo-fixture.ts";
 
 test("groups events by session and calculates duration", () => {
@@ -665,6 +669,159 @@ test("combines pre and post hook events into one tool node", () => {
   assert.ok(toolNodes.every((node) => node.data.endEvent));
   assert.ok(toolNodes.every((node) => node.data.duration > 0));
   assert.equal(flow.edges.length, flow.nodes.length - 1);
+});
+
+test("counts only closed pairs in buildPairDurations", () => {
+  const events = createDemoEvents(2_000_000_000_000);
+  const durations = buildPairDurations(events);
+
+  // A closed tool pair maps both its start and end ids to the same span.
+  const start = events.find(
+    (event) =>
+      event.eventName === "PreToolUse" && event.toolUseId === "tool-test",
+  )!;
+  const end = events.find(
+    (event) =>
+      event.eventName === "PostToolUse" && event.toolUseId === "tool-test",
+  )!;
+  const span =
+    Date.parse(end.capturedAt) - Date.parse(start.capturedAt);
+  assert.equal(durations.get(start.id), span);
+  assert.equal(durations.get(end.id), span);
+
+  // An unpaired event (no closing result) is absent from the map, so it is
+  // never counted. A lone `Reasoning` has no pair and no entry.
+  const reasoning = events.find(
+    (event) => event.eventName === "Reasoning",
+  );
+  if (reasoning) {
+    assert.equal(durations.has(reasoning.id), false);
+  }
+
+  // An open tool (start with no matching result in the dataset) is skipped.
+  const openStarts = events.filter(
+    (event) =>
+      event.eventName === "PreToolUse" &&
+      !events.some(
+        (candidate) =>
+          (candidate.eventName === "PostToolUse" ||
+            candidate.eventName === "PostToolUseFailure") &&
+          candidate.toolUseId === event.toolUseId,
+      ),
+  );
+  for (const open of openStarts) {
+    assert.equal(durations.has(open.id), false);
+  }
+});
+
+test("labels each pair half with the other half's LOG row number", () => {
+  const events = createDemoEvents(2_000_000_000_000);
+  const turns = buildTraceTurnIndex(events);
+  const links = buildPairLinks(events, turns);
+  const start = events.find(
+    (event) =>
+      event.eventName === "PreToolUse" && event.toolUseId === "tool-test",
+  )!;
+  const end = events.find(
+    (event) =>
+      event.eventName === "PostToolUse" && event.toolUseId === "tool-test",
+  )!;
+  const startLink = links.get(start.id)!;
+  const endLink = links.get(end.id)!;
+  const pairTurn = turns.get(start.id);
+  const startIndex = events.indexOf(start) + 1;
+  const endIndex = events.indexOf(end) + 1;
+  const startRow = formatLogSequence(startIndex);
+  const endRow = formatLogSequence(endIndex);
+
+  // The chip on each row names the *other* half's LOG row: from `#029` a
+  // reader sees `T7·#027` and knows exactly which row belongs to this pair
+  // (and where a click will jump). `rows` names both halves for the tooltip
+  // and hover card; the ordinal is display context only, never the chip.
+  const shared = {
+    pairId: endLink.pairId,
+    turn: pairTurn,
+    ordinal: startLink.ordinal,
+    startIndex,
+    endIndex,
+    rows: `${startRow} ↔ ${endRow}`,
+  };
+  assert.deepEqual(startLink, {
+    ...shared,
+    partnerId: end.id,
+    role: "start",
+    partnerIndex: endIndex,
+    label: `T${pairTurn}·${endRow}`,
+  });
+  assert.deepEqual(endLink, {
+    ...shared,
+    partnerId: start.id,
+    role: "end",
+    partnerIndex: startIndex,
+    label: `T${pairTurn}·${startRow}`,
+  });
+  // The pair's internal identity is the start event id itself: no hash to
+  // collide, and both halves share it.
+  assert.equal(startLink.pairId, start.id);
+  assert.equal(endLink.pairId, start.id);
+  assert.match(startLink.label, /^T\d+·#\d+$/);
+  assert.equal(startLink.ordinal, 1);
+  assert.ok(startIndex < endIndex);
+  assert.equal(startLink.partnerIndex, endIndex);
+  assert.equal(endLink.partnerIndex, startIndex);
+  assert.equal(startLink.rows, endLink.rows);
+  assert.equal(links.get(startLink.partnerId)?.partnerIndex, startIndex);
+  assert.equal(links.get(endLink.partnerId)?.partnerIndex, endIndex);
+
+  // Ordinals run 1..n inside each turn in LOG order, and a pair in a later
+  // turn names that turn — the prefix is a locator, not decoration. Both
+  // halves cross-reference each other's printed LOG row number.
+  const starts = [...links.entries()]
+    .filter(([, link]) => link.role === "start")
+    .map(([eventId, link]) => ({ eventId, link }))
+    .sort(
+      (left, right) =>
+        left.link.turn - right.link.turn ||
+        left.link.startIndex - right.link.startIndex,
+    );
+  const seen = new Map<number, number>();
+  for (const { eventId, link } of starts) {
+    const expected = (seen.get(link.turn) ?? 0) + 1;
+    assert.equal(link.ordinal, expected);
+    assert.equal(link.turn, turns.get(eventId));
+    assert.equal(link.label, `T${link.turn}·${formatLogSequence(link.endIndex)}`);
+    const partner = links.get(link.partnerId)!;
+    assert.equal(
+      partner.label,
+      `T${link.turn}·${formatLogSequence(link.startIndex)}`,
+    );
+    assert.equal(partner.rows, link.rows);
+    assert.equal(partner.partnerIndex, link.startIndex);
+    seen.set(link.turn, expected);
+  }
+  assert.ok(seen.size > 1);
+
+  // The marker set is exactly the duration set: a row never shows a link
+  // marker without the paired duration badge (and vice versa).
+  const durations = buildPairDurations(events);
+  assert.deepEqual([...links.keys()].sort(), [...durations.keys()].sort());
+
+  // The internal grouping key still comes from the start id, so replaying a
+  // shorter prefix never changes it or the jump target. Row numbers follow the
+  // LOG rows of that window, so the label always names the row actually shown.
+  const prefix = events.slice(0, events.indexOf(end) + 1);
+  const prefixLink = buildPairLinks(
+    prefix,
+    buildTraceTurnIndex(prefix),
+  ).get(start.id)!;
+  assert.equal(prefixLink.pairId, startLink.pairId);
+  assert.equal(prefixLink.pairId, start.id);
+  assert.equal(prefixLink.partnerId, end.id);
+  assert.equal(prefixLink.partnerIndex, endIndex);
+  assert.equal(
+    prefixLink.label,
+    `T${prefixLink.turn}·${formatLogSequence(prefixLink.partnerIndex)}`,
+  );
 });
 
 test("parses JSONL hook payloads and normalized trace events", () => {

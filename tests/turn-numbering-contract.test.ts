@@ -21,7 +21,9 @@ test("turn separators are keyed by position, never by their number", () => {
 });
 
 test("the LOG derives its separators from the run it renders", () => {
-  assert.match(app, /buildLogEntries\(events\)/);
+  // `platformId` only selects the atom TYPE lookup table; the turn index is
+  // still built inside buildLogEntries from the very events the LOG renders.
+  assert.match(app, /buildLogEntries\(events, platformId\)/);
   assert.doesNotMatch(
     app,
     /buildLogEntries\([^)]*turnByEventId/,

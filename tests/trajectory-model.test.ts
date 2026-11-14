@@ -9,8 +9,95 @@ import {
   orderTrajectoryNewestFirst,
 } from "../src/lib/trajectory-model.ts";
 import type { TraceEvent } from "../src/types/trace.ts";
-import { buildHarnessFlow } from "../src/lib/trace-model.ts";
+import {
+  buildHarnessFlow,
+  buildPairDurations,
+  buildPairLinks,
+} from "../src/lib/trace-model.ts";
 import { createDemoEvents } from "./helpers/demo-fixture.ts";
+
+test("carries closed-pair durations on atoms and turns", () => {
+  const events = createDemoEvents(2_000_000_000_000);
+  const projection = projectTraceEvents(events, "codex");
+  const topology = buildHarnessFlow(events, "codex");
+  const model = buildTrajectoryModel(
+    events,
+    projection.events,
+    topology.nodes,
+  );
+  const pairDurations = buildPairDurations(events);
+  const pairLinks = buildPairLinks(events, buildTraceTurnIndex(events));
+
+  // Every atom reports a `pairDuration`; when set, it equals the single
+  // pairing truth for its trace event, and when the event is unpaired it is
+  // null so the UI omits the badge instead of printing 0. The link marker
+  // comes from the same pairing truth, so it never appears without the badge.
+  for (const atom of model.turns.flatMap((turn) => turn.atoms)) {
+    const expected = pairDurations.get(atom.event.id) ?? null;
+    assert.equal(atom.pairDuration, expected);
+    assert.deepEqual(
+      atom.pairLink,
+      pairLinks.get(atom.event.id) ?? null,
+    );
+    assert.equal(atom.pairLink !== null, expected !== null);
+    // The marker's turn prefix must name the very Loop Turn group the atom is
+    // rendered under; otherwise the marker points the reader at the wrong
+    // group when they jump from the LOG.
+    if (atom.pairLink) {
+      assert.equal(atom.pairLink.turn, atom.turn);
+    }
+  }
+
+  // A turn's total sums each closed pair *once*: one tool call projects into
+  // several atoms and both halves carry the same span, so the atom sum used to
+  // multiply every pair by its atom count.
+  for (const turn of model.turns) {
+    const pairIds = new Set(
+      turn.atoms
+        .filter((atom) => atom.pairLink?.turn === turn.turn)
+        .map((atom) => atom.pairLink!.pairId),
+    );
+    const expected = [...pairIds].reduce(
+      (total, pairId) => total + (pairDurations.get(pairId) ?? 0),
+      0,
+    );
+    assert.equal(turn.pairCount, pairIds.size);
+    assert.equal(turn.totalPairDuration, expected);
+  }
+  // Demo: turn 1 has one 680ms pair, turn 2 has 460ms + 880ms, turn 3 has
+  // one 1220ms pair. The atom sum would report 6120 / 12060 / 10980ms.
+  assert.deepEqual(
+    model.turns.map((turn) => turn.pairCount),
+    [1, 2, 1],
+  );
+  assert.deepEqual(
+    model.turns.map((turn) => turn.totalPairDuration),
+    [680, 1340, 1220],
+  );
+});
+
+test("a turn with no closed pair reports zero pairs and no total", () => {
+  const events = createDemoEvents(2_000_000_000_000).filter(
+    (event) =>
+      event.eventName !== "PostToolUse" &&
+      event.eventName !== "PostToolUseFailure",
+  );
+  const projection = projectTraceEvents(events, "codex");
+  const topology = buildHarnessFlow(events, "codex");
+  const model = buildTrajectoryModel(
+    events,
+    projection.events,
+    topology.nodes,
+  );
+
+  // Removing every result leaves the `PreToolUse` atoms in place but closes no
+  // pair; zero pairs is what lets the hover card omit PAIRS rather than print
+  // `0ms`.
+  for (const turn of model.turns) {
+    assert.equal(turn.pairCount, 0);
+    assert.equal(turn.totalPairDuration, 0);
+  }
+});
 
 test("builds loop turns with expandable atomic children", () => {
   const events = createDemoEvents(2_000_000_000_000);

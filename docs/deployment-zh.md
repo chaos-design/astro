@@ -87,9 +87,9 @@ pnpm start        # 服务：127.0.0.1:5678，托管 dist/
   先自动执行 `pnpm build`（`--no-build` 可跳过）。
 - **原生插件**：先 `pnpm build:native-plugins`（把运行时同步进
   `*-plugin/` 并打版本号），再按客户端安装：
-  - Codex：`codex plugin add astro-codex-local`
-  - Claude Code：`claude plugin add astro-claude-local`
-  - WorkBuddy：`codebuddy plugin add astro-workbuddy-local`
+  - Codex：`codex plugin add astro@astro-local`
+  - Claude Code：`claude plugin install astro@astro-local --scope user`
+  - WorkBuddy：`codebuddy plugin add astro@astro-local`
   - DeepSeek Harness：`dsh plugin --profile web add file:~/.astrox/plugins/astro/deepseek-plugin`（安装后用 `dsh --profile web --dump-config` 确认 `astro-trace` 已出现在配置树中）
 - **独立安装器**：ZCode（`pnpm install-zcode-plugin`）、OpenCode
   （`pnpm install-opencode-plugin`）、Pi（`pnpm install-pi-plugin`）。

@@ -295,18 +295,19 @@ button[aria-disabled="true"],
 }
 
 /* Strip the UA button border, except for controls that draw their own:
- * console/playback buttons, Radix triggers, and the two custom pills below.
- * Without the exclusions the LIVE chip and the service card's restart action
- * lost their borders and read as plain text. */
+ * console/playback buttons, Radix triggers, the custom pills below, and the
+ * pair-link marker shared by LOG / trajectory rows. Without the exclusions
+ * the LIVE chip, the service card's restart action and the pair marker lost
+ * their borders and read as plain text. */
 button:not([data-variant="console"]):not([data-variant="playback"]):not([data-slot="select-trigger"]):not(
     [data-slot="tabs-trigger"]
-  ):not(.run-history__live-jump):not(.service-card__restart):not(.settings-footer__button) {
+  ):not(.run-history__live-jump):not(.service-card__restart):not(.settings-footer__button):not(.pair-link-marker) {
   border: 0;
 }
 
 button:not([data-variant="console"]):not([data-variant="playback"]):not([data-slot="select-trigger"]):not(
     [data-slot="tabs-trigger"]
-  ):not(.run-history__live-jump):not(.service-card__restart):not(.settings-footer__button):focus-visible,
+  ):not(.run-history__live-jump):not(.service-card__restart):not(.settings-footer__button):not(.pair-link-marker):focus-visible,
 input:not([data-slot="input-group-control"]):focus-visible {
   outline: 1px solid var(--selection-border);
   outline-offset: 2px;
@@ -3368,6 +3369,160 @@ pre,
   }
 }
 
+/* Trajectory view's block hover card: one fixed layer per list, following the
+   hovered block (same mechanics as the RUN HISTORY hover card). */
+.trajectory-hover__layer {
+  position: fixed;
+  z-index: 60;
+  top: 0;
+  left: 0;
+  visibility: hidden;
+  animation: run-history-hovercard-in 120ms ease-out;
+}
+
+/* Hover-card type scale: exactly one size each for the title, every field
+   value, every field label and the meta subtitle. The card used to mix
+   12/11/9/8/9px hard-coded sizes, so two values on adjacent lines read as
+   different kinds of information. Colour now separates fields, not size. */
+.trajectory-hover__card {
+  --hover-title-size: var(--text-label);
+  --hover-value-size: var(--text-body);
+  --hover-label-size: var(--text-caption);
+  --hover-meta-size: var(--text-overline);
+
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 180px;
+  max-width: 320px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-bright);
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--panel-raised);
+  box-shadow: 0 10px 28px rgb(0 0 0 / 38%);
+  font-size: var(--hover-value-size);
+  line-height: 1.5;
+}
+
+.trajectory-hover__card strong {
+  color: var(--text-strong);
+  font-size: var(--hover-title-size);
+  font-weight: var(--weight-medium);
+}
+
+.trajectory-hover__card .trajectory-hover__subtitle {
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: var(--hover-meta-size);
+}
+
+.trajectory-hover__card .trajectory-hover__field {
+  font-size: var(--hover-value-size);
+}
+
+.trajectory-hover__card .trajectory-hover__label {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: var(--hover-label-size);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.trajectory-hover__card .trajectory-hover__value,
+.trajectory-hover__card .trajectory-hover__pair {
+  font-size: var(--hover-value-size, var(--text-body));
+  font-style: normal;
+}
+
+.trajectory-hover__card b + * {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Field colours: category violet, event blue, tool amber, pair rows violet
+   (matching the row marker), duration heat, status semantic. Labels stay
+   muted so the coloured values are the only thing drawing the eye. */
+.trajectory-hover__card .trajectory-hover__value.is-type,
+.trajectory-hover__card .trajectory-hover__pair {
+  color: var(--violet);
+  font-family: var(--font-mono);
+  font-weight: var(--weight-medium);
+}
+
+.trajectory-hover__card .trajectory-hover__value.is-event {
+  color: var(--blue);
+  font-family: var(--font-mono);
+}
+
+/* The tool a tool atom runs, only shown when the title does not already name
+   it. Amber keeps it distinct from the blue event name on the same line. */
+.trajectory-hover__card .trajectory-hover__tool {
+  color: var(--amber);
+  font-style: normal;
+  font-family: var(--font-mono);
+  font-size: var(--hover-value-size, var(--text-body));
+}
+
+/* The duration value in the card carries the same heat class as the row, so a
+   number and its colour are one unit the reader already understands. */
+.trajectory-hover__duration {
+  font-style: normal;
+  font-family: var(--font-mono);
+  font-size: var(--hover-value-size, var(--text-body));
+}
+
+.trajectory-hover__duration.heat-idle {
+  color: var(--muted);
+}
+
+.trajectory-hover__duration.heat-fast {
+  color: var(--status-completed);
+}
+
+.trajectory-hover__duration.heat-normal {
+  color: var(--text);
+}
+
+.trajectory-hover__duration.heat-slow {
+  color: var(--amber);
+}
+
+.trajectory-hover__duration.heat-very-slow {
+  color: var(--status-failed);
+}
+
+/* Status in the card keeps its own semantic colour, deliberately not the
+   duration heat colour, so "how long" and "how it ended" never read as one. */
+.trajectory-hover__status {
+  font-style: normal;
+  font-family: var(--font-mono);
+  font-size: var(--hover-value-size, var(--text-body));
+  font-weight: var(--weight-medium);
+}
+
+.trajectory-hover__status.status-complete {
+  color: var(--status-completed);
+}
+
+.trajectory-hover__status.status-running,
+.trajectory-hover__status.status-active {
+  color: var(--status-running);
+}
+
+.trajectory-hover__status.status-waiting {
+  color: var(--status-waiting);
+}
+
+.trajectory-hover__status.status-failed {
+  color: var(--status-failed);
+}
+
+.trajectory-hover__status.status-idle {
+  color: var(--muted);
+}
+
 .canvas-column {
   background: var(--bg);
 }
@@ -4552,6 +4707,84 @@ pre,
   color: var(--red);
 }
 
+/* The view's key: what a status dot means and what a duration colour means.
+   The user found the colour + marker codes unclear, so the header carries this
+   legend — it reuses the same status variables and heat colours the dots and
+   badges use, so it can never drift from the marks it explains. */
+.trajectory-legend {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 7px;
+  white-space: nowrap;
+}
+
+.trajectory-legend__group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-left: 8px;
+  border-left: 1px solid var(--chrome-line);
+}
+
+.trajectory-legend__group:first-child {
+  padding-left: 0;
+  border-left: 0;
+}
+
+.trajectory-legend__group-label {
+  color: var(--muted-soft);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.trajectory-legend__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.trajectory-legend__dot.status-complete {
+  background: var(--status-completed);
+}
+
+.trajectory-legend__dot.status-running {
+  background: var(--status-running);
+}
+
+.trajectory-legend__dot.status-waiting {
+  background: var(--status-waiting);
+}
+
+.trajectory-legend__dot.status-failed {
+  background: var(--status-failed);
+}
+
+.trajectory-legend__heat {
+  padding: 1px 5px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+}
+
+.trajectory-legend__heat.heat-fast {
+  color: var(--status-completed);
+}
+
+.trajectory-legend__heat.heat-normal {
+  color: var(--text);
+}
+
+.trajectory-legend__heat.heat-slow {
+  color: var(--amber);
+}
+
+.trajectory-legend__heat.heat-very-slow {
+  color: var(--status-failed);
+}
+
 .trajectory-map {
   display: grid;
   grid-template-columns: 54px minmax(0, 1fr);
@@ -5011,6 +5244,55 @@ pre,
 
 .trajectory-row time small {
   color: var(--muted);
+}
+
+/* The paired start→end span, distinguished from the wall-time span above it:
+   only present when the block belongs to a closed pair. It sizes to its
+   content — no fixed pill, no border box — and lets the duration heat class
+   below encode how long the closed pair ran. */
+.trajectory-row time .trajectory-row__pair {
+  display: inline-block;
+  padding: 0;
+  font-size: 7px;
+  line-height: 1.6;
+}
+
+/* The pair duration and its link marker share one line, so the marker reads
+   as a property of that duration instead of a fourth timestamp row. */
+.trajectory-row time .trajectory-row__pair-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+/* The duration heat scale: a magnitude→colour spec, not a status colour. The
+   badge only recolors; its shape stays content-sized. The tiers track the
+   stepped units (<10s, <1m, <10m, beyond): <10s reads calm, <1m neutral,
+   <10m warm, ≥10m reads failed. */
+.trajectory-row__duration.heat-idle,
+.trajectory-row__pair.heat-idle {
+  color: var(--muted);
+}
+
+.trajectory-row__duration.heat-fast,
+.trajectory-row__pair.heat-fast {
+  color: var(--status-completed);
+}
+
+.trajectory-row__duration.heat-normal,
+.trajectory-row__pair.heat-normal {
+  color: var(--text);
+}
+
+.trajectory-row__duration.heat-slow,
+.trajectory-row__pair.heat-slow {
+  color: var(--amber);
+}
+
+.trajectory-row__duration.heat-very-slow,
+.trajectory-row__pair.heat-very-slow {
+  color: var(--status-failed);
 }
 
 .trajectory-row__status {
@@ -5547,12 +5829,42 @@ pre,
   text-align: right;
 }
 
-.atomic-log__row strong {
+/* The name cell carries the atom TYPE badge plus the event key. Both keep the
+   row's one meta text size; colour separates the category from the key, not a
+   second font size (the LOG used to mix sizes and read as two kinds of data). */
+.atomic-log__row strong.atomic-log__name {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
   overflow: hidden;
   color: var(--text);
   font-size: var(--text-meta);
+  white-space: nowrap;
+}
+
+.atomic-log__row .atomic-log__key {
+  min-width: 0;
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* TYPE is resolved from the atom's key/kind by src/lib/atom-types.ts — the
+   very same label the trajectory badge and hover card print. Violet matches
+   the hover card's TYPE field; a hairline border and a small radius keep the
+   badge compact instead of the large duration pill. */
+.atomic-log__row .atomic-log__type {
+  flex: 0 0 auto;
+  padding: 0 4px;
+  border: 1px solid color-mix(in srgb, var(--violet) 45%, var(--line));
+  border-radius: 3px;
+  color: var(--violet);
+  background: color-mix(in srgb, var(--violet-deep) 12%, transparent);
+  font-family: var(--font-mono);
+  font-size: var(--text-overline);
+  font-weight: var(--weight-medium);
+  line-height: 1.5;
 }
 
 .atomic-log__row time {
@@ -5594,6 +5906,130 @@ pre,
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Paired-event duration badge: both halves of a *closed* pair map to the
+   same span (see buildPairDurations), so the badge only ever appears on
+   events that actually took time; unpaired events render no badge. */
+.atomic-log__row .atomic-log__duration {
+  flex: 0 0 auto;
+  padding: 1px 5px;
+  border: 1px solid color-mix(in srgb, var(--log-tone) 42%, var(--line));
+  border-radius: 999px;
+  color: color-mix(in srgb, var(--log-tone) 72%, var(--text));
+  background: color-mix(in srgb, var(--log-tone) 12%, transparent);
+  font-family: var(--font-mono);
+  font-size: var(--text-overline);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.4;
+}
+
+/* The LOG badge reads the same stepped ms/s/m/h/d value and the same heat
+   colour as the trajectory. Its border keeps the event tone, so tone and
+   duration are still distinguishable at a glance. */
+.atomic-log__row .atomic-log__duration.heat-idle {
+  color: var(--muted);
+}
+
+.atomic-log__row .atomic-log__duration.heat-fast {
+  color: var(--status-completed);
+}
+
+.atomic-log__row .atomic-log__duration.heat-normal {
+  color: var(--text);
+}
+
+.atomic-log__row .atomic-log__duration.heat-slow {
+  color: var(--amber);
+}
+
+.atomic-log__row .atomic-log__duration.heat-very-slow {
+  color: var(--status-failed);
+}
+
+/* One shared marker for the two halves of a closed pair, rendered identically
+   on LOG rows and trajectory atoms. Each half prints the *other* half's LOG
+   row number (T7·#027 / T7·#029), so the two chips cross-reference instead of
+   repeating an opaque pair id; the mirrored chain icon on the result half is
+   the role cue. Colours are explicit: the global `button { color: inherit }` /
+   `button { border: 0 }` reset has no layer and would otherwise swallow them
+   (the marker is in its :not() exclusion list). */
+.pair-link-marker {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 2px;
+  padding: 0 3px 0 2px;
+  border: 1px solid color-mix(in srgb, var(--violet) 38%, var(--line));
+  border-radius: 3px;
+  color: color-mix(in srgb, var(--violet) 72%, var(--text));
+  background: color-mix(in srgb, var(--violet) 9%, transparent);
+  font-family: var(--font-mono);
+  /* Same size as the paired-duration badge beside it: the marker is a peer
+     of the duration, not a smaller footnote (7px was unreadable). */
+  font-size: var(--text-overline);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.5;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* Muted turn context, bright LOG row number: the partner's row is the one
+   thing the reader has to find, so it is the strongest part of the chip. */
+.pair-link-marker__target {
+  color: color-mix(in srgb, var(--violet) 88%, var(--text));
+  font-weight: var(--weight-medium);
+}
+
+.pair-link-marker svg {
+  width: 9px;
+  height: 9px;
+}
+
+/* The turn prefix ties the marker to the LOG separator and the trajectory
+   group above it. It stays muted so the partner row number remains the
+   readable identity; the separator is decorative (the button has an
+   aria-label). */
+.pair-link-marker__turn {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.pair-link-marker__turn::after {
+  content: "·";
+  margin: 0 1px;
+  color: color-mix(in srgb, var(--violet) 55%, var(--line));
+}
+
+.pair-link-marker:hover .pair-link-marker__turn,
+.pair-link-marker:focus-visible .pair-link-marker__turn {
+  color: color-mix(in srgb, var(--violet) 70%, var(--text));
+}
+
+.pair-link-marker.is-end svg {
+  transform: scaleX(-1);
+}
+
+.pair-link-marker:hover,
+.pair-link-marker:focus-visible {
+  border-color: var(--violet);
+  color: var(--text);
+  background: color-mix(in srgb, var(--violet) 22%, transparent);
+  outline: 1px solid var(--selection-border);
+  outline-offset: 1px;
+}
+
+/* Selecting one half highlights the other half in *both* views, so the pair
+   can be found without scrolling or reading every token. */
+.atomic-log__row.is-pair-partner {
+  border-color: color-mix(in srgb, var(--violet) 58%, var(--line));
+  background: color-mix(in srgb, var(--violet) 8%, transparent);
+  box-shadow: inset 2px 0 color-mix(in srgb, var(--violet) 68%, transparent);
+}
+
+.trajectory-row.is-pair-partner {
+  background: color-mix(in srgb, var(--violet) 8%, transparent);
+  box-shadow: inset 3px 0 var(--violet);
 }
 
 .atomic-log__row.tone-prompt {

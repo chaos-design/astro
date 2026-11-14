@@ -237,6 +237,14 @@ source::workspaceId::sessionId
   轮次，不会额外生成一个空的 `TURN 01` 分组。
 - 完全没有标识的 Hook 来源仍按提示词和事件顺序推断，每个 Prompt 子运行内从 1
   开始编号。
+- 切到身份模式的判定是「批内任一带轮次标识」而非「多数带」：来源只要命名过任
+  一轮次即视为整批权威，其后无编号的事件跟随当时正在执行的轮次，后续的
+  `UserPromptSubmit` 不再开新轮。官方适配器都遵守这条（DeepSeek/Codex 给每轮都
+  盖章，Claude/ZCode/Pi/WorkBuddy 一个都不盖）。*部分*盖章的来源——第三方 HTTP
+  采集器，或未来只给部分轮次命名标识的适配器——是文档化的例外：它无编号的后续
+  prompt 折入上一轮，而不是新开分组，因为标识的存在本身已把该来源标记为权威。
+  这是**契约而非启发式**，因此一个盖章不均匀的新适配器必须「要么每轮都盖、要么
+  全都不盖」。
 
 控制台还会从每条 `UserPromptSubmit` 派生一个 Prompt 子运行。该子运行包含当前 Prompt
 及下一条 Prompt 之前的全部事件；第一项分类为 `initial`，后续项分类为
@@ -281,9 +289,9 @@ max(已记录跨度, 当前时间 - 开始时间)
 | `= 阈值` | 阈值 | `terminated` |
 | `> 阈值` | 阈值 | `terminated` |
 
-已有终态不会进入实时计算，原始状态和时长都会保留。Session 父行比 Prompt 子行更
-严格：父行只有在最新 Prompt 为 `active` 时继续计时，而 Prompt 子行在 `active` 或
-`waiting` 时继续计时。
+已有终态不会进入实时计算，原始状态和时长都会保留。Session 父行与 Prompt 子行
+按同一规则计时：最新 Prompt 为 `active` 或 `waiting` 时继续计时，为
+`complete`、`failed` 或 `terminated` 时冻结。
 
 超时只是有效 UI 投影，不会新增事件、替换已存 Session 状态或改写 JSONL。它会停止
 当前选中运行的 Live 动画与运行标记。当没有父行或 Prompt 仍符合继续计时条件时，
@@ -297,8 +305,8 @@ max(已记录跨度, 当前时间 - 开始时间)
 - `23:59:59.999` 仍保持 Live；
 - `24:00:00.000` 恰好封顶并显示为 `terminated`；
 - 一条持续 30 小时且已完成的历史运行仍显示 complete 和 30 小时时长；
-- waiting Prompt 子行会超时，但父行保持 waiting 且时长冻结，因为父行仅在最新
-  Prompt 为 active 时增加；
+- waiting Prompt 子行会超时，但其父行（Session）仍会继续计时，因为 `waiting`
+  的最新 Prompt 仍算 live，只有终态（`complete`/`failed`/`terminated`）才冻结父行；
 - 修改阈值只会在重新构建前端后改变展示，不需要迁移已存事件。
 
 ## 8. 顺序、幂等与重复数据

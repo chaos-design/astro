@@ -1351,7 +1351,7 @@ function getToolStatus(postEvent: TraceEvent | null) {
   return isToolFailureEvent(postEvent) ? "failed" : "complete";
 }
 
-function createFlowEntries(events: TraceEvent[]): FlowEntry[] {
+function createFlowEntries(events: readonly TraceEvent[]): FlowEntry[] {
   const entries: FlowEntry[] = [];
   const toolEntries = new Map<string, FlowEntry[]>();
   const usedIds = new Set<string>();
@@ -1490,6 +1490,156 @@ export function buildFlow(
   }));
 
   return { nodes, edges };
+}
+
+/**
+ * Duration of every *paired* flow entry, by event id. The single pairing
+ * source is `createFlowEntries` (the same one `buildFlow` pairs with); an entry
+ * only carries a duration when a result event closed its start
+ * (`entry.endEvent`), which is exactly the "成对原子事件" rule — unpaired
+ * events (a lone `Reasoning`, an open `PreToolUse` with no result, …) are
+ * skipped and never counted. Both the start and the end id of a pair map to
+ * the same span so the LOG row on either half of the pair can show it.
+ */
+export function buildPairDurations(
+  events: readonly TraceEvent[],
+): ReadonlyMap<string, number> {
+  const durations = new Map<string, number>();
+  for (const entry of createFlowEntries(events)) {
+    if (!entry.endEvent) {
+      continue;
+    }
+    const duration = Math.max(
+      0,
+      getEventTimestamp(entry.endEvent) - getEventTimestamp(entry.startEvent),
+    );
+    durations.set(entry.startEvent.id, duration);
+    durations.set(entry.endEvent.id, duration);
+  }
+  return durations;
+}
+
+/**
+ * The LOG's 1-based row number (`#027`). LOG rows, the pair tooltip, the
+ * hover card and the pair marker all read this one formatter, so the number
+ * on a marker is always the exact string printed at the left of that row.
+ */
+export function formatLogSequence(index: number) {
+  return `#${String(index).padStart(3, "0")}`;
+}
+
+/** One half of a closed pair: its partner, role, turn and readable labels. */
+export type TracePairLink = {
+  /** The other half's event id — the jump target for the pair marker. */
+  partnerId: string;
+  /** Which half of the pair this event is. */
+  role: "start" | "end";
+  /**
+   * The pair's shared identity: its start event id. Internal and never
+   * displayed; it groups both halves for the trajectory's
+   * one-marker-per-pair pass and a turn's closed-pair total, without a hash
+   * that could collide.
+   */
+  pairId: string;
+  /** The turn this pair belongs to, from `buildTraceTurnIndex`. */
+  turn: number;
+  /** 1-based position of this pair among the closed pairs of its turn. */
+  ordinal: number;
+  /** 1-based LOG sequence numbers of the two halves. */
+  startIndex: number;
+  endIndex: number;
+  /**
+   * The other half's 1-based LOG sequence number. This is the number the
+   * marker prints: from row `#029`, `T7·#027` names the exact row to look
+   * for, and it is also the row a click jumps to.
+   */
+  partnerIndex: number;
+  /**
+   * `T<turn>·#<partnerIndex>`: the *per-half* visible marker text. The two
+   * halves cross-reference each other (`T7·#029` / `T7·#027`), so nobody has
+   * to guess which row is the other half of the pair.
+   */
+  label: string;
+  /** `#<start> ↔ #<end>`: the shared pair identity for tooltip and hover. */
+  rows: string;
+};
+
+/**
+ * Marker identity of every *paired* flow entry, by event id. The pairing
+ * source is the same `createFlowEntries` that backs `buildPairDurations`, so
+ * a row has a marker exactly when it has a paired duration. Both halves point
+ * at each other, so the LOG and trajectory can jump to the other half.
+ * Unpaired events are simply absent.
+ *
+ * The visible label is `T<turn>·#<partner row>`: on LOG row `#029` it reads
+ * `T7·#027`, i.e. turn 7 and the exact LOG row number of its partner. The two
+ * halves cross-reference instead of repeating one opaque pair identity, which
+ * is the direct answer to "which event is this paired with". `pairId` (the
+ * start event id) groups the two halves internally. `rows`
+ * (`#027 ↔ #029`) names both halves for the tooltip and the hover card. Every
+ * number comes from `stepIndex` / `endStepIndex` on the flow entry — the very
+ * indices the LOG prints — never from a second lookup. `ordinal` is retained
+ * as tooltip context only; it is no longer printed on the marker.
+ *
+ * `turnByEventId` is required and comes from `buildTraceTurnIndex`, the single
+ * turn-inference source. It is passed in (rather than recomputed here) because
+ * that function lives in `trajectory-model.ts`, which already imports this
+ * module — keeping the turn number out of this layer's own logic avoids a
+ * second inference and an import cycle. A required argument also stops a new
+ * caller from silently stamping every pair `T1`. Both halves of a pair share
+ * the *start* event's turn, so a marker always names the turn whose LOG
+ * separator / trajectory group holds it. Replaying a shorter prefix can shift
+ * the LOG row numbers and renumber the ordinals; identity and jumps still come
+ * from `partnerId`.
+ */
+export function buildPairLinks(
+  events: readonly TraceEvent[],
+  turnByEventId: ReadonlyMap<string, number>,
+): ReadonlyMap<string, TracePairLink> {
+  const links = new Map<string, TracePairLink>();
+  // Number pairs in LOG order (not timestamp order), so `#1` in a marker is
+  // the first pair a reader meets in that turn.
+  const closed = createFlowEntries(events)
+    .filter((entry) => entry.endEvent !== null)
+    .sort((left, right) => left.stepIndex - right.stepIndex);
+  const ordinalByTurn = new Map<number, number>();
+  for (const entry of closed) {
+    const endEvent = entry.endEvent;
+    if (!endEvent || entry.startEvent.id === endEvent.id) {
+      continue;
+    }
+    const pairId = entry.startEvent.id;
+    const turn = turnByEventId.get(entry.startEvent.id) ?? 1;
+    const ordinal = (ordinalByTurn.get(turn) ?? 0) + 1;
+    ordinalByTurn.set(turn, ordinal);
+    const startIndex = entry.stepIndex + 1;
+    const endIndex = (entry.endStepIndex ?? entry.stepIndex) + 1;
+    // The marker names the *other* half's LOG row, so from either row the
+    // reader sees exactly where to look (and where a click will jump).
+    const shared = {
+      pairId,
+      turn,
+      ordinal,
+      startIndex,
+      endIndex,
+      rows: `${formatLogSequence(startIndex)} ↔ ${formatLogSequence(endIndex)}`,
+    };
+    links.set(entry.startEvent.id, {
+      ...shared,
+      partnerId: endEvent.id,
+      role: "start",
+      partnerIndex: endIndex,
+      label: `T${turn}·${formatLogSequence(endIndex)}`,
+    });
+    links.set(endEvent.id, {
+      ...shared,
+      partnerId: entry.startEvent.id,
+      role: "end",
+      partnerIndex: startIndex,
+      label: `T${turn}·${formatLogSequence(startIndex)}`,
+    });
+  }
+  return links;
 }
 
 export function buildHarnessFlow(
