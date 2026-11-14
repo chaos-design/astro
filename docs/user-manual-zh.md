@@ -174,10 +174,17 @@ pnpm install-plugins -- --clients=claude --scope=user
 pnpm install-plugins -- --clients=deepseek --deepseek-profile=web
 ```
 
-如果 PATH 中没有 `dsh`，安装器会回退到
-`npx --yes @deepseek-ai/dsh`。自定义位置使用 `--dsh-home`，自定义可执行文件
-使用 `--deepseek-command`。安装后重启 `dsh web`，事件写入
-`~/.astrox/deepseek/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl`。
+如果 PATH 中没有 `dsh`，安装器会回退到 `npx --yes @deepseek-ai/dsh`。从源码
+本地启动的 harness（`pnpm start:web`）没有全局 `dsh`，此时应把 `DSH_COMMAND`
+指向启动该源码仓库的包装脚本，避免回退到发布版、写入另一个 `DSH_HOME`。
+自定义位置使用 `--dsh-home`，自定义可执行文件使用 `--deepseek-command`。
+
+安装器会在命令结束后校验 `$DSH_HOME/profiles/<profile>/package.json`：只有
+`dsh-astro-plugin` 同时出现在 `dependencies` 与 `dsh.profile.bundles` 才算
+成功，否则直接报错——命令退出码为 0 并不代表 dsh 已挂载该层。用
+`dsh --profile web --dump-config` 确认输出含 `astro-trace` 后重启 `dsh web`；
+仍无事件时检查 `$DSH_HOME/logs/startup-*.log` 中 `astro-trace` 的状态。
+事件写入 `~/.astrox/deepseek/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl`。
 
 #### 4.2.4 Trae
 
@@ -237,7 +244,7 @@ node ~/.astrox/plugins/astro/server/server.mjs
 | 途径 | 做法 |
 | --- | --- |
 | Vercel | 仓库根目录的 `vercel.json` 已配置：构建控制台与文档站并合并输出（文档站在根路径，控制台在 `/console/`），导入仓库即可，无需额外设置 |
-| GitHub Actions | `.github/workflows/console-preview.yml` 在 push/PR 时构建控制台并上传 `console-dist` 构件；在 Actions 页面手动运行 "Deploy console preview to GitHub Pages" 可把**当前分支**的构建发布到 GitHub Pages（不依赖 main，在途分支即可拿到线上预览地址；同一站点被最近一次触发覆盖） |
+| GitHub Actions | `.github/workflows/console-preview.yml` 在 push/PR 时构建控制台并上传 `console-dist` 构件；推送到 `main`、`feat/**`、`feature/**`、`fix/**` 或 `hotfix/**`（前缀匹配）会自动把当前分支构建发布到 GitHub Pages，在途分支即可拿到线上预览地址；也可以手动运行 "Deploy console preview to GitHub Pages" 发布其他分支（同一站点被最近一次触发覆盖） |
 | 任意静态托管 | `pnpm build` 产出 `dist/`（相对资源路径），直接托管即可 |
 
 部署页默认连接 `http://127.0.0.1:5678`，也可以用 `?api=<地址>` 指定（会保存到
@@ -440,7 +447,8 @@ codex 的 Hook）不显示该标签，与「没有模型」不加区分。一个
 
 工具栏功能：
 
-- 平台语义：Codex、Claude Code、Trae；
+- 平台语义：Codex、Claude Code、Trae，以及其他已配置的智能体，外加末尾的
+  **Others** 兜底项；
 - 拓扑/轨迹切换；
 - 原子与连线指南；
 - 全部原子/仅运行时原子切换；
@@ -455,13 +463,39 @@ codex 的 Hook）不显示该标签，与「没有模型」不加区分。一个
 上半部分是 LOG：
 
 - 最新事件显示在前；
-- 按 Turn 分组，轮次分隔条只显示轮次序号（如 `01`）；
+- 每行事件键前有一个紫色 `TYPE` 徽标（`SYSTEM` / `MODEL` / `TOOL` / `MEMORY` /
+  `RESPONSE` / `TRACE` 等）：它取的是**该行主原子的类型数据**——原子的 `key`
+  与经投影层归一化的 `kind`，再映射成一张封闭的短标签表。它不是事件名，也不是
+  payload 里的字段；轨迹行徽标与悬停卡片的 `TYPE` 用的是同一份数据，三处永远
+  一致。一条 LOG 事件会投影成若干原子，行上只显示主原子（`getAtomIdForEvent`，
+  也就是点击该行时画布高亮的那个），避免一行堆满标签。悬停徽标会写出
+  `原子类型 <标签> · <key> / <kind>`；例如 `tool.result` 原子的职责归类为
+  `context`，因此显示 `MEMORY` 而不是 `TOOL`——TYPE 表示原子的职责分类，不是
+  工具名或事件名；
+- 按 Turn 分组，轮次分隔条只显示轮次序号（如 `05`）；轮次号优先采用来源自己
+  上报的编号（如 DeepSeek 的 `data.turn`，恢复的会话可能从 5 开始），来源没有
+  编号时按提示词和事件顺序推断，每个 Prompt 子运行内从 1 开始；一个轮次只出现
+  一条分隔，不会在同一条消息里来回跳号；
 - 可搜索当前 Prompt 子运行事件的任意序列化字段；输入即时生效，过滤在后台跟进
   （长会话下连续输入不卡顿，序列化结果已按事件缓存）；
 - 点击事件可选择，再次点击同一事件可取消；
 - 定位按钮会切回拓扑并聚焦当前映射原子；
 - 头部右侧的上/下箭头分别回到最新事件、滚动到最底部，只在对应方向还有内容时出现；
-  这两个控件在头部而不是浮在列表上，因此不会遮住列表顶部的原子。
+  这两个控件在头部而不是浮在列表上，因此不会遮住列表顶部的原子；
+- 已闭合的成对事件（如 `PreToolUse` 与其 `PostToolUse` / `PostToolUseFailure`）
+  的起始与结束两条记录都会显示同一个「成对耗时」徽标（开始→结果的时长）；
+  不成对的事件（单独的 `Reasoning`、尚未有结果的调用）不显示徽标。徽标文字与
+  轨迹一致，按递进单位（`ms/s/m/h/d`）显示并带同一套「时长色阶」。
+- 成对徽标旁有一个**成对关联标记**（链式图标 + `T<轮次>·#<另一半的 LOG 行号>`，
+  如 `T7·#027`）：例如 LOG 的 `#027`（START）与 `#029`（END）是一对，`#027` 行上
+  的标记是 `T7·#029`、`#029` 行上的标记是 `T7·#027`，两行互相指向对方，不用悬停
+  就知道「谁和谁是一对」。`T7` 是该配对所属的轮次（与上方 `TURN 07` 分隔、轨迹
+  `Loop Turn 7` 分组一致），`#027` / `#029` 就是行首打印的 LOG 行号，不是配对序号
+  或哈希。轨迹里对应原子用同一套标记；把鼠标停在标记上，还会显示轮次内第几对、
+  双方行号（如 `#027 ↔ #029`）以及点击将定位的行号。点击标记会立即选中并定位到
+  配对的另一半，同时在 LOG 与轨迹列表中居中该行；选中其中一半时，另一半在两边
+  都会以紫色描边高亮。标记清空日志搜索条件后再定位，因此被搜索过滤掉的另一半
+  也能被找到。
 
 下半部分是检查器：
 
@@ -509,8 +543,9 @@ codex 的 Hook）不显示该标签，与「没有模型」不加区分。一个
 超时不代表 ASTRO 已经杀死外部 Agent 进程，只表示 ASTRO 不再把该记录区间视为实时
 执行。如果需要判断进程是否仍运行，应检查来源客户端和 JSONL 中的最新事件。
 
-父子行状态允许有意不同。Session 父行只有在最新 Prompt 为 `active` 时才增加；最新
-Prompt 为 waiting 时父行冻结。waiting 子行仍继续计算自身时长，并可独立达到超时。
+父子行状态允许有意不同。Session 父行在最新 Prompt 为 `active` 或 `waiting`
+时持续计时；最新 Prompt 为终态（`complete`、`failed` 或 `terminated`）时父行
+冻结。waiting 子行仍继续计算自身时长，并可独立达到超时。
 历史 complete、failed 或 terminated 运行即使长于当前阈值，也保留其已记录时长。
 
 ### 5.8 设置
@@ -558,8 +593,9 @@ Prompt 为 waiting 时父行冻结。waiting 子行仍继续计算自身时长�
 
 **关于**
 
-- 当前控制台版本（`v0.0.3`）、偏好实际存放的位置（浏览器 localStorage，键前缀
-  `ASTROX_`），以及「设置只影响展示、不写回事件」的说明。
+- 当前控制台版本（`v<appVersion>`，即 `src/config/app-config.ts` 里的值，在「关于」
+  中显示）、偏好实际存放的位置（浏览器 localStorage，键前缀 `ASTROX_`），以及
+  「设置只影响展示、不写回事件」的说明。
 
 偏好分别写入 `ASTROX_HISTORY_RANGE`、`ASTROX_RUN_HISTORY_LIVE_VIEW`、
 `ASTROX_MAX_SYNC` 与 `ASTROX_PERF_HUD` 等键；「恢复默认」把这些分区的值一起还原
@@ -622,9 +658,17 @@ Prompt 为 waiting 时父行冻结。waiting 子行仍继续计算自身时长�
 - Complete 数；
 - Failed 数。
 
-泳道概览把步骤映射到 Input、Model 和 Tools。下方列表按 Turn 分组，显示事件类型、摘要、时间、持续时间和状态。
+泳道概览把步骤映射到 Input、Model 和 Tools。下方列表按 Turn 分组，显示事件类型、摘要、时间、持续时间和状态。悬停某个区块（列表行或泳道色块）会弹出同一张小卡片，展示该区块的**类型（`TYPE`，如 SYSTEM / MODEL / TOOL）**、事件名、工具（有则附）、成对耗时（`PAIR`）、自身时长（`DURATION`，原子）或成对耗时合计（Turn 为 `PAIRS`）以及状态。LOG 行事件键前的 `TYPE` 徽标与这里的 `TYPE` 同源（同一个 `atomTypeLabel`），颜色也都是紫色。
 
-工具调用会把 `PreToolUse` 与同 `toolUseId` 的 `PostToolUse` 或 `PostToolUseFailure` 合并为一个步骤。点击带详情的行，可展开输入和输出 JSON。
+悬停卡片用统一的三档字号（标题 / 字段值 / 字段标签），字段之间靠**颜色**而不是字号区分：`TYPE` 紫、`EVENT` 蓝、工具名琥珀、`PAIR` 编号紫（与行上标记一致）、耗时按时长色阶、状态按自身语义色。标题已经是工具名时（如泳道色块标题 `Read`），`EVENT` 行不再重复一遍该工具名。
+
+时长按递进单位显示，取能如实表达的最小单位：<10s 用 `ms`、10–60s 用 `s`、<1h 用 `m`、<1d 用 `h`、再长用 `d`（每档一个数字，不叠加成 `1m 4s`）。耗时文字/色块的颜色是一套「时长色阶」，而非状态色：<10s 平静（完成绿）、<1m 中性、<10m 偏暖（琥珀）、≥10m 偏红，方便一眼看出慢步骤。已闭合成对的行只显示成对耗时一个数字（不再并列一个相同/近似的墙钟值）；未成对的行才显示自身墙钟时长。
+
+轨迹视图表头带一张**图例**：左侧四个圆点按 `complete/running/waiting/failed` 说明状态标记的颜色；右侧按「时长」说明各色档对应的区间（`<10s / <1m / <10m / ≥10m`），颜色与实际行上的色块一一对应。
+
+工具调用会把 `PreToolUse` 与同 `toolUseId` 的 `PostToolUse` 或 `PostToolUseFailure` 合并为一个步骤。点击带详情的行，可展开输入和输出 JSON。一个已闭合的成对事件（开始→结果）会以「成对耗时」（`PAIR`）形式显示在行上和悬停卡片中；不成对的事件没有可统计的时长，因此不计入任何合计。
+
+成对耗时旁边是**成对关联标记**：链式图标加 `T7·#027` 这样直接指向另一半 LOG 行号的可读标签；同一对的两半互相指向对方（`#027` 行显示 `T7·#029`，`#029` 行显示 `T7·#027`），悬停卡片的 `PAIR` 行则给出双方行号 `T7·#027 ↔ #029`。`T7` 取自起始事件的轮次，与所在 `Loop Turn` 分组以及 LOG 的 `TURN 07` 分隔对应；`#027`、`#029` 就是 LOG 行首打印的行号，取自当前事件窗口，回放窗口变短时会随之变化。把鼠标停在标记上会显示轮次内第几对、双方行号和点击跳转的目标行——这是「哪两行是一对」的直接答案。配对身份与跳转始终由事件 ID 决定：起始事件 ID 还作为不显示的分组键，供轨迹每对只画一个标记、轮次合计每对只加一次。一条工具事件会投影成多个原子，为避免标签刷屏，轨迹里每个配对只在聚合的工具步骤原子（`tool.call`）上画一个标记，其他原子仍保留成对耗时，悬停时也能读到双方行号。点击标记定位到配对的另一半（起始 ↔ 结果），LOG 与轨迹同时居中对应的行；选中其中一半时，另一半在两边都有紫色描边。
 
 ## 8. 历史回放
 
@@ -956,7 +1000,7 @@ astro-trace doctor
 | 键 | 值 | 说明 |
 | --- | --- | --- |
 | `ASTROX_THEME` | `light` / `dark` / `system` | 主题 |
-| `ASTROX_PLATFORM` | `codex` / `claude` / `trae` | 平台上下文 |
+| `ASTROX_PLATFORM` | 如 `codex` / `claude` / `deepseek` / `trae` / `workbuddy` | 平台上下文 |
 | `ASTROX_HISTORY_OPEN` | `true` / `false` | 左侧 History 展开状态 |
 | `ASTROX_CONSOLE_OPEN` | `true` / `false` | 右侧 Events/Inspector 展开状态 |
 | `ASTROX_HISTORY_RANGE` | `1h` / `3h` / `6h` / `12h` / `1d` / `3d` / `5d` / `7d` | 默认时间范围，默认 `3h` |
@@ -1168,7 +1212,7 @@ pnpm build
 pnpm build:native-plugins
 ```
 
-当前自动化套件包含 182 项测试，覆盖事件模型、Hook、连续问答、Prompt 子运行、
+当前自动化套件包含 527 项测试，覆盖事件模型、Hook、连续问答、Prompt 子运行、
 SSE 重连、
 存储、迁移、原子投影、拓扑路由、偏好持久化、环境边界和 Vite 代理。
 

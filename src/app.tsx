@@ -16,6 +16,7 @@ import {
   FileInput,
   Focus,
   Folder,
+  Link2,
   ListTree,
   LocateFixed,
   Loader2,
@@ -145,8 +146,6 @@ import {
   shouldShowDemo,
   storageKeys,
   themeOptions,
-  trajectoryKeyLabels,
-  trajectoryKindLabels,
   trajectoryLanes,
   type ActiveView,
   type HistoryRangeId,
@@ -163,15 +162,19 @@ import {
   buildSessionPromptRuns,
   buildFlow,
   buildHarnessFlow,
+  buildPairDurations,
+  buildPairLinks,
   createSessionProjection,
   eventMeta,
   formatDuration,
+  formatLogSequence,
   getEventSummary,
   getEventTimestamp,
   getExecutionInstruction,
   getFlowNodeIdForEvent,
   normalizeTraceEvent,
   parseImportedTrace,
+  type TracePairLink,
 } from "./lib/trace-model";
 import {
   loadDemoEvents,
@@ -200,6 +203,7 @@ import {
   LOG_TURN_ESTIMATE,
   buildLogLayout,
   findVisibleRange,
+  includeTurnRow,
   resolveScrollTopForRow,
 } from "./lib/log-window";
 import {
@@ -225,12 +229,18 @@ import {
 } from "./lib/sync-budget";
 import { atomLevel, projectTraceEvents } from "./lib/atomic-projection";
 import {
+  atomTypeLabel,
+  eventAtomType,
+  type EventAtomType,
+} from "./lib/atom-types";
+import {
   buildTraceTurnIndex,
   buildTrajectoryMapSlots,
   buildTrajectoryModel,
   getTrajectorySegmentPosition,
   orderTrajectoryNewestFirst,
   type TrajectoryAtom,
+  type TrajectoryMapSlot,
   type TrajectoryTurn,
 } from "./lib/trajectory-model";
 import {
@@ -391,6 +401,96 @@ function formatRunDate(timestamp: string | number) {
   return `${formatDate(timestamp)} ${runTimeFormatter.format(new Date(timestamp))}`;
 }
 
+/**
+ * The trajectory's own durations (wall-time and closed-pair) use a stepped
+ * unit rule so a value reads in the smallest honest unit: under 10s it is a
+ * `ms` span, 10–60s a `s` span, then `m`, `h`, and `d` as it grows. Whole-second
+ * `formatDuration` would print a 4s tool call as "4s" with no sub-second
+ * siblings, so the trajectory resolves each span to its dominant unit instead
+ * of compounding (`1m 4s`) — one number per tier, stepping ms → s → m → h → d.
+ */
+function formatDurationMs(milliseconds: number) {
+  if (!Number.isFinite(milliseconds) || milliseconds < 0) {
+    return "--";
+  }
+  const s = milliseconds / 1000;
+  if (s < 10) {
+    return `${Math.round(milliseconds)}ms`;
+  }
+  const m = s / 60;
+  if (m < 1) {
+    return `${Math.round(s)}s`;
+  }
+  const h = m / 60;
+  if (h < 1) {
+    return `${Math.round(m)}m`;
+  }
+  const d = h / 24;
+  if (d < 1) {
+    return `${Math.round(h)}h`;
+  }
+  return `${Math.round(d)}d`;
+}
+
+/**
+ * The duration colour spec, a single source for how a span's magnitude is
+ * coloured. It is a heat scale, not a status colour: a fast tool call reads
+ * calm (completed), a slow one warms to amber, and a long one reads failed-red
+ * so a hot spot is visible at a glance. The tiers track the stepped units —
+ * <10s, <1m, <10m, beyond — so the colour answers "is this slow" at a glance.
+ * Applied to the trajectory's wall-time and pair badges; the badge keeps its
+ * shape but lets the colour encode speed.
+ */
+type DurationHeat = "idle" | "fast" | "normal" | "slow" | "very-slow";
+
+const DURATION_HEAT = {
+  idle: 0,
+  fast: 10_000,
+  normal: 60_000,
+  slow: 600_000,
+} as const;
+
+function durationHeatClass(milliseconds: number): DurationHeat {
+  if (!Number.isFinite(milliseconds) || milliseconds <= 0) {
+    return "idle";
+  }
+  if (milliseconds < DURATION_HEAT.fast) {
+    return "fast";
+  }
+  if (milliseconds < DURATION_HEAT.normal) {
+    return "normal";
+  }
+  if (milliseconds < DURATION_HEAT.slow) {
+    return "slow";
+  }
+  return "very-slow";
+}
+
+/**
+ * The trajectory legend: the status markers (what each dot colour means) and
+ * the duration heat tiers (what each duration colour means). The user reported
+ * the colour + marker codes as unclear, so the view carries this key — the
+ * same variables the dots and badges use, so the legend can never drift from
+ * the marks it explains.
+ */
+const STATUS_LEGEND: ReadonlyArray<{ label: string; tone: string }> = [
+  { label: "complete", tone: "complete" },
+  { label: "running", tone: "running" },
+  { label: "waiting", tone: "waiting" },
+  { label: "failed", tone: "failed" },
+];
+
+/**
+ * The duration heat tiers, labelled by the threshold that opens the tier (one
+ * number, matching the stepped units the row prints: <10s, <1m, <10m, ≥10m).
+ */
+const DURATION_LEGEND: ReadonlyArray<{ label: string; heat: DurationHeat }> = [
+  { heat: "fast", label: "<10s" },
+  { heat: "normal", label: "<1m" },
+  { heat: "slow", label: "<10m" },
+  { heat: "very-slow", label: "≥10m" },
+];
+
 function getEventAction(event: TraceEvent) {
   if (isUserQuestionStartEvent(event)) {
     return "WAITING";
@@ -427,11 +527,24 @@ function getShortId(id: unknown) {
     : value;
 }
 
-function buildLogEntries(events: TraceEvent[]) {
+function buildLogEntries(events: TraceEvent[], platformId: string) {
   const turnByEventId = buildTraceTurnIndex(events);
+  // The paired duration map is the single place a LOG row learns how long a
+  // closed pair took; unpaired events get `null` and show no badge.
+  const pairDurations = buildPairDurations(events);
+  // Same pairing truth, for the marker: both halves of a pair carry a shared
+  // pairId and each other's id, so a click can locate the other half. `T<n>`
+  // names the LOG separator above the row and `#<row>` names the partner's
+  // LOG row — both come from the same indices this row is printed with.
+  const pairLinks = buildPairLinks(events, turnByEventId);
   return events.map((event, index) => ({
     event,
     index,
+    // The TYPE badge reads the primary atom's key/kind, the same atom data
+    // the trajectory badge and hover card use — never the event name.
+    atomType: eventAtomType(event, platformId),
+    pairDuration: pairDurations.get(event.id) ?? null,
+    pairLink: pairLinks.get(event.id) ?? null,
     turn: turnByEventId.get(event.id) ?? 1,
   }));
 }
@@ -2483,6 +2596,82 @@ const RunHistory = memo(function RunHistory({
 });
 
 /**
+ * The single marker shared by LOG rows and trajectory atoms. Its `#number` is
+ * the *other half's* LOG row, not a pair ordinal: a pair made of `#027` and
+ * `#029` reads `T7·#029` on `#027` and `T7·#027` on `#029`. The two halves
+ * cross-reference each other, so "who is paired with whom" is visible without
+ * hovering, and clicking jumps straight to that numbered row. The tooltip
+ * spells out both rows and the jump target. Kept as a real button so keyboard
+ * users get the same jump, and it stops propagation so the jump never doubles
+ * as a plain row selection.
+ */
+function PairLinkMarker({
+  link,
+  onLocate,
+}: {
+  link: TracePairLink;
+  onLocate: (eventId: string) => void;
+}) {
+  const roleLabel = link.role === "start" ? "起始" : "结果";
+  const targetLabel = link.role === "start" ? "结果" : "起始";
+  const targetRow = formatLogSequence(link.partnerIndex);
+  const pairHint = `${link.label} · 第 ${link.turn} 轮第 ${link.ordinal} 对 · ${link.rows} · #号是另一半的 LOG 行号`;
+  return (
+    <button
+      type="button"
+      className={`pair-link-marker is-${link.role}`}
+      title={`${pairHint}，成对${roleLabel}，点击定位${targetLabel}事件 ${targetRow}`}
+      aria-label={`${pairHint}，成对${roleLabel}，定位${targetLabel}事件 ${targetRow}`}
+      onClick={(clickEvent) => {
+        clickEvent.stopPropagation();
+        onLocate(link.partnerId);
+      }}
+      onKeyDown={(keyEvent) => {
+        if (keyEvent.key === "Enter" || keyEvent.key === " ") {
+          keyEvent.preventDefault();
+          keyEvent.stopPropagation();
+          onLocate(link.partnerId);
+        }
+      }}
+    >
+      <Link2 aria-hidden="true" />
+      <b className="pair-link-marker__turn">T{link.turn}</b>
+      <span className="pair-link-marker__target">{targetRow}</span>
+    </button>
+  );
+}
+
+/**
+ * `buildLogEntries` rebuilds every pair link when a streamed batch appends an
+ * event, so the row memo cannot compare links by identity. Compare the fields
+ * the row and its tooltip render instead: a batch that leaves a pair unchanged
+ * then leaves both of its rows memoized.
+ */
+function isSamePairLink(
+  before: TracePairLink | null,
+  after: TracePairLink | null,
+) {
+  if (before === after) {
+    return true;
+  }
+  if (!before || !after) {
+    return false;
+  }
+  return (
+    before.pairId === after.pairId &&
+    before.partnerId === after.partnerId &&
+    before.role === after.role &&
+    before.turn === after.turn &&
+    before.ordinal === after.ordinal &&
+    before.startIndex === after.startIndex &&
+    before.endIndex === after.endIndex &&
+    before.partnerIndex === after.partnerIndex &&
+    before.label === after.label &&
+    before.rows === after.rows
+  );
+}
+
+/**
  * One virtualized log row. Memoized on (event, index, selected, running): a
  * streaming batch, a selection change, or a running-marker move then only
  * re-renders the rows whose own state moved instead of re-reconciling every
@@ -2492,15 +2681,25 @@ const RunHistory = memo(function RunHistory({
  * `getEventSummary` additionally caches per event across re-mounts.
  */
 const AtomicLogRow = memo(function AtomicLogRow({
+  atomType,
   event,
   index,
+  onLocatePartner,
   onSelect,
+  pairDuration,
+  pairLink,
+  partnerSelected,
   running,
   selected,
 }: {
+  atomType: EventAtomType | null;
   event: TraceEvent;
   index: number;
+  onLocatePartner: (eventId: string) => void;
   onSelect: (eventId: string) => void;
+  pairDuration: number | null;
+  pairLink: TracePairLink | null;
+  partnerSelected: boolean;
   running: boolean;
   selected: boolean;
 }) {
@@ -2515,6 +2714,10 @@ const AtomicLogRow = memo(function AtomicLogRow({
     () => formatClock(event.capturedAt),
     [event.capturedAt],
   );
+  const durationLabel = useMemo(
+    () => (pairDuration === null ? null : formatDurationMs(pairDuration)),
+    [pairDuration],
+  );
   return (
     <div
       data-event-id={event.id}
@@ -2526,6 +2729,7 @@ const AtomicLogRow = memo(function AtomicLogRow({
         `tone-${meta.tone}`,
         running && "is-running",
         selected && !running && "is-selected",
+        partnerSelected && !selected && "is-pair-partner",
       )}
       onClick={() => onSelectRef.current(event.id)}
       onKeyDown={(keyEvent) => {
@@ -2535,11 +2739,19 @@ const AtomicLogRow = memo(function AtomicLogRow({
         }
       }}
     >
-      <span className="log-sequence">
-        #{String(index + 1).padStart(3, "0")}
-      </span>
+      <span className="log-sequence">{formatLogSequence(index + 1)}</span>
       <i className="phase-dot" />
-      <strong>{getTraceEventKey(event)}</strong>
+      <strong className="atomic-log__name">
+        {atomType ? (
+          <span
+            className="atomic-log__type"
+            title={`原子类型 ${atomType.label} · ${atomType.key} / ${atomType.kind}`}
+          >
+            {atomType.label}
+          </span>
+        ) : null}
+        <span className="atomic-log__key">{getTraceEventKey(event)}</span>
+      </strong>
       <time dateTime={event.capturedAt} title={event.capturedAt}>
         <span>{dateLabel}</span>
         {clockLabel}
@@ -2549,12 +2761,30 @@ const AtomicLogRow = memo(function AtomicLogRow({
         <span className="atomic-log__summary">
           {getEventSummary(event)}
         </span>
+        {durationLabel !== null ? (
+          <span
+            className={`atomic-log__duration heat-${durationHeatClass(
+              pairDuration as number,
+            )}`}
+            title={`成对耗时 ${durationLabel}`}
+          >
+            {durationLabel}
+          </span>
+        ) : null}
+        {pairLink ? (
+          <PairLinkMarker link={pairLink} onLocate={onLocatePartner} />
+        ) : null}
       </small>
     </div>
   );
 }, (before, after) =>
+  before.atomType === after.atomType &&
   before.event === after.event &&
   before.index === after.index &&
+  before.onLocatePartner === after.onLocatePartner &&
+  before.pairDuration === after.pairDuration &&
+  isSamePairLink(before.pairLink, after.pairLink) &&
+  before.partnerSelected === after.partnerSelected &&
   before.running === after.running &&
   before.selected === after.selected,
 );
@@ -2565,21 +2795,25 @@ const AtomicLogRow = memo(function AtomicLogRow({
  */
 const AtomicLog = memo(function AtomicLog({
   events,
+  platformId,
   runningEventId,
   selectedEventId,
   locateRequest,
   queryResetToken,
   onSelect,
+  onLocatePartner,
   onLocateSelectedAtom,
   canLocateSelectedAtom,
   live,
 }: {
   events: TraceEvent[];
+  platformId: string;
   runningEventId: string;
   selectedEventId: string;
   locateRequest: number;
   queryResetToken: number;
   onSelect: (eventId: string) => void;
+  onLocatePartner: (eventId: string) => void;
   onLocateSelectedAtom: () => void;
   canLocateSelectedAtom: boolean;
   live: boolean;
@@ -2624,7 +2858,10 @@ const AtomicLog = memo(function AtomicLog({
   // Entries are built once per events change; the deferred needle only
   // re-runs the (cached-haystack) filter, so a keystroke never pays for
   // rebuilding every turn separator.
-  const entries = useMemo(() => buildLogEntries(events), [events]);
+  const entries = useMemo(
+    () => buildLogEntries(events, platformId),
+    [events, platformId],
+  );
   const visibleEntries = useMemo(() => {
     const needle = deferredQuery.trim().toLowerCase();
     const matched = needle
@@ -2645,7 +2882,10 @@ const AtomicLog = memo(function AtomicLog({
     () => findVisibleRange(layout.offsets, viewport.top, viewport.height),
     [layout.offsets, viewport.height, viewport.top],
   );
-  const slice = layout.items.slice(range.start, range.end);
+  // Never mount a window that ends on a turn separator: its row would sit just
+  // outside the window and the chip would label an empty slot at the bottom.
+  const mountedRange = includeTurnRow(layout.items, range);
+  const slice = layout.items.slice(mountedRange.start, mountedRange.end);
 
   const syncScrollPosition = useCallback(() => {
     const list = listRef.current;
@@ -2878,23 +3118,35 @@ const AtomicLog = memo(function AtomicLog({
               >
                 {slice.map((item) => {
                   if (item.kind === "turn") {
+                    // Key by position, never by the turn value: two groups can
+                    // legitimately repeat a number (a source that restarts its
+                    // counter), and duplicate keys left React with orphaned
+                    // chips that survived the next agent switch.
                     return (
                       <div
                         className="atomic-log__turn"
                         aria-label={`Turn ${item.turn}`}
-                        key={`turn-${item.turn}`}
+                        key={`turn-${item.entryIndex}`}
                       >
                         <span>{String(item.turn).padStart(2, "0")}</span>
                       </div>
                     );
                   }
-                  const { event, index } = visibleEntries[item.index];
+                  const { atomType, event, index, pairDuration, pairLink } =
+                    visibleEntries[item.index];
                   return (
                     <AtomicLogRow
+                      atomType={atomType}
                       event={event}
                       index={index}
                       key={event.id}
+                      onLocatePartner={onLocatePartner}
                       onSelect={onSelect}
+                      pairDuration={pairDuration}
+                      pairLink={pairLink}
+                      partnerSelected={
+                        pairLink?.partnerId === selectedEventId
+                      }
                       running={event.id === runningEventId}
                       selected={event.id === selectedEventId}
                     />
@@ -3165,6 +3417,8 @@ type TrajectoryDisplayRow = Pick<
   | "key"
   | "kind"
   | "label"
+  | "pairDuration"
+  | "pairLink"
   | "occurredAt"
   | "status"
   | "summary"
@@ -3177,18 +3431,27 @@ function TrajectoryRow({
   expandable = false,
   expanded = false,
   onActivate,
+  onHover,
+  onLocatePartner,
   onToggle,
+  partnerSelected = false,
   row,
   selected,
+  showPairMarker = true,
   showTurn = true,
 }: {
   depth: number;
   expandable?: boolean;
   expanded?: boolean;
   onActivate: () => void;
+  onHover?: (event: ReactPointerEvent<HTMLDivElement>) => void;
+  onLocatePartner?: (eventId: string) => void;
   onToggle?: () => void;
+  partnerSelected?: boolean;
   row: TrajectoryDisplayRow;
   selected: boolean;
+  /** One trace event projects into several atoms; only the pair's owner draws the marker. */
+  showPairMarker?: boolean;
   showTurn?: boolean;
 }) {
   return (
@@ -3201,9 +3464,11 @@ function TrajectoryRow({
         "trajectory-row",
         expandable && "is-loop",
         selected && "is-selected",
+        partnerSelected && !selected && "is-pair-partner",
       )}
       style={{ "--depth": depth } as CSSProperties}
       onClick={onActivate}
+      onPointerOver={onHover}
       onKeyDown={(keyEvent) => {
         if (keyEvent.key === "Enter" || keyEvent.key === " ") {
           keyEvent.preventDefault();
@@ -3237,9 +3502,7 @@ function TrajectoryRow({
         ) : null}
       </span>
       <span className={`trajectory-row__badge tone-${row.tone}`}>
-        {trajectoryKeyLabels[row.key] ??
-          trajectoryKindLabels[row.kind] ??
-          row.kind}
+        {atomTypeLabel(row.key, row.kind)}
       </span>
       <span className="trajectory-row__identity">
         <strong>{row.label}</strong>
@@ -3253,7 +3516,35 @@ function TrajectoryRow({
       <time dateTime={row.occurredAt}>
         <span>{formatDate(row.occurredAt)}</span>
         <span>{formatClock(row.occurredAt)}</span>
-        <small>{formatDuration(row.duration)}</small>
+        {row.pairDuration !== null ? (
+          /* The closed pair is the meaningful span; printing the wall-time
+             next to it shows two numbers for one duration (a 6s wall and a
+             6s pair). The pair badge and its link marker share one line. */
+          <span className="trajectory-row__pair-line">
+            <small
+              className={`trajectory-row__pair heat-${durationHeatClass(
+                row.pairDuration,
+              )}`}
+              title="成对耗时"
+            >
+              {formatDurationMs(row.pairDuration)}
+            </small>
+            {row.pairLink && showPairMarker && onLocatePartner ? (
+              <PairLinkMarker
+                link={row.pairLink}
+                onLocate={onLocatePartner}
+              />
+            ) : null}
+          </span>
+        ) : (
+          <small
+            className={`trajectory-row__duration heat-${durationHeatClass(
+              row.duration,
+            )}`}
+          >
+            {formatDurationMs(row.duration)}
+          </small>
+        )}
       </time>
       <i className={`trajectory-row__status status-${row.status}`} />
     </div>
@@ -3268,6 +3559,11 @@ function loopRowForTurn(turn: TrajectoryTurn): TrajectoryDisplayRow {
     key: "loop.turn",
     kind: "loop",
     label: "Loop Turn",
+    // A turn block is not itself a paired event, so it carries no pair span
+    // and no link marker; its closed-pair total surfaces through the hover
+    // card instead.
+    pairDuration: null,
+    pairLink: null,
     occurredAt: turn.occurredAt,
     status: turn.status,
     summary: turn.summary,
@@ -3275,6 +3571,219 @@ function loopRowForTurn(turn: TrajectoryTurn): TrajectoryDisplayRow {
     turn: turn.turn,
   };
 }
+
+/**
+ * The hover card's body, fed by the *paired* duration statistics:
+ * `pairDuration` is the hovered block's own closed start→end span (null when
+ * it is not part of a closed pair), and `pairTotal` is the sum of the closed
+ * pair spans in the block — set for a turn block, undefined for a single atom.
+ * Unpaired events contribute nothing to either, so a block with no closed pair
+ * simply omits the badge instead of printing a 0.
+ */
+type TrajectoryHoverDetails = {
+  /** The atom's closed start→end span, `null` when it is not a closed pair. */
+  pairDuration: number | null;
+  /** `T<turn>·#<start> ↔ #<end>`: both LOG rows of the pair, turn included. */
+  pairLabel?: string;
+  /** Sum of the closed pair spans inside the block; a turn block only. */
+  pairTotal?: number;
+  /** The atom's own wall-time span; a single atom only. */
+  duration?: number;
+  /** The concrete event name this atom stands for (e.g. `Read`). */
+  eventName?: string;
+  /** The tool a tool atom runs, when its event carries one. */
+  toolName?: string;
+  /** The atom's category (TYPE) — resolves the same way as the row badge. */
+  type?: string;
+  status: string;
+  subtitle: string;
+  title: string;
+};
+
+type TrajectoryHoverCard = {
+  details: TrajectoryHoverDetails;
+  key: string;
+};
+
+function TrajectoryDetailsCard({ details }: { details: TrajectoryHoverDetails }) {
+  const pairShown = details.pairDuration !== null;
+  // A lane slot's title is already the tool (`Read`), so repeating the same
+  // tool on the EVENT line reads as a second, unexplained field. Only show it
+  // when it adds information the title does not already carry.
+  const toolName =
+    details.toolName &&
+    details.toolName !== details.title &&
+    !details.title.includes(details.toolName)
+      ? details.toolName
+      : null;
+  // Every field uses one value size and one label size (see the card's CSS
+  // type scale); colour, not font size, tells the fields apart. The duration
+  // carries its heat class and the status keeps its own semantic colour, so
+  // "how long" and "how it ended" never read as the same thing.
+  return (
+    <div className="trajectory-hover__card">
+      <strong>{details.title}</strong>
+      <span className="trajectory-hover__subtitle">{details.subtitle}</span>
+      {details.type ? (
+        <span className="trajectory-hover__field">
+          <b className="trajectory-hover__label">TYPE</b> ·{" "}
+          <i className="trajectory-hover__value is-type">{details.type}</i>
+        </span>
+      ) : null}
+      {details.eventName ? (
+        <span className="trajectory-hover__field">
+          <b className="trajectory-hover__label">EVENT</b> ·{" "}
+          <i className="trajectory-hover__value is-event">
+            {details.eventName}
+          </i>
+          {toolName ? (
+            <i className="trajectory-hover__tool"> {toolName}</i>
+          ) : null}
+        </span>
+      ) : null}
+      {pairShown ? (
+        <span className="trajectory-hover__field">
+          <b className="trajectory-hover__label">PAIR</b> ·{" "}
+          {details.pairLabel ? (
+            <i className="trajectory-hover__pair">{details.pairLabel} · </i>
+          ) : null}
+          <i
+            className={`trajectory-hover__duration heat-${durationHeatClass(
+              details.pairDuration as number,
+            )}`}
+          >
+            {formatDurationMs(details.pairDuration as number)}
+          </i>
+        </span>
+      ) : null}
+      {details.duration !== undefined && !pairShown ? (
+        <span className="trajectory-hover__field">
+          <b className="trajectory-hover__label">DURATION</b> ·{" "}
+          <i
+            className={`trajectory-hover__duration heat-${durationHeatClass(
+              details.duration,
+            )}`}
+          >
+            {formatDurationMs(details.duration)}
+          </i>
+        </span>
+      ) : null}
+      {details.pairTotal !== undefined ? (
+        <span className="trajectory-hover__field">
+          <b className="trajectory-hover__label">PAIRS</b> ·{" "}
+          <i className="trajectory-hover__duration">
+            {formatDurationMs(details.pairTotal)}
+          </i>
+        </span>
+      ) : null}
+      <span className="trajectory-hover__field">
+        <b className="trajectory-hover__label">STATUS</b> ·{" "}
+        <i className={`trajectory-hover__status status-${details.status}`}>
+          {details.status}
+        </i>
+      </span>
+    </div>
+  );
+}
+
+/**
+ * One hover card serves the whole trajectory list, mirroring the RUN HISTORY
+ * controlled layer: a single fixed layer that follows the hovered block and
+ * re-positions imperatively, so a fast sweep across rows never leaves a stale
+ * card behind and the card stays open while the pointer moves onto it.
+ */
+const TrajectoryHoverCardLayer = memo(function TrajectoryHoverCardLayer({
+  anchorRef,
+  card,
+  cardRef,
+  onCardPointerLeave,
+}: {
+  anchorRef: RefObject<HTMLElement | null>;
+  card: TrajectoryHoverCard | null;
+  cardRef: RefObject<HTMLDivElement | null>;
+  onCardPointerLeave: (event: ReactPointerEvent<HTMLDivElement>) => void;
+}) {
+  useLayoutEffect(() => {
+    if (!card) {
+      return undefined;
+    }
+    const element = cardRef.current;
+    if (!element) {
+      return undefined;
+    }
+    let frame = 0;
+    const place = () => {
+      frame = 0;
+      const anchor = anchorRef.current;
+      if (!anchor || !anchor.isConnected) {
+        element.style.visibility = "hidden";
+        return;
+      }
+      // The card anchors to a block in either the list or the lane overview;
+      // hide it when that block has scrolled vertically out of its panel.
+      const panelBounds = anchor
+        .closest(".trajectory-list, .trajectory-map")
+        ?.getBoundingClientRect();
+      const anchorBounds = anchor.getBoundingClientRect();
+      if (
+        panelBounds &&
+        (anchorBounds.bottom < panelBounds.top ||
+          anchorBounds.top > panelBounds.bottom)
+      ) {
+        element.style.visibility = "hidden";
+        return;
+      }
+      const cardBounds = element.getBoundingClientRect();
+      const gap = 8;
+      const onRight = anchorBounds.right + gap;
+      const onLeft = anchorBounds.left - gap - cardBounds.width;
+      const left =
+        onRight + cardBounds.width <= window.innerWidth - gap
+          ? onRight
+          : Math.max(
+              gap,
+              Math.min(onLeft, window.innerWidth - gap - cardBounds.width),
+            );
+      const top = Math.min(
+        Math.max(gap, anchorBounds.top),
+        Math.max(gap, window.innerHeight - gap - cardBounds.height),
+      );
+      element.style.transform = `translate3d(${Math.round(left)}px, ${Math.round(top)}px, 0)`;
+      element.style.visibility = "visible";
+    };
+    const schedule = () => {
+      if (frame) {
+        return;
+      }
+      frame = window.requestAnimationFrame(place);
+    };
+    place();
+    document.addEventListener("scroll", schedule, true);
+    window.addEventListener("resize", schedule);
+    return () => {
+      if (frame) {
+        window.cancelAnimationFrame(frame);
+      }
+      document.removeEventListener("scroll", schedule, true);
+      window.removeEventListener("resize", schedule);
+    };
+  }, [anchorRef, card, cardRef]);
+
+  if (!card) {
+    return null;
+  }
+
+  return (
+    <div
+      className="trajectory-hover__layer"
+      onPointerLeave={onCardPointerLeave}
+      ref={cardRef}
+      role="tooltip"
+    >
+      <TrajectoryDetailsCard key={card.key} details={card.details} />
+    </div>
+  );
+});
 
 const TrajectoryView = memo(function TrajectoryView({
   atomNodes,
@@ -3287,6 +3796,7 @@ const TrajectoryView = memo(function TrajectoryView({
   selectedNodeId,
   canLocateSelection,
   onLocateSelection,
+  onLocatePartner,
   onSelect,
 }: {
   atomNodes: HarnessNode[];
@@ -3299,6 +3809,7 @@ const TrajectoryView = memo(function TrajectoryView({
   selectedNodeId: string;
   canLocateSelection: boolean;
   onLocateSelection: () => void;
+  onLocatePartner: (eventId: string) => void;
   onSelect: (eventId: string, atomId?: string) => void;
 }) {
   const model = useMemo(
@@ -3315,6 +3826,166 @@ const TrajectoryView = memo(function TrajectoryView({
   );
   const listRef = useRef<HTMLDivElement | null>(null);
   const locateRequestRef = useRef(locateRequest);
+  // One controlled hover layer per list (mirrors RUN HISTORY): the card is a
+  // single fixed layer that follows the hovered block, so sweeping across the
+  // trajectory rows never leaves a stale tooltip behind.
+  const [hoverCard, setHoverCard] = useState<TrajectoryHoverCard | null>(null);
+  const hoverCardRef = useRef<HTMLDivElement | null>(null);
+  const hoverAnchorRef = useRef<HTMLElement | null>(null);
+
+  const closeHoverCard = useCallback(() => {
+    hoverAnchorRef.current = null;
+    setHoverCard((current) => (current === null ? current : null));
+  }, []);
+
+  const hasHoverCard = hoverCard !== null;
+  // Capture-phase watchdog: hide the card the moment the pointer is over
+  // neither the card nor its anchor row (leaving through a gap, scrolling the
+  // row away, or the window losing focus).
+  useEffect(() => {
+    if (!hasHoverCard) {
+      return undefined;
+    }
+    const handlePointerMove = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) {
+        return;
+      }
+      if (
+        hoverCardRef.current?.contains(target) ||
+        hoverAnchorRef.current?.contains(target)
+      ) {
+        return;
+      }
+      closeHoverCard();
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        closeHoverCard();
+      }
+    };
+    window.addEventListener("pointermove", handlePointerMove, true);
+    window.addEventListener("blur", closeHoverCard);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove, true);
+      window.removeEventListener("blur", closeHoverCard);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [closeHoverCard, hasHoverCard]);
+
+  // Entering a block (any part of it) shows the card; the state update is
+  // skipped when nothing changed so a fast sweep doesn't re-render at
+  // pointer-event rate.
+  const handleRowHover = useCallback(
+    (
+      event: ReactPointerEvent<HTMLElement>,
+      key: string,
+      details: TrajectoryHoverDetails,
+    ) => {
+      hoverAnchorRef.current = event.currentTarget;
+      setHoverCard((current) =>
+        current !== null && current.key === key
+          ? current
+          : { details, key },
+      );
+    },
+    [],
+  );
+
+  // Leaving the list only dismisses the card when the pointer did not move
+  // onto it; leaving the card only dismisses when it did not move back onto a
+  // row.
+  const handleListPointerLeave = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      const card = hoverCardRef.current;
+      if (
+        card &&
+        event.relatedTarget instanceof Node &&
+        card.contains(event.relatedTarget)
+      ) {
+        return;
+      }
+      closeHoverCard();
+    },
+    [closeHoverCard],
+  );
+
+  const handleCardPointerLeave = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      const list = listRef.current;
+      const anchor = hoverAnchorRef.current;
+      if (
+        event.relatedTarget instanceof Node &&
+        (list?.contains(event.relatedTarget) ||
+          anchor?.contains(event.relatedTarget))
+      ) {
+        return;
+      }
+      closeHoverCard();
+    },
+    [closeHoverCard],
+  );
+
+  // The two kinds of block each carry their closed-pair statistics: an atom
+  // block shows its own pair span, a turn block shows the sum of the pair
+  // spans inside it.
+  const atomHoverDetails = useCallback(
+    (atom: TrajectoryAtom): TrajectoryHoverDetails => ({
+      duration: atom.duration,
+      eventName: atom.event.eventName,
+      pairDuration: atom.pairDuration,
+      // The hover card names *both* rows of the pair, while the compact row
+      // marker names only the other half. Both come from the same link.
+      pairLabel: atom.pairLink
+        ? `T${atom.pairLink.turn}·${atom.pairLink.rows}`
+        : undefined,
+      status: atom.status,
+      subtitle: `${atom.key} · turn ${atom.turn}`,
+      title: atom.label,
+      toolName: atom.event.toolName || undefined,
+      type: atomTypeLabel(atom.key, atom.kind),
+    }),
+    [],
+  );
+  const turnHoverDetails = useCallback(
+    (turn: TrajectoryTurn): TrajectoryHoverDetails => ({
+      pairDuration: null,
+      // A turn with no closed pair omits PAIRS entirely; a pair that really
+      // spans 0ms still prints `0ms`.
+      pairTotal: turn.pairCount > 0 ? turn.totalPairDuration : undefined,
+      status: turn.status,
+      subtitle: `turn ${turn.turn} · ${turn.atoms.length} atoms`,
+      title: "Loop Turn",
+      type: "LOOP",
+    }),
+    [],
+  );
+  // The lane overview's slots stand for a node range; hovering one shows the
+  // range, the newest event it maps to, its tool and its status — the same
+  // lean, accurate card the rows use, so the map and the list agree. A slot
+  // lives on one lane, so its TYPE is that lane's label (Input / Model / Tools)
+  // — the only category that is still true for a range of atoms.
+  const slotHoverDetails = useCallback(
+    (slot: TrajectoryMapSlot): TrajectoryHoverDetails => {
+      const target = nodes[slot.end];
+      const event = target?.data.endEvent || target?.data.startEvent;
+      const laneLabel =
+        trajectoryLanes.find((lane) => lane.lane === slot.lane)?.label;
+      return {
+        duration: undefined,
+        eventName: event?.eventName,
+        pairDuration: null,
+        status: slot.status,
+        subtitle: `#${slot.start + 1}–#${slot.end + 1} · ${slot.count} 事件`,
+        title: target?.data.label ?? "Atom",
+        toolName: event?.toolName || undefined,
+        type: laneLabel,
+      };
+    },
+    [nodes],
+  );
+
   const allAtoms = useMemo(
     () => [
       ...model.context,
@@ -3322,6 +3993,30 @@ const TrajectoryView = memo(function TrajectoryView({
     ],
     [model],
   );
+  /**
+   * A single tool event fans out into several atoms (a `PreToolUse` projects
+   * five, its `PostToolUse` six). Stamping the shared pair id on every one of
+   * them would print the same marker half a dozen times for one tool call.
+   * Exactly one atom owns the marker: the aggregated `tool.call` step that
+   * spans start→result, or the first atom of the pair when a platform has no
+   * such step. The data (pairLink) stays on every atom, so the hover card can
+   * still identify the pair from any atom.
+   */
+  const pairMarkerOwnerIds = useMemo(() => {
+    const byPair = new Map<string, { id: string; isToolStep: boolean }>();
+    for (const atom of allAtoms) {
+      if (!atom.pairLink) {
+        continue;
+      }
+      const pairId = atom.pairLink.pairId;
+      const isToolStep = atom.key === "tool.call";
+      const owner = byPair.get(pairId);
+      if (!owner || (isToolStep && !owner.isToolStep)) {
+        byPair.set(pairId, { id: atom.id, isToolStep });
+      }
+    }
+    return new Set([...byPair.values()].map((entry) => entry.id));
+  }, [allAtoms]);
   const selectedTrajectoryAtom = useMemo(
     () =>
       allAtoms.find(
@@ -3399,6 +4094,36 @@ const TrajectoryView = memo(function TrajectoryView({
     () => buildTrajectoryMapSlots(nodes, TRAJECTORY_MAP_MAX_SLOTS),
     [nodes],
   );
+  // A card anchored to a block stays open while that block is still rendered.
+  // The model is rebuilt on every streamed batch, so keying this off `model`
+  // identity closed the card on every event while the pointer sat still (a
+  // pointerenter does not fire again by itself). Only a block that disappears
+  // — a collapsed turn, an atom that leaves the window, a re-bucketed slot —
+  // invalidates its card; a live batch that appends atoms leaves it open.
+  useEffect(() => {
+    if (!hoverCard) {
+      return;
+    }
+    const rendered = new Set<string>();
+    for (const turn of model.turns) {
+      rendered.add(`turn-${turn.turn}`);
+      if (!expandedTurns.has(turn.turn)) {
+        continue;
+      }
+      for (const atom of turn.atoms) {
+        rendered.add(atom.id);
+      }
+    }
+    for (const atom of model.context) {
+      rendered.add(atom.id);
+    }
+    for (const slot of mapSlots) {
+      rendered.add(`slot-${slot.key}`);
+    }
+    if (!rendered.has(hoverCard.key)) {
+      closeHoverCard();
+    }
+  }, [closeHoverCard, expandedTurns, hoverCard, mapSlots, model]);
   // Width comes from the *busiest* lane: every slot then has room for at least
   // TRAJECTORY_MIN_SLOT_PX and the track scrolls instead of compressing.
   const maxLaneSlotCount = useMemo(() => {
@@ -3469,6 +4194,30 @@ const TrajectoryView = memo(function TrajectoryView({
           <li>{completed} COMPLETE</li>
           <li className={failures ? "has-failures" : ""}>{failures} FAILED</li>
         </ul>
+        <div className="trajectory-legend" aria-label="图例：状态标记与时长色阶">
+          <span className="trajectory-legend__group">
+            <span className="trajectory-legend__group-label">状态</span>
+            {STATUS_LEGEND.map(({ label, tone }) => (
+              <i
+                className={`trajectory-legend__dot status-${tone}`}
+                key={label}
+                title={label}
+              />
+            ))}
+          </span>
+          <span className="trajectory-legend__group">
+            <span className="trajectory-legend__group-label">时长</span>
+            {DURATION_LEGEND.map(({ heat, label }) => (
+              <span
+                className={`trajectory-legend__heat heat-${heat}`}
+                key={heat}
+                title={`时长 ${label}`}
+              >
+                {label}
+              </span>
+            ))}
+          </span>
+        </div>
       </header>
       <div className="trajectory-map" aria-label="执行泳道概览">
         <div className="trajectory-map__labels" aria-hidden="true">
@@ -3527,7 +4276,6 @@ const TrajectoryView = memo(function TrajectoryView({
                       data-cursor={isCursor ? "true" : undefined}
                       aria-label={`选择第 ${slot.start + 1}-${slot.end + 1} 个原子（${slot.count} 个事件）`}
                       aria-pressed={isCursor}
-                      title={`#${slot.start + 1}-${slot.end + 1} · ${slot.count} 个事件 · ${target.data.label}`}
                       className={cn(
                         `tone-bg-${slot.tone}`,
                         isCursor && "is-selected",
@@ -3538,6 +4286,13 @@ const TrajectoryView = memo(function TrajectoryView({
                       onClick={() =>
                         onSelect(
                           (target.data.endEvent || target.data.startEvent).id,
+                        )
+                      }
+                      onPointerOver={(hoverEvent) =>
+                        handleRowHover(
+                          hoverEvent,
+                          `slot-${slot.key}`,
+                          slotHoverDetails(slot),
                         )
                       }
                       onKeyDown={(keyEvent) => {
@@ -3565,10 +4320,15 @@ const TrajectoryView = memo(function TrajectoryView({
           </div>
         </div>
       </div>
-      <div className="trajectory-list" ref={listRef}>
+      <div
+        className="trajectory-list"
+        onPointerLeave={handleListPointerLeave}
+        ref={listRef}
+      >
         {display.turns.map((turn) => {
           const isExpanded = expandedTurns.has(turn.turn);
           const loopRow = loopRowForTurn(turn);
+          const turnKey = `turn-${turn.turn}`;
           return (
             <section
               key={turn.turn}
@@ -3584,6 +4344,13 @@ const TrajectoryView = memo(function TrajectoryView({
                 expandable
                 expanded={isExpanded}
                 onActivate={() => onSelect(turn.event.id)}
+                onHover={(hoverEvent) =>
+                  handleRowHover(
+                    hoverEvent,
+                    turnKey,
+                    turnHoverDetails(turn),
+                  )
+                }
                 onToggle={() => toggleTurn(turn.turn)}
                 row={loopRow}
                 selected={false}
@@ -3595,8 +4362,21 @@ const TrajectoryView = memo(function TrajectoryView({
                       depth={1}
                       key={atom.id}
                       onActivate={() => onSelect(atom.event.id, atom.atomId)}
+                      onHover={(hoverEvent) =>
+                        handleRowHover(
+                          hoverEvent,
+                          atom.id,
+                          atomHoverDetails(atom),
+                        )
+                      }
+                      onLocatePartner={onLocatePartner}
+                      partnerSelected={
+                        pairMarkerOwnerIds.has(atom.id) &&
+                        atom.pairLink?.partnerId === selectedEventId
+                      }
                       row={atom}
                       selected={atom.id === selectedTrajectoryAtomId}
+                      showPairMarker={pairMarkerOwnerIds.has(atom.id)}
                     />
                   ))}
                 </div>
@@ -3616,14 +4396,33 @@ const TrajectoryView = memo(function TrajectoryView({
                 depth={0}
                 key={atom.id}
                 onActivate={() => onSelect(atom.event.id, atom.atomId)}
+                onHover={(hoverEvent) =>
+                  handleRowHover(
+                    hoverEvent,
+                    atom.id,
+                    atomHoverDetails(atom),
+                  )
+                }
+                onLocatePartner={onLocatePartner}
+                partnerSelected={
+                  pairMarkerOwnerIds.has(atom.id) &&
+                  atom.pairLink?.partnerId === selectedEventId
+                }
                 row={atom}
                 selected={atom.id === selectedTrajectoryAtomId}
+                showPairMarker={pairMarkerOwnerIds.has(atom.id)}
                 showTurn={false}
               />
             ))}
           </section>
         ) : null}
       </div>
+      <TrajectoryHoverCardLayer
+        anchorRef={hoverAnchorRef}
+        card={hoverCard}
+        cardRef={hoverCardRef}
+        onCardPointerLeave={handleCardPointerLeave}
+      />
     </section>
   );
 });
@@ -6025,6 +6824,32 @@ export default function App() {
     [activeEvents, platformId],
   );
 
+  /**
+   * Jump to the other half of a closed pair from either view's link marker.
+   * Both panels get a fresh locate request, so the LOG centers the partner row
+   * and the trajectory reveals its atom at the same time. A log search could
+   * hide that row, so the query is reset first — otherwise the jump would
+   * silently do nothing.
+   */
+  const handleLocatePairPartner = useCallback(
+    (partnerId: string) => {
+      setPlaying(false);
+      setReplayMode(false);
+      setConsoleOpen(true);
+      setLogQueryResetToken((current) => current + 1);
+      const event = activeEvents.find(
+        (candidate) => candidate.id === partnerId,
+      );
+      setSelectedAtomId(
+        getAtomIdForEvent(event || null, platformId) || null,
+      );
+      setSelectedEventId(partnerId);
+      setTrajectoryLocateRequest((current) => current + 1);
+      setLogLocateRequest((current) => current + 1);
+    },
+    [activeEvents, platformId],
+  );
+
   const handleCanvasSelectNode = useCallback(
     (node: HarnessNode) => {
       const deselecting = selectedAtomId === node.id;
@@ -6655,6 +7480,7 @@ export default function App() {
                   selectedNodeId={selectedNodeId}
                   canLocateSelection={Boolean(locateAtomId && locateAtomEvent)}
                   onLocateSelection={locateTrajectorySelection}
+                  onLocatePartner={handleLocatePairPartner}
                   onSelect={handleTrajectorySelect}
                 />
               ) : null}
@@ -6686,6 +7512,7 @@ export default function App() {
             <>
               <AtomicLog
                 events={activeEvents}
+                platformId={platformId}
                 runningEventId={
                   executingLive && pendingEvent ? pendingEvent.id : ""
                 }
@@ -6694,6 +7521,7 @@ export default function App() {
                 locateRequest={logLocateRequest}
                 queryResetToken={logQueryResetToken}
                 onSelect={handleLogSelect}
+                onLocatePartner={handleLocatePairPartner}
                 canLocateSelectedAtom={Boolean(currentAtomId)}
                 onLocateSelectedAtom={handleLogLocateAtom}
               />

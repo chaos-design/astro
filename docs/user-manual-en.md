@@ -188,9 +188,20 @@ pnpm install-plugins -- --clients=deepseek --deepseek-profile=web
 ```
 
 The installer falls back to `npx --yes @deepseek-ai/dsh` when `dsh` is not on
-PATH. Use `--dsh-home` for a custom home and `--deepseek-command` for a custom
-executable. Restart `dsh web` after installation. Events are appended to
-`~/.astrox/deepseek/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl`.
+PATH. A harness started from a source checkout (`pnpm start:web`) has no global
+`dsh`; in that case point `DSH_COMMAND` at a wrapper that launches that
+checkout, so the fallback does not write to a different build's `DSH_HOME`.
+Use `--dsh-home` for a custom home and `--deepseek-command` for a custom
+executable.
+
+After the add command, the installer verifies
+`$DSH_HOME/profiles/<profile>/package.json`: `dsh-astro-plugin` must appear in
+both `dependencies` and `dsh.profile.bundles`, otherwise installation fails
+loudly — a zero exit code alone does not mean dsh mounted the layer. Confirm
+with `dsh --profile web --dump-config` that `astro-trace` is in the composed
+tree, then restart `dsh web`. If events are still missing, check the
+`astro-trace` entry state in `$DSH_HOME/logs/startup-*.log`. Events are
+appended to `~/.astrox/deepseek/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl`.
 
 #### 4.2.4 Trae
 
@@ -259,7 +270,7 @@ Deployment paths:
 | Path | How |
 | --- | --- |
 | Vercel | The repository's `vercel.json` is already wired: it builds the console and the docs site and merges them (docs at the root, the console at `/console/`). Import the repository — no extra settings. |
-| GitHub Actions | `.github/workflows/console-preview.yml` builds the console on push/PR and uploads a `console-dist` artifact; run "Deploy console preview to GitHub Pages" manually from the Actions tab to publish the **current branch's** build to GitHub Pages (no main merge required; the single shared Pages site is republished by the most recent dispatch) |
+| GitHub Actions | `.github/workflows/console-preview.yml` builds the console on push/PR and uploads a `console-dist` artifact; a push to `main`, `feat/**`, `feature/**`, `fix/**` or `hotfix/**` (prefix match) publishes that branch's build to GitHub Pages, so an in-flight branch gets a live preview URL. Run "Deploy console preview to GitHub Pages" manually for any other branch (the single shared site is replaced by the most recent trigger) |
 | Any static host | `pnpm build` produces `dist/` with relative asset URLs; serve it as-is. |
 
 A deployed page defaults to `http://127.0.0.1:5678`; pass `?api=<address>` to
@@ -376,7 +387,8 @@ applies to that search only.
 
 Available filters include:
 
-- 3, 6, 12, or 24 hours, today, yesterday, seven days, or a custom date range;
+- 1, 3, 6, or 12 hours, 1 day, today, yesterday, 3, 5, or 7 days, or a custom
+  date range;
 - one or more agents: the list contains configured agents only; every other
   source (browser, generic, a custom HTTP collector) is grouped under the
   trailing **Others** entry instead of getting a pseudo-agent of its own;
@@ -539,7 +551,23 @@ The platform choice is stored in `ASTROX_PLATFORM`.
 The upper LOG area:
 
 - orders the newest event first;
-- groups rows by turn, and the turn separator shows only the turn number (e.g. `01`);
+- prints a violet `TYPE` badge before each event key (`SYSTEM` / `MODEL` /
+  `TOOL` / `MEMORY` / `RESPONSE` / `TRACE`, …). It is the **primary atom's type
+  data**: the atom's `key` and its projection-normalised `kind`, resolved into a
+  closed set of short labels. It is neither the event name nor a payload field;
+  the trajectory row badge and the hover card's `TYPE` read the same data, so
+  the three views agree. One LOG event projects into several atoms, so the row
+  shows just the primary one (`getAtomIdForEvent` — the same atom highlighted
+  in the canvas when the row is selected) instead of stacking labels. Hovering
+  the badge reports `atom type <label> · <key> / <kind>`; e.g. the
+  `tool.result` atom belongs to the `context` kind, so it reads `MEMORY`, not
+  `TOOL` — TYPE is the atom's responsibility category, not a tool or event
+  name;
+- groups rows by turn, and the turn separator shows only the turn number
+  (e.g. `05`); the number is the one the source reports (DeepSeek's `data.turn`
+  may start at 5 in a resumed session), otherwise it is inferred from prompts
+  and ordering and restarts at 1 in each prompt run — one separator per turn,
+  never an oscillating number inside one message;
 - searches any serialized field in the selected prompt run; matching follows
   the keystroke in the background (per-event serializations are cached, so
   typing stays smooth on long runs);
@@ -547,7 +575,27 @@ The upper LOG area:
 - locates the mapped atom in the topology;
 - puts the top/bottom scroll controls in the panel header (only the edge that is
   actually out of view shows a control), so no floating button ever covers the
-  first visible atom.
+  first visible atom;
+- shows a paired-duration badge on the events of a closed pair. Both the
+  opening and closing half of a matched pair (for example a `PreToolUse` and
+  its `PostToolUse` / `PostToolUseFailure`) report the same span from start to
+  result; events that never paired — a lone `Reasoning`, an open tool call —
+  show no badge. The badge uses the same stepped units (`ms/s/m/h/d`) and the
+  same duration heat colour as the trajectory;
+- puts a **pair-link marker** next to that badge (a chain icon plus
+  `T<turn>·#<the other half's LOG row>`, e.g. `T7·#027`). For a pair made of
+  LOG rows `#027` (START) and `#029` (END), the `#027` row reads `T7·#029`
+  and the `#029` row reads `T7·#027`: the two halves point at each other, so
+  "who is paired with whom" is visible without hovering. `T7` is the pair's
+  turn — matching the `TURN 07` separator above it and the trajectory's
+  `Loop Turn 7` group — and the `#number` is the exact row number printed at
+  the left of that LOG row, not a pair ordinal or a hash. The trajectory atom
+  uses the same marker. Hovering it also reports the pair's order in the turn,
+  both rows (e.g. `#027 ↔ #029`) and the row a click will jump to. Clicking it
+  selects and locates the other half, centering its row in both the LOG and
+  the trajectory; selecting one half outlines the other in violet in both
+  views. The marker clears the log search first, so a partner hidden by a
+  filter is still reachable.
 
 The inspector provides:
 
@@ -602,9 +650,10 @@ The timeout does not prove that the external agent process was killed. It means
 ASTRO no longer treats that recorded interval as a live execution. Check the
 source client and the latest JSONL event when process state matters.
 
-Parent and child rows can differ by design. The Session parent advances only
-while its latest Prompt is `active`; a waiting latest Prompt freezes the parent.
-The waiting child continues its own duration and can independently reach the
+Parent and child rows can differ by design. The Session parent advances while
+its latest Prompt is `active` or `waiting`; a terminal latest Prompt
+(`complete`, `failed`, or `terminated`) freezes it. The waiting child continues
+its own duration and can independently reach the
 timeout. A historical complete, failed, or terminated run keeps its recorded
 duration even when it is longer than the current limit.
 
@@ -667,7 +716,8 @@ the footer's **Done** button only closes the dialog — there is no Apply step:
 
 **About**
 
-- The console version (`v0.0.3`), where the preferences actually live (browser
+- The console version (`v<appVersion>` — the value in `src/config/app-config.ts`,
+  shown in About), where the preferences actually live (browser
   localStorage under the `ASTROX_` prefix), and a note that settings only affect
   presentation and never rewrite captured events.
 
@@ -737,9 +787,17 @@ The summary displays:
 - completed count;
 - failed count.
 
-The lane map uses Input, Model, and Tools. The detailed list groups steps by turn and shows event type, summary, timestamp, duration, and status.
+The lane map uses Input, Model, and Tools. The detailed list groups steps by turn and shows event type, summary, timestamp, duration, and status. Hovering a block — a list row or a lane slot — opens one shared card that reports the block's **type** (its category, e.g. `SYSTEM` / `MODEL` / `TOOL`), event name, tool (when present), closed-pair span (`PAIR`), own wall-time span (`DURATION`, an atom), or the total of its closed-pair spans (`PAIRS` for a turn), and its status. The `TYPE` badge in front of a LOG event key comes from the same `atomTypeLabel` source and uses the same violet.
 
-Matching `PreToolUse` and `PostToolUse` or `PostToolUseFailure` events with the same `toolUseId` become one tool step. Expand a row to inspect paired input and output.
+The card uses one three-step type scale (title / field value / field label) and separates fields by **colour**, not font size: `TYPE` violet, `EVENT` blue, tool name amber, the `PAIR` label violet (matching the row marker), duration by its heat tier, status by its own semantic colour. When the title already names the tool (a lane slot titled `Read`), the `EVENT` line does not repeat it.
+
+Durations use a stepped unit rule that picks the smallest honest unit: under 10s as `ms`, 10–60s as `s`, under an hour as `m`, under a day as `h`, and days as `d` (one number per tier, never compounded as `1m 4s`). The colour of a duration is a magnitude heat scale, not a status colour: <10s calm (completed green), <1m neutral, <10m warm (amber), and ≥10m red, so a slow step stands out at a glance. A row that is a closed pair shows only that one paired number (no near-identical wall-time alongside it); unpaired rows show their own wall-time instead.
+
+The trajectory header carries a **legend**: four dots on the left key the status markers to `complete/running/waiting/failed`, and a `duration` set on the right keys each colour to its interval (`<10s / <1m / <10m / ≥10m`), matching the badges on the rows exactly.
+
+Matching `PreToolUse` and `PostToolUse` or `PostToolUseFailure` events with the same `toolUseId` become one tool step. Expand a row to inspect paired input and output. A closed pair's start→result span is shown as the paired duration (`PAIR`) on the row and in the hover card; unpaired events have no span and are excluded from every total.
+
+Next to the paired duration sits the **pair-link marker**: a chain icon and a label such as `T7·#027` that names the other half's LOG row. The two halves cross-reference each other (`#027` shows `T7·#029`, `#029` shows `T7·#027`); the hover card's `PAIR` line gives both rows as `T7·#027 ↔ #029`. `T7` is the pair's turn, taken from its start event, matching the enclosing `Loop Turn` group and the LOG's `TURN 07` separator; the `#` numbers are the exact LOG row labels for the current event window, so a shorter replay prefix shifts them. Hovering the marker reports the pair's order in the turn, both rows and the jump target — the direct answer to "which rows belong together". Identity and jumps always come from the event ids, and an invisible stable grouping key de-duplicates the trajectory markers. One tool event projects into several atoms, so to avoid repeating the label across a whole turn the trajectory draws one marker per pair, on the aggregated tool step (`tool.call`); the other atoms keep their paired duration and still report both rows on hover. Clicking the marker locates the other half (start ↔ result) and centres the matching row in the LOG and the trajectory together; selecting one half outlines the other in violet in both views.
 
 ## 8. Replay
 
@@ -1108,7 +1166,7 @@ only effective display state.
 | Key | Values | Purpose |
 | --- | --- | --- |
 | `ASTROX_THEME` | `light` / `dark` / `system` | Theme |
-| `ASTROX_PLATFORM` | `codex` / `claude` / `trae` | Platform context |
+| `ASTROX_PLATFORM` | e.g. `codex` / `claude` / `deepseek` / `trae` / `workbuddy` | Platform context |
 | `ASTROX_HISTORY_OPEN` | `true` / `false` | Left History panel |
 | `ASTROX_CONSOLE_OPEN` | `true` / `false` | Right Events/Inspector panel |
 | `ASTROX_HISTORY_RANGE` | `1h` / `3h` / `6h` / `12h` / `1d` / `3d` / `5d` / `7d` | Default time range, `3h` unless changed |
@@ -1352,7 +1410,7 @@ pnpm build
 pnpm build:native-plugins
 ```
 
-The current automated suite contains 182 tests across the event model, hooks,
+The current automated suite contains 527 tests across the event model, hooks,
 continuous turns, SSE reconnects, storage, migration, projection, routing,
 preference persistence, environment boundaries, and Vite proxy configuration.
 

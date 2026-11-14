@@ -95,10 +95,10 @@ installing — it cannot live in the plugin's own `.env`.
   `pnpm build` first when `dist/` is missing (`--no-build` skips it).
 - **Native plugins**: `pnpm build:native-plugins` first (syncs the runtime into
   `*-plugin/` and stamps versions), then install per client:
-  - Codex: `codex plugin add astro-codex-local`
-  - Claude Code: `claude plugin add astro-claude-local`
-  - WorkBuddy: `codebuddy plugin add astro-workbuddy-local`
-  - DeepSeek Harness: `dsh plugin add cordis --source ~/.astrox/plugins/astro`
+  - Codex: `codex plugin add astro@astro-local`
+  - Claude Code: `claude plugin install astro@astro-local --scope user`
+  - WorkBuddy: `codebuddy plugin add astro@astro-local`
+  - DeepSeek Harness: `dsh plugin --profile web add file:~/.astrox/plugins/astro/deepseek-plugin` (verify with `dsh --profile web --dump-config` that `astro-trace` appears in the composed tree)
 - **Standalone installers**: ZCode (`pnpm install-zcode-plugin`), OpenCode
   (`pnpm install-opencode-plugin`), Pi (`pnpm install-pi-plugin`).
 
@@ -177,15 +177,36 @@ explicit `?demo=1`, with a persistent "sample data" banner.
 the sample dataset:
 
 - On every push/PR to `main`: build the console, run the
-  `verify-console-build` assertions (relative assets, shipped icons and sample
-  dataset, no docs-site markers), upload the `console-dist` artifact.
+  `verify-console-build` assertions (relative assets, the shipped favicon and
+  sample dataset, no docs-site markers), upload the `console-dist` artifact.
 - The **deploy** job publishes automatically on push to `main` (the formal
-  release) or to a rolling-preview branch listed in the workflow's `push`
-  trigger (an in-flight feature branch gets a live preview URL without merging;
-  remove it from that list once it merges). It publishes *that* branch's build
-  over the single shared Pages site — the most recent qualifying build wins.
-- The manual `workflow_dispatch` can run from **any branch** to re-publish a
-  branch that is no longer a push trigger.
+  release) or to any `feat/**`, `feature/**`, `fix/**` or `hotfix/**` branch.
+  It publishes *that* branch's
+  build over the single shared Pages site — the most recent qualifying build
+  wins. The branch filters are prefixes, so a new branch deploys without a
+  workflow edit and every commit is verifiable on the live page.
+- That "most recent wins" promise is kept across branches in two layers.
+  The workflow-level `concurrency` group is ref-agnostic
+  (`console-preview-ci-<lane>`, `cancel-in-progress: true`): a newly
+  triggered *push or dispatch* run cancels every in-flight push/dispatch run
+  across all branches — the CI race: a slower, older build can no longer
+  overtake and clobber a fresher result. PR builds sit in their own lane
+  (`-pr`) so they verify without racing those deploy-triggering runs — a
+  feature branch with an open PR would otherwise lose its Pages preview,
+  because the PR run (which never deploys) enqueues just after the push run
+  and cancels it. The deploy job adds a second, deploy-only belt
+  (`console-preview-pages`, `cancel-in-progress: true`): even if two deploys
+  reach the queue, they serialize and a superseded one is cancelled, so a
+  stale build must not overwrite a newer Pages page.
+- The `github-pages` environment in the repository settings must allow the same
+  prefixes: Settings → Environments → `github-pages` → Deployment branches and
+  tags, add `feat/*`, `feature/*`, `fix/*` and `hotfix/*`. The workflow globs
+  alone are not enough — the
+  environment rejects the job before a runner is assigned, and the only trace
+  is "Branch is not allowed to deploy to github-pages" with zero steps.
+- A manual `workflow_dispatch` runs from **any** branch, for republishing a
+  branch whose prefix does not match (for example `docs/**`) or one that was
+  already deleted.
 
 Constraint: the Pages site hosts the **console only**, never the docs — the
 two cannot share the one site (the workflow comments and

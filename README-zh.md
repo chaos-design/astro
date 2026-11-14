@@ -188,7 +188,7 @@ RUN HISTORY 与拓扑实时更新。
 | 途径 | 做法 |
 | --- | --- |
 | Vercel | 仓库 `vercel.json` 已配置构建并合并：文档站在根路径，控制台预览在 `/console/`，导入仓库即可。线上地址：[astro-site-cyan-five.vercel.app](https://astro-site-cyan-five.vercel.app/)（在线文档） |
-| GitHub Pages | `.github/workflows/console-preview.yml` 在 push/PR 时构建控制台；push 到 `main` 自动发布到 [chaos-design.github.io/astro](https://chaos-design.github.io/astro/)（在线预览，追加 `?demo=1` 加载示例数据）。在 Actions 手动运行 "Deploy console preview to GitHub Pages" 可发布**任意分支**的构建 |
+| GitHub Pages | `.github/workflows/console-preview.yml` 在 push/PR 时构建控制台；push 到 `main`、`feat/**`、`feature/**`、`fix/**` 或 `hotfix/**` 会自动发布到 [chaos-design.github.io/astro](https://chaos-design.github.io/astro/)（在线预览，追加 `?demo=1` 加载示例数据；分支用前缀匹配，新建分支无需改工作流）。在 Actions 手动运行 "Deploy console preview to GitHub Pages" 可发布**任意分支**的构建 |
 | 任意静态托管 | `pnpm build` 产出相对资源路径的 `dist/`，直接托管 |
 
 部署页默认连接 `http://127.0.0.1:5678`，可用 `?api=<地址>` 覆盖（持久化为

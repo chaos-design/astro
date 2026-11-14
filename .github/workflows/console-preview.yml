@@ -10,9 +10,10 @@
 #
 # Triggers:
 #   - push to `main`             -> build + verify + upload + deploy to Pages
-#   - push to the rolling-preview feature branch -> build + verify + upload
-#     + deploy to Pages (live preview of the in-flight branch without merging;
-#     remove it from the list once the branch is merged/deleted)
+#   - push to a `feat/**`, `feature/**`, `fix/**` or `hotfix/**` branch ->
+#     build + verify + upload +
+#     deploy to Pages (live preview of every in-flight branch without merging;
+#     the Pages site is a single rolling target, so the newest push wins)
 #   - pull request to `main`     -> build + verify + upload (no deploy)
 #   - workflow_dispatch (any branch) -> build + verify + upload + deploy to
 #     Pages from that branch's tip (manual override, e.g. to re-publish a
@@ -28,15 +29,30 @@ name: Build console preview
 
 on:
   push:
-    # `main` is the formal release. The feature branch is the rolling-preview
-    # test target for the in-flight work; delete it when that branch merges.
-    branches: [main, feat/demo-dataset-from-local-service]
+    # `main` is the formal release. The branch filters are globs, so a new
+    # `feat/*`, `feature/*`, `fix/*` or `hotfix/*` branch publishes without
+    # editing this file.
+    branches: [main, "feat/**", "feature/**", "fix/**", "hotfix/**"]
   pull_request:
     branches: [main]
   workflow_dispatch:
 
+# CI race: a newly triggered run cancels every in-flight run of this workflow
+# across *all* branches — not just same-ref ones — so a slower, older build can
+# no longer overtake a fresher result.
+#
+# The group is ref-agnostic on purpose: with `cancel-in-progress: true` the
+# superseded run is terminated the moment a newer one enqueues. A per-ref group
+# (`${{ github.ref }}`) would only cancel runs on the *same* ref, leaving
+# cross-branch builds racing into the one shared Pages site.
+#
+# PR builds sit in their own `pr` lane so they never cancel the
+# deploy-triggering push/dispatch runs: a feature branch that has an open PR
+# would otherwise lose its Pages preview, because the PR run (which never
+# deploys) enqueues just after the push run and cancels it. Push and manual
+# dispatches share the `run` lane, where the newest trigger wins.
 concurrency:
-  group: console-preview-${{ github.ref }}
+  group: console-preview-ci-${{ github.event_name == 'pull_request' && 'pr' || 'run' }}
   cancel-in-progress: true
 
 permissions:
@@ -84,16 +100,35 @@ jobs:
   deploy-pages:
     name: Deploy console preview to GitHub Pages
     needs: build
-    # Publishing happens on push to the production branch (`main`) and on push
-    # to the rolling-preview feature branch, plus a manual dispatch from any
-    # branch. The Pages site is a single rolling target: the most recent
-    # qualifying build wins, so a feature branch gets a live preview URL
-    # without merging to main.
+    # Publishing happens on push to the production branch (`main`), on push to
+    # any `feat/**`, `feature/**`, `fix/**` or `hotfix/**` branch, plus a manual
+    # dispatch from any branch.
+    # The Pages site is a single rolling target: the most recent qualifying
+    # build wins, so a feature or fix branch gets a live preview URL without
+    # merging to main. Prefix matching (`startsWith`) mirrors the `branches`
+    # globs above so a new branch needs no workflow edit.
+    #
+    # Concurrency has two layers. The workflow-level group (above) is
+    # ref-agnostic, so a newly triggered run cancels *every* in-flight run of
+    # this workflow across all branches — the CI race: the newest trigger
+    # wins and no slower, older build can outlive it. PR builds sit in their
+    # own lane (the group ends in `-pr`), so they verify without racing the
+    # deploy-triggering push/dispatch runs that share the `-run` lane. The
+    # job-level group below is a second, deploy-only belt: even if two deploys
+    # ever reach the queue, they serialize against one another and a
+    # superseded one is cancelled, so a stale build must not overwrite a newer
+    # Pages page.
+    concurrency:
+      group: console-preview-pages
+      cancel-in-progress: true
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'push' &&
         (github.ref == 'refs/heads/main' ||
-         github.ref == 'refs/heads/feat/demo-dataset-from-local-service'))
+         startsWith(github.ref, 'refs/heads/feat/') ||
+         startsWith(github.ref, 'refs/heads/feature/') ||
+         startsWith(github.ref, 'refs/heads/fix/') ||
+         startsWith(github.ref, 'refs/heads/hotfix/')))
     runs-on: ubuntu-latest
     permissions:
       pages: write

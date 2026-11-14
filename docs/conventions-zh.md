@@ -56,7 +56,40 @@
     （pi 的 `model`/`provider`、deepseek 的模型对象、opencode 的 step 通知、
     zcode 的会话起始模型）在此归一成一个展示串；某条运行自身没上报模型时
     回退到会话起始模型（ZCode 只在 SessionStart 携带 model），界面只在有
-    可显示值时渲染 `MODEL` 标签。
+    可显示值时渲染 `MODEL` 标签；
+  - 成对原子事件的耗时只在 `src/lib/trace-model.ts`（`buildPairDurations`，
+    复用 `createFlowEntries` 的配对）：仅对已闭合的成对事件（起始有结果
+    收尾，如 `PreToolUse`→`PostToolUse`/`PostToolUseFailure`）给出开始→结果
+    的时长，不成对的事件一律不计入；轮次的 `totalPairDuration` 按唯一 pair
+    求和（一个工具调用会投影成多个原子，两半也带同一跨度，不能按原子累加）；
+    LOG 行、轨迹数据层（`pairDuration` / `totalPairDuration`）与悬停区块卡片
+    都从这一处取值；
+  - 成对关联标记的身份同样只在 `src/lib/trace-model.ts`（`buildPairLinks`，
+    复用同一份 `createFlowEntries` 配对）：两半互指对方 ID，标记文字是
+    `T<轮次>·#<另一半的 LOG 行号>`（轮次取起始事件的 `buildTraceTurnIndex` 结果，
+    行号取自 flow entry 的 `stepIndex`/`endStepIndex`，即 LOG 打印的行号；例如
+    `#027` ↔ `#029` 一对分别显示 `T7·#029` / `T7·#027`），`rows` 再写出
+    `#027 ↔ #029` 供 tooltip 与悬停卡片使用；`ordinal` 只作 tooltip 里的轮内
+    第几对，不再印在标记上。`pairId`（起始事件 ID）只作**内部**分组键
+    （轨迹每对只画一个标记，轮次合计每对只加一次），不显示给读者；行号随当前
+    事件窗口变化，跳转一律靠 `partnerId`；LOG 行与轨迹原子的标记、跨视图定位和高亮
+    都从这一处取值，
+    不得另写一份配对推断；
+  - 原子 `TYPE` 的定义只在 `src/lib/atom-types.ts`：`atomTypeLabel(key, kind)` 按
+    「原子 key 覆盖 → 归一化 kind 标签 → 原值回退」产出封闭的大写短标签；
+    `eventAtomType(event, platformId)` 取 `getAtomIdForEvent` 选出的主原子（与画布
+    定位同一映射）的 `key` 和经 `toAtomicDefinition` 归一化的 `kind`。LOG 行徽标、
+    轨迹行徽标、悬停卡片 `TYPE` 全部调用这一个函数，不得从 `eventName`、payload
+    或另写的分类表推导类型；查表按 `platformId` 做模块级缓存，长会话不逐行重建
+    原子定义。一条事件投影多个原子时，LOG 只显示主原子一个标签；
+  - 轮次编号只在 `src/lib/trajectory-model.ts`（`buildTraceTurnIndex`）：来源
+    自带轮次标识时保留它印出的编号（DeepSeek 的 `data.turn` 可以从 5 开始），
+    仅有不透明标识时按首次出现给序号，无标识的事件跟随当前轮次，开头的前导
+    事件归入它引出的第一个轮次；LOG 分组、轨迹视图和轮次计数都读这一份结果，
+    不得另写一份轮次推断。切到身份模式的判定是「批内任一带轮次标识」而非
+    「多数带」：来源只要给过一条事件标了轮次，整批即视为权威，其后无编号
+    的 prompt 折进上一轮、不另开新分组（部分标识来源是契约而非启发式，详见
+    `docs/event-protocol-zh.md` §6）。
   新增消费方必须复用这些函数，不得再写一份“失败事件名单”或“live 名单”。
 - 示例（Demo）数据只在 `data/demo-events.json`：服务通过 `server/demo-dataset.mjs`
   读取并由 `GET /api/demo-events` 提供，控制台只在 `src/lib/demo-events.ts` 解析。
@@ -71,7 +104,9 @@
   硬编码 `/api/...`，也不要让服务默认放开 `*`。
 - `public/` 下的资源一律经 `src/lib/asset-url.ts` 的 `assetUrl()` 取地址，不得写
   `/icons/...` 这类根路径：GitHub Pages 把页面挂在 `/astro/`，根路径会逃出项目
-  前缀并 404（智能体下拉的品牌图标踩过）。`scripts/verify-console-build.mjs` 在
+  前缀并 404（智能体下拉的品牌图标踩过）。该工具目前只被测试引用——最后一批
+  `public/` 资源（智能体品牌图标）已内联进 bundle——它仍是「若再添加 public
+  资源」的唯一定义。`scripts/verify-console-build.mjs` 在
   CI 里复查构建产物没有根路径资源，并确认产物只有控制台、没有混入文档站。
 - 事件流快照按 `hours` 窗口下发，并拆成 `reset`（元数据）+ 分批 `trace` + `ready`，
   不得恢复成一次 `JSON.stringify` 全量事件：单帧几百 MB 会阻塞事件循环，实时事件、
@@ -314,3 +349,4 @@ ASTRO_HOME=/tmp/astro-check ASTRO_PORT=4401 node server/server.mjs
 | 大历史首次加载主线程长任务明显 | 事件级判定里反复分配临时数组 | 模块级 `Set` + `getEventTimestamp` 缓存 |
 | 重启服务后列表还是旧的 | 保留了续传游标，服务端只回空 `resume` | 重启时清游标 + `forceSnapshot`，见 §10 |
 | 重启后状态先闪 `offline` | 把「等待下一个快照」当成断线 | 用 `restarting` / `reloading` 状态，见 §10 |
+| DeepSeek 插件「装好了」却没有任何 session 事件 | bundle 只被复制到 `ASTRO_HOME`，没有写进 profile 的 `dsh.profile.bundles`（`dsh plugin add` 退出 0 不代表成功，`npx` 回退常写入另一个构建的 `DSH_HOME`）；或多余的 `inject` 让 entry 一直 PENDING，`apply()` 从未执行 | 每次 add 后校验 `dependencies` + `bundles`，用 `--dump-config` 确认 `astro-trace`；事件订阅不声明服务依赖 |

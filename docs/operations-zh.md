@@ -482,7 +482,7 @@ astrox restart         # 重启守护进程，加载新 server 与 dist
 
 ## 16. 发布验收清单
 
-- `pnpm test`：当前 182 项测试全部通过。
+- `pnpm test`：当前 527 项测试全部通过。
 - `pnpm typecheck`：无 TypeScript 错误。
 - `pnpm build`：生产构建成功。
 - `pnpm build:native-plugins`：原生插件副本同步。

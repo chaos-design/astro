@@ -1,5 +1,10 @@
 import type { AtomicFlowEvent, AtomicPhase } from "../vendor/atomic-flow/browser.ts";
 import type { HarnessNode, TraceEvent } from "../types/trace.ts";
+import {
+  buildPairDurations,
+  buildPairLinks,
+  type TracePairLink,
+} from "./trace-model.ts";
 
 const RUN_CONTEXT_KEYS = new Set([
   "session.resume",
@@ -19,6 +24,19 @@ export type TrajectoryAtom = {
   key: string;
   kind: string;
   label: string;
+  /**
+   * The span of the *paired* event this atom stands for (e.g. a `PreToolUse`
+   * closing on its `PostToolUse`), `null` when the event is not part of a
+   * closed pair. Sourced from `buildPairDurations`, the single pairing truth.
+   */
+  pairDuration: number | null;
+  /**
+   * The marker for the closed pair this atom belongs to, `null` when the event
+   * has no partner. Sourced from `buildPairLinks`; both halves carry the same
+   * `pairId` so the LOG and trajectory can mark the rows as one unit and jump
+   * between them.
+   */
+  pairLink: TracePairLink | null;
   occurredAt: string;
   sequence: number;
   status: "complete" | "failed" | "idle" | "running" | "waiting";
@@ -32,6 +50,16 @@ export type TrajectoryTurn = {
   duration: number;
   event: TraceEvent;
   occurredAt: string;
+  /**
+   * Number of closed pairs whose start event belongs to this turn. One tool
+   * call projects into several atoms, so the atom count is not the pair count.
+   */
+  pairCount: number;
+  /**
+   * Sum of the closed-pair spans in this turn (unpaired events excluded).
+   * Each pair contributes once, however many atoms it projects into.
+   */
+  totalPairDuration: number;
   status: TrajectoryAtom["status"];
   summary: string;
   turn: number;
@@ -195,36 +223,126 @@ export function buildTrajectoryMapSlots(
   return slots;
 }
 
+/**
+ * A numeric turn identity, or `null` for an opaque one.
+ *
+ * Numbered sources print the number themselves (DeepSeek Harness writes its
+ * `data.turn` as `"5"` on the envelope and as `5` in the payload), so the two
+ * spellings have to normalize to one identity — otherwise they read as two
+ * different turns and the LOG splits one loop into two groups.
+ */
+function numericTurn(value: unknown): number | null {
+  if (typeof value === "number") {
+    return Number.isSafeInteger(value) && value > 0 ? value : null;
+  }
+  if (typeof value === "string" && /^\d+$/.test(value.trim())) {
+    const parsed = Number(value.trim());
+    return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+  }
+  return null;
+}
+
+/**
+ * The turn a source reports for an event, or `null` when it names no turn.
+ *
+ * Some sources carry a stable native turn identity — DeepSeek Harness sets
+ * `event.turnId` (its `data.turn`) on every event inside one loop, and a few
+ * adapters surface a numeric `payload.turn` / `payload.iteration`. When a
+ * batch has *any* of that, the source is authoritative and we must group by
+ * it: mixing it with a separate prompt/loop counter is exactly what made the
+ * LOG pane fragment a single turn into many near-empty separators.
+ */
+function turnKeyFor(event: TraceEvent): string | number | null {
+  const native = numericTurn(event.turnId);
+  if (native !== null) {
+    return native;
+  }
+  if (event.turnId) {
+    return event.turnId;
+  }
+  return numericTurn(event.payload?.turn ?? event.payload?.iteration);
+}
+
 export function buildTraceTurnIndex(
   events: readonly TraceEvent[],
 ): ReadonlyMap<string, number> {
   const turnByEventId = new Map<string, number>();
-  const explicitTurns = new Map<string, number>();
+
+  // Authoritative path: the source names its own turns (native turnId or a
+  // numeric payload turn/iteration). Keep the number the source prints — a
+  // resumed session legitimately starts at turn 5, and renumbering it to 1
+  // would disagree with the client's own count — and hand an opaque identity
+  // the next free ordinal. First-seen order keeps the sequence monotonic, and a
+  // step/loop inside one turn never opens a new separator.
+  //
+  // The switch is "any event carries an identity", not "most events do": a
+  // source that names even one turn is treated as authoritative for the whole
+  // batch, and `UserPromptSubmit` stops incrementing the counter — identity-less
+  // events in the same batch ride in the turn that was executing (a source with
+  // *no* identity at all falls through to the structural prompt/loop inference
+  // below). The official adapters honour this: DeepSeek and Codex stamp every
+  // turn, Claude/ZCode/Pi/WorkBuddy stamp none. A *partially*-stamped source
+  // (a third-party HTTP collector or future adapter that names only some turns)
+  // is the documented exception: its unnumbered later prompts fold into the
+  // previous turn rather than opening a new one, because identity presence
+  // already marked the source authoritative.
+  if (events.some((event) => turnKeyFor(event) !== null)) {
+    const numberByTurnKey = new Map<string | number, number>();
+    const used = new Set<number>();
+    let nextOrdinal = 1;
+    let highest = 0;
+    for (const event of events) {
+      const key = turnKeyFor(event);
+      if (key === null || numberByTurnKey.has(key)) {
+        continue;
+      }
+      const native = typeof key === "number" ? key : null;
+      let assigned: number;
+      if (native !== null && native > highest) {
+        assigned = native;
+      } else {
+        // Opaque identity, or a number that regressed (a restarted counter):
+        // give it the next unused ordinal so the group still reads as its own
+        // turn and the LOG never numbers a later turn lower than an earlier one.
+        while (used.has(nextOrdinal)) {
+          nextOrdinal += 1;
+        }
+        assigned = nextOrdinal;
+      }
+      numberByTurnKey.set(key, assigned);
+      used.add(assigned);
+      if (assigned > highest) {
+        highest = assigned;
+      }
+      if (assigned >= nextOrdinal) {
+        nextOrdinal = assigned + 1;
+      }
+    }
+
+    // Every event reads its own identity's number; identity-less events stay in
+    // the turn that was executing. A leading preamble (session start, the prompt
+    // itself) belongs to the first turn it introduces rather than to an invented
+    // turn 1 that would split the LOG into a stray extra group.
+    const firstNumber = numberByTurnKey.values().next().value ?? 1;
+    let current = firstNumber;
+    for (const event of events) {
+      const key = turnKeyFor(event);
+      if (key !== null) {
+        current = numberByTurnKey.get(key) ?? current;
+      }
+      turnByEventId.set(event.id, current);
+    }
+    return turnByEventId;
+  }
+
+  // Fallback path: hook-based sources report no turn identity. Derive turns
+  // from prompt/loop structure instead — a new prompt opens a turn, and a
+  // message arriving right after a closed tool loop counts as a fresh one.
   let currentTurn = 1;
   let hasSeenPrompt = false;
   let loopClosed = false;
-
   for (const event of events) {
-    const payloadTurn = event.payload.turn ?? event.payload.iteration;
-    const numericTurn =
-      typeof payloadTurn === "number" &&
-      Number.isSafeInteger(payloadTurn) &&
-      payloadTurn > 0
-        ? payloadTurn
-        : undefined;
-
-    if (numericTurn !== undefined) {
-      currentTurn = numericTurn;
-    } else if (event.turnId) {
-      const knownTurn = explicitTurns.get(event.turnId);
-      if (knownTurn !== undefined) {
-        currentTurn = knownTurn;
-      } else {
-        const assignedTurn = Math.max(currentTurn, explicitTurns.size + 1);
-        explicitTurns.set(event.turnId, assignedTurn);
-        currentTurn = assignedTurn;
-      }
-    } else if (event.eventName === "UserPromptSubmit") {
+    if (event.eventName === "UserPromptSubmit") {
       if (hasSeenPrompt) {
         currentTurn += 1;
       }
@@ -256,6 +374,14 @@ export function buildTrajectoryModel(
   const traceEventById = new Map(events.map((event) => [event.id, event]));
   const turnByEventId = buildTraceTurnIndex(events);
   const nodeByKey = new Map(nodes.map((node) => [node.data.key, node]));
+  // Single pairing truth: closed start→end spans by trace-event id. Unpaired
+  // events are absent, so an atom reads `null` and the UI omits its badge.
+  const pairDurations = buildPairDurations(events);
+  // The partner of each event (the other half of its closed pair); `null`
+  // when the event has no partner, so the link marker is omitted.
+  // Same turn index the atoms use, so a pair marker's turn prefix always
+  // agrees with the trajectory group that contains the atom.
+  const pairLinks = buildPairLinks(events, turnByEventId);
   const aggregated = new Map<string, MutableTrajectoryAtom>();
 
   for (const atomicEvent of atomicEvents) {
@@ -277,6 +403,8 @@ export function buildTrajectoryModel(
     const existing = aggregated.get(aggregateKey);
     const node = nodeByKey.get(atomicEvent.atom.key);
     const nextStatus = statusForPhase(atomicEvent.phase);
+    const pairDuration = pairDurations.get(traceEvent.id) ?? null;
+    const pairLink = pairLinks.get(traceEvent.id) ?? null;
 
     if (existing) {
       existing.count += 1;
@@ -286,6 +414,8 @@ export function buildTrajectoryModel(
       );
       existing.event = traceEvent;
       existing.lastOccurredAt = atomicEvent.occurredAt;
+      existing.pairDuration = pairDuration;
+      existing.pairLink = pairLink;
       existing.status =
         existing.status === "failed" ? "failed" : nextStatus;
       existing.summary =
@@ -306,6 +436,8 @@ export function buildTrajectoryModel(
       label: atomicEvent.atom.label,
       lastOccurredAt: atomicEvent.occurredAt,
       occurredAt: atomicEvent.occurredAt,
+      pairDuration,
+      pairLink,
       sequence: atomicEvent.sequence,
       status: nextStatus,
       summary:
@@ -340,6 +472,25 @@ export function buildTrajectoryModel(
       const hasFailure = turnAtoms.some((atom) => atom.status === "failed");
       const hasWaiting = turnAtoms.some((atom) => atom.status === "waiting");
       const hasRunning = turnAtoms.some((atom) => atom.status === "running");
+      // Only closed pairs contribute; an open tool call or a lone reasoning
+      // atom has no span to add and is excluded from the total. One closed
+      // pair projects into several atoms (and both halves carry the same
+      // span), so group by pair identity before summing — a plain atom sum
+      // multiplied every pair by its atom count. `pairLink.turn` is the start
+      // event's turn, so a pair is counted in exactly one turn even when its
+      // result lands in a later one.
+      const pairDurationsByPair = new Map<string, number>();
+      for (const atom of turnAtoms) {
+        const link = atom.pairLink;
+        if (!link || link.turn !== turn || atom.pairDuration === null) {
+          continue;
+        }
+        pairDurationsByPair.set(link.pairId, atom.pairDuration);
+      }
+      const totalPairDuration = [...pairDurationsByPair.values()].reduce(
+        (total, duration) => total + duration,
+        0,
+      );
       return {
         atoms: turnAtoms,
         duration: Math.max(
@@ -356,6 +507,8 @@ export function buildTrajectoryModel(
               ? "running"
               : "complete",
         summary: last.summary,
+        pairCount: pairDurationsByPair.size,
+        totalPairDuration,
         turn,
       };
     }),

@@ -690,7 +690,7 @@ The current automated suite covers:
 - `ASTROX_` preference keys, legacy migration, and invalid-value fallback;
 - production Demo exclusion and Vite proxy environment resolution.
 
-The current suite contains 182 tests.
+The current suite contains 527 tests.
 
 Run:
 

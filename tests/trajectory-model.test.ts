@@ -8,8 +8,96 @@ import {
   getTrajectorySegmentPosition,
   orderTrajectoryNewestFirst,
 } from "../src/lib/trajectory-model.ts";
-import { buildHarnessFlow } from "../src/lib/trace-model.ts";
+import type { TraceEvent } from "../src/types/trace.ts";
+import {
+  buildHarnessFlow,
+  buildPairDurations,
+  buildPairLinks,
+} from "../src/lib/trace-model.ts";
 import { createDemoEvents } from "./helpers/demo-fixture.ts";
+
+test("carries closed-pair durations on atoms and turns", () => {
+  const events = createDemoEvents(2_000_000_000_000);
+  const projection = projectTraceEvents(events, "codex");
+  const topology = buildHarnessFlow(events, "codex");
+  const model = buildTrajectoryModel(
+    events,
+    projection.events,
+    topology.nodes,
+  );
+  const pairDurations = buildPairDurations(events);
+  const pairLinks = buildPairLinks(events, buildTraceTurnIndex(events));
+
+  // Every atom reports a `pairDuration`; when set, it equals the single
+  // pairing truth for its trace event, and when the event is unpaired it is
+  // null so the UI omits the badge instead of printing 0. The link marker
+  // comes from the same pairing truth, so it never appears without the badge.
+  for (const atom of model.turns.flatMap((turn) => turn.atoms)) {
+    const expected = pairDurations.get(atom.event.id) ?? null;
+    assert.equal(atom.pairDuration, expected);
+    assert.deepEqual(
+      atom.pairLink,
+      pairLinks.get(atom.event.id) ?? null,
+    );
+    assert.equal(atom.pairLink !== null, expected !== null);
+    // The marker's turn prefix must name the very Loop Turn group the atom is
+    // rendered under; otherwise the marker points the reader at the wrong
+    // group when they jump from the LOG.
+    if (atom.pairLink) {
+      assert.equal(atom.pairLink.turn, atom.turn);
+    }
+  }
+
+  // A turn's total sums each closed pair *once*: one tool call projects into
+  // several atoms and both halves carry the same span, so the atom sum used to
+  // multiply every pair by its atom count.
+  for (const turn of model.turns) {
+    const pairIds = new Set(
+      turn.atoms
+        .filter((atom) => atom.pairLink?.turn === turn.turn)
+        .map((atom) => atom.pairLink!.pairId),
+    );
+    const expected = [...pairIds].reduce(
+      (total, pairId) => total + (pairDurations.get(pairId) ?? 0),
+      0,
+    );
+    assert.equal(turn.pairCount, pairIds.size);
+    assert.equal(turn.totalPairDuration, expected);
+  }
+  // Demo: turn 1 has one 680ms pair, turn 2 has 460ms + 880ms, turn 3 has
+  // one 1220ms pair. The atom sum would report 6120 / 12060 / 10980ms.
+  assert.deepEqual(
+    model.turns.map((turn) => turn.pairCount),
+    [1, 2, 1],
+  );
+  assert.deepEqual(
+    model.turns.map((turn) => turn.totalPairDuration),
+    [680, 1340, 1220],
+  );
+});
+
+test("a turn with no closed pair reports zero pairs and no total", () => {
+  const events = createDemoEvents(2_000_000_000_000).filter(
+    (event) =>
+      event.eventName !== "PostToolUse" &&
+      event.eventName !== "PostToolUseFailure",
+  );
+  const projection = projectTraceEvents(events, "codex");
+  const topology = buildHarnessFlow(events, "codex");
+  const model = buildTrajectoryModel(
+    events,
+    projection.events,
+    topology.nodes,
+  );
+
+  // Removing every result leaves the `PreToolUse` atoms in place but closes no
+  // pair; zero pairs is what lets the hover card omit PAIRS rather than print
+  // `0ms`.
+  for (const turn of model.turns) {
+    assert.equal(turn.pairCount, 0);
+    assert.equal(turn.totalPairDuration, 0);
+  }
+});
 
 test("builds loop turns with expandable atomic children", () => {
   const events = createDemoEvents(2_000_000_000_000);
@@ -139,5 +227,139 @@ test("keeps one slot per node when the lane is already short", () => {
       [3, 3, 1],
       [4, 4, 1],
     ],
+  );
+});
+
+/**
+ * DeepSeek Harness names its turns with a stable native id (its `data.turn`)
+ * that every event inside one loop shares, and that number is not 1-based nor
+ * contiguous across turns (a resumed session can start at 5). Such a batch must
+ * group purely by that identity and keep the number the source prints, so a
+ * step/loop inside one turn never opens a second LOG separator and the label
+ * agrees with what the harness and the canvas already show.
+ */
+function deepseekEvent(
+  id: string,
+  eventName: TraceEvent["eventName"],
+  turnId: string | null,
+  turn?: number,
+): TraceEvent {
+  return {
+    capturedAt: new Date(0).toISOString(),
+    id,
+    payload: turn === undefined ? {} : { turn },
+    source: "deepseek",
+    eventName,
+    turnId,
+  };
+}
+
+test("groups a native-identified DeepSeek loop as a single monotonic turn", () => {
+  const events = [
+    deepseekEvent("s", "SessionStart", null),
+    deepseekEvent("p", "UserPromptSubmit", null),
+    deepseekEvent("a1", "AgentMessage", "2"),
+    deepseekEvent("t1", "PreToolUse", "2", 2),
+    deepseekEvent("r1", "PostToolUse", "2", 2),
+    // Loop back inside the same native turn 2: a message after a closed loop
+    // used to increment a side counter and bounce the LOG back to turn 1.
+    deepseekEvent("a2", "AgentMessage", "2"),
+    deepseekEvent("t2", "PreToolUse", "2", 2),
+    deepseekEvent("r2", "PostToolUse", "2", 2),
+    deepseekEvent("p2", "UserPromptSubmit", null),
+    deepseekEvent("a3", "AgentMessage", "5", 5),
+    deepseekEvent("stop", "Stop", "5", 5),
+    deepseekEvent("e", "SessionEnd", null),
+  ];
+
+  const index = buildTraceTurnIndex(events);
+
+  assert.deepEqual(
+    events.map((event) => index.get(event.id)),
+    // The harness's own numbers, not renumbered ordinals: the resumed session
+    // really is on turn 2 and then turn 5. Identity-less events stay in the
+    // turn that was executing; the leading preamble belongs to the first turn
+    // it introduces instead of opening a stray "TURN 01" group.
+    [2, 2, 2, 2, 2, 2, 2, 2, 2, 5, 5, 5],
+  );
+});
+
+test("reads the envelope turn id and the payload turn as one identity", () => {
+  // The recorder writes DeepSeek's `data.turn` to the envelope as the string
+  // "5" and to the payload as the number 5. Treating those spellings as two
+  // identities is what split one loop into "TURN 05" and "TURN 06" groups.
+  const events = [
+    deepseekEvent("a", "AgentMessage", "5"),
+    deepseekEvent("t", "PreToolUse", "5", 5),
+    deepseekEvent("r", "PostToolUse", "5", 5),
+  ];
+
+  const index = buildTraceTurnIndex(events);
+
+  assert.deepEqual(
+    events.map((event) => index.get(event.id)),
+    [5, 5, 5],
+  );
+});
+
+test("numbers opaque turn identities in order and keeps regressions distinct", () => {
+  const hook = (
+    id: string,
+    turnId: string | null,
+  ): TraceEvent => ({
+    capturedAt: new Date(0).toISOString(),
+    id,
+    payload: {},
+    source: "codex",
+    eventName: "AgentMessage",
+    turnId,
+  });
+  const events = [
+    // Codex reports opaque ids (`turn_1`), so they get ordinals …
+    hook("a", "turn_1"),
+    hook("b", "turn_2"),
+    // … and after a numeric identity, a lower one is a *new* group rather than
+    // a jump backwards: the LOG must never number a later turn below an
+    // earlier one.
+    hook("c", "7"),
+    hook("d", "1"),
+    hook("e", "7"),
+  ];
+
+  const index = buildTraceTurnIndex(events);
+
+  assert.deepEqual(
+    events.map((event) => index.get(event.id)),
+    [1, 2, 7, 8, 7],
+  );
+});
+
+test("still infers turns from prompt/loop structure when no source names turns", () => {
+  const hook = (
+    id: string,
+    eventName: TraceEvent["eventName"],
+  ): TraceEvent => ({
+    capturedAt: new Date(0).toISOString(),
+    id,
+    payload: {},
+    source: "claude",
+    eventName,
+    turnId: null,
+  });
+  const events = [
+    hook("s", "SessionStart"),
+    hook("p1", "UserPromptSubmit"),
+    hook("t1", "PreToolUse"),
+    hook("r1", "PostToolUse"),
+    hook("m1", "AgentMessage"),
+    hook("p2", "UserPromptSubmit"),
+    hook("m2", "AgentMessage"),
+  ];
+
+  const index = buildTraceTurnIndex(events);
+
+  assert.deepEqual(
+    events.map((event) => index.get(event.id)),
+    [1, 1, 1, 1, 2, 3, 3],
   );
 });
