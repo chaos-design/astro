@@ -66,6 +66,7 @@ import {
   type NoticeTone,
 } from "./components/console-notices";
 import { PromptContent } from "./components/prompt-content";
+import { QuestionContent } from "./components/question-content";
 import { RepositoryLink } from "./components/repo-link";
 import { RuntimeCanvas } from "./components/runtime-canvas";
 import { SettingsDialog } from "./components/settings-dialog";
@@ -3011,6 +3012,17 @@ function TraceInspector({
     : node?.data.startEvent.eventName === "UserPromptSubmit"
       ? node.data.startEvent
       : null;
+  // A user.question event gets the same preview treatment as a prompt: its
+  // question renders as the rich text the reader's client showed, while the
+  // raw payload stays one Code toggle away. The decision rides the same
+  // display key the log row shows (`user.question`, Notification included),
+  // not the run-state predicate — the inspector preview is presentation, and
+  // widening the run-state set here would rewrite run classification.
+  const questionEvent = event && getTraceEventKey(event) === "user.question"
+    ? event
+    : node && getTraceEventKey(node.data.startEvent) === "user.question"
+      ? node.data.startEvent
+      : null;
   const payloadByTab: Record<InspectorTab, unknown> = {
     input: atom
       ? { contract: atom.input, captured: capturedInput }
@@ -3097,13 +3109,15 @@ function TraceInspector({
             value={tab}
             className={cn(
               "inspector-tabs__content m-0 min-h-0",
-              tab === "input" && promptEvent
+              tab === "input" && (promptEvent || questionEvent)
                 ? "inspector-tabs__content--prompt overflow-hidden"
                 : "inspector-tabs__content--json overflow-hidden",
             )}
           >
             {tab === "input" && promptEvent ? (
               <PromptContent key={promptEvent.id} payload={promptEvent.payload} />
+            ) : tab === "input" && questionEvent ? (
+              <QuestionContent key={questionEvent.id} payload={questionEvent.payload} />
             ) : (
               <JsonViewer value={payloadByTab[tab]} />
             )}

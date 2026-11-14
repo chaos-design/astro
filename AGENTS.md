@@ -635,6 +635,13 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   display keys.
 - `Notification` is displayed as `user.question` (`AskUserQuestion`) in the
   event log.
+- The inspector's Input tab renders `user.question` payloads (display key, so
+  `Notification` included) as a Preview/Code pair like the prompt input:
+  `src/lib/markdown-preview.ts` validates and sanitizes the markdown once —
+  invalid or empty sources fall back to the captured text, and the question
+  shapes are extracted only in `src/lib/user-question-content.ts`. The preview
+  decision must not use `isUserQuestionStartEvent`: that predicate drives run
+  state and deliberately excludes `Notification`.
 - `PreCompact` / `PostCompact` cover context compaction for every client that
   reports it; streaming compaction deltas are never recorded.
 

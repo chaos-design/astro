@@ -536,7 +536,7 @@ The platform choice is stored in `ASTROX_PLATFORM`.
 The upper LOG area:
 
 - orders the newest event first;
-- groups rows by turn;
+- groups rows by turn, and the turn separator shows only the turn number (e.g. `01`);
 - searches any serialized field in the selected prompt run; matching follows
   the keystroke in the background (per-event serializations are cached, so
   typing stays smooth on long runs);
@@ -549,7 +549,13 @@ The upper LOG area:
 The inspector provides:
 
 - `Overview`: state, source, type, time, tool, and call ID;
-- `Input`: tool input or prompt;
+- `Input`: tool input or prompt. Prompt and `user.question` events (user
+  questions, `AskUserQuestion`, question-shaped `Notification`s) offer a
+  `Preview` / `Code` pair: `Preview` renders the question content the way the
+  reader's client showed it — the markdown source is validated, then rendered
+  as rich text (headings, lists, code blocks) with acting markup stripped;
+  invalid or empty sources fall back to the captured text, and structured
+  questions also list the captured options; `Code` shows the raw payload;
 - `Output`: tool result or response;
 - `Raw`: full normalized event;
 - copy control for structured JSON.
