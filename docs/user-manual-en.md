@@ -355,7 +355,10 @@ HTTP service.
 - Theme: light, dark, or system; stored in `ASTROX_THEME`.
 - Service chip (the local service's uptime): opens the service card with the
   console/service versions, process details, session counts, the data directory
-  and "restart local service". The "change" control next to the data directory
+  and "restart local service". The uptime follows a sync pause: while the sync
+  is stopped at its cap (`paused`) the clock stops counting too, it continues
+  from the frozen reading when sync resumes, and restarting the local service
+  recounts from the new process. The "change" control next to the data directory
   accepts another existing absolute path (or `~/…`); "save and restart" writes
   it to the installed runtime's `.env` (`ASTRO_TRACE_DIR`) and restarts, so the
   new process reads that directory and later recorder sessions write there too.
@@ -636,7 +639,9 @@ the footer's **Done** button only closes the dialog — there is no Apply step:
   When it runs out the stream is closed and no new event is accepted; the header
   marker turns from `synced` to `paused`. Clicking that marker, or restarting
   the local service from its card, reloads the current snapshot and restarts
-  the clock. Changing the value applies at once — the timer is re-armed for the
+  the clock. While paused, the service card's uptime stops counting too (it
+  continues from the frozen reading on resume and recounts after a restart).
+  Changing the value applies at once — the timer is re-armed for the
   time left under the new cap — and if the console is paused while the new cap
   still has time left (or is `No limit`) it resumes on its own.
 

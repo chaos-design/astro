@@ -215,7 +215,14 @@ import {
   selectLiveRunHistory,
   selectVisibleRunHistory,
 } from "./lib/run-history-window";
-import { capChangeResumesSync, getSyncStopDelay } from "./lib/sync-budget";
+import {
+  applyUptimePause,
+  capChangeResumesSync,
+  getSyncStopDelay,
+  resetUptimePause,
+  resolveDisplayedUptime,
+  type UptimePause,
+} from "./lib/sync-budget";
 import { atomLevel, projectTraceEvents } from "./lib/atomic-projection";
 import {
   buildTraceTurnIndex,
@@ -809,9 +816,31 @@ function ServiceStatus({
     return () => window.clearInterval(timer);
   }, [suspended]);
 
-  const uptime = service
+  const rawUptime = service
     ? Math.max(0, service.uptimeMs + (now - service.fetchedAt))
     : 0;
+  // A spent sync budget pauses the stream on purpose, so the clock stops
+  // counting with it: the pause never displays again once it lifts, and a new
+  // service process recounts from its own start. The policy lives in
+  // `sync-budget` next to the other pause rules.
+  const [uptimePause, setUptimePause] = useState<UptimePause>(resetUptimePause);
+  const uptimePauseRef = useRef(uptimePause);
+  const rawUptimeRef = useRef(rawUptime);
+  rawUptimeRef.current = rawUptime;
+  const servicePidRef = useRef<number | null>(null);
+  const servicePid = service?.pid ?? null;
+  useEffect(() => {
+    let next = uptimePauseRef.current;
+    if (servicePid !== servicePidRef.current) {
+      // A new process owns a fresh clock: pause history belongs to the old one.
+      servicePidRef.current = servicePid;
+      next = resetUptimePause();
+    }
+    next = applyUptimePause(next, rawUptimeRef.current, syncPaused);
+    uptimePauseRef.current = next;
+    setUptimePause(next);
+  }, [servicePid, syncPaused]);
+  const uptime = service ? resolveDisplayedUptime(uptimePause, rawUptime) : 0;
   const health = error
     ? "error"
     : !service

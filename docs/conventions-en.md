@@ -242,6 +242,14 @@
   the clock only restarts on a resume. Changing the cap re-arms the timer for
   the time left under the new cap (measured from the original start); lowering
   the cap below what already elapsed stops the stream at once.
+- The pause reaches the **displayed clock** too: the service card's uptime
+  freezes at the reading it held when the pause began, and the uptime the
+  service accrues during the pause is never displayed again (resume continues
+  from the frozen reading instead of replaying the pause). The rule has one
+  definition — `applyUptimePause` / `resolveDisplayedUptime` in
+  `sync-budget.ts` — and the component only consumes the result; a new service
+  process (pid change) resets the whole clock, since restarting the service is
+  the documented way out of a spent budget.
 - A spent budget has three equivalent ways out, and all must work: the header
   marker (`synced` → clickable `paused`, `resumeSync`), the service card's
   restart, and moving the cap in Settings so that time is still left (including

@@ -384,6 +384,12 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   cap below what already elapsed stops the stream at once. While a pause is in
   effect no timer runs and the counting is stopped too; the clock only starts
   over on a resume.
+- The pause also freezes the **displayed** clock: the service card's uptime
+  (and the header pill) holds the reading it had when the pause began, the
+  uptime accrued during the pause is never displayed again, and a new service
+  process resets the whole clock. The policy lives with the other pause rules
+  (`applyUptimePause` / `resolveDisplayedUptime` in `src/lib/sync-budget.ts`);
+  do not grow a second freeze accumulator in the component.
 - When it fires, `syncStopped` closes the `EventSource`; that is what stops the
   appending, the re-derivation and the memory growth. The header marker turns
   from `synced` to `paused` (amber, a `<button>`), and the service card says the
