@@ -66,6 +66,13 @@ export function QuestionContent({ payload }: { payload: TracePayload }) {
               <h3>Question</h3>
               <MarkdownPreview source={content.message} />
             </section>
+          ) : content.plan ? (
+            // Plan approval (ZCode/Claude ExitPlanMode) carries its question
+            // as a Markdown plan rather than a question string or options.
+            <section className="prompt-content__section">
+              <h3>Plan</h3>
+              <MarkdownPreview source={content.plan} />
+            </section>
           ) : (
             <section className="prompt-content__section">
               <p className="prompt-content__empty">

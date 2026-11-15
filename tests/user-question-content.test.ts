@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { parseUserQuestionContent } from "../src/lib/user-question-content.ts";
+import {
+  hasPlanContent,
+  parseUserQuestionContent,
+} from "../src/lib/user-question-content.ts";
 import type { TracePayload } from "../src/types/trace.ts";
 
 test("structured AskUserQuestion payloads render per question with options", () => {
@@ -82,4 +85,83 @@ test("string options and unrecognized option shapes keep the labels they have", 
   // Plain strings and value-shaped objects become labels; everything else
   // drops instead of rendering "[object Object]".
   assert.deepEqual(content.prompts[0].options, ["alpha", "beta"]);
+});
+
+// ZCode (and Claude Code) report plan approval as PermissionRequest with
+// toolName "ExitPlanMode". The only readable text is the Markdown plan in
+// tool_input, not questions/message/content.
+const zcodePlanApproval = {
+  eventName: "PermissionRequest",
+  hook_event_name: "PermissionRequest",
+  reason: "Tool ExitPlanMode requires user interaction",
+  toolName: "ExitPlanMode",
+  tool_name: "ExitPlanMode",
+  toolUseId: "call_plan_1",
+  tool_use_id: "call_plan_1",
+  tool_input: {
+    plan: "# 新增「对话验证」页\n\n## 目标\n新增一个页面\n\n1. 步骤一\n2. 步骤二",
+    allowedPrompts: [{ tool: "Bash", prompt: "run tests" }],
+  },
+} as unknown as TracePayload;
+
+test("ZCode plan approval renders the ExitPlanMode plan as Markdown", () => {
+  const content = parseUserQuestionContent(zcodePlanApproval);
+  assert.equal(content.hasContent, true);
+  assert.deepEqual(content.prompts, []);
+  assert.equal(content.message, "");
+  assert.equal(
+    content.plan,
+    "# 新增「对话验证」页\n\n## 目标\n新增一个页面\n\n1. 步骤一\n2. 步骤二",
+  );
+});
+
+test("camelCase toolInput plans resolve for raw hook payloads", () => {
+  const content = parseUserQuestionContent({
+    reason: "Tool ExitPlanMode requires user interaction",
+    toolInput: { plan: "## Step 1\n\nShip it." },
+  } as unknown as TracePayload);
+  assert.equal(content.hasContent, true);
+  assert.equal(content.plan, "## Step 1\n\nShip it.");
+});
+
+test("an approved plan in tool_response is still displayable", () => {
+  const content = parseUserQuestionContent({
+    eventName: "PostToolUse",
+    tool_name: "ExitPlanMode",
+    tool_response: { plan: "## Approved plan\n\nRun the tests." },
+  } as unknown as TracePayload);
+  assert.equal(content.hasContent, true);
+  assert.equal(content.plan, "## Approved plan\n\nRun the tests.");
+});
+
+test("structured questions keep priority over a plan", () => {
+  const content = parseUserQuestionContent({
+    questions: [{ question: "Which branch?", options: ["main", "dev"] }],
+    tool_input: { plan: "## Plan" },
+  } as unknown as TracePayload);
+  assert.equal(content.prompts.length, 1);
+  assert.equal(content.message, "");
+  assert.equal(content.plan, "");
+});
+
+test("a plan approval without readable text stays truthfully empty", () => {
+  const content = parseUserQuestionContent({
+    reason: "Tool ExitPlanMode requires user interaction",
+    tool_input: { plan: "   " },
+  } as unknown as TracePayload);
+  assert.equal(content.hasContent, false);
+  assert.equal(content.plan, "");
+  assert.equal(content.message, "");
+});
+
+test("hasPlanContent widens the preview only for plan-shaped payloads", () => {
+  assert.equal(hasPlanContent(zcodePlanApproval), true);
+  assert.equal(
+    hasPlanContent({ toolInput: { plan: "## Step 1" } } as unknown as TracePayload),
+    true,
+  );
+  assert.equal(hasPlanContent({ questions: [{ question: "Pick one" }] } as unknown as TracePayload), false);
+  assert.equal(hasPlanContent({ message: "Agent completed." } as TracePayload), false);
+  assert.equal(hasPlanContent({}), false);
+  assert.equal(hasPlanContent(null), false);
 });

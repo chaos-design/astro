@@ -679,9 +679,19 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   `Notification` included) as a Preview/Code pair like the prompt input:
   `src/lib/markdown-preview.ts` validates and sanitizes the markdown once —
   invalid or empty sources fall back to the captured text, and the question
-  shapes are extracted only in `src/lib/user-question-content.ts`. The preview
-  decision must not use `isUserQuestionStartEvent`: that predicate drives run
-  state and deliberately excludes `Notification`.
+  shapes are extracted only in `src/lib/user-question-content.ts`. That single
+  extractor also reads plan approvals: ZCode and Claude Code emit
+  `PermissionRequest` with `toolName: ExitPlanMode` and the Markdown plan in
+  `tool_input.plan` (no `questions` array and no `message`), which the preview
+  renders as a `Plan` section. Do not synthesize a `message` for that shape in
+  an adapter or the recorder. The preview decision must not use
+  `isUserQuestionStartEvent`: that predicate drives run state and deliberately
+  excludes `Notification`.
+- `PreToolUse` / `PostToolUse` of `ExitPlanMode` keep their `tool.call` /
+  `tool.result` display keys. `hasPlanContent()` in the same extractor lets the
+  inspector preview their plan without adding `exitplanmode` to the
+  user-question classifier, which would change projection, waiting state and
+  topology counts.
 - `PreCompact` / `PostCompact` cover context compaction for every client that
   reports it; streaming compaction deltas are never recorded.
 
@@ -699,6 +709,11 @@ use Node.js ES modules or CommonJS according to their existing file extension.
 - The adapter normalizes ZCode payloads (`toolCallId`, `toolInput`,
   `toolResponse`) onto the canonical names and records a `Stop` with non-empty
   `responseText` as `AgentMessage` followed by `Stop`.
+- ZCode plan approval arrives as `PermissionRequest` with
+  `toolName: "ExitPlanMode"` and `tool_input: { plan: "<Markdown>",
+  allowedPrompts? }`. The adapter preserves it verbatim; the capture side does
+  not drop the plan text. `src/lib/user-question-content.ts` is the only reader
+  of that shape for the `user.question` preview.
 - ASTRO skills ship in `.agents/skills`; `scripts/install-zcode-plugin.mjs`
   copies them to `~/.agents/skills`, which ZCode imports by reference. The
   plugin package itself never carries skill copies.

@@ -117,6 +117,14 @@ ASTRO 事件协议把不同编码智能体的生命周期、消息、工具和�
 同一原子；开始与完成事件分别打开和关闭一次等待交互。持久化的 `eventName` 与
 `nativeEventName` 保持不变，仍可在详情中检查。
 
+计划批准是 `user.question` 的另一种载荷形状：ZCode 与 Claude Code 以
+`PermissionRequest` + `toolName: ExitPlanMode` 上报，问题正文是
+`tool_input.plan` 里的 Markdown 计划全文，既没有 `questions` 数组也没有
+`message`。采集端原样保留该字段，`src/lib/user-question-content.ts` 是唯一
+解析它的地方，Input 预览把计划渲染为 `Plan` 段落，不改写持久化事件。对应的
+`Pre/PostToolUse` 工具行由 `hasPlanContent()` 按内容回退预览，但仍归类为
+`tool.call` / `tool.result`，不计入用户提问原子。
+
 ### 4.1 错误与异常事件
 
 异常不是单一事件，而是四种不同作用域的坏结果。同一份故障在不同客户端必须得到

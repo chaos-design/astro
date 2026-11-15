@@ -504,7 +504,11 @@ codex 的 Hook）不显示该标签，与「没有模型」不加区分。一个
   `AskUserQuestion`、`Notification` 提问）提供 `Preview` / `Code` 两种视图：
   `Preview` 把问题内容按真实渲染效果显示——markdown 源先经过校验再渲染为富文本
   （标题、列表、代码块等），并去除可执行内容；校验失败或空内容回退为原文显示，
-  结构化问题还会把捕获到的选项渲染成选项列表；`Code` 显示原始载荷；
+  结构化问题还会把捕获到的选项渲染成选项列表；  计划批准（如 ZCode 的
+  `PermissionRequest` + `ExitPlanMode`）没有 questions 数组，此时 `Preview` 会把
+  `tool_input.plan` 的 Markdown 计划渲染为 `Plan` 段落；计划批准对应的
+  `Pre/PostToolUse` 工具行也按内容识别显示 Plan 预览，但显示键仍是
+  `tool.call` / `tool.result`，不改变投影、等待态与拓扑计数；`Code` 显示原始载荷；
 - `Output`：工具结果或回复；
 - `Raw`：完整标准化事件；
 - JSON 复制按钮：复制当前结构化数据。

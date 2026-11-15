@@ -607,7 +607,12 @@ The inspector provides:
   reader's client showed it — the markdown source is validated, then rendered
   as rich text (headings, lists, code blocks) with acting markup stripped;
   invalid or empty sources fall back to the captured text, and structured
-  questions also list the captured options; `Code` shows the raw payload;
+  questions also list the captured options. Plan approvals (for example ZCode's
+  `PermissionRequest` with `ExitPlanMode`) carry no `questions` array, so
+  `Preview` renders the Markdown `tool_input.plan` as a `Plan` section. The
+  matching `Pre/PostToolUse` rows also preview the plan by content while
+  keeping their `tool.call` / `tool.result` keys, so projection, waiting state
+  and topology counts stay unchanged. `Code` shows the raw payload;
 - `Output`: tool result or response;
 - `Raw`: full normalized event;
 - copy control for structured JSON.

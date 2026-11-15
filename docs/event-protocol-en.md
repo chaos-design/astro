@@ -118,6 +118,15 @@ atom. Their start and completion events open and close one waiting interaction.
 Persisted `eventName` and `nativeEventName` values remain unchanged for
 inspection.
 
+Plan approval is another `user.question` payload shape: ZCode and Claude Code
+report it as `PermissionRequest` with `toolName: ExitPlanMode`, and the question
+text is the full Markdown plan in `tool_input.plan` — there is no `questions`
+array and no `message`. The capture side keeps that field verbatim;
+`src/lib/user-question-content.ts` is the single reader, and the Input preview
+renders the plan as a `Plan` section without rewriting the persisted event. The
+matching `Pre/PostToolUse` rows preview the plan through `hasPlanContent()` but
+stay `tool.call` / `tool.result`, so they never enter the user-question atom.
+
 ### 4.1 Error and Exception Events
 
 An exception is not one event but four different blast radii. The same fault

@@ -285,6 +285,7 @@ import {
   isUserQuestionEvent,
   isUserQuestionStartEvent,
 } from "./lib/trace-event-kind";
+import { hasPlanContent } from "./lib/user-question-content";
 import type {
   HarnessNode,
   HarnessNodeData,
@@ -3299,11 +3300,20 @@ function TraceInspector({
   // display key the log row shows (`user.question`, Notification included),
   // not the run-state predicate — the inspector preview is presentation, and
   // widening the run-state set here would rewrite run classification.
+  // Plan approval tool rows (Pre/PostToolUse for ExitPlanMode) are labelled
+  // tool.call / tool.result, so a content-based fallback makes their Markdown
+  // plan previewable too. That fallback is display only: it deliberately does
+  // not add ExitPlanMode to the user-question classifier, which would change
+  // projection, waiting state and topology counts.
   const questionEvent = event && getTraceEventKey(event) === "user.question"
     ? event
-    : node && getTraceEventKey(node.data.startEvent) === "user.question"
-      ? node.data.startEvent
-      : null;
+    : event && hasPlanContent(event.payload)
+      ? event
+      : node && getTraceEventKey(node.data.startEvent) === "user.question"
+        ? node.data.startEvent
+        : node && hasPlanContent(node.data.startEvent.payload)
+          ? node.data.startEvent
+          : null;
   const payloadByTab: Record<InspectorTab, unknown> = {
     input: atom
       ? { contract: atom.input, captured: capturedInput }
