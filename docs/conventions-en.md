@@ -37,6 +37,13 @@
   `test:`, `chore(plugins):`.
 - PR descriptions use `## 变更点 / ## 验证 / ## 备注`. The verification section
   lists the commands that actually ran, never "tested".
+- Stacked PRs: when a branch is cut from an unmerged feature branch, set the PR
+  base to that branch and state the merge order in the notes. Here
+  `feat/hook-auto-approve-question` (PR #23) was cut from `507edc9` on
+  `feat/user-question-md-preview` (PR #22), so merge #22 before #23. If #22 is
+  squash-merged into `main`, run `git fetch origin` and
+  `git rebase --onto origin/main 507edc9 feat/hook-auto-approve-question`, then
+  change the PR base to `main` to avoid duplicating upstream commits.
 - Do not commit `dist/`, `.astrox` data directories, scratch screenshots, or
   machine-specific paths.
 - Unrelated working-tree changes belong to the user: never revert them, never

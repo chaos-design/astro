@@ -127,6 +127,21 @@ renders the plan as a `Plan` section without rewriting the persisted event. The
 matching `Pre/PostToolUse` rows preview the plan through `hasPlanContent()` but
 stay `tool.call` / `tool.result`, so they never enter the user-question atom.
 
+With the optional auto-approve decision hook enabled, the host injects the
+answer into the tool input: `tool_input.answers` maps each question's text to
+the chosen option label (comma-joined for multi-select), and
+`PostToolUse.tool_response.answers` may carry the same result. **This field is
+injected by the host hook, not produced by the agent.** The `TraceEvent` is
+still persisted verbatim; `src/lib/user-question-content.ts` only parses it for
+the preview, never rewriting the event, its status or its classification.
+Auto-approval introduces no new canonical event name, so the
+`PermissionRequest` / `PostToolUse` pairing and waiting-state rules are unchanged.
+
+The full interaction-hook flow (option clicks, free-text input, cancel, timeout
+and Agent notification), message formats and field constraints are specified in
+`docs/interaction-hooks-en.md` as a **planned, unimplemented design**. This
+section remains the only description of the shipped payload shapes.
+
 ### 4.1 Error and Exception Events
 
 An exception is not one event but four different blast radii. The same fault

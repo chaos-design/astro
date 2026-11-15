@@ -620,12 +620,63 @@ The inspector provides:
 Selecting a topology atom additionally exposes the atom contract, input/output ports, gate state, and bound event.
 The right panel state is stored in `ASTROX_CONSOLE_OPEN`.
 
-Auto-approving user questions is an **optional, off-by-default** host-side
-decision hook (`scripts/auto-approve-question-hook.mjs`), not part of the ASTRO
-capture chain. When enabled, the host approves `AskUserQuestion` and plan
-approvals without an app switch while the recorders keep observing. See
-"Optional: auto-approve user questions" in `docs/plugin-installation.md` for
-configuration, risks and verification.
+### 5.5.1 Auto-approving user questions (optional)
+
+Auto-approval is performed by a **separate host-side decision hook**
+(`scripts/auto-approve-question-hook.mjs`), not by the ASTRO capture chain: the
+recorders stay read-only and fail-open, and the console still records
+`PermissionRequest` and `PostToolUse`. When enabled, the host approves
+`AskUserQuestion` and `ExitPlanMode` plan approvals without an app switch. The
+feature is **not installed by default**; only an explicit `--apply` registers it.
+
+**Enable** (preview first, then save):
+
+```bash
+pnpm install:auto-approve -- --client=claude
+pnpm install:auto-approve -- --client=claude --apply
+```
+
+The installer merges one group with matcher `AskUserQuestion|ExitPlanMode`,
+preserves existing hooks and top-level keys, is idempotent, and backs up the
+target before writing. `--client` accepts `claude`, `codebuddy`, and `zcode`;
+for ZCode it also sets `hooks.enabled: true` and writes `hooks.events`.
+
+**Host differences**: Claude Code lists the group under `/hooks`. ZCode ignores
+project-level hooks and snapshots the configuration at session start, so open a
+**new session**; failures appear in
+`~/.zcode/cli/log/zcode-<date>.jsonl`. CodeBuddy needs `--event=PreToolUse` plus
+`ASTRO_AUTO_APPROVE_INPUT_FIELD=modifiedInput`. Codex, OpenCode, Pi and DeepSeek
+Harness have no command-hook decision channel; use the host's native permission
+mode instead.
+
+**Options**: `ASTRO_AUTO_APPROVE_EVENTS` / `TOOLS` / `ANSWER` (`first`, `last`,
+or `all`, where `all` joins every option label with commas for multi-select)
+/ `ANSWERS` (a JSON map from question text to an answer string or array, taking
+priority over automatic selection) / `INPUT_FIELD`. All are inherited by the host hook process;
+the full table is in the deployment guide.
+
+**Risks and limits**: auto-approval widens the permission surface, so never
+broaden the matcher to tools such as `Bash`. Multiple hooks aggregate as
+`deny > ask > allow`; explicit deny rules, plan-mode write bans and hard tool
+limits still win over `allow`. `answers` is injected by the hook, not produced by
+the agent. A timeout, non-JSON stdout or incomplete payload falls back to the
+normal permission prompt.
+
+**Disable and remove**: delete the group from settings, or run
+`pnpm install:auto-approve -- --client=claude --remove --apply` (removal is also
+dry-run by default). Only this tool's group is removed; unrelated hooks remain.
+No ASTRO data needs cleanup.
+
+**Verify**: pipe a `PermissionRequest(AskUserQuestion)` payload into
+`node scripts/auto-approve-question-hook.mjs` and expect an allow decision with
+`answers` (an unrelated event must print nothing); run
+`node --test tests/auto-approve-hook.test.mjs`; trigger a question or plan
+approval in the host and confirm no dialog appears, then disable it and confirm
+the prompt returns; finally confirm the console still records
+`PermissionRequest` and shows the auto-filled answers in Input/Preview.
+
+The full English reference is "Optional: auto-approve user questions" in
+`docs/plugin-installation.md`.
 
 ### 5.6 Session Status
 

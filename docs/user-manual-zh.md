@@ -516,10 +516,52 @@ codex 的 Hook）不显示该标签，与「没有模型」不加区分。一个
 选择拓扑原子时，检查器会额外显示原子契约、输入端口、输出端口、门禁状态和绑定事件。
 右侧面板展开状态写入 `ASTROX_CONSOLE_OPEN`。
 
-自动同意用户提问是**可选、默认关闭**的宿主侧决策 Hook
-（`scripts/auto-approve-question-hook.mjs`），不属于 ASTRO 采集链路。启用后宿主
-直接批准 `AskUserQuestion` 与计划批准，无需切回 Agent App；采集器仍只记录事件。
-配置、风险与验证步骤见 `docs/plugin-installation.md` 的
+### 5.5.1 自动同意用户提问（可选）
+
+自动同意由**宿主侧独立决策 Hook**完成（`scripts/auto-approve-question-hook.mjs`），
+不属于 ASTRO 采集链路：记录器仍只读、fail-open，控制台照常记录 `PermissionRequest`
+与 `PostToolUse`。启用后宿主直接批准 `AskUserQuestion` 与 `ExitPlanMode` 计划批准，
+无需切回 Agent App 确认。功能**默认不安装**，只有显式执行 `--apply` 才注册。
+
+**启用**（先预览再写入）：
+
+```bash
+pnpm install:auto-approve -- --client=claude
+pnpm install:auto-approve -- --client=claude --apply
+```
+
+安装器合并一个 matcher 为 `AskUserQuestion|ExitPlanMode` 的分组，保留已有 hooks
+与顶层键，重复执行幂等，写入前备份目标文件。`--client` 支持 `claude`、
+`codebuddy`、`zcode`；ZCode 会同时设置 `hooks.enabled: true` 并写入 `hooks.events`。
+
+**宿主差异**：Claude Code 用 `/hooks` 确认注册；ZCode 项目级 hooks 被忽略、配置在
+会话启动时快照，必须**新开会话**，失败查 `~/.zcode/cli/log/zcode-<date>.jsonl`；
+CodeBuddy 用 `--event=PreToolUse` 并设置
+`ASTRO_AUTO_APPROVE_INPUT_FIELD=modifiedInput`；Codex / OpenCode / Pi / DeepSeek
+Harness 没有命令 Hook 决策通道，只能用宿主原生权限模式。
+
+**参数**：`ASTRO_AUTO_APPROVE_EVENTS` / `TOOLS` / `ANSWER`（`first` / `last` /
+`all`，`all` 会把全部选项逗号连接以适配多选）/
+`ANSWERS`（按问题原文指定答案的 JSON 映射，值为字符串或数组，优先于自动选项）/ `INPUT_FIELD`，
+均由宿主 Hook 进程继承，全表见部署指南「环境变量全表」。
+
+**风险与限制**：自动同意扩大权限面，matcher 不要放宽到 `Bash` 等工具；多 hook
+聚合为 `deny > ask > allow`，显式 deny 规则、计划模式写禁和硬工具限制仍不可被
+`allow` 绕过；`answers` 是 Hook 注入的工具输入，不是 Agent 产生的事实。Hook 超时、
+输出非法 JSON 或 payload 不完整时会回退到正常权限弹窗。
+
+**禁用与卸载**：删除 settings 中该 hook 分组即可；或执行
+`pnpm install:auto-approve -- --client=claude --remove --apply`（卸载同样默认
+dry-run，先预览再 `--apply`），只移除本工具的分组，其他 hooks 保留。无需清理
+ASTRO 数据。
+
+**验证**：① 用 `PermissionRequest(AskUserQuestion)` 载荷管道喂
+`node scripts/auto-approve-question-hook.mjs`，应输出含 `answers` 的 allow 决策，
+非提问事件应空输出；② `node --test tests/auto-approve-hook.test.mjs`；③ 在宿主触发
+一次提问或计划批准，确认无弹窗且会话继续，再禁用确认弹窗恢复；④ 在控制台确认
+`PermissionRequest` 仍被记录、Input/Preview 能看到自动填写的答案。
+
+英文完整说明见 `docs/plugin-installation.md` 的
 「Optional: auto-approve user questions」。
 
 ### 5.6 会话状态

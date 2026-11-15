@@ -30,9 +30,10 @@
 | Guide 观测列表标记 | 已实现 | 观测列表恢复语义化圆点，不改变有序步骤 | `src/app.tsx`、`src/styles.css` |
 | 拓扑领域标题可读性 | 已实现 | 放大领域标题和说明，不改变几何与布局 | `src/styles.css`、`tests/atom-node-typography-contract.test.ts` |
 | 插件级 YAML 与 `.env` 配置 | 已实现 | 在安装目录统一加载结构化配置与本机私密值 | `config.example.yaml`、`plugin/runtime-config.cjs`、`tests/runtime-config.test.cjs` |
+| 可选自动同意决策 Hook | 已实现（默认关闭） | 宿主侧独立 handler 自动批准用户提问与计划批准；采集链路仍只读、fail-open | `scripts/auto-approve-question-hook.mjs`、`scripts/install-auto-approve-hook.mjs`、`tests/auto-approve-hook.test.mjs` |
 | 文档与 HTML 同步 | 文档治理 | 以本文为状态事实源，分享和面试材料按受众抽象 | `docs/index.md`、两份自包含 HTML |
 
-当前 10 项产品设计均已形成实现与测试证据。本轮同步没有把尚未实现的路线图包装成
+当前 10 项产品设计均已形成实现与测试证据；上表另列默认关闭的可选决策 Hook，属于宿主侧扩展而非采集能力。本轮同步没有把尚未实现的路线图包装成
 现有能力；分页索引、自动归档、远程认证和多租户仍属于后续规划。
 
 ## 3. 运行状态与 Prompt 隔离

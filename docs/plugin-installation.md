@@ -239,12 +239,16 @@ pnpm install:auto-approve -- --client=claude            # preview only
 pnpm install:auto-approve -- --client=claude --apply    # save
 pnpm install:auto-approve -- --client=zcode --apply
 pnpm install:auto-approve -- --client=codebuddy --apply
+pnpm install:auto-approve -- --client=zcode --remove --apply   # uninstall
 ```
 
 The installer merges one matcher-limited group (`AskUserQuestion|ExitPlanMode`)
 into `~/.claude/settings.json`, `~/.codebuddy/settings.json`, or
 `~/.zcode/cli/config.json`. It preserves every other key and hook group, is
-idempotent, and backs up the target before writing. Copy-ready fragments are
+idempotent, and backs up the target before writing. Before `--apply` writes a
+ZCode config, the installer validates the merged structure (`hooks.enabled`,
+`hooks.events`, and a legal name-list matcher); an invalid structure aborts
+without touching the file. Copy-ready fragments are
 in `scripts/auto-approve-claude.example.json` and
 `scripts/auto-approve-zcode.example.json`; replace the placeholder with the
 absolute path of the script in your checkout.
@@ -269,8 +273,11 @@ limits are not bypassed by `allow`. Leave ASTRO's recorder commands untouched
 and `--quiet` where required, so their stdout never joins the aggregation.
 Environment overrides inherited from the host process:
 `ASTRO_AUTO_APPROVE_EVENTS`, `ASTRO_AUTO_APPROVE_TOOLS`,
-`ASTRO_AUTO_APPROVE_ANSWER` (`first` by default, or `last`), and
-`ASTRO_AUTO_APPROVE_INPUT_FIELD`.
+`ASTRO_AUTO_APPROVE_ANSWER` (`first` by default, `last`, or `all` — `all` joins
+every option label with commas for multi-select),
+`ASTRO_AUTO_APPROVE_ANSWERS` (a JSON map from question text to an answer string
+or array; arrays are comma-joined and take priority over automatic selection),
+and `ASTRO_AUTO_APPROVE_INPUT_FIELD`. The full table is in the deployment guide.
 
 Verification:
 
@@ -283,10 +290,14 @@ Verification:
    show the hook's approval and no dialog. Disable the group and confirm the
    prompt returns; verify a `Bash` permission request still prompts.
 4. In ASTRO, confirm `PermissionRequest` / `PostToolUse` events are still
-   captured and no run stays waiting.
+   captured, no run stays waiting, and the auto-filled `answers` is visible in
+   the Input/Preview tab.
 
-Removing the group from the settings file disables the behavior. No ASTRO
-data or runtime state needs cleanup.
+**Disable and remove**: delete the group from the settings file, or run
+`pnpm install:auto-approve -- --client=zcode --remove --apply`. Removal is also
+dry-run by default; it strips only handlers whose command or args reference
+`auto-approve-question-hook.mjs`, keeps every unrelated hook group and key, and
+backs up the file before writing. No ASTRO data or runtime state needs cleanup.
 
 ## Install and use each client
 

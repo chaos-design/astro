@@ -125,6 +125,17 @@ ASTRO 事件协议把不同编码智能体的生命周期、消息、工具和�
 `Pre/PostToolUse` 工具行由 `hasPlanContent()` 按内容回退预览，但仍归类为
 `tool.call` / `tool.result`，不计入用户提问原子。
 
+启用可选的自动同意决策 Hook 后，宿主会把答复注入工具输入：`tool_input.answers`
+是「问题原文 → 选项 label」的映射（多选按逗号连接），`PostToolUse` 的
+`tool_response.answers` 也可能带回同一结果。**该字段由宿主 Hook 注入，不是 Agent
+产生的事实**；`TraceEvent` 仍按原样持久化，`src/lib/user-question-content.ts` 只把
+它解析为预览内容，不回写、不改变事件状态或分类。自动同意不引入新的规范事件名，
+`PermissionRequest` / `PostToolUse` 的配对关系与等待态口径保持不变。
+
+交互 Hook（选项点击、文本输入、取消、超时、通知 Agent）的完整流程、消息格式与
+字段约束见 `docs/interaction-hooks-zh.md`，**属规划项，当前未实现**；本节描述的
+仍是唯一已实现的载荷口径。
+
 ### 4.1 错误与异常事件
 
 异常不是单一事件，而是四种不同作用域的坏结果。同一份故障在不同客户端必须得到

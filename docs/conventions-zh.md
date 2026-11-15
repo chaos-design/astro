@@ -34,6 +34,12 @@
   `test:`、`chore(plugins):`。
 - PR 描述使用 `## 变更点 / ## 验证 / ## 备注` 三段；「验证」必须写出实际执行过的
   命令，而不是“已测试”。
+- 堆叠 PR：新分支若基于尚未合并的功能分支，PR base 必须设为该分支，并在「备注」
+  写明合并顺序。本轮 `feat/hook-auto-approve-question`（PR #23）基于
+  `feat/user-question-md-preview`（PR #22）的 `507edc9` 切出，需先合并 #22 再合并
+  #23。若 #22 以 squash 合并进 `main`，先在 #23 上执行 `git fetch origin` 与
+  `git rebase --onto origin/main 507edc9 feat/hook-auto-approve-question`，再把
+  PR base 改为 `main`，避免把上游提交重复带入。
 - 不提交 `dist/`、`.astrox` 数据目录、临时截图与本机路径。
 - 工作区里与本次改动无关的修改视为用户所有，不回滚、不夹带提交。
 

@@ -78,6 +78,15 @@ pnpm start        # 服务：127.0.0.1:5678，托管 dist/
 | `ASTRO_OPEN_SOURCE` / `ASTRO_OPEN_SESSION` | 未设置 | 记录器启动服务时传入的深度链接来源与 session |
 | `ASTRO_TAKEOVER` | 内部 | 原地重启标记，继任进程继承同端口；勿手工设置 |
 | `ASTRO_RESTART_COUNT` / `ASTRO_RESTARTED_AT` | 内部 | 原地重启的计数与时间戳，`/api/health` 会报告 |
+| `ASTRO_AUTO_APPROVE_EVENTS` | `PreToolUse,PermissionRequest` | 可选决策 Hook 响应的 hook 事件，逗号或竖线分隔 |
+| `ASTRO_AUTO_APPROVE_TOOLS` | `AskUserQuestion,ExitPlanMode` | 允许自动批准的工具白名单 |
+| `ASTRO_AUTO_APPROVE_ANSWER` | `first` | 自动选择的问题选项：`first` / `last` / `all`（全部选项逗号连接，用于多选） |
+| `ASTRO_AUTO_APPROVE_ANSWERS` | 未设置 | 按问题原文指定答案的 JSON 映射，优先于自动选项 |
+| `ASTRO_AUTO_APPROVE_INPUT_FIELD` | `updatedInput` | CodeBuddy 的 `PreToolUse` 需设为 `modifiedInput` |
+
+`ASTRO_AUTO_APPROVE_*` 由宿主 Hook 进程继承，ASTRO 服务与记录器都不读取；其余
+`ASTRO_*` 属于本地服务运行时。可选决策 Hook 默认不安装，配置、校验与卸载见
+`docs/plugin-installation.md`。
 
 ### 2.5 启用各客户端的采集
 

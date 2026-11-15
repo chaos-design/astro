@@ -456,6 +456,7 @@ astrox restart         # 重启守护进程，加载新 server 与 dist
 | 页面打不开 | 进程、端口、`dist/index.html` | 手动启动服务，读取终端实际 URL。 |
 | 状态为 offline | `/api/stream`、Vite 代理端口 | 统一 `ASTRO_HOST/PORT`，恢复 SSE。 |
 | 第一轮有记录，后续轮次缺失 | Hook 是否仍加载、JSONL 是否继续增长 | 重载客户端配置；检查 `Stop` 后 Hook 配置没有被移除。 |
+| 决策 Hook 不生效，仍弹出确认 | 安装器是否 `--apply`、`hooks.enabled`、是否新会话、matcher、宿主日志 | 重跑 `pnpm install:auto-approve -- --client=... --apply`；ZCode 确认写在用户级 `~/.zcode/cli/config.json` 并**新开会话**，查 `~/.zcode/cli/log/zcode-<date>.jsonl`；matcher 保持 `AskUserQuestion\|ExitPlanMode`；超时或 stdout 非 JSON 会回退正常弹窗；用 `--remove --apply` 卸载。 |
 | JSONL 有事件，页面没有 | `health.dataRoot`、`traceFiles`、SSE reset | 统一数据根目录；重连 SSE 或重启服务。 |
 | 后续 Prompt 已写入但列表未出现 | Prompt 层级与当前会话 | 展开会话父行；确认每条 `UserPromptSubmit` 有唯一事件 ID。 |
 | Hook 报未记录 | `ASTRO_HOME` 权限和磁盘状态 | 修复写权限/空间后重新触发；历史来源可再导入。 |

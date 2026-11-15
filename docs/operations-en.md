@@ -475,6 +475,7 @@ is unavailable, preferences remain page-local and trace data is unaffected.
 | Page does not open | process, port, `dist/index.html` | Start manually and use the printed URL. |
 | UI says offline | `/api/stream`, Vite proxy | Align `ASTRO_HOST/PORT`; restore SSE. |
 | First turn exists, follow-ups do not | loaded hooks and growing JSONL | Reload client configuration; ensure `Stop` did not remove hooks. |
+| Decision hook does not fire, prompt still appears | whether `--apply` ran, `hooks.enabled`, new session, matcher, host log | Re-run `pnpm install:auto-approve -- --client=... --apply`; on ZCode confirm the user-level `~/.zcode/cli/config.json` and start a **new session**, then read `~/.zcode/cli/log/zcode-<date>.jsonl`; keep the matcher to `AskUserQuestion\|ExitPlanMode`; timeouts or non-JSON stdout fall back to the normal prompt; remove with `--remove --apply`. |
 | JSONL grows, UI does not | `dataRoot`, `traceFiles`, SSE reset | Align roots; reconnect or restart service. |
 | Follow-up exists but is not listed | Prompt hierarchy and selected session | Expand the session row; verify each `UserPromptSubmit` has a unique event ID. |
 | Recorder reports no write | permissions and disk state | Restore access/space; re-import history when available. |

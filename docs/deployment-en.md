@@ -86,6 +86,17 @@ installing — it cannot live in the plugin's own `.env`.
 | `ASTRO_OPEN_SOURCE` / `ASTRO_OPEN_SESSION` | unset | Deep-link source and session passed when the recorder launches the service |
 | `ASTRO_TAKEOVER` | internal | In-place restart flag; the successor inherits the same port — do not set by hand |
 | `ASTRO_RESTART_COUNT` / `ASTRO_RESTARTED_AT` | internal | In-place restart counter and timestamp, reported by `/api/health` |
+| `ASTRO_AUTO_APPROVE_EVENTS` | `PreToolUse,PermissionRequest` | Hook events the optional decision hook responds to, comma or pipe separated |
+| `ASTRO_AUTO_APPROVE_TOOLS` | `AskUserQuestion,ExitPlanMode` | Tool allow-list for auto-approval |
+| `ASTRO_AUTO_APPROVE_ANSWER` | `first` | Which captured options to choose: `first`, `last`, or `all` (all labels comma-joined, for multi-select) |
+| `ASTRO_AUTO_APPROVE_ANSWERS` | unset | JSON map of question text to answer, taking priority over automatic selection |
+| `ASTRO_AUTO_APPROVE_INPUT_FIELD` | `updatedInput` | Set to `modifiedInput` for CodeBuddy Code `PreToolUse` |
+
+The `ASTRO_AUTO_APPROVE_*` variables are inherited by the **host hook process**;
+neither the ASTRO service nor the recorders read them. All other `ASTRO_*`
+variables belong to the local service runtime. The optional decision hook is not
+installed by default; see `docs/plugin-installation.md` for setup, validation
+and removal.
 
 ### 2.5 Enabling capture per client
 

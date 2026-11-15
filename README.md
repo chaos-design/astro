@@ -82,6 +82,10 @@ chain. See `docs/plugin-installation.md`.
 
 ## Features
 
+- Optional host-side decision hook (`scripts/auto-approve-question-hook.mjs`)
+  auto-approves `AskUserQuestion` and plan approvals without an app switch.
+  **Not installed by default**; the capture chain stays read-only and fail-open
+  (see the boundary note above and `docs/plugin-installation.md`).
 - Versioned `schemaVersion: 2` event envelope across supported clients.
 - Source- and workspace-aware session identity to prevent native ID
   collisions.

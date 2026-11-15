@@ -35,7 +35,10 @@ a current user promise.
 | Guide observability markers | Implemented | The observability list uses semantic bullets without changing ordered steps | `src/app.tsx`, `src/styles.css` |
 | Topology domain-label readability | Implemented | Larger domain labels improve fitted-canvas readability without geometry changes | `src/styles.css`, `tests/atom-node-typography-contract.test.ts` |
 | Plugin YAML and `.env` configuration | Implemented | One installed, shared configuration source is loaded by every entry point | `config.example.yaml`, `plugin/runtime-config.cjs`, `tests/runtime-config.test.cjs` |
+| Optional auto-approve decision hook | Implemented (off by default) | A separate host-side handler approves user questions and plan approvals; the capture chain stays read-only and fail-open | `scripts/auto-approve-question-hook.mjs`, `scripts/install-auto-approve-hook.mjs`, `tests/auto-approve-hook.test.mjs` |
 | Documentation and HTML synchronization | Documentation | This reference owns delivery status; the decks adapt it for their audiences | `docs/index.md` and the two self-contained HTML files |
+
+The optional decision hook row is a host-side extension, not a capture feature: it is off by default and never changes recorder output.
 
 Runtime configuration is generated automatically during installation, retained
 across upgrades, and packaged with the native integrations.

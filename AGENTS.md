@@ -773,6 +773,34 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   host configuration and verification live in `docs/plugin-installation.md`
   ("Optional: auto-approve user questions").
 
+## AskUserQuestion Interaction Hook Design (planned)
+
+- `docs/interaction-hooks-{zh,en}.md` is a **design proposal, not an
+  implementation**. It covers the observation / decision / interaction channel
+  model, option clicks, free-text input, cancel and timeout, five message
+  contracts (`QuestionDescriptor`, `InteractionRequest`, `InteractionEvent`,
+  `InteractionResult`, `AgentNotification`), SSE frames, TraceEvent projection
+  and Agent notification channels. Every planned item is labelled.
+- The service still has no approve / answer / reply endpoint. `/api/stream` is
+  one-way (`reset` / `trace` / `ready` / `resume`) and `POST /api/events` only
+  writes TraceEvents; `interaction.*` SSE events and any bidirectional route do
+  not exist. Do not describe them as shipped.
+- A hook is synchronous and bounded by the 5 s / ZCode 5000 ms timeout, so the
+  human-interaction design must return empty stdout + exit 0 (fail-open) when
+  `ttlMs` expires; never block past the timeout, `exit 2` or emit
+  `continue: false`.
+- Notifications to the Agent use `hookSpecificOutput.additionalContext` for
+  model context and `systemMessage` for the human; `Notification` hooks have no
+  decision control. Never wrap a hook-provided answer as `UserPromptSubmit`.
+- Catalog entries for these docs live in `docs/index.md` and
+  `site/src/docs.ts` (`sectionBySlug` + `readingOrder`).
+- `plans/planing/03-ask-user-question-implementation-breakdown.md` is the
+  executable backlog: 32 tasks (A1–F5) with per-task file paths and acceptance
+  checks, covering contracts, the hook decision window, the interaction
+  service and SSE, console UI, notifications, and install/acceptance.
+  §11 of `docs/interaction-hooks-*.md` links to it. Keep the docs marked as
+  planned until task F5 removes that label.
+
 ## Validation
 
 Run these checks after TypeScript or frontend changes:

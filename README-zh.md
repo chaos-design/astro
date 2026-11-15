@@ -72,6 +72,9 @@ ASTRO 只观察智能体执行，不负责调用模型、调度工具、批准�
 
 ## 主要能力
 
+- 可选的宿主侧决策 Hook（`scripts/auto-approve-question-hook.mjs`）可在收到
+  `AskUserQuestion` 或计划批准时直接自动同意，免去在 App 之间切换确认；**默认不安装**，
+  采集链路仍只读、fail-open（见下文「设计边界」与 `docs/plugin-installation.md`）。
 - 在所有受支持客户端之间使用统一的 `schemaVersion: 2` 事件封装。
 - 会话标识同时包含来源与工作区，避免不同客户端的原生 ID 冲突。
 - 通过 SSE 实时更新会话；每次初连和重连先恢复完整快照，再接收增量。
