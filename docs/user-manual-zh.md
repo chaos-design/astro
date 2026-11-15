@@ -504,7 +504,7 @@ codex 的 Hook）不显示该标签，与「没有模型」不加区分。一个
   `AskUserQuestion`、`Notification` 提问）提供 `Preview` / `Code` 两种视图：
   `Preview` 把问题内容按真实渲染效果显示——markdown 源先经过校验再渲染为富文本
   （标题、列表、代码块等），并去除可执行内容；校验失败或空内容回退为原文显示，
-  结构化问题还会把捕获到的选项渲染成选项列表；  计划批准（如 ZCode 的
+  结构化问题还会把捕获到的选项渲染成选项列表；计划批准（如 ZCode 的
   `PermissionRequest` + `ExitPlanMode`）没有 questions 数组，此时 `Preview` 会把
   `tool_input.plan` 的 Markdown 计划渲染为 `Plan` 段落；计划批准对应的
   `Pre/PostToolUse` 工具行也按内容识别显示 Plan 预览，但显示键仍是
@@ -515,6 +515,12 @@ codex 的 Hook）不显示该标签，与「没有模型」不加区分。一个
 
 选择拓扑原子时，检查器会额外显示原子契约、输入端口、输出端口、门禁状态和绑定事件。
 右侧面板展开状态写入 `ASTROX_CONSOLE_OPEN`。
+
+自动同意用户提问是**可选、默认关闭**的宿主侧决策 Hook
+（`scripts/auto-approve-question-hook.mjs`），不属于 ASTRO 采集链路。启用后宿主
+直接批准 `AskUserQuestion` 与计划批准，无需切回 Agent App；采集器仍只记录事件。
+配置、风险与验证步骤见 `docs/plugin-installation.md` 的
+「Optional: auto-approve user questions」。
 
 ### 5.6 会话状态
 

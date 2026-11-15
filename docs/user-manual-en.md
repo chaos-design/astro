@@ -620,6 +620,13 @@ The inspector provides:
 Selecting a topology atom additionally exposes the atom contract, input/output ports, gate state, and bound event.
 The right panel state is stored in `ASTROX_CONSOLE_OPEN`.
 
+Auto-approving user questions is an **optional, off-by-default** host-side
+decision hook (`scripts/auto-approve-question-hook.mjs`), not part of the ASTRO
+capture chain. When enabled, the host approves `AskUserQuestion` and plan
+approvals without an app switch while the recorders keep observing. See
+"Optional: auto-approve user questions" in `docs/plugin-installation.md` for
+configuration, risks and verification.
+
 ### 5.6 Session Status
 
 - `active`: the latest turn has no completion, failure, or termination signal;

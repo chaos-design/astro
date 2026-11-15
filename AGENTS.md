@@ -750,6 +750,29 @@ use Node.js ES modules or CommonJS according to their existing file extension.
 - The extension reads event shapes defensively (Pi adds fields across
   releases) and must never block the agent loop; recording failures fail open.
 
+## Optional Decision Hook (auto-approve user questions)
+
+- ASTRO's capture hooks stay read-only. `scripts/auto-approve-question-hook.mjs`
+  is a **separate host-side handler**, never installed by
+  `install-plugins.mjs` and off by default. It reads hook stdin and returns
+  `hookSpecificOutput` with `allow` plus a full `updatedInput` (`answers` for
+  `AskUserQuestion`, echoed `plan` for `ExitPlanMode`). Unmatched or broken
+  input yields empty stdout and exit 0, so the normal prompt returns.
+- `scripts/install-auto-approve-hook.mjs` is dry-run by default; `--apply`
+  merges one matcher-limited group (`AskUserQuestion|ExitPlanMode`) into user
+  settings, preserves unrelated keys/hooks, is idempotent, and backs up the
+  file. ZCode needs `hooks.enabled: true` in `~/.zcode/cli/config.json` and a
+  new session. Never reuse a recorder's `--source=` for the decision hook:
+  `isInstalled()` would overwrite it on the next installer run.
+- Keep the decision hook out of `plugin/` and `*-plugin/`. Changing recorder
+  stdout would break fail-open, the six mirrored `trace-recorder.cjs` files and
+  every stdout assertion. Explicit deny rules, plan-mode write bans and hard
+  tool limits still win over an `allow`; keep recorders `--quiet` so their
+  stdout does not join the `deny > ask > allow` aggregation.
+- Protocol and installer behavior is pinned by `tests/auto-approve-hook.test.mjs`;
+  host configuration and verification live in `docs/plugin-installation.md`
+  ("Optional: auto-approve user questions").
+
 ## Validation
 
 Run these checks after TypeScript or frontend changes:

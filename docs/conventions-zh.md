@@ -307,6 +307,9 @@
   3. `AGENTS.md`（智能体执行时读到的不变量）；
   4. `docs/index.md` 与 `site/src/docs.ts`（目录与阅读顺序）。
 - 文档描述当前行为，不承诺未实现的能力；规划项必须显式标注。
+- 可选的自动同意决策 Hook 的文档落点是 `docs/plugin-installation.md` 的
+  "Optional: auto-approve user questions"；`AGENTS.md`、用户手册与 README 的
+  「只做观测」边界必须同时写明「独立组件、默认关闭、采集器不参与决策」。
 - 引用界面文案时使用界面里的原文（中英文各自对应），不要自行翻译键名。
 
 ## 12. 验证清单

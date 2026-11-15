@@ -15,6 +15,10 @@ ASTRO 是面向编码智能体的本地优先运行时可观测平台。它把 T
 - 原始事件是事实来源；“原子”是为了可视化而生成的语义投影。
 - 数据默认仅保存在运行本机，不依赖远程数据库或外部 CDN。
 
+可选的决策 Hook 可以在宿主侧自动同意 `AskUserQuestion` / `ExitPlanMode`，但它是
+独立、默认关闭的组件，不属于采集链路；采集器仍保持 fail-open、只读的 stdout 契约。
+配置与边界见 `docs/plugin-installation.md` 的「Optional: auto-approve user questions」。
+
 ## 2. 系统上下文
 
 ```mermaid

@@ -212,6 +212,82 @@ pnpm install-plugins
 The installer preserves unrelated hooks and refreshes the shared standalone
 runtime in `~/.astrox/plugins/astro` for every client.
 
+## Optional: auto-approve user questions
+
+ASTRO's capture hooks are read-only; they never approve permissions. When a
+session stops at `AskUserQuestion` or at plan approval (`ExitPlanMode`), a
+**separate, opt-in** decision hook can answer on your behalf so you do not
+have to switch back to the agent app. It is not installed by
+`pnpm install-plugins` and is off by default.
+
+`scripts/auto-approve-question-hook.mjs` reads the hook's stdin JSON and
+returns `hookSpecificOutput` with `permissionDecision: "allow"` (`PreToolUse`)
+or `decision.behavior: "allow"` (`PermissionRequest`), always with a full
+`updatedInput`. For `AskUserQuestion` it fills `answers` with the first option
+label of each question, keyed by the exact question text; for `ExitPlanMode`
+it echoes `tool_input.plan`. An `allow` without `updatedInput` is ignored for
+these interactive tools, which is why the input must be returned. Unmatched
+events, incomplete payloads and parse errors produce empty stdout and exit
+code 0, so the host falls back to its normal prompt. The script never writes
+to the trace, never returns `continue: false`, and never exits non-zero.
+
+Register it with the dry-run installer, review the printed settings, then add
+`--apply`:
+
+```bash
+pnpm install:auto-approve -- --client=claude            # preview only
+pnpm install:auto-approve -- --client=claude --apply    # save
+pnpm install:auto-approve -- --client=zcode --apply
+pnpm install:auto-approve -- --client=codebuddy --apply
+```
+
+The installer merges one matcher-limited group (`AskUserQuestion|ExitPlanMode`)
+into `~/.claude/settings.json`, `~/.codebuddy/settings.json`, or
+`~/.zcode/cli/config.json`. It preserves every other key and hook group, is
+idempotent, and backs up the target before writing. Copy-ready fragments are
+in `scripts/auto-approve-claude.example.json` and
+`scripts/auto-approve-zcode.example.json`; replace the placeholder with the
+absolute path of the script in your checkout.
+
+Host notes:
+
+- Claude Code: `/hooks` lists the group; an approved plan shows
+  `Allowed by PermissionRequest hook` instead of a dialog.
+- ZCode: the user-level config needs `hooks.enabled: true` (the installer sets
+  it), project-level hooks are ignored, and hook configuration is snapshotted
+  at session start — open a **new session**. Failures appear in
+  `~/.zcode/cli/log/zcode-<date>.jsonl`.
+- CodeBuddy Code: its `PreToolUse` uses `modifiedInput` instead of
+  `updatedInput`. Set `ASTRO_AUTO_APPROVE_INPUT_FIELD=modifiedInput` in the
+  host environment and register with `--event=PreToolUse`.
+- Codex, OpenCode, Pi and DeepSeek Harness have no command-hook decision
+  channel; use the host's native permission mode instead.
+
+Keep one decision hook per request. Multiple hooks aggregate as
+`deny > ask > allow`; explicit deny rules, plan-mode write bans and hard tool
+limits are not bypassed by `allow`. Leave ASTRO's recorder commands untouched
+and `--quiet` where required, so their stdout never joins the aggregation.
+Environment overrides inherited from the host process:
+`ASTRO_AUTO_APPROVE_EVENTS`, `ASTRO_AUTO_APPROVE_TOOLS`,
+`ASTRO_AUTO_APPROVE_ANSWER` (`first` by default, or `last`), and
+`ASTRO_AUTO_APPROVE_INPUT_FIELD`.
+
+Verification:
+
+1. Pipe a payload into the script and check the JSON decision:
+   `echo '{"hook_event_name":"PermissionRequest","tool_name":"AskUserQuestion","tool_input":{"questions":[{"question":"Pick one","options":[{"label":"Yes"},{"label":"No"}]}]}}' | node scripts/auto-approve-question-hook.mjs`.
+   An unrelated payload must print nothing and exit 0.
+2. Run `node --test tests/auto-approve-hook.test.mjs` for the protocol,
+   fail-open, config merge and installer cases.
+3. In the host, trigger a question or plan approval; the transcript should
+   show the hook's approval and no dialog. Disable the group and confirm the
+   prompt returns; verify a `Bash` permission request still prompts.
+4. In ASTRO, confirm `PermissionRequest` / `PostToolUse` events are still
+   captured and no run stays waiting.
+
+Removing the group from the settings file disables the behavior. No ASTRO
+data or runtime state needs cleanup.
+
 ## Install and use each client
 
 ### Codex

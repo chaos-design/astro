@@ -75,7 +75,10 @@ ASTRO provides a shared local layer:
   The service binds to loopback unless explicitly configured otherwise.
 
 ASTRO observes agent execution. It does not invoke models,
-schedule tools, approve permissions, or alter agent decisions.
+schedule tools, approve permissions, or alter agent decisions. An optional,
+off-by-default decision hook (`scripts/auto-approve-question-hook.mjs`) can
+auto-approve user questions in the host; it is separate from the capture
+chain. See `docs/plugin-installation.md`.
 
 ## Features
 

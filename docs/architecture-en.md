@@ -14,6 +14,11 @@ The system has three explicit boundaries:
 - Raw trace events are the source of truth. Atoms are semantic projections used for visualization.
 - Data remains on the host by default, with no remote database or CDN dependency.
 
+An optional decision hook can auto-approve `AskUserQuestion` / `ExitPlanMode`
+in the host, but it is a separate, off-by-default handler that is never part of
+the capture chain. Recorders keep their fail-open, read-only stdout contract;
+see "Optional: auto-approve user questions" in `docs/plugin-installation.md`.
+
 ## 2. System Context
 
 ```mermaid

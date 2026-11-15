@@ -22,6 +22,7 @@
     "deploy:preview": "pnpm build && pnpm build:docs && node scripts/merge-deploy-output.mjs && ASTRO_CONSOLE_DIST=deploy/console node scripts/verify-console-build.mjs",
     "dev:docs": "vite --config site/vite.config.ts",
     "install-hooks": "node scripts/install-hooks.mjs",
+    "install:auto-approve": "node scripts/install-auto-approve-hook.mjs",
     "install-opencode-plugin": "node scripts/install-opencode-plugin.mjs",
     "install-pi-plugin": "node scripts/install-pi-plugin.mjs",
     "install-plugins": "node scripts/install-plugins.mjs",
