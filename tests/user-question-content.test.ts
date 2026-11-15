@@ -165,3 +165,53 @@ test("hasPlanContent widens the preview only for plan-shaped payloads", () => {
   assert.equal(hasPlanContent({}), false);
   assert.equal(hasPlanContent(null), false);
 });
+
+test("an auto-approve hook's answers are visible beside the question", () => {
+  const content = parseUserQuestionContent({
+    tool_input: {
+      questions: [
+        { question: "Which framework?", options: ["React", "Vue"] },
+      ],
+      answers: { "Which framework?": "React" },
+    },
+  } as unknown as TracePayload);
+  assert.equal(content.prompts.length, 1);
+  assert.equal(content.hasContent, true);
+  assert.deepEqual(content.answers, [
+    { question: "Which framework?", answer: "React" },
+  ]);
+});
+
+test("an answers-only tool result stays displayable", () => {
+  const content = parseUserQuestionContent({
+    eventName: "PostToolUse",
+    tool_response: { answers: { "Deploy tonight?": "Yes, No" } },
+  } as unknown as TracePayload);
+  assert.equal(content.hasContent, true);
+  assert.deepEqual(content.prompts, []);
+  assert.equal(content.message, "");
+  assert.equal(content.plan, "");
+  assert.deepEqual(content.answers, [
+    { question: "Deploy tonight?", answer: "Yes, No" },
+  ]);
+});
+
+test("camelCase answers resolve and non-string values are ignored", () => {
+  const content = parseUserQuestionContent({
+    toolInput: {
+      answers: { "Pick one": "alpha", "Bad: number": 42, "Bad: null": null },
+    },
+    toolResponse: ["not an object"],
+  } as unknown as TracePayload);
+  assert.deepEqual(content.answers, [{ question: "Pick one", answer: "alpha" }]);
+  assert.equal(content.hasContent, true);
+});
+
+test("answers are independent of plan detection", () => {
+  const content = parseUserQuestionContent({
+    tool_input: { plan: "# Plan", answers: { "Approve?": "Yes" } },
+  } as unknown as TracePayload);
+  assert.equal(content.plan, "# Plan");
+  assert.deepEqual(content.answers, [{ question: "Approve?", answer: "Yes" }]);
+  assert.equal(hasPlanContent({ tool_input: { plan: "# Plan" } } as unknown as TracePayload), true);
+});

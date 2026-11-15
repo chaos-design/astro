@@ -26,12 +26,21 @@ export interface UserQuestionPrompt {
   options: string[];
 }
 
+export interface UserQuestionAnswer {
+  /** The exact question text used as the answer key. */
+  question: string;
+  /** The chosen option label(s); multi-select answers are comma-joined. */
+  answer: string;
+}
+
 export interface UserQuestionContent {
   prompts: UserQuestionPrompt[];
   /** Free-form question text for clients without structured questions. */
   message: string;
   /** Markdown plan for approval tools (plan approval / ExitPlanMode). */
   plan: string;
+  /** Answers injected by a host decision hook, never produced by the agent. */
+  answers: UserQuestionAnswer[];
   /** True when anything displayable was found in the payload. */
   hasContent: boolean;
 }
@@ -109,6 +118,34 @@ function freeFormText(record: Record<string, unknown>): string {
   return "";
 }
 
+/**
+ * An auto-approve decision hook answers by injecting `answers` into the tool
+ * input (question text -> option label). The same map may be echoed back in
+ * `tool_response`. It is display-only evidence: the persisted event is not
+ * rewritten and no run state is derived from it.
+ */
+function extractAnswers(sources: readonly unknown[]): UserQuestionAnswer[] {
+  for (const source of sources) {
+    const record = asRecord(source);
+    if (!record) {
+      continue;
+    }
+    const answers = Object.entries(record)
+      .filter(
+        ([question, answer]) =>
+          question.trim() && typeof answer === "string" && answer.trim(),
+      )
+      .map(([question, answer]) => ({
+        question: question.trim(),
+        answer: String(answer).trim(),
+      }));
+    if (answers.length) {
+      return answers;
+    }
+  }
+  return [];
+}
+
 function planText(record: Record<string, unknown>): string {
   for (const key of ["plan", "planText", "plan_text"]) {
     const value = record[key];
@@ -170,11 +207,23 @@ export function parseUserQuestionContent(
       (toolInput ? planText(toolInput) : "") ||
       (toolResponse ? planText(toolResponse) : "") ||
       (nested ? planText(nested) : "");
+  // Answers are independent of the question text: a completed question tool
+  // may carry only the auto-filled answers, which is still worth showing.
+  const answers = extractAnswers([
+    record.answers,
+    toolInput?.answers,
+    toolResponse?.answers,
+    nested?.answers,
+  ]);
   return {
     prompts,
     message,
     plan,
+    answers,
     hasContent:
-      prompts.length > 0 || Boolean(message.trim()) || Boolean(plan.trim()),
+      prompts.length > 0 ||
+      Boolean(message.trim()) ||
+      Boolean(plan.trim()) ||
+      answers.length > 0,
   };
 }

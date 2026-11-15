@@ -37,14 +37,116 @@ export function getConfigPath(client, home = homedir()) {
   return join(home, ".claude", "settings.json");
 }
 
-function isAlreadyInstalled(groups) {
-  return groups.some((group) =>
-    (group?.hooks || []).some((handler) =>
-      String(handler?.command || "").includes(HOOK_MARKER) ||
-      (Array.isArray(handler?.args) &&
-        handler.args.some((arg) => String(arg).includes(HOOK_MARKER))),
-    ),
+function referencesHook(handler) {
+  return (
+    String(handler?.command || "").includes(HOOK_MARKER) ||
+    (Array.isArray(handler?.args) &&
+      handler.args.some((arg) => String(arg).includes(HOOK_MARKER)))
   );
+}
+
+function isAlreadyInstalled(groups) {
+  return groups.some((group) => (group?.hooks || []).some(referencesHook));
+}
+
+/**
+ * Validate the merged configuration before it is written. Only the group this
+ * installer owns is checked, so unrelated user hooks with an empty matcher are
+ * never rejected. ZCode additionally requires the user-level enable flag and
+ * an `events` map rather than Claude's event-keyed `hooks` object.
+ */
+export function validateHookConfig(config, client, options = {}) {
+  if (!CLIENTS.has(client)) {
+    return { valid: false, errors: [`unsupported client: ${client}`] };
+  }
+  const errors = [];
+  const event = options.event || "PermissionRequest";
+  const hooks = config?.hooks;
+  if (!hooks || typeof hooks !== "object" || Array.isArray(hooks)) {
+    return { valid: false, errors: ["hooks must be an object"] };
+  }
+  if (client === "zcode" && hooks.enabled !== true) {
+    errors.push("hooks.enabled must be true");
+  }
+  const container = client === "zcode" ? hooks.events : hooks;
+  if (!container || typeof container !== "object" || Array.isArray(container)) {
+    errors.push(
+      client === "zcode" ? "hooks.events must be an object" : "hooks must be an object",
+    );
+    return { valid: false, errors };
+  }
+  const groups = container[event];
+  if (!Array.isArray(groups)) {
+    errors.push(`${event} hook groups must be an array`);
+    return { valid: false, errors };
+  }
+  const own = groups.filter((group) =>
+    (group?.hooks || []).some(referencesHook),
+  );
+  if (!own.length) {
+    errors.push("decision-hook group is missing");
+  }
+  for (const group of own) {
+    const matcher = String(group?.matcher || "");
+    if (!matcher || matcher === "*") {
+      errors.push("matcher must be a name list, not empty or '*'");
+    }
+    for (const handler of group.hooks || []) {
+      const hasCommand = Boolean(String(handler?.command || "").trim());
+      const hasArgs = Array.isArray(handler?.args) && handler.args.length > 0;
+      if (!hasCommand && !hasArgs) {
+        errors.push("handler needs a command or args");
+      }
+    }
+  }
+  return { valid: errors.length === 0, errors };
+}
+
+/** Remove only this tool's handlers, keeping every other hook group and key. */
+export function removeHookConfig(config, client, options = {}) {
+  if (!CLIENTS.has(client)) {
+    throw new Error(`unsupported client: ${client}`);
+  }
+  const source = config && typeof config === "object" && !Array.isArray(config)
+    ? config
+    : {};
+  const next = { ...source };
+  const hooks = { ...(next.hooks || {}) };
+  const event = options.event || "PermissionRequest";
+  let removed = 0;
+  const strip = (groups) =>
+    (Array.isArray(groups) ? groups : [])
+      .map((group) => {
+        const before = Array.isArray(group?.hooks) ? group.hooks : [];
+        const kept = before.filter((handler) => {
+          if (referencesHook(handler)) {
+            removed += 1;
+            return false;
+          }
+          return true;
+        });
+        return { ...group, hooks: kept };
+      })
+      .filter((group) => group.hooks.length > 0);
+  if (client === "zcode") {
+    const events = { ...(hooks.events || {}) };
+    const kept = strip(events[event]);
+    if (kept.length) {
+      events[event] = kept;
+    } else {
+      delete events[event];
+    }
+    hooks.events = events;
+  } else {
+    const kept = strip(hooks[event]);
+    if (kept.length) {
+      hooks[event] = kept;
+    } else {
+      delete hooks[event];
+    }
+  }
+  next.hooks = hooks;
+  return { config: next, removed };
 }
 
 /**
@@ -115,12 +217,15 @@ function parseArgs(argv) {
   const options = {
     client: "claude",
     apply: false,
+    remove: false,
     event: "PermissionRequest",
     matcher: DEFAULT_MATCHER,
   };
   for (const arg of argv) {
     if (arg === "--apply") {
       options.apply = true;
+    } else if (arg === "--remove") {
+      options.remove = true;
     } else if (arg.startsWith("--")) {
       const [key, ...rest] = arg.slice(2).split("=");
       const value = rest.join("=");
@@ -150,13 +255,24 @@ if (isMain()) {
   if (existsSync(target)) {
     current = JSON.parse(readFileSync(target, "utf8") || "{}");
   }
-  const { config, added } = mergeHookConfig(current, options.client, options);
-  process.stdout.write(
-    `${JSON.stringify(config, null, 2)}\n` +
-      (added ? `# one decision-hook group added to ${target}\n`
-             : `# already installed in ${target}; nothing to add\n`),
-  );
-  if (!options.apply) {
+  const result = options.remove
+    ? removeHookConfig(current, options.client, options)
+    : mergeHookConfig(current, options.client, options);
+  const { config } = result;
+  const summary = options.remove
+    ? `# ${result.removed} decision-hook handler(s) removed from ${target}\n`
+    : result.added
+      ? `# one decision-hook group added to ${target}\n`
+      : `# already installed in ${target}; nothing to add\n`;
+  process.stdout.write(`${JSON.stringify(config, null, 2)}\n${summary}`);
+  const validation = options.remove
+    ? null
+    : validateHookConfig(config, options.client, options);
+  if (validation && !validation.valid) {
+    process.stdout.write(`# validation failed: ${validation.errors.join("; ")}\n`);
+    process.stderr.write("invalid hook configuration; nothing written\n");
+    process.exitCode = 1;
+  } else if (!options.apply) {
     process.stdout.write("# dry run: no file written. Re-run with --apply to save.\n");
   } else if (existsSync(target)) {
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");

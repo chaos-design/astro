@@ -73,13 +73,27 @@ export function QuestionContent({ payload }: { payload: TracePayload }) {
               <h3>Plan</h3>
               <MarkdownPreview source={content.plan} />
             </section>
-          ) : (
+          ) : !content.answers.length ? (
             <section className="prompt-content__section">
               <p className="prompt-content__empty">
                 No question content captured.
               </p>
             </section>
-          )}
+          ) : null}
+          {content.answers.length ? (
+            // An optional host decision hook can answer the question for the
+            // reader. Show exactly what it chose so the approval is auditable.
+            <section className="prompt-content__section">
+              <h3>Answers</h3>
+              <ul className="question-content__options">
+                {content.answers.map((item, index) => (
+                  <li key={`${item.question}-${index}`}>
+                    {item.question} → {item.answer}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
         </div>
       ) : (
         <div className="prompt-input__code">

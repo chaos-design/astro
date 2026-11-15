@@ -27,11 +27,32 @@ function splitList(value, fallback) {
   return parts.length ? parts : fallback;
 }
 
+function parseAnswerMap(raw) {
+  if (typeof raw !== "string" || !raw.trim()) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed
+      : null;
+  } catch {
+    // A malformed map must not turn into a partial decision.
+    return null;
+  }
+}
+
 export function optionsFromEnvironment(env = process.env) {
+  const answer = ["first", "last", "all"].includes(
+    env.ASTRO_AUTO_APPROVE_ANSWER,
+  )
+    ? env.ASTRO_AUTO_APPROVE_ANSWER
+    : "first";
   return {
     events: splitList(env.ASTRO_AUTO_APPROVE_EVENTS, DEFAULT_EVENTS),
     tools: splitList(env.ASTRO_AUTO_APPROVE_TOOLS, DEFAULT_TOOLS),
-    answer: env.ASTRO_AUTO_APPROVE_ANSWER === "last" ? "last" : "first",
+    answer,
+    answerMap: parseAnswerMap(env.ASTRO_AUTO_APPROVE_ANSWERS),
     inputField:
       env.ASTRO_AUTO_APPROVE_INPUT_FIELD === "modifiedInput"
         ? "modifiedInput"
@@ -69,7 +90,40 @@ function optionLabels(question) {
     .filter(Boolean);
 }
 
-function buildUpdatedInput(tool, toolInput, answer) {
+/** A configured answer wins over automatic selection; arrays join with commas. */
+function configuredAnswer(question, answerMap) {
+  if (!answerMap || !Object.prototype.hasOwnProperty.call(answerMap, question)) {
+    return "";
+  }
+  const value = answerMap[question];
+  if (typeof value === "string" && value.trim()) {
+    return value.trim();
+  }
+  if (Array.isArray(value)) {
+    const labels = value
+      .filter((item) => typeof item === "string" && item.trim())
+      .map((item) => item.trim());
+    if (labels.length) {
+      return labels.join(", ");
+    }
+  }
+  return "";
+}
+
+function chooseAnswer(question, labels, options) {
+  const configured = configuredAnswer(question, options.answerMap);
+  if (configured) {
+    return configured;
+  }
+  // `all` joins every option label with commas, which is the documented shape
+  // for multi-select answers. It is opt-in; the default stays a single choice.
+  if (options.answer === "all") {
+    return labels.join(", ");
+  }
+  return options.answer === "last" ? labels.at(-1) : labels[0];
+}
+
+function buildUpdatedInput(tool, toolInput, options) {
   if (!toolInput || typeof toolInput !== "object" || Array.isArray(toolInput)) {
     return null;
   }
@@ -94,7 +148,7 @@ function buildUpdatedInput(tool, toolInput, answer) {
     if (!labels.length) {
       return null;
     }
-    answers[question.question] = answer === "last" ? labels.at(-1) : labels[0];
+    answers[question.question] = chooseAnswer(question.question, labels, options);
   }
   // updatedInput is a full replacement object, so the original questions must
   // be echoed back alongside the answers.
@@ -109,7 +163,10 @@ function buildUpdatedInput(tool, toolInput, answer) {
 export function buildDecision(payload, options = {}) {
   const events = options.events ?? DEFAULT_EVENTS;
   const tools = options.tools ?? DEFAULT_TOOLS;
-  const answer = options.answer ?? "first";
+  const answerOptions = {
+    answer: options.answer ?? "first",
+    answerMap: options.answerMap ?? null,
+  };
   const inputField = options.inputField ?? "updatedInput";
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     return null;
@@ -125,7 +182,7 @@ export function buildDecision(payload, options = {}) {
     return null;
   }
   const toolInput = payload.tool_input ?? payload.toolInput;
-  const updatedInput = buildUpdatedInput(tool, toolInput, answer);
+  const updatedInput = buildUpdatedInput(tool, toolInput, answerOptions);
   if (!updatedInput) {
     return null;
   }
