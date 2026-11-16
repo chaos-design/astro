@@ -26,16 +26,17 @@ updated: 2026-11-16 11:26:34
 
 ## 待决事项
 
-- [ ] F3 需要在装有 `claude` / `zcode` 二进制的环境完成真实宿主验收：Claude
+- [ ] F3 需要在能驱动真实宿主会话的环境完成宿主验收：Claude
   `/hooks` 可见且 transcript 出现 `Allowed by PermissionRequest hook`；ZCode
-  新会话日志无 `hook.run.failed`。Claude Code 二进制在本机确实不存在；
-  ZCode 宿主存在（`/Applications/ZCode.app`，CLI 入口在 app.asar 的
-  `/cli.js`，日志每日写入），但 Electron 二进制被其他进程调用时禁用 Node
-  环境变量、以 asar 为脚本会加载要求 GUI 运行时的主入口，无法在无头沙箱
-  里驱动真实会话，故仍需人工在宿主环境执行。等价验收已通过 6/6
-  （`pnpm verify:host-integration -- --out plans/host-acceptance-03.md`，
-  2026-11-16 补记宿主可用性复核），但不覆盖上述三项。请在有宿主二进制的
-  环境执行后勾选本项，再把计划 `move 03 planing`，补齐完成标准后归档。
+  新会话日志无 `hook.run.failed`。本机探测（每次运行由
+  `pnpm verify:host-integration` 的「Host availability probe」机器生成）：
+  claude 只有配置目录、无二进制；zcode / codebuddy 是 Electron 桌面应用，
+  代理只活在 GUI 进程里，无独立 CLI 可无头驱动（ZCode.app 的 asar 内是
+  `out/main` 与 `out/renderer` 的桌面 app，不是 CLI；`~/.zcode/cli/node-fallback`
+  只是 app 生成的 shim）。故仍需人工在有宿主会话的环境执行。等价验收 6/6
+  （`pnpm verify:host-integration -- --out plans/host-acceptance-03.md`）
+  加宿主机器 runbook 已入库，但不覆盖上述三项。请在能驱动宿主的环境执行
+  runbook 三步后勾选本项，再 `move 03 planing`、补齐完成标准后归档。
 
 ## 拆解口径
 
@@ -229,3 +230,4 @@ updated: 2026-11-16 11:26:34
 - 2026-11-16 11:26:34 转入 pending：F3 真实宿主验收需要 claude / zcode 二进制；本机 command -v 均无输出。等价验收 6/6 已通过并记录于 plans/host-acceptance-03.md，但 /hooks 可见性、transcript 文本与 ZCode 新会话日志仍需宿主环境。
 - 2026-11-16 11:28:10 修正 CodeBuddy 注册事件：官方只在 `PreToolUse` 文档化 `modifiedInput`，原安装器注册在 `PermissionRequest` 会让决策被宿主忽略；`install-interaction-hook.mjs` 改为按客户端选默认事件（claude/zcode=PermissionRequest，codebuddy=PreToolUse），`tests/install-interaction-hook.test.mjs` 与 `docs/plugin-installation.md` 同步。新增 `scripts/verify-host-integration.mjs`（`pnpm verify:host-integration`）与验收记录 `plans/host-acceptance-03.md`；全量 660/660、两处 tsc、两处 build 均通过。
 - 2026-11-16 11:55 复核 F3 宿主可用性：Claude 二进制确认不存在；ZCode 宿主实际存在（ZCode.app + 每日 CLI 日志）但 Electron 二进制无法从无头沙箱驱动（子进程调用禁用 Node 环境变量、asar 入口需要 GUI 运行时），F3 仍需人工宿主环境执行，细节补记于 `plans/host-acceptance-03.md` 附录。同轮代码审计清理 `src/lib/interaction-reducer.ts` 的恒真过滤器（行为等价，26 项相关测试与全量 660/660 复跑通过）。
+- 2026-11-16 12:08 把 F3 交接做成开箱即用：`scripts/verify-host-integration.mjs` 新增「Host availability probe」（按客户端探测 PATH/已知安装路径/配置目录，输出 cli/app/config-only/absent）与「Runbook for the host-equipped machine」（三步逐条命令与判据），两者机器生成进验收记录；新增 `tests/verify-host-probe.test.mjs`（6 例，可注入文件系统/PATH/home）。全量 666/666（660+6）；`pnpm verify:host-integration -- --out plans/host-acceptance-03.md` 重生成入库。待决事项措辞更正：asar 内是 `out/main`+`out/renderer` 桌面 app 而非 CLI 入口，`~/.zcode/cli/node-fallback` 仅是 app 生成的 shim。
