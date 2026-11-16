@@ -17,3 +17,25 @@ remain unverified on this machine because no host binary is installed.
 | installer generates valid Claude / ZCode / CodeBuddy configurations | pass | claude command / zcode events+enabled / codebuddy PreToolUse modifiedInput |
 
 Summary: 6/6 passed.
+
+## Addendum 2026-11-16: host binary availability re-check
+
+Re-verified what "no host binary" means on this machine before asking for a
+host-equipped environment:
+
+- Claude Code: still absent. No `claude` executable in PATH, login shell,
+  Homebrew, `/usr/local/bin`, `~/.local/bin`, npm/pnpm globals, or inside
+  `/Applications/ZCode.app` / `AgnesCode.app` / `WorkBuddy.app`.
+- ZCode: `/Applications/ZCode.app` exists and its CLI is actively used
+  (`~/.zcode/cli/log/zcode-<date>.jsonl` written daily; hooks config absent from
+  `~/.zcode/cli/config.json`). The CLI entry lives inside the app bundle
+  (`app.asar` exports `/cli.js` and `/cli-daemon/program.js`), but the host
+  cannot be driven headlessly from a non-interactive sandbox: invoking the
+  Electron binary with the asar loads the GUI main entry (`BrowserWindow`
+  required), and the binary disables Node environment variables when it is
+  spawned by another process, so neither `ELECTRON_RUN_AS_NODE` nor a
+  redirected home can isolate a session. Real F3 acceptance therefore still
+  needs a manually driven ZCode session.
+- CodeBuddy: the running host itself has recorder hooks in
+  `~/.codebuddy/settings.json` (`--source=workbuddy`), but CodeBuddy is not a
+  target of F3.
