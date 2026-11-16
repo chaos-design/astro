@@ -1,12 +1,12 @@
 # Host integration equivalence acceptance (plan F3)
 
-Generated: 2026-11-16T04:11:43.886Z
+Generated: 2026-11-16T04:37:59.459Z
 
 This record covers protocol-level acceptance using captured payloads and real
 hook processes. It does **not** replace launching Claude Code or ZCode:
 `/hooks` visibility, transcript wording and `hook.run.failed` in a fresh session
-still need a host session. The probe below records what this machine can and
-cannot verify; the runbook lists the remaining steps.
+still need a host session. The probes and the live-session scan below record
+what this machine can and cannot verify; the runbook lists the remaining steps.
 
 | Check | Result | Detail |
 | --- | --- | --- |
@@ -28,6 +28,14 @@ Machine-generated on every run; this is the evidence behind the F3 blocker.
 | claude | config-only | only the config directory exists (recorder hooks or settings); no binary |
 | zcode | app | the agent runs only inside the GUI app process; no standalone CLI is shipped, so a real session must be driven by hand (/Applications/ZCode.app/Contents/MacOS/ZCode) |
 | codebuddy | app | the agent runs only inside the GUI app process; a real session must be driven by hand (/Applications/AgnesCode.app/Contents/MacOS/AgnesCode) |
+
+## Live ZCode host session (machine-scanned)
+
+Scanned /Users/xcz/.zcode/cli/log/zcode-2026-11-16.jsonl (2026-11-16): **329** hook.run.allowed, **0** hook.run.failed, 329 ASTRO-sourced, last ASTRO call Bash at 2026-11-16T04:37:41.829Z.
+
+A real ZCode host session ran ASTRO hooks on this day with **no `hook.run.failed`** — the F3 ZCode criterion of a clean fresh-session log holds on this machine.
+
+Note: the ASTRO calls logged here come from the installed **recorder** plugin, so this proves the host's hook mechanism is healthy and the day's session is clean. It is **not** the interaction-hook closed loop (registering a question and carrying a human answer back); that still needs the interaction hook installed and an AskUserQuestion triggered inside the host.
 
 ## Runbook for the host-equipped machine (F3)
 

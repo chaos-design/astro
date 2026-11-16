@@ -3,8 +3,10 @@ import { test } from "node:test";
 
 import {
   describeHostAvailability,
+  describeLiveHostSession,
   probeHostInstallations,
   runHostIntegrationCheck,
+  scanZCodeHostLog,
 } from "../scripts/verify-host-integration.mjs";
 
 /**
@@ -94,10 +96,22 @@ test("runHostIntegrationCheck is injectable and produces a full report", () => {
     zcode: { kind: "absent", path: null },
     codebuddy: { kind: "absent", path: null },
   };
+  const fakeScan = {
+    present: false,
+    path: "/home/tester/.zcode/cli/log/zcode-2026-11-16.jsonl",
+    date: "2026-11-16",
+    allowed: 0,
+    failed: 0,
+    astroCalls: 0,
+    astroSources: [],
+    lastAstro: null,
+    healthy: false,
+  };
   let spawnCalls = 0;
   const { report, checks, failed } = runHostIntegrationCheck({
     payload: fixture,
     probes: fakeProbes,
+    liveScan: fakeScan,
     real: () => null,
     spawn: (script, input) => {
       spawnCalls += 1;
@@ -127,7 +141,86 @@ test("runHostIntegrationCheck is injectable and produces a full report", () => {
   assert.match(report, /# Host integration equivalence acceptance/);
   assert.match(report, /Summary: 6\/6 passed/);
   assert.match(report, /## Host availability probe/);
+  assert.match(report, /## Live ZCode host session/);
   assert.match(report, /## Runbook for the host-equipped machine/);
   assert.match(report, /\| claude \| absent \|/);
+});
+
+/**
+ * scanZCodeHostLog reads the day's JSONL and counts hook.run.* entries,
+ * isolating the ASTRO-sourced calls that a running host leaves behind. The
+ * file reader, home and date are all injected so the test never touches the
+ * real log and never depends on "today".
+ */
+test("scanZCodeHostLog aggregates allowed/failed and ASTRO calls", () => {
+  const lines = [
+    JSON.stringify({ event: "hook.run.allowed", timestamp: "2026-11-16T01:00:00Z", context: { source: "plugin.astro@astro-zcode-local.PreToolUse.0.0", toolName: "Read" } }),
+    JSON.stringify({ event: "hook.run.allowed", timestamp: "2026-11-16T01:05:00Z", context: { source: "plugin.astro@astro-zcode-local.PreToolUse.0.0", toolName: "Bash" } }),
+    JSON.stringify({ event: "hook.run.allowed", timestamp: "2026-11-16T01:06:00Z", context: { source: "other.plugin", toolName: "Edit" } }),
+    JSON.stringify({ event: "unrelated.event", timestamp: "2026-11-16T01:07:00Z", context: { source: "plugin.astro@astro-zcode-local.PreToolUse.0.0" } }),
+  ].join("\n");
+  const scan = scanZCodeHostLog({
+    home: "/home/tester",
+    date: "2026-11-16",
+    readFile: () => lines,
+  });
+  assert.equal(scan.present, true);
+  assert.equal(scan.allowed, 3);
+  assert.equal(scan.failed, 0);
+  assert.equal(scan.astroCalls, 2);
+  assert.deepEqual(scan.astroSources, ["plugin.astro@astro-zcode-local.PreToolUse.0.0"]);
+  assert.equal(scan.lastAstro.toolName, "Bash");
+  assert.equal(scan.healthy, true);
+});
+
+test("scanZCodeHostLog reports failed calls as unhealthy", () => {
+  const lines = [
+    JSON.stringify({ event: "hook.run.allowed", timestamp: "t1", context: { source: "plugin.astro@astro-zcode-local.PreToolUse.0.0", toolName: "Read" } }),
+    JSON.stringify({ event: "hook.run.failed", timestamp: "t2", context: { source: "plugin.astro@astro-zcode-local.PreToolUse.0.0", toolName: "Bash" } }),
+  ].join("\n");
+  const scan = scanZCodeHostLog({
+    home: "/home/tester",
+    date: "2026-11-16",
+    readFile: () => lines,
+  });
+  assert.equal(scan.failed, 1);
+  assert.equal(scan.astroCalls, 2);
+  assert.equal(scan.healthy, false);
+});
+
+test("scanZCodeHostLog returns absent when the day's log is missing", () => {
+  const scan = scanZCodeHostLog({
+    home: "/home/tester",
+    date: "2026-11-16",
+    readFile: () => null,
+  });
+  assert.equal(scan.present, false);
+  assert.equal(scan.healthy, false);
+  assert.match(scan.path, /zcode-2026-11-16\.jsonl$/);
+});
+
+test("describeLiveHostSession renders clean / failed / missing / idle states", () => {
+  const clean = describeLiveHostSession({
+    present: true, path: "p", date: "d", allowed: 318, failed: 0, astroCalls: 318,
+    astroSources: ["s"], lastAstro: { timestamp: "t", toolName: "Bash", source: "s" }, healthy: true,
+  });
+  assert.match(clean, /no `hook\.run\.failed`/);
+  assert.match(clean, /holds on this machine/);
+  assert.match(clean, /recorder/);
+
+  const failedState = describeLiveHostSession({
+    present: true, path: "p", date: "d", allowed: 1, failed: 2, astroCalls: 0, astroSources: [], lastAstro: null, healthy: false,
+  });
+  assert.match(failedState, /hook\.run\.failed entries are present/);
+
+  const idle = describeLiveHostSession({
+    present: true, path: "p", date: "d", allowed: 1, failed: 0, astroCalls: 0, astroSources: [], lastAstro: null, healthy: false,
+  });
+  assert.match(idle, /ASTRO-sourced hook call/);
+
+  const missing = describeLiveHostSession({
+    present: false, path: "p", date: "d", allowed: 0, failed: 0, astroCalls: 0, astroSources: [], lastAstro: null, healthy: false,
+  });
+  assert.match(missing, /No ZCode CLI log/);
 });
 

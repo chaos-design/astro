@@ -305,6 +305,118 @@ export function describeHostAvailability(probes) {
   ].join("\n");
 }
 
+/**
+ * Scan the day's ZCode CLI log for the health of the real-host hook
+ * mechanism. ZCode writes one JSONL per day and logs every hook it runs as
+ * `hook.run.allowed` / `hook.run.failed`. This is the live evidence for the
+ * F3 ZCode criterion "a fresh session's log has no hook.run.failed": a
+ * running host leaves an ASTRO-sourced allowed call behind. `readFile`,
+ * `home`, `date` and `now` are injectable so the scan is testable without
+ * touching the real log.
+ */
+export function scanZCodeHostLog(options = {}) {
+  const homeDir = options.home || homedir();
+  // ZCode names the log file by the local date (YYYY-MM-DD). Build it by hand
+  // rather than relying on a locale, so a minimal-ICU build still matches.
+  const local = new Date(options.now ?? Date.now());
+  const date = options.date || [
+    local.getFullYear(),
+    String(local.getMonth() + 1).padStart(2, "0"),
+    String(local.getDate()).padStart(2, "0"),
+  ].join("-");
+  const path = join(homeDir, ".zcode", "cli", "log", `zcode-${date}.jsonl`);
+  const reader = options.readFile ?? ((p) => {
+    try {
+      return readFileSync(p, "utf8");
+    } catch {
+      return null;
+    }
+  });
+  const result = {
+    present: false,
+    path,
+    date,
+    allowed: 0,
+    failed: 0,
+    astroCalls: 0,
+    astroSources: [],
+    lastAstro: null,
+    healthy: false,
+  };
+  const text = reader(path);
+  if (!text) {
+    return result;
+  }
+  result.present = true;
+  const seen = new Set();
+  for (const line of text.split("\n")) {
+    if (!line.trim()) continue;
+    let event;
+    try {
+      event = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    const name = event?.event;
+    if (name !== "hook.run.allowed" && name !== "hook.run.failed") {
+      continue;
+    }
+    if (name === "hook.run.allowed") {
+      result.allowed += 1;
+    } else {
+      result.failed += 1;
+    }
+    const source = event?.context?.source || "";
+    if (/astro/i.test(source)) {
+      result.astroCalls += 1;
+      if (!seen.has(source)) {
+        seen.add(source);
+        result.astroSources.push(source);
+      }
+      result.lastAstro = {
+        timestamp: event.timestamp,
+        toolName: event.context?.toolName,
+        source,
+      };
+    }
+  }
+  // "Healthy" = the day's log exists, no hook failed, and an ASTRO hook ran.
+  result.healthy = result.present && result.failed === 0 && result.astroCalls > 0;
+  return result;
+}
+
+/** The machine-scanned live-session section of the report. */
+export function describeLiveHostSession(scan) {
+  const lines = [
+    "## Live ZCode host session (machine-scanned)",
+    "",
+  ];
+  if (!scan.present) {
+    lines.push(
+      `No ZCode CLI log for ${scan.date} (${scan.path}); nothing to verify.`,
+      "",
+    );
+    return lines.join("\n");
+  }
+  const verdict =
+    scan.healthy
+      ? "A real ZCode host session ran ASTRO hooks on this day with **no `hook.run.failed`** — the F3 ZCode criterion of a clean fresh-session log holds on this machine."
+      : scan.failed > 0
+        ? "hook.run.failed entries are present — the F3 ZCode criterion is **not** met here."
+        : "The log exists but no ASTRO-sourced hook call today — the ASTRO hooks were not exercised on this host yet.";
+  lines.push(
+    `Scanned ${scan.path} (${scan.date}): **${scan.allowed}** hook.run.allowed, ` +
+      `**${scan.failed}** hook.run.failed${scan.astroCalls ? `, ${scan.astroCalls} ASTRO-sourced` : ""}` +
+      `${scan.lastAstro ? `, last ASTRO call ${scan.lastAstro.toolName} at ${scan.lastAstro.timestamp}` : ""}.`,
+    "",
+    verdict,
+    "",
+    "Note: the ASTRO calls logged here come from the installed **recorder** plugin, so this proves the host's hook mechanism is healthy and the day's session is clean. It is **not** the interaction-hook closed loop (registering a question and carrying a human answer back); that still needs the interaction hook installed and an AskUserQuestion triggered inside the host.",
+    "",
+  );
+  return lines.join("\n");
+}
+
 const HOST_RUNBOOK = [
   "## Runbook for the host-equipped machine (F3)",
   "",
@@ -347,6 +459,7 @@ export function runHostIntegrationCheck(options = {}) {
     zcode: probeHostInstallations("zcode"),
     codebuddy: probeHostInstallations("codebuddy"),
   };
+  const liveScan = options.liveScan ?? scanZCodeHostLog();
   const checks = buildChecks(options.payload ?? defaultFixture(), spawn, real);
   const failed = checks.filter((c) => c.status === "fail");
   const lines = [
@@ -357,8 +470,8 @@ export function runHostIntegrationCheck(options = {}) {
     "This record covers protocol-level acceptance using captured payloads and real",
     "hook processes. It does **not** replace launching Claude Code or ZCode:",
     "`/hooks` visibility, transcript wording and `hook.run.failed` in a fresh session",
-    "still need a host session. The probe below records what this machine can and",
-    "cannot verify; the runbook lists the remaining steps.",
+    "still need a host session. The probes and the live-session scan below record",
+    "what this machine can and cannot verify; the runbook lists the remaining steps.",
     "",
     "| Check | Result | Detail |",
     "| --- | --- | --- |",
@@ -367,9 +480,10 @@ export function runHostIntegrationCheck(options = {}) {
     `Summary: ${checks.length - failed.length}/${checks.length} passed.`,
     "",
     describeHostAvailability(probes),
+    describeLiveHostSession(liveScan),
     HOST_RUNBOOK,
   ];
-  return { report: lines.join("\n") + "\n", checks, failed };
+  return { report: lines.join("\n") + "\n", checks, failed, liveScan };
 }
 
 function defaultFixture() {
