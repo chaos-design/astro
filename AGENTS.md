@@ -418,6 +418,12 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   cap below what already elapsed stops the stream at once. While a pause is in
   effect no timer runs and the counting is stopped too; the clock only starts
   over on a resume.
+- The pause also freezes the **displayed** clock: the service card's uptime
+  (and the header pill) holds the reading it had when the pause began, the
+  uptime accrued during the pause is never displayed again, and a new service
+  process resets the whole clock. The policy lives with the other pause rules
+  (`applyUptimePause` / `resolveDisplayedUptime` in `src/lib/sync-budget.ts`);
+  do not grow a second freeze accumulator in the component.
 - When it fires, `syncStopped` closes the `EventSource`; that is what stops the
   appending, the re-derivation and the memory growth. The header marker turns
   from `synced` to `paused` (amber, a `<button>`), and the service card says the
@@ -669,6 +675,23 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   display keys.
 - `Notification` is displayed as `user.question` (`AskUserQuestion`) in the
   event log.
+- The inspector's Input tab renders `user.question` payloads (display key, so
+  `Notification` included) as a Preview/Code pair like the prompt input:
+  `src/lib/markdown-preview.ts` validates and sanitizes the markdown once —
+  invalid or empty sources fall back to the captured text, and the question
+  shapes are extracted only in `src/lib/user-question-content.ts`. That single
+  extractor also reads plan approvals: ZCode and Claude Code emit
+  `PermissionRequest` with `toolName: ExitPlanMode` and the Markdown plan in
+  `tool_input.plan` (no `questions` array and no `message`), which the preview
+  renders as a `Plan` section. Do not synthesize a `message` for that shape in
+  an adapter or the recorder. The preview decision must not use
+  `isUserQuestionStartEvent`: that predicate drives run state and deliberately
+  excludes `Notification`.
+- `PreToolUse` / `PostToolUse` of `ExitPlanMode` keep their `tool.call` /
+  `tool.result` display keys. `hasPlanContent()` in the same extractor lets the
+  inspector preview their plan without adding `exitplanmode` to the
+  user-question classifier, which would change projection, waiting state and
+  topology counts.
 - `PreCompact` / `PostCompact` cover context compaction for every client that
   reports it; streaming compaction deltas are never recorded.
 
@@ -686,6 +709,11 @@ use Node.js ES modules or CommonJS according to their existing file extension.
 - The adapter normalizes ZCode payloads (`toolCallId`, `toolInput`,
   `toolResponse`) onto the canonical names and records a `Stop` with non-empty
   `responseText` as `AgentMessage` followed by `Stop`.
+- ZCode plan approval arrives as `PermissionRequest` with
+  `toolName: "ExitPlanMode"` and `tool_input: { plan: "<Markdown>",
+  allowedPrompts? }`. The adapter preserves it verbatim; the capture side does
+  not drop the plan text. `src/lib/user-question-content.ts` is the only reader
+  of that shape for the `user.question` preview.
 - ASTRO skills ship in `.agents/skills`; `scripts/install-zcode-plugin.mjs`
   copies them to `~/.agents/skills`, which ZCode imports by reference. The
   plugin package itself never carries skill copies.

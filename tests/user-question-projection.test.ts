@@ -13,6 +13,10 @@ import {
   normalizeTraceEvent,
 } from "../src/lib/trace-model.ts";
 import { isWaitingTraceEvent } from "../src/lib/trace-status.ts";
+import {
+  hasPlanContent,
+  parseUserQuestionContent,
+} from "../src/lib/user-question-content.ts";
 
 function questionToolEvent(eventName: "PreToolUse" | "PostToolUse") {
   return normalizeTraceEvent({
@@ -128,4 +132,61 @@ test("treats a denied question as failed unless it is retryable", () => {
 
   assert.equal(buildSessions([denied])[0]?.status, "failed");
   assert.equal(buildSessions([retryable])[0]?.status, "waiting");
+});
+
+test("a ZCode ExitPlanMode approval is a user.question whose plan is displayable", () => {
+  // The inspector picks the event by its display key and hands its full
+  // payload to the question preview. Plan approval has no `questions` array:
+  // the Markdown in tool_input.plan is the message content.
+  const approval = normalizeTraceEvent({
+    eventName: "PermissionRequest",
+    id: "plan-approval",
+    payload: {
+      reason: "Tool ExitPlanMode requires user interaction",
+      tool_name: "ExitPlanMode",
+      tool_input: {
+        plan: "# Plan\n\n## Step 1\n\nRun the test suite before merging.",
+        allowedPrompts: [{ tool: "Bash", prompt: "run tests" }],
+      },
+    },
+    sessionId: "zcode-plan-session",
+    source: "zcode",
+    toolName: "ExitPlanMode",
+    workspaceId: "workspace",
+  });
+
+  assert.equal(getTraceEventKey(approval), "user.question");
+  assert.equal(isWaitingTraceEvent(approval), true);
+  const content = parseUserQuestionContent(approval.payload);
+  assert.equal(content.hasContent, true);
+  assert.match(content.plan, /^# Plan/);
+  assert.deepEqual(content.prompts, []);
+});
+
+test("plan approval tool rows stay tool events but are previewable", () => {
+  // The inspector's content fallback renders the plan on Pre/PostToolUse rows
+  // without reclassifying them. Keeping the tool.* keys preserves projection,
+  // waiting state and topology counts.
+  const toolEvent = (eventName: "PreToolUse" | "PostToolUse") =>
+    normalizeTraceEvent({
+      eventName,
+      id: `plan-${eventName}`,
+      payload: {
+        tool_name: "ExitPlanMode",
+        tool_input: { plan: "# Plan\n\n## Step 1\n\nRun the tests." },
+      },
+      sessionId: "zcode-plan-session",
+      source: "zcode",
+      toolName: "ExitPlanMode",
+      workspaceId: "workspace",
+    });
+
+  const start = toolEvent("PreToolUse");
+  const end = toolEvent("PostToolUse");
+  assert.equal(getTraceEventKey(start), "tool.call");
+  assert.equal(getTraceEventKey(end), "tool.result");
+  assert.equal(isUserQuestionEvent(start), false);
+  assert.equal(isUserQuestionEvent(end), false);
+  assert.equal(hasPlanContent(start.payload), true);
+  assert.equal(hasPlanContent(end.payload), true);
 });

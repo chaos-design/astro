@@ -86,6 +86,38 @@ test("records an adapted payload as a canonical zcode trace event", () => {
   assert.equal(event.status, "failed");
 });
 
+test("keeps the Markdown plan on an ExitPlanMode permission request", () => {
+  // ZCode reports plan approval as PermissionRequest with toolName
+  // ExitPlanMode. The adapter must pass toolInput.plan through untouched:
+  // the capture side is not where the plan text gets lost.
+  const plan = "# Plan\n\n## Step 1\n\nRun the test suite before merging.";
+  const [adapted] = adaptZcodePayload(
+    zcodePayload({
+      hookEventName: "PermissionRequest",
+      reason: "Tool ExitPlanMode requires user interaction",
+      toolName: "ExitPlanMode",
+      toolInput: {
+        plan,
+        allowedPrompts: [{ tool: "Bash", prompt: "run tests" }],
+      },
+      toolResponse: undefined,
+    }),
+  );
+  const event = createTraceEvent(adapted, { source: "zcode" });
+
+  assert.equal(event.eventName, "PermissionRequest");
+  assert.equal(event.toolName, "ExitPlanMode");
+  assert.equal(adapted.tool_input.plan, plan);
+  assert.equal(event.payload.tool_input.plan, plan);
+  assert.equal(
+    event.payload.reason,
+    "Tool ExitPlanMode requires user interaction",
+  );
+  assert.deepEqual(event.payload.tool_input.allowedPrompts, [
+    { tool: "Bash", prompt: "run tests" },
+  ]);
+});
+
 test("UserPromptSubmit payloads keep their prompt text", () => {
   const [adapted] = adaptZcodePayload(
     zcodePayload({

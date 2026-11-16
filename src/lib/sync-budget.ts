@@ -51,3 +51,64 @@ export function getSyncStopDelay(
 export function capChangeResumesSync(stopped: boolean, delay: number | null): boolean {
   return stopped && (delay === null || delay > 0);
 }
+
+/**
+ * How the service card's uptime clock follows a sync pause.
+ *
+ * The clock measures the service process, but the pause is deliberate: while
+ * the budget holds the stream stopped the clock stops counting too, and the
+ * uptime the service accrues during the pause is never displayed again —
+ * resuming continues from the frozen value instead of replaying the pause.
+ * A new service process owns a fresh clock (`resetUptimePause`), which is
+ * also the documented way out of a spent budget.
+ */
+export interface UptimePause {
+  /** Displayed value captured when the current pause began; null while running. */
+  frozenMs: number | null;
+  /** Service uptime accrued during past pauses; never displayed again. */
+  ignoredMs: number;
+}
+
+export function resetUptimePause(): UptimePause {
+  return { frozenMs: null, ignoredMs: 0 };
+}
+
+/**
+ * Move the pause state to match `paused`, observed at `rawUptimeMs` (the
+ * service uptime the clock would show unpause-aware). Pure: the component
+ * calls it from an effect and renders the result unchanged for repeat calls.
+ */
+export function applyUptimePause(
+  state: UptimePause,
+  rawUptimeMs: number,
+  paused: boolean,
+): UptimePause {
+  const raw = Math.max(0, rawUptimeMs);
+  if (paused) {
+    if (state.frozenMs !== null) {
+      return state;
+    }
+    return {
+      frozenMs: Math.max(0, raw - state.ignoredMs),
+      ignoredMs: state.ignoredMs,
+    };
+  }
+  if (state.frozenMs === null) {
+    return state;
+  }
+  return {
+    frozenMs: null,
+    ignoredMs: Math.max(0, raw - state.frozenMs),
+  };
+}
+
+/** What the clock shows under a pause state: the frozen value, or the raw uptime minus every ignored pause. */
+export function resolveDisplayedUptime(
+  state: UptimePause,
+  rawUptimeMs: number,
+): number {
+  if (state.frozenMs !== null) {
+    return state.frozenMs;
+  }
+  return Math.max(0, Math.max(0, rawUptimeMs) - state.ignoredMs);
+}
