@@ -67,7 +67,6 @@ function applyEvent(
   if (!question) {
     return next;
   }
-  const labels = optionLabels(questions, question);
   switch (event.action) {
     case "select": {
       const label = event.optionLabel || "";
@@ -116,13 +115,11 @@ function applyEvent(
     default:
       break;
   }
-  // Keep a selection only when it is still a declared label; free text is
-  // accepted as-is because it came from a `text`/`edit` event.
-  if (next[question]?.length) {
-    next[question] = next[question].filter(
-      (value) => !labels.length || labels.includes(value) || value.length > 0,
-    );
-  }
+  // Selection validity is enforced where the answer of record is built: the
+  // service re-validates every submitted map against the current questions and
+  // rejects it, and the client rolls back to the last confirmed seq. The
+  // reducer deliberately mirrors events instead of pruning values here — a
+  // filter cannot tell a free-text answer from a stale label.
   return next;
 }
 
@@ -308,6 +305,6 @@ export function isInteractionSubmittable(draft: InteractionDraft): boolean {
 export function selectInteractionQuestion(
   draft: InteractionDraft,
   question: string,
-): (string | undefined) {
+): string | undefined {
   return draft.selections[question]?.[0];
 }
