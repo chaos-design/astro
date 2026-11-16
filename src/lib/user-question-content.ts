@@ -168,6 +168,34 @@ export function hasPlanContent(
   return Boolean(parseUserQuestionContent(payload).plan);
 }
 
+/**
+ * The single line the console shows for a user.question: the question text(s)
+ * themselves, not the tool name that carried them. Structured questions are
+ * joined in capture order; free-form text is used as-is; a Markdown plan
+ * contributes its first non-empty line so a plan approval stays readable in a
+ * LOG row. Empty means the payload has no displayable question at all.
+ */
+export function userQuestionSummary(
+  payload: TracePayload | null | undefined,
+): string {
+  const content = parseUserQuestionContent(payload);
+  const prompts = content.prompts
+    .map((prompt) => prompt.question.trim())
+    .filter(Boolean);
+  if (prompts.length) {
+    return prompts.join(" · ");
+  }
+  if (content.message.trim()) {
+    return content.message.trim();
+  }
+  return (
+    content.plan
+      .split("\n")
+      .map((line) => line.trim())
+      .find(Boolean) || ""
+  );
+}
+
 export function parseUserQuestionContent(
   payload: TracePayload | null | undefined,
 ): UserQuestionContent {

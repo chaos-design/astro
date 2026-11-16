@@ -6,6 +6,7 @@ import {
   type InteractionEvent,
 } from "../src/lib/interaction-contract.ts";
 import {
+  answerInteractionQuestion,
   buildInteractionEvent,
   cancelInteraction,
   sendInteractionEvent,
@@ -212,6 +213,94 @@ test("a failed submit reverts the optimistic submit and releases the lock", asyn
   assert.equal(after.pending, null);
   assert.equal(after.seq, 1, "the confirmed selection survives");
   assert.deepEqual(after.selections, { "Which framework?": ["React"] });
+});
+
+test("inspector answer sends text and submit as one keyed chain", async () => {
+  const base = draft();
+  const dispatches: InteractionAction[] = [];
+  const { transport: wire, calls } = transport([
+    { ok: true, status: 202 },
+    {
+      ok: true,
+      status: 200,
+      payload: {
+        requestId: base.request.requestId,
+        status: "answered",
+        answers: { "Which framework?": "Svelte" },
+      },
+    },
+  ]);
+  const result = await answerInteractionQuestion(
+    base,
+    "Which framework?",
+    "  Svelte  ",
+    (action) => dispatches.push(action),
+    wire,
+  );
+
+  assert.equal(result.ok, true);
+  assert.equal(result.result?.status, "answered");
+  assert.equal(calls.length, 2, "one text event then one submit");
+  const text = calls[0].body as InteractionEvent;
+  const submit = calls[1].body as InteractionEvent;
+  assert.equal(text.action, "text");
+  assert.equal(text.seq, 1);
+  assert.equal(text.question, "Which framework?");
+  assert.equal(text.text, "Svelte");
+  assert.equal(submit.action, "submit");
+  assert.equal(submit.seq, 2, "submit follows the text event, no duplicate seq");
+  assert.deepEqual(submit.answers, { "Which framework?": "Svelte" });
+  assert.deepEqual(dispatches.map((action) => action.type), [
+    "pending",
+    "update",
+    "update",
+  ]);
+});
+
+test("inspector answer refuses a question outside the request", async () => {
+  const base = draft();
+  const { transport: wire, calls } = transport([]);
+  const result = await answerInteractionQuestion(
+    base,
+    "A different question?",
+    "yes",
+    () => {},
+    wire,
+  );
+  assert.equal(result.ok, false);
+  assert.equal(result.blocked, true);
+  assert.equal(calls.length, 0);
+});
+
+test("inspector answer rolls back both events when submit fails", async () => {
+  const base = draft();
+  const dispatches: InteractionAction[] = [];
+  const { transport: wire } = transport([
+    { ok: true, status: 202 },
+    { ok: false, status: 400, payload: { error: "bad answer" } },
+  ]);
+  const result = await answerInteractionQuestion(
+    base,
+    "Which framework?",
+    "Svelte",
+    (action) => dispatches.push(action),
+    wire,
+  );
+  assert.equal(result.ok, false);
+  assert.equal(result.error, "bad answer");
+  assert.deepEqual(dispatches.map((action) => action.type), [
+    "pending",
+    "update",
+    "update",
+    "revert",
+  ]);
+  const reverted = interactionReducer(initialInteractionState, {
+    type: "open",
+    request: base.request,
+  });
+  const after = interactionReducer(reverted, dispatches[3]);
+  assert.equal(after.requests[base.request.requestId].seq, 0);
+  assert.deepEqual(after.requests[base.request.requestId].selections, {});
 });
 
 test("cancel closes through the service, not through an event", async () => {

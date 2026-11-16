@@ -69,6 +69,7 @@ import {
 } from "./components/console-notices";
 import { PromptContent } from "./components/prompt-content";
 import { QuestionContent } from "./components/question-content";
+import { QuestionAnswerForm } from "./components/question-answer-form";
 import { InteractionPanel } from "./components/interaction-panel";
 import { RepositoryLink } from "./components/repo-link";
 import { RuntimeCanvas } from "./components/runtime-canvas";
@@ -261,6 +262,7 @@ import {
 } from "./lib/atom-selection";
 import { isSameEventSequence } from "./lib/event-snapshot";
 import {
+  answerInteractionQuestion,
   cancelInteraction,
   consoleDeviceId,
   sendInteractionEvent,
@@ -268,6 +270,10 @@ import {
   type InteractionEventFields,
   type InteractionSendResult,
 } from "./lib/interaction-client";
+import {
+  matchQuestionInteraction,
+  type MatchedQuestionInteraction,
+} from "./lib/question-interaction";
 import {
   initialInteractionState,
   interactionReducer,
@@ -305,7 +311,7 @@ import {
   isUserQuestionEvent,
   isUserQuestionStartEvent,
 } from "./lib/trace-event-kind";
-import { hasPlanContent } from "./lib/user-question-content";
+import { hasPlanContent, userQuestionSummary } from "./lib/user-question-content";
 import type {
   HarnessNode,
   HarnessNodeData,
@@ -3190,15 +3196,25 @@ function InspectorOverview({
   node,
   atom,
   event,
+  answerForm,
 }: {
   node: TraceNodeType | null;
   atom: HarnessNodeData | null;
   event: TraceEvent | null;
+  answerForm?: ReactNode;
 }) {
   const data = node?.data;
   const tone = atom?.tone || data?.meta?.tone || "unknown";
   const status = atom?.status || data?.status || "idle";
   const title = atom?.label || event?.eventName || "Event";
+  // A question atom's overview describes the question the reader was asked,
+  // not the atom's static harness description. One text source keeps the LOG,
+  // projection and inspector in agreement.
+  const questionText =
+    event &&
+    (atom?.key === "user.question" || getTraceEventKey(event) === "user.question")
+      ? userQuestionSummary(event.payload)
+      : "";
   const details = atom
     ? [
         ["Section", atom.section],
@@ -3249,9 +3265,11 @@ function InspectorOverview({
         </span>
       </div>
       <p className="inspector-overview__summary">
-        {atom?.description ||
+        {questionText ||
+          atom?.description ||
           (event ? getEventSummary(event) : "No event is bound to this atom yet.")}
       </p>
+      {answerForm}
       <dl className="detail-list">
         {details.map(([label, value]) => (
           <div key={label}>
@@ -3271,6 +3289,10 @@ function TraceInspector({
   index,
   node,
   onActiveTabChange,
+  matchedQuestion,
+  answerDraft,
+  onAnswerDraftChange,
+  onAnswerQuestion,
 }: {
   activeTab: string;
   atom: HarnessNodeData | null;
@@ -3278,6 +3300,10 @@ function TraceInspector({
   index: number;
   node: TraceNodeType | null;
   onActiveTabChange: (tab: string) => void;
+  matchedQuestion: MatchedQuestionInteraction | null;
+  answerDraft: string;
+  onAnswerDraftChange: (text: string) => void;
+  onAnswerQuestion: (matched: MatchedQuestionInteraction, text: string) => void;
 }) {
   if ((!node || !event) && !atom) {
     return (
@@ -3368,6 +3394,27 @@ function TraceInspector({
   const executionInstruction = event
     ? getExecutionInstruction(event, node?.data.startEvent)
     : atom?.label || inspectorTitle;
+  // The answer box is only mounted when the displayed question has a live
+  // interaction request whose descriptor matches it verbatim. No request (a
+  // historical question) or a closed/taken-over one renders nothing here; the
+  // floating panel stays the read-only record in those cases.
+  const answerForm = matchedQuestion ? (
+    <QuestionAnswerForm
+      question={matchedQuestion.question.question}
+      selection={
+        matchedQuestion.draft.selections[matchedQuestion.question.question]?.[0]
+      }
+      draft={answerDraft}
+      onDraftChange={onAnswerDraftChange}
+      onSend={(text) => onAnswerQuestion(matchedQuestion, text)}
+      readOnly={Boolean(
+        matchedQuestion.draft.result ||
+          (matchedQuestion.draft.lockedBy &&
+            matchedQuestion.draft.lockedBy !== consoleDeviceId),
+      )}
+      pending={Boolean(matchedQuestion.draft.pending)}
+    />
+  ) : null;
 
   return (
     <section className="message-inspector grid min-h-0 grid-rows-[minmax(56px,auto)_minmax(0,1fr)]">
@@ -3412,7 +3459,12 @@ function TraceInspector({
           value="overview"
           className="inspector-tabs__content m-0 min-h-0 overflow-auto"
         >
-          <InspectorOverview node={node} atom={atom} event={event} />
+          <InspectorOverview
+            node={node}
+            atom={atom}
+            event={event}
+            answerForm={answerForm}
+          />
         </TabsContent>
         {(["input", "output", "raw"] as InspectorTab[]).map((tab) => (
           <TabsContent
@@ -3428,7 +3480,13 @@ function TraceInspector({
             {tab === "input" && promptEvent ? (
               <PromptContent key={promptEvent.id} payload={promptEvent.payload} />
             ) : tab === "input" && questionEvent ? (
-              <QuestionContent key={questionEvent.id} payload={questionEvent.payload} />
+              <div className="inspector-question-stack">
+                <QuestionContent
+                  key={questionEvent.id}
+                  payload={questionEvent.payload}
+                />
+                {answerForm}
+              </div>
             ) : (
               <JsonViewer value={payloadByTab[tab]} />
             )}
@@ -5062,6 +5120,10 @@ export default function App() {
   );
   const interactionsRef = useRef(interactions);
   interactionsRef.current = interactions;
+  // The Flow atom inspector's answer box keeps its own draft. It is shared by
+  // the Overview and Input tabs so switching tabs while typing does not lose
+  // the text, and reset when the selected question changes.
+  const [questionAnswerDraft, setQuestionAnswerDraft] = useState("");
   // The newest unanswered request owns the card. Older ones cannot still be
   // inside their window, and two cards would compete for the same click.
   const activeInteraction = useMemo<InteractionDraft | null>(() => {
@@ -5118,6 +5180,26 @@ export default function App() {
         return;
       }
       void cancelInteraction(draft, { apiBase }).then(reportInteractionResult);
+    },
+    [apiBase, reportInteractionResult],
+  );
+  // The inspector's one-click answer: text + submit are sent as one chain
+  // against the snapshot matched to the atom's question, never against a
+  // possibly stale React render of the floating panel.
+  const handleQuestionAnswer = useCallback(
+    (matched: MatchedQuestionInteraction, text: string) => {
+      void answerInteractionQuestion(
+        matched.draft,
+        matched.question.question,
+        text,
+        dispatchInteraction,
+        { apiBase },
+      ).then((result) => {
+        reportInteractionResult(result);
+        if (result.ok || result.blocked) {
+          setQuestionAnswerDraft("");
+        }
+      });
     },
     [apiBase, reportInteractionResult],
   );
@@ -6522,6 +6604,28 @@ export default function App() {
     harnessFlow.nodes.find((node) => node.id === currentAtomId)?.data || null;
   const selectedEventIndex =
     activeEvents.findIndex((event) => event.id === selectedEventId);
+  // The question the inspector shows is also the question an answer must be
+  // keyed to. Prefer the selected event (a LOG row may be the question itself)
+  // and fall back to the Flow atom's bound start event. Both come from the
+  // same event the reader sees; the floating panel's "newest request" rule is
+  // deliberately not used here.
+  const inspectedQuestionEvent =
+    selectedEvent && getTraceEventKey(selectedEvent) === "user.question"
+      ? selectedEvent
+      : selectedAtom?.key === "user.question"
+        ? selectedAtom.event
+        : null;
+  const matchedQuestionInteraction = useMemo(
+    () => matchQuestionInteraction(interactions.requests, inspectedQuestionEvent),
+    [interactions.requests, inspectedQuestionEvent],
+  );
+  const matchedQuestionKey = matchedQuestionInteraction
+    ? `${matchedQuestionInteraction.draft.request.requestId}:${matchedQuestionInteraction.question.question}`
+    : "";
+
+  useEffect(() => {
+    setQuestionAnswerDraft("");
+  }, [matchedQuestionKey]);
 
   useEffect(() => {
     if (!animatingFlow || !activeExecutionAtomId) {
@@ -7713,6 +7817,10 @@ export default function App() {
                 atom={selectedAtom}
                 index={selectedEventIndex}
                 onActiveTabChange={setInspectorTab}
+                matchedQuestion={matchedQuestionInteraction}
+                answerDraft={questionAnswerDraft}
+                onAnswerDraftChange={setQuestionAnswerDraft}
+                onAnswerQuestion={handleQuestionAnswer}
               />
             </>
           ) : (

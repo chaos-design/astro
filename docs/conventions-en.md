@@ -119,7 +119,19 @@
     turn", not "most do": a source that names even one turn is authoritative
     for the batch, so its unnumbered later prompts fold into the previous
     turn rather than opening a new one (a partially-stamped source is a
-    contract, not a heuristic — see `docs/event-protocol-en.md` §6).
+    contract, not a heuristic — see `docs/event-protocol-en.md` §6);
+  - the display text for a user question lives only in
+    `src/lib/user-question-content.ts` (`userQuestionSummary`): structured
+    prompts, free-form text and plan approvals are extracted there, and LOG
+    summaries, the atomic projection and the inspector Overview all read it —
+    a question row never falls back to the tool name. The `user-question`
+    atom's bound event is chosen only in `src/lib/execution-topology.ts` (the
+    newest question *start*), while status follows the last matching event;
+  - the binding between a question and an interaction request lives only in
+    `src/lib/question-interaction.ts`: tool id first, then session plus
+    verbatim question text, with the answer key always the request's exact
+    question text. The inspector answer box and the floating panel share one
+    interaction state and never infer "the current question" separately.
   New consumers reuse those helpers; do not grow a second failure or live list.
 - Sample (Demo) data lives only in `data/demo-events.json`: the service reads it
   through `server/demo-dataset.mjs` and serves `GET /api/demo-events`, and the

@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   hasPlanContent,
   parseUserQuestionContent,
+  userQuestionSummary,
 } from "../src/lib/user-question-content.ts";
 import type { TracePayload } from "../src/types/trace.ts";
 
@@ -205,6 +206,30 @@ test("camelCase answers resolve and non-string values are ignored", () => {
   } as unknown as TracePayload);
   assert.deepEqual(content.answers, [{ question: "Pick one", answer: "alpha" }]);
   assert.equal(content.hasContent, true);
+});
+
+test("the display summary names the question, not its tool", () => {
+  assert.equal(
+    userQuestionSummary({
+      tool_name: "AskUserQuestion",
+      tool_input: {
+        questions: [
+          { question: "Which framework?" },
+          { question: "Which database?" },
+        ],
+      },
+    } as unknown as TracePayload),
+    "Which framework? · Which database?",
+  );
+  assert.equal(
+    userQuestionSummary({ message: "Need a decision on rollout" } as unknown as TracePayload),
+    "Need a decision on rollout",
+  );
+  assert.equal(
+    userQuestionSummary({ tool_input: { plan: "# Plan\n\nShip it" } } as unknown as TracePayload),
+    "# Plan",
+  );
+  assert.equal(userQuestionSummary({ tool_name: "AskUserQuestion" } as unknown as TracePayload), "");
 });
 
 test("answers are independent of plan detection", () => {

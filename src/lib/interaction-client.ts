@@ -213,6 +213,91 @@ export async function submitInteraction(
   return { ok: true, result: resultOf(response.payload) };
 }
 
+/**
+ * Answer one question from the inspector and submit the request in a single
+ * action. The floating panel splits `text` and `submit` across two clicks; the
+ * inspector offers one "send" button, so the two events must be built against
+ * the same seq chain here. Deriving the answered draft locally (instead of
+ * waiting for React to re-render) is what keeps the answer keyed to the exact
+ * question the reader selected even when they click immediately after typing.
+ */
+export async function answerInteractionQuestion(
+  draft: InteractionDraft,
+  question: string,
+  text: string,
+  dispatch: (action: InteractionStateAction) => void,
+  transport: InteractionTransport,
+): Promise<InteractionSendResult> {
+  const answer = text.trim();
+  if (!answer) {
+    return { ok: false, blocked: true, error: "answer is empty" };
+  }
+  if (draft.pending) {
+    return { ok: false, blocked: true, error: "interaction busy" };
+  }
+  if (draft.result) {
+    return { ok: false, blocked: true, error: "interaction already closed" };
+  }
+  const deviceId = transport.deviceId ?? consoleDeviceId;
+  if (draft.lockedBy && draft.lockedBy !== deviceId) {
+    return { ok: false, blocked: true, error: "answered on another device" };
+  }
+  if (!draft.request.questions.some((item) => item.question === question)) {
+    return { ok: false, blocked: true, error: "question is not part of this request" };
+  }
+  const textEvent = buildInteractionEvent(draft, "text", { question, text: answer }, transport);
+  const answered: InteractionDraft = {
+    ...draft,
+    events: [...draft.events, textEvent],
+    seq: textEvent.seq,
+    selections: { ...draft.selections, [question]: [answer] },
+  };
+  if (!isInteractionSubmittable(answered)) {
+    return { ok: false, blocked: true, error: "required answers missing" };
+  }
+  const submitEvent = buildInteractionEvent(
+    answered,
+    "submit",
+    { answers: buildInteractionAnswers(answered) },
+    transport,
+  );
+
+  dispatch({
+    type: "pending",
+    requestId: draft.request.requestId,
+    eventId: submitEvent.eventId,
+  });
+  dispatch({ type: "update", event: textEvent });
+  dispatch({ type: "update", event: submitEvent });
+
+  const url = eventUrl(transport, draft.request.requestId);
+  const textResponse = await postJson(transport, url, textEvent);
+  if (!textResponse.ok) {
+    dispatch({
+      type: "revert",
+      requestId: draft.request.requestId,
+      seq: draft.seq,
+    });
+    return {
+      ok: false,
+      error: errorText(textResponse.payload, `event rejected (${textResponse.status})`),
+    };
+  }
+  const submitResponse = await postJson(transport, url, submitEvent);
+  if (!submitResponse.ok) {
+    dispatch({
+      type: "revert",
+      requestId: draft.request.requestId,
+      seq: draft.seq,
+    });
+    return {
+      ok: false,
+      error: errorText(submitResponse.payload, `submit rejected (${submitResponse.status})`),
+    };
+  }
+  return { ok: true, result: resultOf(submitResponse.payload) };
+}
+
 /** Cancel is closed through the service, which broadcasts the one close frame. */
 export async function cancelInteraction(
   draft: InteractionDraft,

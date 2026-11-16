@@ -95,7 +95,15 @@
     不得另写一份轮次推断。切到身份模式的判定是「批内任一带轮次标识」而非
     「多数带」：来源只要给过一条事件标了轮次，整批即视为权威，其后无编号
     的 prompt 折进上一轮、不另开新分组（部分标识来源是契约而非启发式，详见
-    `docs/event-protocol-zh.md` §6）。
+    `docs/event-protocol-zh.md` §6）；
+  - 用户问题的展示文本只在 `src/lib/user-question-content.ts`
+    （`userQuestionSummary`）：结构化提问、自由文本与计划批准都从这一处抽，
+    LOG 摘要、原子投影与检查器 Overview 都读它，提问行不得回退到工具名；
+    `user-question` 原子绑定的事件只在 `src/lib/execution-topology.ts` 取
+    最后一条提问开始事件，状态另由最后一条匹配事件决定；
+  - 提问与交互请求的关联只在 `src/lib/question-interaction.ts`：先按
+    `toolUseId`、再按会话与问题原文匹配，答案键永远是请求里问题的原文；
+    检查器作答与浮层面板共用同一份交互状态，不各自推断当前问题。
   新增消费方必须复用这些函数，不得再写一份“失败事件名单”或“live 名单”。
 - 示例（Demo）数据只在 `data/demo-events.json`：服务通过 `server/demo-dataset.mjs`
   读取并由 `GET /api/demo-events` 提供，控制台只在 `src/lib/demo-events.ts` 解析。

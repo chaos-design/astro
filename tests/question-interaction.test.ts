@@ -1,0 +1,138 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import { buildInteractionRequest } from "../src/lib/interaction-contract.ts";
+import {
+  matchQuestionInteraction,
+  questionTextsFromEvent,
+} from "../src/lib/question-interaction.ts";
+import {
+  initialInteractionState,
+  interactionReducer,
+  type InteractionDraft,
+  type InteractionState,
+} from "../src/lib/interaction-reducer.ts";
+import { normalizeTraceEvent } from "../src/lib/trace-model.ts";
+import type { TraceEvent } from "../src/types/trace.ts";
+
+const NOW = Date.UTC(2026, 10, 16, 10, 0, 0);
+const QUESTION = "Which framework should we use?";
+
+function openRequest(
+  overrides: Partial<Parameters<typeof buildInteractionRequest>[0]> = {},
+): InteractionDraft {
+  const request = buildInteractionRequest(
+    {
+      hookEventName: "PermissionRequest",
+      toolName: "AskUserQuestion",
+      toolUseId: "call-1",
+      sessionId: "sess-1",
+      source: "zcode",
+      questions: [
+        {
+          question: QUESTION,
+          header: "Framework",
+          options: [{ label: "React" }, { label: "Vue" }],
+        },
+      ],
+      ...overrides,
+    },
+    { now: NOW, timeoutMs: 5000 },
+  );
+  const state = interactionReducer(initialInteractionState, {
+    type: "open",
+    request,
+  });
+  return state.requests[request.requestId];
+}
+
+function questionEvent(
+  overrides: Partial<Parameters<typeof normalizeTraceEvent>[0]> = {},
+): TraceEvent {
+  return normalizeTraceEvent({
+    capturedAt: "2026-11-16T10:00:00.000Z",
+    eventName: "PermissionRequest",
+    id: "event-1",
+    payload: {
+      tool_use_id: "call-1",
+      questions: [{ question: QUESTION, options: [{ label: "React" }] }],
+    },
+    sessionId: "sess-1",
+    source: "zcode",
+    toolName: "AskUserQuestion",
+    toolUseId: "call-1",
+    workspaceId: "workspace",
+    ...overrides,
+  });
+}
+
+function stateWith(...drafts: InteractionDraft[]): InteractionState {
+  return drafts.reduce(
+    (state, draft) =>
+      interactionReducer(state, { type: "open", request: draft.request }),
+    initialInteractionState,
+  );
+}
+
+test("a Flow question binds to the open request by tool id", () => {
+  const draft = openRequest();
+  const matched = matchQuestionInteraction(
+    stateWith(draft).requests,
+    questionEvent(),
+  );
+  assert.equal(matched?.draft.request.requestId, draft.request.requestId);
+  assert.equal(matched?.question.question, QUESTION);
+});
+
+test("a question without ids binds by session and verbatim question text", () => {
+  const draft = openRequest();
+  const event = questionEvent({
+    payload: { questions: [{ question: QUESTION }] },
+    toolUseId: null,
+  });
+  const matched = matchQuestionInteraction(stateWith(draft).requests, event);
+  assert.equal(matched?.draft.request.requestId, draft.request.requestId);
+  assert.equal(matched?.question.question, QUESTION);
+});
+
+test("a different question never binds to another request", () => {
+  const draft = openRequest();
+  const event = questionEvent({
+    payload: { questions: [{ question: "Different question?" }] },
+    toolUseId: null,
+  });
+  assert.deepEqual(questionTextsFromEvent(event), ["Different question?"]);
+  assert.equal(matchQuestionInteraction(stateWith(draft).requests, event), null);
+});
+
+test("a plan approval binds by tool id and answers the first descriptor", () => {
+  const draft = openRequest();
+  const event = questionEvent({ payload: { tool_input: { plan: "# Plan" } } });
+  assert.deepEqual(questionTextsFromEvent(event), []);
+  const matched = matchQuestionInteraction(stateWith(draft).requests, event);
+  assert.equal(matched?.draft.request.requestId, draft.request.requestId);
+  assert.equal(matched?.question.question, QUESTION);
+});
+
+test("a closed request cannot be answered from the inspector", () => {
+  const draft = openRequest();
+  const state = stateWith(draft);
+  const closed = interactionReducer(state, {
+    type: "close",
+    result: {
+      requestId: draft.request.requestId,
+      status: "answered",
+      answers: { [QUESTION]: "React" },
+      answeredBy: "console",
+      answeredAt: new Date(NOW).toISOString(),
+      elapsedMs: 0,
+    },
+  });
+  assert.equal(matchQuestionInteraction(closed.requests, questionEvent()), null);
+});
+
+test("no selected question means no answer target", () => {
+  const draft = openRequest();
+  assert.equal(matchQuestionInteraction(stateWith(draft).requests, null), null);
+  assert.equal(matchQuestionInteraction({}, questionEvent()), null);
+});

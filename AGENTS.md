@@ -692,6 +692,20 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   inspector preview their plan without adding `exitplanmode` to the
   user-question classifier, which would change projection, waiting state and
   topology counts.
+- The harness `user-question` atom binds the newest question **start** event
+  (the actual user question) in `src/lib/execution-topology.ts`; the answer
+  event only closes its status. Binding the last matched event made the
+  inspector read the answer payload instead of the question. `userQuestionSummary()`
+  in `src/lib/user-question-content.ts` is the one display text for a question
+  — LOG summaries, the atomic projection and the inspector overview all read
+  it; a question row must never fall back to the tool name.
+- When the displayed question has a live `InteractionRequest`, the expanded
+  atom inspector mounts an answer box. `src/lib/question-interaction.ts` owns
+  the one match rule (tool id first, then session + verbatim question text),
+  and `answerInteractionQuestion()` sends `text` + `submit` as one seq chain.
+  The answer key is always the descriptor's verbatim question text. The
+  floating interaction panel keeps its newest-request rule and is untouched
+  by canvas selection.
 - `PreCompact` / `PostCompact` cover context compaction for every client that
   reports it; streaming compaction deltas are never recorded.
 

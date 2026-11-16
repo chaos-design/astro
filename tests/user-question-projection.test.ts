@@ -11,6 +11,7 @@ import {
 } from "../src/lib/trace-event-kind.ts";
 import {
   buildSessions,
+  getEventSummary,
   normalizeTraceEvent,
 } from "../src/lib/trace-model.ts";
 import { isWaitingTraceEvent } from "../src/lib/trace-status.ts";
@@ -111,6 +112,79 @@ test("marks a completed question tool as complete", () => {
 
   assert.equal(question?.data.count, 2);
   assert.equal(question?.data.status, "complete");
+});
+
+test("a completed user-question atom binds the question, not its answer", () => {
+  const question = "Which framework should we use?";
+  const start = normalizeTraceEvent({
+    capturedAt: "2026-09-10T10:00:00.000Z",
+    eventName: "PermissionRequest",
+    id: "question-start",
+    payload: {
+      tool_use_id: "q-1",
+      questions: [{ question, options: [{ label: "React" }, { label: "Vue" }] }],
+    },
+    sessionId: "session",
+    source: "zcode",
+    toolName: "AskUserQuestion",
+    toolUseId: "q-1",
+    workspaceId: "workspace",
+  });
+  const answer = normalizeTraceEvent({
+    capturedAt: "2026-09-10T10:00:01.000Z",
+    eventName: "ElicitationResult",
+    id: "question-answer",
+    payload: { answers: { [question]: "React" } },
+    sessionId: "session",
+    source: "zcode",
+    toolName: "AskUserQuestion",
+    toolUseId: "q-1",
+    workspaceId: "workspace",
+  });
+
+  const topology = buildExecutionTopology([start, answer], "zcode");
+  const node = topology.nodes.find(
+    (candidate) => candidate.id === "harness-user-question",
+  );
+
+  assert.equal(node?.data.event?.id, "question-start");
+  assert.equal(node?.data.startEvent?.id, "question-start");
+  assert.equal(node?.data.endEvent, null, "node selection keeps the question");
+  assert.equal(node?.data.status, "complete", "the answer still closes the atom");
+  assert.equal(node?.data.count, 2);
+  assert.equal(getTraceEventKey(node?.data.event || null), "user.question");
+  assert.match(getEventSummary(start), /Which framework/);
+});
+
+test("a repeated question binds the newest asking event", () => {
+  const ask = (id: string, question: string) =>
+    normalizeTraceEvent({
+      capturedAt: "2026-09-10T10:00:00.000Z",
+      eventName: "PermissionRequest",
+      id,
+      payload: { questions: [{ question }] },
+      sessionId: "session",
+      source: "zcode",
+      workspaceId: "workspace",
+    });
+  const answer = normalizeTraceEvent({
+    capturedAt: "2026-09-10T10:00:02.000Z",
+    eventName: "ElicitationResult",
+    id: "answer-2",
+    payload: {},
+    sessionId: "session",
+    source: "zcode",
+    workspaceId: "workspace",
+  });
+  const topology = buildExecutionTopology(
+    [ask("ask-1", "First question?"), ask("ask-2", "Second question?"), answer],
+    "zcode",
+  );
+  const node = topology.nodes.find(
+    (candidate) => candidate.id === "harness-user-question",
+  );
+  assert.equal(node?.data.event?.id, "ask-2");
+  assert.equal(node?.data.status, "complete");
 });
 
 test("treats a denied question as failed unless it is retryable", () => {

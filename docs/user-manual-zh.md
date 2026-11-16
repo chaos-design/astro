@@ -592,6 +592,14 @@ pnpm install:interaction -- --client=claude --apply
 面板转为只读。`ExitPlanMode` 显示为「Approve this plan?」二选一，只有 Approve
 会回传决策，计划原文原样回显。
 
+**从 Flow 原子作答**：点击画布上的 `User Question` 原子，右侧检查器会绑定该提问
+的开始事件（不是回答事件），Overview 直接显示问题原文；当这条提问仍有未关闭的
+交互请求时，Overview 与 Input 页会显示作答输入框，键入文本点「提交发送」即可把
+答案关联到当前问题并关闭请求。输入框与浮层面板共享同一份交互状态，已关闭或已被
+其他设备回答时自动转为只读；没有活跃请求的历史提问只展示问题内容，不会出现作答
+入口。Flow 原子只绑定最后一条提问开始事件，状态仍由最后一条匹配事件决定，因此
+已回答的问题依旧显示为完成。
+
 **参数**：`ASTRO_INTERACTION_SERVICE`（默认 `http://127.0.0.1:5678`）、
 `ASTRO_INTERACTION_TIMEOUT_MS`（默认 5000）、`ASTRO_INTERACTION_POLL_MS`（默认
 100）、`ASTRO_INTERACTION_SOURCE`、`ASTRO_INTERACTION_EVENTS` / `TOOLS` /

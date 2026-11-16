@@ -4,6 +4,8 @@ import {
   isToolFailureEvent,
 } from "./exception-events.ts";
 import { isWaitingTraceEvent } from "./trace-status.ts";
+import { isUserQuestionStartEvent } from "./trace-event-kind.ts";
+import { userQuestionSummary } from "./user-question-content.ts";
 import { getWaitingEventsForSource } from "../config/atom-platforms.ts";
 import type {
   EventMeta,
@@ -477,6 +479,17 @@ export function getEventSummary(event: TraceEvent): string {
 
 function getSummaryValue(event: TraceEvent): unknown {
   const payload = event.payload || {};
+  // A question row reads as the question the user was asked, not as the tool
+  // that transported it. The same text feeds the LOG, the atomic projection
+  // and the inspector, so the reader cannot see three different labels for one
+  // question. Answer events keep the tool-name summary; only the asking half
+  // (PermissionRequest / question PreToolUse / Elicitation) changes.
+  if (isUserQuestionStartEvent(event)) {
+    const question = userQuestionSummary(payload);
+    if (question) {
+      return question;
+    }
+  }
   if (event.eventName === "UserPromptSubmit") {
     return (
       payload.prompt ||

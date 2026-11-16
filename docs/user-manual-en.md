@@ -713,6 +713,17 @@ device answering first turns the panel read-only. `ExitPlanMode` renders as an
 "Approve this plan?" choice — only Approve returns a decision and the plan text
 is echoed unchanged.
 
+Answering from a Flow atom: selecting the `User Question` atom binds the
+inspector to that question's start event (not to its answer) and shows the
+question text in Overview. While the question still has an open interaction
+request, Overview and Input both offer an answer box; typing text and choosing
+Send keys the answer to the displayed question, submits the request and closes
+the window. The box and the floating panel share the same interaction state and
+turn read-only once the request is closed or answered on another device. A
+historical question without a live request shows its content only. The atom
+binds the newest question start while its status still follows the last
+matching event, so an answered question remains complete.
+
 Overrides, inherited from the host process: `ASTRO_INTERACTION_SERVICE`
 (default `http://127.0.0.1:5678`), `ASTRO_INTERACTION_TIMEOUT_MS` (5000),
 `ASTRO_INTERACTION_POLL_MS` (100), `ASTRO_INTERACTION_SOURCE`,
