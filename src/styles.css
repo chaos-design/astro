@@ -8007,3 +8007,167 @@ pre,
   background: var(--status-running);
   animation: run-history-live-pulse 1.6s ease-in-out infinite;
 }
+
+/* Interaction fast path: the console renders the host's AskUserQuestion cards
+ * while the synchronous hook is still inside its 4.5 s window. The card floats
+ * over the canvas rather than taking a grid row: reflowing the workspace for a
+ * transient prompt would move the run the reader is looking at. */
+.interaction-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--line-bright);
+  border-radius: var(--radius-md);
+  background: var(--panel-raised);
+}
+
+.interaction-panel--floating {
+  position: absolute;
+  z-index: 30;
+  top: 56px;
+  right: 12px;
+  width: min(420px, calc(100% - 24px));
+  max-height: calc(100% - 130px);
+  margin-top: 0;
+  overflow: auto;
+  box-shadow: 0 18px 48px rgb(0 0 0 / 35%);
+}
+
+@media (max-width: 620px) {
+  .interaction-panel--floating {
+    right: 8px;
+    left: 8px;
+    width: auto;
+  }
+}
+
+.interaction-panel__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono, monospace);
+  font-size: var(--text-caption);
+  letter-spacing: 0.08em;
+  color: var(--muted-soft, var(--muted));
+}
+
+.interaction-panel__status {
+  margin-left: auto;
+  color: var(--teal);
+}
+
+.interaction-panel[data-status="timeout"] .interaction-panel__status,
+.interaction-panel[data-status="expired"] .interaction-panel__status {
+  color: var(--amber);
+}
+
+.interaction-panel__locked {
+  color: var(--muted-soft, var(--muted));
+}
+
+.interaction-panel__questions {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.interaction-panel__question h3 {
+  margin: 0 0 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.interaction-panel__prompt {
+  margin: 0 0 8px;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.interaction-panel__options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.interaction-panel__option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  color: inherit;
+  font-size: 0.8125rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.interaction-panel__option:hover:not(:disabled) {
+  background: var(--panel-hover);
+}
+
+.interaction-panel__option[aria-pressed="true"] {
+  border-color: var(--teal);
+  background: color-mix(in srgb, var(--teal) 12%, var(--panel));
+}
+
+.interaction-panel__option small {
+  color: var(--muted-soft, var(--muted));
+  font-size: 0.6875rem;
+}
+
+.interaction-panel__text {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.interaction-panel__text input {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  color: inherit;
+  font-size: 0.8125rem;
+}
+
+.interaction-panel__footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.interaction-panel__pending {
+  color: var(--muted-soft, var(--muted));
+  font-family: var(--font-mono, monospace);
+  font-size: var(--text-caption);
+}
+
+.interaction-panel__result ul {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.8125rem;
+}
+
+.interaction-panel__result li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.interaction-panel__result p {
+  margin: 0;
+  color: var(--muted-soft, var(--muted));
+  font-size: 0.8125rem;
+}

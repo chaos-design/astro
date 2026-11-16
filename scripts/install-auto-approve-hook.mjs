@@ -23,9 +23,19 @@ const HOOK_SCRIPT = resolve(
   import.meta.dirname,
   "auto-approve-question-hook.mjs",
 );
-const HOOK_MARKER = "auto-approve-question-hook.mjs";
+const DEFAULT_HOOK_MARKER = "auto-approve-question-hook.mjs";
 const DEFAULT_MATCHER = "AskUserQuestion|ExitPlanMode";
 const CLIENTS = new Set(["claude", "codebuddy", "zcode"]);
+
+function hookMarkerOf(options = {}) {
+  return options.hookMarker || DEFAULT_HOOK_MARKER;
+}
+
+function eventsOf(options = {}) {
+  return Array.isArray(options.events) && options.events.length
+    ? options.events
+    : [options.event || "PermissionRequest"];
+}
 
 export function getConfigPath(client, home = homedir()) {
   if (client === "zcode") {
@@ -37,16 +47,18 @@ export function getConfigPath(client, home = homedir()) {
   return join(home, ".claude", "settings.json");
 }
 
-function referencesHook(handler) {
+function referencesHook(handler, marker) {
   return (
-    String(handler?.command || "").includes(HOOK_MARKER) ||
+    String(handler?.command || "").includes(marker) ||
     (Array.isArray(handler?.args) &&
-      handler.args.some((arg) => String(arg).includes(HOOK_MARKER)))
+      handler.args.some((arg) => String(arg).includes(marker)))
   );
 }
 
-function isAlreadyInstalled(groups) {
-  return groups.some((group) => (group?.hooks || []).some(referencesHook));
+function isAlreadyInstalled(groups, marker) {
+  return groups.some((group) =>
+    (group?.hooks || []).some((handler) => referencesHook(handler, marker)),
+  );
 }
 
 /**
@@ -60,7 +72,8 @@ export function validateHookConfig(config, client, options = {}) {
     return { valid: false, errors: [`unsupported client: ${client}`] };
   }
   const errors = [];
-  const event = options.event || "PermissionRequest";
+  const marker = hookMarkerOf(options);
+  const label = options.label || "decision-hook";
   const hooks = config?.hooks;
   if (!hooks || typeof hooks !== "object" || Array.isArray(hooks)) {
     return { valid: false, errors: ["hooks must be an object"] };
@@ -75,27 +88,33 @@ export function validateHookConfig(config, client, options = {}) {
     );
     return { valid: false, errors };
   }
-  const groups = container[event];
-  if (!Array.isArray(groups)) {
-    errors.push(`${event} hook groups must be an array`);
-    return { valid: false, errors };
-  }
-  const own = groups.filter((group) =>
-    (group?.hooks || []).some(referencesHook),
-  );
-  if (!own.length) {
-    errors.push("decision-hook group is missing");
-  }
-  for (const group of own) {
-    const matcher = String(group?.matcher || "");
-    if (!matcher || matcher === "*") {
-      errors.push("matcher must be a name list, not empty or '*'");
+  for (const event of eventsOf(options)) {
+    const groups = container[event];
+    if (groups === undefined) {
+      errors.push(`${label} group is missing for ${event}`);
+      continue;
     }
-    for (const handler of group.hooks || []) {
-      const hasCommand = Boolean(String(handler?.command || "").trim());
-      const hasArgs = Array.isArray(handler?.args) && handler.args.length > 0;
-      if (!hasCommand && !hasArgs) {
-        errors.push("handler needs a command or args");
+    if (!Array.isArray(groups)) {
+      errors.push(`${event} hook groups must be an array`);
+      continue;
+    }
+    const own = groups.filter((group) =>
+      (group?.hooks || []).some((handler) => referencesHook(handler, marker)),
+    );
+    if (!own.length) {
+      errors.push(`${label} group is missing for ${event}`);
+    }
+    for (const group of own) {
+      const matcher = String(group?.matcher || "");
+      if (!matcher || matcher === "*") {
+        errors.push("matcher must be a name list, not empty or '*'");
+      }
+      for (const handler of group.hooks || []) {
+        const hasCommand = Boolean(String(handler?.command || "").trim());
+        const hasArgs = Array.isArray(handler?.args) && handler.args.length > 0;
+        if (!hasCommand && !hasArgs) {
+          errors.push("handler needs a command or args");
+        }
       }
     }
   }
@@ -110,16 +129,16 @@ export function removeHookConfig(config, client, options = {}) {
   const source = config && typeof config === "object" && !Array.isArray(config)
     ? config
     : {};
+  const marker = hookMarkerOf(options);
   const next = { ...source };
   const hooks = { ...(next.hooks || {}) };
-  const event = options.event || "PermissionRequest";
   let removed = 0;
   const strip = (groups) =>
     (Array.isArray(groups) ? groups : [])
       .map((group) => {
         const before = Array.isArray(group?.hooks) ? group.hooks : [];
         const kept = before.filter((handler) => {
-          if (referencesHook(handler)) {
+          if (referencesHook(handler, marker)) {
             removed += 1;
             return false;
           }
@@ -130,19 +149,23 @@ export function removeHookConfig(config, client, options = {}) {
       .filter((group) => group.hooks.length > 0);
   if (client === "zcode") {
     const events = { ...(hooks.events || {}) };
-    const kept = strip(events[event]);
-    if (kept.length) {
-      events[event] = kept;
-    } else {
-      delete events[event];
+    for (const event of eventsOf(options)) {
+      const kept = strip(events[event]);
+      if (kept.length) {
+        events[event] = kept;
+      } else {
+        delete events[event];
+      }
     }
     hooks.events = events;
   } else {
-    const kept = strip(hooks[event]);
-    if (kept.length) {
-      hooks[event] = kept;
-    } else {
-      delete hooks[event];
+    for (const event of eventsOf(options)) {
+      const kept = strip(hooks[event]);
+      if (kept.length) {
+        hooks[event] = kept;
+      } else {
+        delete hooks[event];
+      }
     }
   }
   next.hooks = hooks;
@@ -162,30 +185,36 @@ export function mergeHookConfig(config, client, options = {}) {
     ? config
     : {};
   const next = { ...source };
-  const event = options.event || "PermissionRequest";
   const matcher = options.matcher || DEFAULT_MATCHER;
   const hookPath = options.hookPath || HOOK_SCRIPT;
+  const marker = hookMarkerOf(options);
+  const hookArgs = Array.isArray(options.hookArgs)
+    ? options.hookArgs.map(String).filter(Boolean)
+    : [];
+  let added = false;
 
   if (client === "zcode") {
     const hooks = { ...(next.hooks || {}) };
     const events = { ...(hooks.events || {}) };
-    const groups = Array.isArray(events[event]) ? [...events[event]] : [];
-    const added = !isAlreadyInstalled(groups);
-    if (added) {
-      groups.push({
-        matcher,
-        hooks: [
-          {
-            type: "process",
-            command: "node",
-            args: [hookPath],
-            enabled: true,
-            timeoutMs: 5000,
-          },
-        ],
-      });
+    for (const event of eventsOf(options)) {
+      const groups = Array.isArray(events[event]) ? [...events[event]] : [];
+      if (!isAlreadyInstalled(groups, marker)) {
+        groups.push({
+          matcher,
+          hooks: [
+            {
+              type: "process",
+              command: "node",
+              args: [hookPath, ...hookArgs],
+              enabled: true,
+              timeoutMs: options.timeoutMs || 5000,
+            },
+          ],
+        });
+        added = true;
+      }
+      events[event] = groups;
     }
-    events[event] = groups;
     hooks.events = events;
     // ZCode ignores all hooks unless this flag is set at the user level.
     hooks.enabled = true;
@@ -194,21 +223,23 @@ export function mergeHookConfig(config, client, options = {}) {
   }
 
   const hooks = { ...(next.hooks || {}) };
-  const groups = Array.isArray(hooks[event]) ? [...hooks[event]] : [];
-  const added = !isAlreadyInstalled(groups);
-  if (added) {
-    groups.push({
-      matcher,
-      hooks: [
-        {
-          type: "command",
-          command: `node "${hookPath}"`,
-          timeout: 5,
-        },
-      ],
-    });
+  for (const event of eventsOf(options)) {
+    const groups = Array.isArray(hooks[event]) ? [...hooks[event]] : [];
+    if (!isAlreadyInstalled(groups, marker)) {
+      groups.push({
+        matcher,
+        hooks: [
+          {
+            type: "command",
+            command: [`node "${hookPath}"`, ...hookArgs].join(" "),
+            timeout: options.timeout || 5,
+          },
+        ],
+      });
+      added = true;
+    }
+    hooks[event] = groups;
   }
-  hooks[event] = groups;
   next.hooks = hooks;
   return { config: next, added };
 }

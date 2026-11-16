@@ -46,6 +46,7 @@ import {
   useEffect,
   useLayoutEffect,
   useMemo,
+  useReducer,
   useRef,
   startTransition,
   useState,
@@ -68,6 +69,7 @@ import {
 } from "./components/console-notices";
 import { PromptContent } from "./components/prompt-content";
 import { QuestionContent } from "./components/question-content";
+import { InteractionPanel } from "./components/interaction-panel";
 import { RepositoryLink } from "./components/repo-link";
 import { RuntimeCanvas } from "./components/runtime-canvas";
 import { SettingsDialog } from "./components/settings-dialog";
@@ -258,6 +260,24 @@ import {
   toggleAtomSelection,
 } from "./lib/atom-selection";
 import { isSameEventSequence } from "./lib/event-snapshot";
+import {
+  cancelInteraction,
+  consoleDeviceId,
+  sendInteractionEvent,
+  submitInteraction,
+  type InteractionEventFields,
+  type InteractionSendResult,
+} from "./lib/interaction-client";
+import {
+  initialInteractionState,
+  interactionReducer,
+  type InteractionDraft,
+} from "./lib/interaction-reducer";
+import type {
+  InteractionEvent,
+  InteractionRequest,
+  InteractionResult,
+} from "./lib/interaction-contract";
 import {
   collectLiveRunKeys,
   ensureExpandedRun,
@@ -5029,6 +5049,78 @@ export default function App() {
     },
     [],
   );
+  /*
+   * Interaction fast path (AskUserQuestion / ExitPlanMode). The host hook that
+   * asked the question is blocked for at most 4.5 s, so every click is applied
+   * optimistically and rolled back when the service rejects it. The service
+   * does not replay interactions on a reconnect: an open request is only
+   * meaningful inside that window, and the run log is the durable record.
+   */
+  const [interactions, dispatchInteraction] = useReducer(
+    interactionReducer,
+    initialInteractionState,
+  );
+  const interactionsRef = useRef(interactions);
+  interactionsRef.current = interactions;
+  // The newest unanswered request owns the card. Older ones cannot still be
+  // inside their window, and two cards would compete for the same click.
+  const activeInteraction = useMemo<InteractionDraft | null>(() => {
+    const open = Object.values(interactions.requests).filter(
+      (draft) => !draft.result,
+    );
+    return open.at(-1) ?? null;
+  }, [interactions]);
+  const reportInteractionResult = useCallback(
+    (result: InteractionSendResult) => {
+      if (result.ok || result.blocked) {
+        return;
+      }
+      pushNotice("error", "交互提交失败", result.error);
+    },
+    [pushNotice],
+  );
+  const handleInteractionEvent = useCallback(
+    (
+      action: "select" | "deselect" | "text" | "edit" | "skip",
+      requestId: string,
+      fields: InteractionEventFields,
+    ) => {
+      const draft = interactionsRef.current.requests[requestId];
+      if (!draft) {
+        return;
+      }
+      void sendInteractionEvent(
+        draft,
+        action,
+        fields,
+        dispatchInteraction,
+        { apiBase },
+      ).then(reportInteractionResult);
+    },
+    [apiBase, reportInteractionResult],
+  );
+  const handleInteractionSubmit = useCallback(
+    (requestId: string) => {
+      const draft = interactionsRef.current.requests[requestId];
+      if (!draft) {
+        return;
+      }
+      void submitInteraction(draft, dispatchInteraction, { apiBase }).then(
+        reportInteractionResult,
+      );
+    },
+    [apiBase, reportInteractionResult],
+  );
+  const handleInteractionCancel = useCallback(
+    (requestId: string) => {
+      const draft = interactionsRef.current.requests[requestId];
+      if (!draft) {
+        return;
+      }
+      void cancelInteraction(draft, { apiBase }).then(reportInteractionResult);
+    },
+    [apiBase, reportInteractionResult],
+  );
   const [connected, setConnected] = useState(false);
   /**
    * Whether the stream has ever reported `ready`. Until it has, "not
@@ -5661,6 +5753,7 @@ export default function App() {
     // sessions, the flows and the list are all still valid, so the reload ends
     // without touching a single event.
     source.addEventListener("reset-same", (message: MessageEvent<string>) => {
+      dispatchInteraction({ type: "reset" });
       const payload = JSON.parse(message.data) as {
         eventCount?: number;
         totalEventCount?: number;
@@ -5688,6 +5781,9 @@ export default function App() {
       });
     });
     source.addEventListener("reset", (message: MessageEvent<string>) => {
+      // A rebuilt stream has no interaction history; any card still mounted
+      // belongs to the previous connection.
+      dispatchInteraction({ type: "reset" });
       const payload = JSON.parse(message.data) as {
         events: TraceEvent[];
         git?: Record<string, { repo: string; branch: string }>;
@@ -5762,6 +5858,28 @@ export default function App() {
         setEventsLoaded(true);
         reloadingRef.current = false;
         setReloadingEvents(false);
+      });
+    });
+    // Interaction frames share the stream with traces. `open` carries one
+    // request, `update` one event, `close` the single result. The service
+    // never replays them, so a reconnect resets the set instead of pretending
+    // an old request is still answerable.
+    source.addEventListener("interaction.open", (message: MessageEvent<string>) => {
+      dispatchInteraction({
+        type: "open",
+        request: JSON.parse(message.data) as InteractionRequest,
+      });
+    });
+    source.addEventListener("interaction.update", (message: MessageEvent<string>) => {
+      dispatchInteraction({
+        type: "update",
+        event: JSON.parse(message.data) as InteractionEvent,
+      });
+    });
+    source.addEventListener("interaction.close", (message: MessageEvent<string>) => {
+      dispatchInteraction({
+        type: "close",
+        result: JSON.parse(message.data) as InteractionResult,
       });
     });
     source.onerror = () => {
@@ -7364,7 +7482,7 @@ export default function App() {
           )}
         </aside>
 
-        <section className="canvas-column grid min-h-0 min-w-0 grid-rows-[48px_minmax(0,1fr)_62px]">
+        <section className="canvas-column relative grid min-h-0 min-w-0 grid-rows-[48px_minmax(0,1fr)_62px]">
           <div className="canvas-toolbar flex min-w-0 items-center gap-2 border-b border-[var(--line)] px-2.5">
             <div className="toolbar-summary flex min-w-0 flex-1 flex-col">
               <span className="eyebrow">
@@ -7449,6 +7567,59 @@ export default function App() {
               ) : null}
             </div>
           </div>
+
+          {activeInteraction ? (
+            <InteractionPanel
+              className="interaction-panel--floating"
+              deviceId={consoleDeviceId}
+              lockedBy={activeInteraction.lockedBy}
+              onCancel={() =>
+                handleInteractionCancel(activeInteraction.request.requestId)
+              }
+              onDeselect={(question, label) =>
+                handleInteractionEvent(
+                  "deselect",
+                  activeInteraction.request.requestId,
+                  { question, optionLabel: label },
+                )
+              }
+              onEdit={(question, previous, next) =>
+                handleInteractionEvent(
+                  "edit",
+                  activeInteraction.request.requestId,
+                  { question, previous, next },
+                )
+              }
+              onSelect={(question, label) =>
+                handleInteractionEvent(
+                  "select",
+                  activeInteraction.request.requestId,
+                  { question, optionLabel: label },
+                )
+              }
+              onSkip={(question) =>
+                handleInteractionEvent(
+                  "skip",
+                  activeInteraction.request.requestId,
+                  { question },
+                )
+              }
+              onSubmit={() =>
+                handleInteractionSubmit(activeInteraction.request.requestId)
+              }
+              onText={(question, text) =>
+                handleInteractionEvent(
+                  "text",
+                  activeInteraction.request.requestId,
+                  { question, text },
+                )
+              }
+              pending={Boolean(activeInteraction.pending)}
+              request={activeInteraction.request}
+              result={activeInteraction.result}
+              selections={activeInteraction.selections}
+            />
+          ) : null}
 
           <div className="runtime-canvas-stack relative min-h-0 min-w-0 overflow-hidden">
             <div

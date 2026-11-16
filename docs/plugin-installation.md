@@ -299,6 +299,94 @@ dry-run by default; it strips only handlers whose command or args reference
 `auto-approve-question-hook.mjs`, keeps every unrelated hook group and key, and
 backs up the file before writing. No ASTRO data or runtime state needs cleanup.
 
+## Optional: answer user questions from the console
+
+The auto-approve hook answers *for* you. The interaction hook is the human fast
+path: the host asks its normal question, the ASTRO console renders it in a
+floating panel, you click (or type) an answer, and the answer travels back
+inside the host's short hook window so the agent continues without an app
+switch. It is a second, independent opt-in hook — the capture recorder stays
+read-only and is not modified.
+
+`scripts/interaction-hook.mjs` reads the same stdin JSON, registers the request
+at `POST /api/interactions`, then polls `<ASTRO_HOME>/interactions/<id>.json`.
+A `answered` result becomes `allow` with a full `updatedInput` (or
+`modifiedInput` on CodeBuddy) whose `answers` keys are the exact question texts.
+`cancelled`, a timeout or an unreachable service produce empty stdout and exit
+0, so the host's native prompt takes over. The hook never exits non-zero and
+never writes a second `PermissionRequest` row: the recorder already captures the
+same host event.
+
+Register it with the dry-run installer, review the printed settings, then add
+`--apply`:
+
+```bash
+pnpm install:interaction -- --client=claude             # preview only
+pnpm install:interaction -- --client=claude --apply     # save
+pnpm install:interaction -- --client=zcode --apply
+pnpm install:interaction -- --client=codebuddy --apply
+pnpm install:interaction -- --client=claude --remove --apply   # uninstall
+```
+
+The default event is `PermissionRequest`; add `--events=PreToolUse` (or
+`--events=PreToolUse,PermissionRequest`) when the host should also intercept
+`PreToolUse`. Only `PreToolUse` can carry `additionalContext` / `systemMessage`
+back to the model — `PermissionRequest` stdout must keep exactly
+`decision.behavior` + `decision.updatedInput` for ZCode's strict schema.
+`ExitPlanMode` renders as an “Approve this plan?” card: only Approve returns a
+decision, and the plan text is echoed without `answers`.
+
+Host notes:
+
+- The service must be running. The window is host-bound: a 5 s hook timeout
+  leaves about 4.5 s to answer (`ttlMs = timeout - 500`), then the native prompt
+  appears. Do not raise the host timeout just to answer questions.
+- CodeBuddy answers arrive in `modifiedInput`; the installer appends
+  `--input-field=modifiedInput` and `--source=workbuddy` automatically.
+- ZCode needs `hooks.enabled: true` and a new session; the installer sets the
+  flag and validates `hooks.events` before writing.
+- Claude Code: `/hooks` lists the group; the transcript shows the allowed
+  decision instead of a dialog.
+- Do not install the auto-approve hook and the interaction hook on the same
+  event: auto-approve returns `allow` immediately, the interaction hook still
+  waits out its window, and the panel is pointless. Pick one per event.
+- Only Claude Code, ZCode and CodeBuddy have a command-hook decision channel;
+  Codex, OpenCode, Pi and DeepSeek Harness keep their native permission mode.
+
+Environment overrides inherited from the host process (all optional):
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `ASTRO_INTERACTION_SERVICE` | `http://127.0.0.1:5678` | Local service origin |
+| `ASTRO_INTERACTION_TIMEOUT_MS` | `5000` | Host hook timeout; `ttlMs = timeout - 500` |
+| `ASTRO_INTERACTION_POLL_MS` | `100` | Result-file poll interval |
+| `ASTRO_INTERACTION_SOURCE` | derived from the client | Trace source id |
+| `ASTRO_INTERACTION_EVENTS` | `PermissionRequest` | Hook events the script answers |
+| `ASTRO_INTERACTION_TOOLS` | `AskUserQuestion,ExitPlanMode` | Tools it intercepts |
+| `ASTRO_INTERACTION_INPUT_FIELD` | `updatedInput` | `modifiedInput` on CodeBuddy |
+
+Verification:
+
+1. `node --test tests/interaction-hook.test.mjs` covers the window, both stdout
+   shapes, ExitPlanMode, the notification strings and the fail-open cases.
+2. `node --test tests/interaction-integration.test.mjs` runs the real service:
+   `Bash` is never intercepted, `Notification` returns no decision, a timeout
+   falls back, and a dead service still exits 0.
+3. In the host, trigger `AskUserQuestion`; the console panel should appear, the
+   answer should continue the agent, and `PostToolUse` should carry `answers`.
+   Let a second question expire and confirm the native prompt appears.
+4. In ASTRO, confirm the LOG shows one question row and one answer row, and a
+   `Notification` row records who answered (counts and device only).
+
+**Disable and remove**: run
+`pnpm install:interaction -- --client=<client> --remove --apply`. Removal is
+dry-run by default and strips only handlers that reference
+`interaction-hook.mjs`; the recorder group and the auto-approve group keep their
+place. Deleting the group by hand is equivalent.
+
+The full contract (five message shapes, the four `/api/interactions` routes and
+the three SSE frames) is in `docs/interaction-hooks-en.md`.
+
 ## Install and use each client
 
 ### Codex

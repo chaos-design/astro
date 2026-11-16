@@ -1,13 +1,14 @@
 # AskUserQuestion Interaction Hook Flow Design
 
-> **Status: planned / not implemented.** This document specifies the channel
-> model, timing, data structures, message formats and field constraints for a
-> future design where the ASTRO console or an external device handles an
-> `AskUserQuestion` interaction. The repository currently implements **only
-> auto-approval** (`scripts/auto-approve-question-hook.mjs`); the capture chain
-> stays read-only and the service has no approve/answer/reply endpoint. Nothing
-> here is a promise of current behavior. For working configuration, see
-> `docs/plugin-installation.md`.
+> **Status: implemented; real-host acceptance pending.** The interaction hook,
+> the `/api/interactions` service, the SSE `interaction.open` / `update` / `close`
+> frames, the console panel, `AgentNotification` and the installer all exist and
+> are covered by the automated tests in §10. **Not yet done** is the real Claude /
+> ZCode host acceptance (plan F3): this machine has no host binary to launch, so
+> `/hooks` visibility and `Allowed by PermissionRequest hook` / `hook.run.failed`
+> were not re-checked in a live session. For working configuration see
+> `docs/plugin-installation.md`; this document stays the contract source for the
+> channel, so change it before changing the implementation.
 
 ## 1. Diagram review
 
@@ -28,7 +29,7 @@ diagram is **incomplete**.
 | F | Root cause of the app switch not labelled | `POST /api/events` only writes TraceEvents; `/api/stream` is one-way; there is no reverse answer channel | §2.1, §6.3 |
 | G | No host coverage differences | Three configs (Claude / ZCode / CodeBuddy); Codex, OpenCode, Pi and DeepSeek Harness have no command-hook decision channel | §2.1, §9 |
 | H | No `answers` semantics | Keys are exact question text, values are option labels, multi-select is comma-joined; `ANSWER=all` and `ASTRO_AUTO_APPROVE_ANSWERS` override; injected by the host hook, not produced by the agent | §5.4, §6.2 |
-| I | No human-interaction loop | Only auto-approval is drawn; option clicks, text input, cancel, timeout, result return and Agent notification are absent | §3–§8 (all planned) |
+| I | No human-interaction loop | Closed: interaction hook registers → SSE `interaction.open` → console panel answers → `InteractionResult` → `answers` returned → `Notification` informs the Agent; real-host acceptance still pending (plan F3) | §3–§8 (implemented) |
 
 ## 2. Complete channel model
 
@@ -36,26 +37,30 @@ diagram is **incomplete**.
 flowchart TB
   H["Host hook event<br/>PreToolUse / PermissionRequest"] --> O["ASTRO recorder<br/>read-only, fail-open"]
   H --> D["Optional decision hook<br/>off by default, --apply registers"]
-  H -.->|planned| I["Interaction hook<br/>external UI handles input"]
+  H --> I["Interaction hook (opt-in)<br/>register request + poll result file"]
   O -->|"stdout: continue:true / empty (--quiet), exit 0"| J["JSONL → /api/stream SSE"]
-  J --> U["Console user.question preview<br/>questions / message / plan / answers"]
+  J --> U["ASTRO console<br/>user.question preview + interaction panel"]
   D -->|"allow + updatedInput(answers); empty stdout on error"| AGG["Host aggregation<br/>deny &gt; ask &gt; allow"]
-  I -.->|"InteractionResult (planned)"| AGG
+  I -->|"allow + updatedInput(answers) / empty stdout"| AGG
+  I -->|"interaction.open / update / close"| U
+  U -->|"InteractionEvent (select / text / cancel …)"| I
   AGG -->|allow| GO["Auto-approved, no app switch"]
   AGG -->|"no decision / timeout / explicit deny"| PROMPT["Native permission prompt"]
-  O -.->|"no approve/answer endpoint"| PROMPT
 ```
 
-### 2.1 Implemented vs planned
+### 2.1 Implemented vs unfinished
 
 - **Implemented**: read-only recorder contract; two stdout decision shapes,
   fail-open, `answers`, custom answer maps, installer/removal and ZCode config
   validation; console parsing of `questions` / `message` / `plan` / `answers`.
-- **Planned (this design)**: interaction hook, external UI, bidirectional answer
-  service, SSE interaction events, `InteractionEvent` / `InteractionResult` /
-  `AgentNotification` messages, and any new `/api/*` route. None exist today.
-- The service exposes only `GET /api/stream` (one-way) and `POST /api/events`
-  (TraceEvent writer). Neither can return an answer to the host.
+- **Implemented (new in this document)**: interaction hook, four
+  `/api/interactions` routes, three SSE interaction frames, console panel,
+  `InteractionEvent` / `InteractionResult` / `AgentNotification` contracts, the
+  `Notification` TraceEvent and `scripts/install-interaction-hook.mjs`.
+- **Unfinished**: real Claude / ZCode host acceptance (plan F3, §10).
+- The split between channels is unchanged: `POST /api/events` still only writes
+  TraceEvents; answers travel solely through
+  `POST /api/interactions/:id/close` and the result file.
 
 ## 3. Execution timing
 
@@ -66,18 +71,18 @@ Host fires `PreToolUse` / `PermissionRequest` → matching hooks run in parallel
 exits 0 → host aggregates `deny > ask > allow` → the tool runs and the recorder
 captures `PostToolUse`. `Notification` has **no decision control**.
 
-### 3.2 Human interaction (planned)
+### 3.2 Human interaction (implemented)
 
 ```mermaid
 sequenceDiagram
   participant Agent as Host Agent
   participant Hook as Interaction Hook
-  participant Bridge as Local interaction service (planned)
+  participant Bridge as Local interaction service
   participant UI as Console / external device
   participant Store as TraceStore / SSE
   Agent->>Hook: stdin: InteractionRequest (PreToolUse or PermissionRequest)
   Hook->>Bridge: register pending request (requestId, TTL, questions)
-  Hook->>Store: write PermissionRequest TraceEvent
+  Note over Hook,Store: the recorder writes the PermissionRequest TraceEvent; the hook never duplicates it
   Bridge->>UI: SSE interaction.open
   UI->>Bridge: InteractionEvent (select / text / edit / cancel / submit)
   Bridge->>Hook: aggregate into InteractionResult (answers)
@@ -91,15 +96,17 @@ sequenceDiagram
 ### 3.3 Timeout and fallback (critical)
 
 Hooks are **synchronous and blocking**. Human response time usually exceeds the
-5-second window, so a hook must never wait indefinitely. Pick exactly one:
+5-second window, so a hook must never wait indefinitely. The implementation
+takes the **fast path**:
 
-1. **Fast path (recommended)**: poll once within `min(ttlMs, timeout - 500ms)`.
-   On a hit, return `allow + updatedInput.answers`; on a miss, **empty stdout +
-   exit 0** so the native prompt appears. Record the real choice later via
-   `PostToolUse`.
-2. **Re-entry path**: return `deny` with `permissionDecisionReason`, letting the
-   agent ask again next turn. Costs a model turn; cap retries at 1 per
-   `requestId`.
+1. **Fast path (implemented)**: derive `ttlMs = timeout - 500` from
+   `ASTRO_INTERACTION_TIMEOUT_MS` (default 5000 ms) and poll the result file
+   inside that window. `answered` → `allow + updatedInput.answers`; `cancelled`
+   or a miss → **empty stdout + exit 0** so the native prompt appears. The real
+   choice is recorded later through `PostToolUse`.
+2. **Re-entry path (not implemented, kept as an alternative)**: return `deny`
+   with `permissionDecisionReason`, letting the agent ask again next turn. Costs
+   a model turn; cap retries at 1 per `requestId`.
 
 Never let the hook time out, `exit 2`, or return `continue:false`; all three
 break the fail-open boundary.
@@ -123,10 +130,13 @@ break the fail-open boundary.
 | Non-question tool | `Bash` / `Write` | — | — | Empty stdout, exit 0 | Matcher stays `AskUserQuestion|ExitPlanMode` |
 | Hook crash / bad output | Script error | — | — | Native prompt | Empty stdout + exit 0; stderr diagnostics only |
 
-## 5. Data structures (planned)
+## 5. Data structures (implemented: `plugin/interaction-contract.mjs`)
 
-These five shapes are **message contracts**, not existing TypeScript types.
-Field names follow the snake_case convention of `TraceEvent.payload`.
+These five shapes are **message contracts** with exactly one implementation:
+`plugin/interaction-contract.mjs`. The installed runtime copies only `plugin/`,
+`server/` and `dist/`, so the contract cannot live under `src/`;
+`src/lib/interaction-contract.ts` is the typed facade. Field names follow the
+snake_case convention of `TraceEvent.payload`.
 
 ### 5.1 QuestionDescriptor
 
@@ -265,28 +275,44 @@ and exit 0, diagnostics on stderr only. Never use `decision:"block"`,
 `systemMessage` and `permissionDecisionReason` are capped at 10,000 characters
 by the host.
 
-### 6.3 Interaction channel messages (planned)
+### 6.3 Interaction channel messages (implemented)
 
-`GET /api/stream` frames are `event: <name>\ndata: <JSON>\n\n`; today the names
-are only `reset` / `trace` / `ready` / `resume`. The design adds:
+`GET /api/stream` frames are `event: <name>\ndata: <JSON>\n\n`. Besides the
+existing `reset` / `trace` / `ready` / `resume`, the interaction channel adds
+three frames:
 
 ```
 event: interaction.open
 data: {"requestId":"irq-01J8Z...","questions":["..."],"expiresAt":"...","revision":1}
 
 event: interaction.update
-data: {"requestId":"irq-01J8Z...","eventId":"iev-...","seq":7,"action":"select"}
+data: {"requestId":"irq-01J8Z...","eventId":"iev-...","seq":7,"action":"select","deviceId":"console"}
 
 event: interaction.close
 data: {"requestId":"irq-01J8Z...","status":"answered","answeredBy":"console"}
 ```
 
+Write-side routes (in-memory record plus one atomic file for the synchronous
+hook to poll):
+
+| Route | Purpose | Idempotency / validation |
+| --- | --- | --- |
+| `POST /api/interactions` | Register a pending request; returns `requestId` / `expiresAt` / `ttlMs` | A repeated `requestId` returns 200 without resetting the timer |
+| `POST /api/interactions/:id/events` | Append an `InteractionEvent` | `seq` strictly increasing; a repeated `eventId` returns the stored outcome |
+| `POST /api/interactions/:id/close` | Close and produce an `InteractionResult` | First final wins; later closes return 200 without overwriting |
+| `GET /api/interactions/:id` | A late tab or reconnect reads `{request, events, result}` | Unknown id → 404 |
+
 Frames ≤ 8 KiB; `requestId` is idempotent; `interaction.close` fires exactly
-once; reconnect rebuilds from `reset` rather than replaying interaction history.
-`POST /api/events` accepts only TraceEvent structures (§6.4) and **must not** be
-used to carry answers back to the host: writing is one-way.
+once; `reset` / `reset-same` clears the console's pending panel (interactions
+are live-only and never replayed). `POST /api/events` accepts only TraceEvent
+structures (§6.4) and **must not** carry answers back to the host: answers
+travel solely through `close` and the result file.
 
 ### 6.4 TraceEvent projection
+
+The question row is written by the **recorder** for the same host hook event. The
+interaction hook only registers the request: both run in parallel, and a second
+`PermissionRequest` write put two identical question rows in the LOG.
 
 Interaction produces only existing canonical events; no new event names:
 
@@ -295,7 +321,14 @@ Interaction produces only existing canonical events; no new event names:
 | Question raised | `PreToolUse` / `PermissionRequest` | `tool_input.questions`, `tool_input.plan` | `user.question` |
 | Answer returned | `PostToolUse` | `tool_input.answers`, `tool_response.answers` | `user.answer` |
 | Cancel / denial | `PermissionDenied` | `reason`, `retry` | `user.question` (failure) |
-| Notification | `Notification` | `message`, `notification_type` | `user.question` |
+| Notification | `Notification` | `message`, `notification_type`, `notification_id`, `interaction_request_id`, `answered` | `user.question` |
+
+The service writes the `Notification` when an interaction closes
+(`buildInteractionNotification` in `server/interaction-store.mjs` plus
+`recordInteractionNotification` in `server/server.mjs`). It carries counts, the
+device and elapsed time, never an answer value; a credential-shaped `answeredBy`
+is replaced by the §10 recursive redaction (`sk-[redacted]`) before the row is
+written.
 
 Required `TraceEvent` fields are listed in `docs/event-protocol-en.md` §2.1
 (`schemaVersion: 2`, `source`, `sessionId`, `eventName`, `nativeEventName`,
@@ -322,6 +355,13 @@ configuration snapshotted at session start (open a new session); failures in
 `~/.zcode/cli/log/zcode-<date>.jsonl`.
 
 ## 8. Agent notification message design
+
+> **Implementation status:** `additionalContext` / `systemMessage` /
+> `permissionDecisionReason` are emitted by the interaction hook, and the `trace`
+> channel is written by the service as a `Notification` on close; `sse` and
+> `terminalSequence` are not wired. `PermissionRequest` stdout keeps only
+> `decision.behavior` / `decision.updatedInput` (ZCode's strict schema rejects
+> extra keys), so the model-context notification appears on `PreToolUse` only.
 
 ### 8.1 Four channels
 
@@ -388,7 +428,7 @@ permission outcome.
 | --- | --- |
 | Matcher | `AskUserQuestion|ExitPlanMode` only; never `*` or empty; ZCode uses exact name lists |
 | Aggregation | `deny > ask > allow`; explicit deny, plan-mode write bans and hard limits are not bypassable |
-| Default | Decision hook not installed until `--apply`; interaction hook is planned and must not default on |
+| Default | Decision hook not installed until `--apply`; the interaction hook is likewise off until `install-interaction-hook.mjs --apply`, registers `PermissionRequest` only, and `--events=PreToolUse,PermissionRequest` widens it |
 | Failure | Empty stdout + exit 0; stderr diagnostics only; never partial JSON |
 | Idempotency | `requestId` + `seq` + `final`; duplicate submits ignored; one `interaction.close` |
 | Sizes | ≤ 8 KiB per event; `answers` ≤ 4000 chars; notification strings ≤ 10,000 chars |
@@ -396,25 +436,33 @@ permission outcome.
 | Data | Raw `TraceEvent` immutable; `answers` display-only; redact before write |
 | Clients | Codex / OpenCode / Pi / DeepSeek Harness have no command-hook decision channel |
 
-## 10. Verification (design stage)
+## 10. Verification
 
-1. Every A–I item in §1 has a landing section in §2–§9; all planned items are
-   labelled.
-2. Validate §6.1 stdin fields and §5.4 `answers` keys against a real ZCode
-   `PermissionRequest(AskUserQuestion)` trace and `parseUserQuestionContent()`.
-3. Negative decisions: non-question tools, invalid JSON and missing `questions`
-   produce empty stdout + exit 0.
-4. Negative notifications: summary truncation, duplicate idempotency keys,
-   `Notification` events returning no decision.
-5. Post-implementation host check: Claude `/hooks` shows the group and the
-   transcript says `Allowed by PermissionRequest hook`; ZCode uses a new session
-   with no `hook.run.failed` in its log.
+Every executed check is a command:
+
+| Check | Command | Result |
+| --- | --- | --- |
+| Contracts and validation | `node --test tests/interaction-contract.test.ts` | 10/10 |
+| Hook window (fail-open, both stdout shapes, notification output) | `node --test tests/interaction-hook.test.mjs` | 12/12 |
+| Store: atomic writes, idempotency | `node --test tests/interaction-store.test.mjs` | 6/6 |
+| HTTP routes and the three SSE frames | `node --test tests/interaction-service.test.mjs` | 6/6 |
+| End-to-end negatives against the real service | `node --test tests/interaction-integration.test.mjs` | 6/6 |
+| Console reducer / panel model / panel source contract / client | `node --test tests/interaction-reducer.test.ts tests/interaction-panel-model.test.ts tests/interaction-panel-contract.test.ts tests/interaction-client.test.ts` | 11 + 8 + 5 + 7 |
+| Notification shape | `node --test tests/agent-notification.test.ts` | 5/5 |
+| Installer | `node --test tests/install-interaction-hook.test.mjs` | 6/6 |
+| Full regression | `pnpm test` / `pnpm typecheck` / `pnpm build` / `pnpm build:docs` | see the plan's progress log |
+
+Still not executed (plan F3): real Claude `/hooks` visibility, the transcript
+line `Allowed by PermissionRequest hook`, and a ZCode session with no
+`hook.run.failed`. On this machine `command -v claude` / `command -v zcode` /
+`command -v codebuddy` print nothing and only their config directories exist, so
+the item stays unchecked and the plan is not archived.
 
 ## 11. Implementation task breakdown
 
 The executable backlog lives in
 `plans/planing/03-ask-user-question-implementation-breakdown.md` (32 tasks,
-A1–F5, all pending). This section gives only the stage overview and dependency
+A1–F5; 31 done). This section gives only the stage overview and dependency
 order; each task's file paths, acceptance check and prerequisite are defined in
 that plan.
 
@@ -433,8 +481,10 @@ task touches at most 1–2 source files plus one test file and its acceptance
 check is one runnable assertion or one spawn command; vague "finish module"
 wording is not allowed.
 
-This document remains **planned / unimplemented**. Only after F5, and never
-before all 32 tasks are checked, may the status label change to "implemented".
+Status: 31 of 32 tasks are done (A–E, F1, F2, F4, F5). F3 — real-host acceptance —
+is blocked because this machine has no `claude` / `zcode` / `codebuddy` binary,
+so the plan stays in `plans/planing/` and is not archived. Do not write "host
+acceptance passed" into any document until F3 is done.
 
 ## 12. References
 

@@ -773,33 +773,55 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   host configuration and verification live in `docs/plugin-installation.md`
   ("Optional: auto-approve user questions").
 
-## AskUserQuestion Interaction Hook Design (planned)
+## AskUserQuestion Interaction Hook
 
-- `docs/interaction-hooks-{zh,en}.md` is a **design proposal, not an
-  implementation**. It covers the observation / decision / interaction channel
-  model, option clicks, free-text input, cancel and timeout, five message
-  contracts (`QuestionDescriptor`, `InteractionRequest`, `InteractionEvent`,
-  `InteractionResult`, `AgentNotification`), SSE frames, TraceEvent projection
-  and Agent notification channels. Every planned item is labelled.
-- The service still has no approve / answer / reply endpoint. `/api/stream` is
-  one-way (`reset` / `trace` / `ready` / `resume`) and `POST /api/events` only
-  writes TraceEvents; `interaction.*` SSE events and any bidirectional route do
-  not exist. Do not describe them as shipped.
-- A hook is synchronous and bounded by the 5 s / ZCode 5000 ms timeout, so the
-  human-interaction design must return empty stdout + exit 0 (fail-open) when
-  `ttlMs` expires; never block past the timeout, `exit 2` or emit
-  `continue: false`.
-- Notifications to the Agent use `hookSpecificOutput.additionalContext` for
-  model context and `systemMessage` for the human; `Notification` hooks have no
-  decision control. Never wrap a hook-provided answer as `UserPromptSubmit`.
+- `docs/interaction-hooks-{zh,en}.md` is the **contract source** for the
+  observation / decision / interaction channel model: five message shapes
+  (`QuestionDescriptor`, `InteractionRequest`, `InteractionEvent`,
+  `InteractionResult`, `AgentNotification`), the SSE frames, TraceEvent
+  projection and Agent notification channels. Change it before changing the
+  implementation.
+- One implementation lives in `plugin/interaction-contract.mjs` (+ `.d.mts`);
+  `src/lib/interaction-contract.ts` and `src/lib/agent-notification.ts` are typed
+  facades. The installed runtime copies only `plugin/`, `server/` and `dist/`,
+  so the contract must never move under `src/`.
+- Capture stays read-only. The interaction hook (`scripts/interaction-hook.mjs`)
+  is a separate opt-in hook: it registers at `POST /api/interactions`, polls
+  `<ASTRO_HOME>/interactions/<id>.json` inside `ttlMs = timeout - 500`, and
+  returns `allow` with `updatedInput.answers` only for an `answered` result.
+  Cancelled, timed out or unreachable service → empty stdout + exit 0.
+- It does **not** write a `PermissionRequest` TraceEvent: the recorder already
+  captures the same host event, and a second write produced two identical
+  question rows in the LOG. Records of the outcome are the recorder's
+  `PostToolUse` (`tool_input.answers`) plus one `Notification` written by the
+  service on close (counts and device only, never an answer value).
+- The service keeps interactions in memory and writes exactly one result file
+  per request (tmp + rename). Routes: `POST /api/interactions`,
+  `POST /api/interactions/:id/events`, `POST /api/interactions/:id/close`,
+  `GET /api/interactions/:id`; `/api/stream` adds `interaction.open` /
+  `update` / `close` and clears them on `reset` / `reset-same`. Writing an
+  answer back is the `close` route plus the result file — never
+  `POST /api/events`.
+- `Notification` hooks have no decision control; never wrap an answer as
+  `UserPromptSubmit`. `additionalContext` / `systemMessage` /
+  `permissionDecisionReason` are capped at 10,000 characters and only
+  `PreToolUse` can carry the first two (ZCode's strict stdout schema rejects
+  extra keys on `PermissionRequest`).
+- A hook is synchronous and bounded by the 5 s / ZCode 5000 ms timeout; never
+  block past it, `exit 2` or emit `continue: false`.
+- `scripts/install-interaction-hook.mjs` reuses the merge / validate / remove
+  helpers of `install-auto-approve-hook.mjs` (parameterized by `hookMarker`,
+  `events`, `hookArgs`). Dry-run by default, backup on `--apply`, `--remove`
+  keeps recorder and decision groups. Default event is `PermissionRequest`;
+  `--events=` widens it. Do not install both hooks on the same event:
+  auto-approve answers immediately and makes the panel pointless.
 - Catalog entries for these docs live in `docs/index.md` and
   `site/src/docs.ts` (`sectionBySlug` + `readingOrder`).
 - `plans/planing/03-ask-user-question-implementation-breakdown.md` is the
-  executable backlog: 32 tasks (A1–F5) with per-task file paths and acceptance
-  checks, covering contracts, the hook decision window, the interaction
-  service and SSE, console UI, notifications, and install/acceptance.
-  §11 of `docs/interaction-hooks-*.md` links to it. Keep the docs marked as
-  planned until task F5 removes that label.
+  executable backlog (32 tasks, A1–F5). 31 are ticked; F3 (real Claude / ZCode
+  host acceptance) is blocked because this machine has no host binary, so the
+  plan is not archived. Do not write "host acceptance passed" anywhere before
+  F3 is done.
 
 ## Validation
 

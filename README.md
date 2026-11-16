@@ -75,10 +75,12 @@ ASTRO provides a shared local layer:
   The service binds to loopback unless explicitly configured otherwise.
 
 ASTRO observes agent execution. It does not invoke models,
-schedule tools, approve permissions, or alter agent decisions. An optional,
-off-by-default decision hook (`scripts/auto-approve-question-hook.mjs`) can
-auto-approve user questions in the host; it is separate from the capture
-chain. See `docs/plugin-installation.md`.
+schedule tools, approve permissions, or alter agent decisions. Two optional,
+off-by-default host-side hooks sit outside the capture chain: the decision hook
+(`scripts/auto-approve-question-hook.mjs`) can auto-approve user questions, and
+the interaction hook (`scripts/interaction-hook.mjs`) relays an answer a human
+picked in the console back to the host inside its short hook window. See
+`docs/plugin-installation.md`.
 
 ## Features
 
@@ -86,6 +88,11 @@ chain. See `docs/plugin-installation.md`.
   auto-approves `AskUserQuestion` and plan approvals without an app switch.
   **Not installed by default**; the capture chain stays read-only and fail-open
   (see the boundary note above and `docs/plugin-installation.md`).
+- Optional interaction hook (`scripts/interaction-hook.mjs`): the host's
+  question appears in the console, and the answer travels back as
+  `tool_input.answers` while the host hook is still waiting. A timeout, a
+  cancel or an unreachable service falls back to the native prompt. Also
+  **off by default** (`pnpm install:interaction -- --apply`).
 - Versioned `schemaVersion: 2` event envelope across supported clients.
 - Source- and workspace-aware session identity to prevent native ID
   collisions.

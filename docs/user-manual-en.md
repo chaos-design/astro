@@ -678,6 +678,61 @@ the prompt returns; finally confirm the console still records
 The full English reference is "Optional: auto-approve user questions" in
 `docs/plugin-installation.md`.
 
+### 5.5.2 Answering user questions from the console (optional)
+
+The interaction hook hands `AskUserQuestion` and `ExitPlanMode` prompts to the
+console: a floating panel appears in the canvas, you click an option or type an
+answer, and the answer goes straight back to the host without switching to the
+agent app. It is a **separate opt-in hook** from auto-approval — the recorder
+stays read-only. Do not install both on the same event: auto-approve returns
+`allow` immediately, which makes the panel pointless.
+
+Install (preview first):
+
+```bash
+pnpm install:interaction -- --client=claude
+pnpm install:interaction -- --client=claude --apply
+```
+
+`--client` accepts `claude`, `codebuddy` and `zcode`. The default event is
+`PermissionRequest`; add `--events=PreToolUse` to intercept pre-tool prompts
+too. The installer shares its merge, validation and removal logic with the
+auto-approve installer: existing hooks and top-level keys are preserved, a
+second run is idempotent, the file is backed up before writing, and
+`--remove --apply` strips only this hook's handlers.
+
+Timing: the hook is synchronous and the host gives it 5 seconds, so a panel
+answer has about 4.5 seconds (`ttlMs = timeout - 500`). A timeout, a cancel or
+an unreachable service means empty stdout and exit 0, and the native prompt
+takes over. Answers are never replayed outside the window.
+
+Panel behavior: a single-select click selects; multi-select joins labels in the
+declared option order with commas; "Other" accepts free text; Submit requires
+every required question; Esc/cancel ends the request and falls back; another
+device answering first turns the panel read-only. `ExitPlanMode` renders as an
+"Approve this plan?" choice — only Approve returns a decision and the plan text
+is echoed unchanged.
+
+Overrides, inherited from the host process: `ASTRO_INTERACTION_SERVICE`
+(default `http://127.0.0.1:5678`), `ASTRO_INTERACTION_TIMEOUT_MS` (5000),
+`ASTRO_INTERACTION_POLL_MS` (100), `ASTRO_INTERACTION_SOURCE`,
+`ASTRO_INTERACTION_EVENTS` / `TOOLS` / `INPUT_FIELD`.
+
+Recording: the question row still comes from the recorder. On close the service
+writes one `Notification` event with counts, the device and elapsed time — never
+an answer value; the answers themselves are in the host's `PostToolUse`
+`tool_input.answers`, and the console's Answers section only parses them for
+display.
+
+**Verify**: `node --test tests/interaction-hook.test.mjs` and
+`node --test tests/interaction-integration.test.mjs`; then trigger a question in
+the host and confirm the panel appears, the agent continues after you answer,
+and the LOG holds one question row and one answer row.
+
+The full contract is in `docs/interaction-hooks-en.md`; the installer reference
+is "Optional: answer user questions from the console" in
+`docs/plugin-installation.md`.
+
 ### 5.6 Session Status
 
 - `active`: the latest turn has no completion, failure, or termination signal;
@@ -1107,6 +1162,7 @@ GET /api/search?q=<query>
 GET /api/search?q=<query>&source=codex&session=<sessionId>
 GET /api/stream
 GET /api/demo-events
+GET /api/interactions/<requestId>    pending interaction {request, events, result}
 ```
 
 The server search scans nested fields. The current UI LOG search filters only
@@ -1124,6 +1180,19 @@ malformed one 500. `/api/health` reports the active cross-origin allowlist as
 `corsOrigins`. Both support the deployed preview page: it targets
 `http://127.0.0.1:5678` by default, and the allowlist is described in
 section 4.3.
+
+Interaction channel (used by the optional hook, see 5.5.2):
+
+```text
+POST /api/interactions                      register a pending request
+POST /api/interactions/<requestId>/events   append an answer event (seq increases)
+POST /api/interactions/<requestId>/close    close and produce the result
+GET  /api/interactions/<requestId>          late tab reads request and result
+```
+
+`/api/stream` also emits `interaction.open` / `interaction.update` /
+`interaction.close`. Interactions live in memory plus a result file and are not
+replayed after `reset`.
 
 ### 13.5 Service management
 

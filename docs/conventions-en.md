@@ -428,11 +428,13 @@
   3. `AGENTS.md` — the invariants an agent executes against;
   4. `docs/index.md` and `site/src/docs.ts` — catalog and reading order.
 - Docs describe current behavior. Planned work is marked explicitly.
-- The optional auto-approve decision hook is documented in
-  "Optional: auto-approve user questions" in `docs/plugin-installation.md`.
-  The observe-only boundary in `AGENTS.md`, the user manuals and the README
-  must also state that it is a separate, off-by-default component and that the
-  capture chain never participates in permission decisions.
+- The optional hooks are documented in `docs/plugin-installation.md`:
+  auto-approval under "Optional: auto-approve user questions" and console
+  answering under "Optional: answer user questions from the console". The
+  observe-only boundary in `AGENTS.md`, the user manuals and the README must
+  also state that each hook is a separate, off-by-default component, that the
+  capture chain never participates in permission decisions, and that the two
+  hooks must not be installed on the same event.
 - Quote interface copy as it appears on screen; do not invent translations for
   key names.
 

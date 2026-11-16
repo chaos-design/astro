@@ -1,10 +1,12 @@
 # AskUserQuestion 交互 Hook 执行流程设计
 
-> **状态：规划项 / 未实现。** 本文描述「由 ASTRO 控制台或外部设备承接
-> `AskUserQuestion` 人工交互」时应当遵守的通道模型、时序、数据结构、消息格式与
-> 字段约束。当前仓库**只实现了自动同意**（`scripts/auto-approve-question-hook.mjs`），
-> 采集链路仍是纯观测；服务端没有 approve / answer / reply 接口。本文不作为现有
-> 能力的承诺，配置与验证以 `docs/plugin-installation.md` 为准。
+> **状态：已实现，宿主实测待完成。** 交互 Hook、`/api/interactions` 服务、SSE
+> `interaction.open` / `update` / `close` 三帧、控制台交互面板、AgentNotification 与
+> 安装器均已落地，自动化用例见 §10。**尚未完成**的是 Claude / ZCode 真实宿主验收
+> （计划 F3）：本机没有可启动的宿主二进制，`/hooks` 可见性与 `Allowed by
+> PermissionRequest hook` / `hook.run.failed` 未在真实会话里复核。配置与验证以
+> `docs/plugin-installation.md` 为准；本文仍是这些通道的契约来源，字段变化必须先
+> 改这里再改实现。
 
 ## 1. 图核对结论
 
@@ -23,7 +25,7 @@
 | F | 未标注「必须切回 App」的根因 | `/api/events` 只写入 TraceEvent，`/api/stream` 只单向推送，服务端没有反向应答通道 | §2.1、§6.3 |
 | G | 缺宿主覆盖差异 | Claude / ZCode / CodeBuddy 三套配置；Codex、OpenCode、Pi、DeepSeek Harness 无命令 Hook 决策通道 | §2.1、§9 |
 | H | 缺 `answers` 语义 | 键为问题原文、值为选项 label，多选逗号连接；`ANSWER=all` 与 `ASTRO_AUTO_APPROVE_ANSWERS` 可覆盖；由宿主 Hook 注入，不是 Agent 事实 | §5.4、§6.2 |
-| I | 完全没有人工交互闭环 | 原图只有「自动批准」，没有选项点击 / 文本输入 / 取消 / 超时 → 回传 → 通知 Agent 的通路 | §3–§8（全部为规划项） |
+| I | 完全没有人工交互闭环 | 已补齐：交互 Hook 注册 → SSE `interaction.open` → 控制台面板作答 → `InteractionResult` → `answers` 回传 → `Notification` 通知 Agent；真实宿主实测仍待完成（计划 F3） | §3–§8（已实现） |
 
 ## 2. 完整通道模型
 
@@ -31,26 +33,28 @@
 flowchart TB
   H["宿主 Hook 事件<br/>PreToolUse / PermissionRequest"] --> O["ASTRO 观测 recorder<br/>只读、fail-open"]
   H --> D["可选决策 Hook<br/>默认关闭，--apply 注册"]
-  H -.->|规划项| I["交互 Hook<br/>外部界面承接人工输入"]
-  O -->|"stdout: continue:true / 空（--quiet），exit 0"| J["JSONL → /api/stream SSE<br/>"]
-  J --> U["ASTRO 控制台 user.question 预览<br/>questions / message / plan / answers"]
+  H --> I["交互 Hook（可选安装）<br/>注册请求 + 轮询结果文件"]
+  O -->|"stdout: continue:true / 空（--quiet），exit 0"| J["JSONL → /api/stream SSE"]
+  J --> U["ASTRO 控制台<br/>user.question 预览 + 交互面板"]
   D -->|"allow + updatedInput(answers)；异常时空 stdout"| AGG["宿主聚合<br/>deny &gt; ask &gt; allow"]
-  I -.->|"InteractionResult（规划项）"| AGG
+  I -->|"allow + updatedInput(answers) / 空 stdout"| AGG
+  I -->|"interaction.open / update / close"| U
+  U -->|"InteractionEvent（select / text / cancel …）"| I
   AGG -->|"allow"| GO["自动批准，无需切回 App"]
   AGG -->|"无决策 / 超时 / 显式 deny"| PROMPT["宿主原生权限弹窗"]
-  O -.->|"无 approve/answer 接口"| PROMPT
 ```
 
-### 2.1 已实现与规划项的边界
+### 2.1 已实现与未完成项的边界
 
 - **已实现**：观测 recorder 的只读契约；可选决策 Hook 的两种 stdout 决策、fail-open、
   `answers` 代答、自定义映射、安装/卸载与 ZCode 配置校验；控制台对
   `questions` / `message` / `plan` / `answers` 的解析与预览。
-- **规划项（本文设计）**：交互 Hook、外部界面、双向应答服务、SSE 交互事件、
-  `InteractionEvent` / `InteractionResult` / `AgentNotification` 消息、新的 `/api/*` 路由。
-  这些在当前仓库**都不存在**，不得写成已实现。
-- 服务端目前只有 `GET /api/stream`（单向推送）与 `POST /api/events`（写入
-  TraceEvent）；两者都不具备把答复送回宿主的能力。
+- **已实现（本文新增）**：交互 Hook、`/api/interactions` 四个路由、SSE 交互三帧、
+  控制台交互面板、`InteractionEvent` / `InteractionResult` / `AgentNotification`
+  契约、`Notification` TraceEvent 与安装器 `scripts/install-interaction-hook.mjs`。
+- **未完成**：真实 Claude / ZCode 宿主的端到端验收（计划 F3，见 §10）。
+- 交互通道与观测通道分工不变：`POST /api/events` 仍只写 TraceEvent，答案回传只走
+  `POST /api/interactions/:id/close` 与结果文件，不把 `POST /api/events` 当应答通道。
 
 ## 3. 执行时序
 
@@ -61,18 +65,18 @@ ZCode `timeoutMs: 5000`）→ Hook 读 stdin、写 stdout、exit 0 → 宿主按
 `deny > ask > allow` 聚合 → 允许则工具继续执行，`PostToolUse` 再由 recorder 落盘。
 `Notification` 事件**没有决策控制**，只能做转发或提示。
 
-### 3.2 人工交互时序（规划项）
+### 3.2 人工交互时序（已实现）
 
 ```mermaid
 sequenceDiagram
   participant Agent as 宿主 Agent
   participant Hook as 交互 Hook
-  participant Bridge as 本地交互服务（规划）
+  participant Bridge as 本地交互服务
   participant UI as 控制台 / 外部设备
   participant Store as TraceStore / SSE
   Agent->>Hook: stdin: InteractionRequest（PreToolUse 或 PermissionRequest）
   Hook->>Bridge: 注册待答请求（requestId, TTL, questions）
-  Hook->>Store: 写入 PermissionRequest TraceEvent
+  Note over Hook,Store: PermissionRequest TraceEvent 由 recorder 写入，Hook 不重复写
   Bridge->>UI: SSE 广播 interaction.open
   UI->>Bridge: InteractionEvent（select / text / edit / cancel / submit）
   Bridge->>Hook: 聚合为 InteractionResult（answers）
@@ -85,14 +89,16 @@ sequenceDiagram
 
 ### 3.3 超时与回退（关键约束）
 
-Hook 是**同步阻塞**的：人工等待时间通常远大于 5 秒，因此设计上不允许让 Hook 长时间
-等待界面输入。可行策略只有两种，且必须二选一：
+Hook 是**同步阻塞**的：人工等待时间通常远大于 5 秒，因此不允许让 Hook 长时间等待
+界面输入。实现取**快速路径**：
 
-1. **快速路径（推荐）**：Hook 在 `min(ttlMs, timeout - 500ms)` 内轮询一次结果；
-   命中则 `allow + updatedInput.answers`，未命中则**空 stdout + exit 0** 回退到宿主
-   原生弹窗。随后通过 `PostToolUse` 把用户的真实选择记录进 trace。
-2. **拒绝重入路径**：Hook 返回 `deny` 并附 `permissionDecisionReason`，让 Agent 在下一轮
-   重新发起提问；代价是多一轮模型请求，且需防止无限循环（同一 `requestId` 最多 1 次）。
+1. **快速路径（已实现）**：Hook 以 `ASTRO_INTERACTION_TIMEOUT_MS`（默认 5000 ms）
+   推导 `ttlMs = timeout - 500`，在 TTL 内轮询结果文件；命中 `answered` 则
+   `allow + updatedInput.answers`，命中 `cancelled` 或超时则**空 stdout + exit 0**
+   回退到宿主原生弹窗。随后通过 `PostToolUse` 把用户的真实选择记录进 trace。
+2. **拒绝重入路径（未实现，保留为备选）**：Hook 返回 `deny` 并附
+   `permissionDecisionReason`，让 Agent 在下一轮重新提问；代价是多一轮模型请求，
+   且需防止无限循环（同一 `requestId` 最多 1 次）。
 
 任何情况下不得让 Hook 超时、不得 `exit 2`、不得返回 `continue:false`：这些都会破坏
 「采集失败放行」边界。
@@ -116,9 +122,11 @@ Hook 是**同步阻塞**的：人工等待时间通常远大于 5 秒，因此�
 | 非提问工具 | `Bash` / `Write` 等 | — | — | Hook 空 stdout、exit 0 | matcher 只含 `AskUserQuestion|ExitPlanMode` |
 | Hook 崩溃 / 非法输出 | 脚本异常 | — | — | 回退原生弹窗 | 空 stdout + exit 0，stderr 仅诊断 |
 
-## 5. 数据结构（规划项）
+## 5. 数据结构（已实现：`plugin/interaction-contract.mjs`）
 
-以下 5 个结构是**消息契约**，不是仓库现有 TypeScript 类型；字段名与
+以下 5 个结构是**消息契约**，只有一份实现：`plugin/interaction-contract.mjs`
+（安装运行时只复制 `plugin/`、`server/`、`dist/`，所以契约不能放在 `src/` 里）。
+`src/lib/interaction-contract.ts` 是它的类型门面，字段名与
 `TraceEvent.payload` 的 snake_case 习惯保持一致。
 
 ### 5.1 QuestionDescriptor
@@ -260,28 +268,41 @@ ZCode 同时提供 camelCase 与 snake_case 别名。
 - `additionalContext` / `systemMessage` / `permissionDecisionReason` 字符串上限
   10,000 字符（宿主侧限制）。
 
-### 6.3 交互通道消息（规划项）
+### 6.3 交互通道消息（已实现）
 
-当前 `GET /api/stream` 的 SSE 帧为 `event: <name>\ndata: <JSON>\n\n`，
-事件名只有 `reset` / `trace` / `ready` / `resume`；**没有**交互事件。设计新增：
+`GET /api/stream` 的 SSE 帧为 `event: <name>\ndata: <JSON>\n\n`。除原有的
+`reset` / `trace` / `ready` / `resume` 外，交互通道新增三帧：
 
 ```
 event: interaction.open
 data: {"requestId":"irq-01J8Z...","questions":["..."],"expiresAt":"...","revision":1}
 
 event: interaction.update
-data: {"requestId":"irq-01J8Z...","eventId":"iev-...","seq":7,"action":"select"}
+data: {"requestId":"irq-01J8Z...","eventId":"iev-...","seq":7,"action":"select","deviceId":"console"}
 
 event: interaction.close
 data: {"requestId":"irq-01J8Z...","status":"answered","answeredBy":"console"}
 ```
 
-约束：帧体 ≤ 8 KiB；`requestId` 必须幂等；`interaction.close` 必须且只能发一次；
-连接断开后靠 `reset` 快照重建，不补播历史交互事件。
-`POST /api/events` 只接受 TraceEvent 结构（见 §6.4），**不得**用它在宿主与界面之间
-传答案：写入是单向落盘，不产生宿主应答。
+写侧路由（服务端内存记录 + 一次原子写，供同步 Hook 轮询）：
+
+| 路由 | 作用 | 幂等 / 校验 |
+| --- | --- | --- |
+| `POST /api/interactions` | 注册待答请求，返回 `requestId` / `expiresAt` / `ttlMs` | 同 `requestId` 重复注册返回 200 且不重置计时 |
+| `POST /api/interactions/:id/events` | 追加 `InteractionEvent` | `seq` 严格递增；同 `eventId` 重放返回已存结果 |
+| `POST /api/interactions/:id/close` | 关闭请求并生成 `InteractionResult` | 首个 final 生效，之后 200 但不覆盖 |
+| `GET /api/interactions/:id` | 晚到的页面或重连读取 `{request, events, result}` | 未知 id 404 |
+
+约束：帧体 ≤ 8 KiB；`requestId` 是幂等键；`interaction.close` 必须且只能发一次；
+`reset` / `reset-same` 会清空控制台的待答面板（交互只在实时流里有效，不补播历史）。
+`POST /api/events` 仍只接受 TraceEvent（见 §6.4），**不得**用它在宿主与界面之间
+传答案：答案只走 `close` 与结果文件。
 
 ### 6.4 TraceEvent 投影
+
+提问发起行由 **recorder** 写入（宿主为 `PermissionRequest` 触发的同一个 Hook 事件）；
+交互 Hook 只注册请求，不再写第二条 `PermissionRequest`——两者并行执行，重复写会让
+LOG 出现两行相同的提问。
 
 交互过程只产生既有规范事件，不新增事件名：
 
@@ -290,7 +311,12 @@ data: {"requestId":"irq-01J8Z...","status":"answered","answeredBy":"console"}
 | 提问发起 | `PreToolUse` / `PermissionRequest` | `tool_input.questions`、`tool_input.plan` | `user.question` |
 | 答案回传 | `PostToolUse` | `tool_input.answers`、`tool_response.answers` | `user.answer` |
 | 取消 / 拒绝 | `PermissionDenied` | `reason`、`retry` | `user.question`（失败态） |
-| 通知 | `Notification` | `message`、`notification_type` | `user.question` |
+| 通知 | `Notification` | `message`、`notification_type`、`notification_id`、`interaction_request_id`、`answered` | `user.question` |
+
+`Notification` 由服务在关闭交互时写入（`server/interaction-store.mjs` 的
+`buildInteractionNotification` + `server/server.mjs` 的
+`recordInteractionNotification`），只写数量、设备与耗时，从不写答案值；
+`answeredBy` 若像凭据会在写入前被 §10 的递归脱敏替换为 `sk-[redacted]` 形式。
 
 `TraceEvent` 必填字段见 `docs/event-protocol-zh.md` §2.1（`schemaVersion: 2`、
 `source`、`sessionId`、`eventName`、`nativeEventName`、`payload`、`locator` 等）。
@@ -315,6 +341,12 @@ ZCode 额外约束：用户级 `hooks.enabled:true`、项目级配置被忽略�
 快照（改配置后必须新开会话）、失败查 `~/.zcode/cli/log/zcode-<date>.jsonl`。
 
 ## 8. 向 Agent 发送通知的消息设计规范
+
+> **实现状态：** `additionalContext` / `systemMessage` / `permissionDecisionReason`
+> 已由交互 Hook 输出，`trace` 通道由服务在关闭时写入 `Notification`；`sse` 与
+> `terminalSequence` 仍未接入。`PermissionRequest` 的 stdout 只保留
+> `decision.behavior` / `decision.updatedInput`（ZCode 的严格 schema 会拒绝多余键），
+> 因此模型上下文通知只在 `PreToolUse` 上出现。
 
 ### 8.1 四条通道与适用语义
 
@@ -377,7 +409,7 @@ ZCode 额外约束：用户级 `hooks.enabled:true`、项目级配置被忽略�
 | --- | --- |
 | matcher | 仅 `AskUserQuestion|ExitPlanMode`，禁止 `*` 或空；ZCode 用精确名列表 |
 | 聚合 | `deny > ask > allow`；显式 deny、计划模式写禁、硬工具限制不可被 `allow` 绕过 |
-| 默认状态 | 决策 Hook 默认不安装，`--apply` 才注册；交互 Hook 属规划项，不得默认启用 |
+| 默认状态 | 决策 Hook 默认不安装，`--apply` 才注册；交互 Hook 同样默认不安装，`install-interaction-hook.mjs --apply` 才注册，默认只挂 `PermissionRequest`，`--events=PreToolUse,PermissionRequest` 可扩展 |
 | 失败语义 | 空 stdout + exit 0；stderr 仅诊断；不写部分 JSON |
 | 幂等 | `requestId` + `seq` + `final`；重复提交忽略；`interaction.close` 只发一次 |
 | 长度 | 单事件 ≤ 8 KiB；`answers` ≤ 4000 字符；通知字符串 ≤ 10,000 字符 |
@@ -385,15 +417,26 @@ ZCode 额外约束：用户级 `hooks.enabled:true`、项目级配置被忽略�
 | 数据 | 原始 `TraceEvent` 不可变；`answers` 只做展示解析；递归脱敏后才落盘 |
 | 客户端 | Codex / OpenCode / Pi / DeepSeek Harness 无命令 Hook 决策通道，走宿主原生权限模式 |
 
-## 10. 验证方式（设计阶段）
+## 10. 验证方式
 
-1. 文档自洽：§1 的 A–I 每项在 §2–§9 有对应落点；所有规划项显式标注。
-2. 载荷对齐：用真实 ZCode `PermissionRequest(AskUserQuestion)` 轨迹校验 §6.1 的
-   stdin 字段、§5.4 的 `answers` 键与 `parseUserQuestionContent()` 输出一致。
-3. 决策负例：非提问工具、非法 JSON、缺 `questions` 均产生空 stdout + exit 0。
-4. 通知负例：`summary` 截断、幂等键重复、`Notification` 事件不返回决策。
-5. 宿主集成（实现后）：Claude `/hooks` 可见、transcript 出现
-   `Allowed by PermissionRequest hook`；ZCode 新会话且日志无 `hook.run.failed`。
+已执行（命令即验收点）：
+
+| 检查 | 命令 | 结果 |
+| --- | --- | --- |
+| 契约与校验 | `node --test tests/interaction-contract.test.ts` | 10/10 |
+| Hook 同步窗口（含 fail-open、两种 stdout 形状、通知输出） | `node --test tests/interaction-hook.test.mjs` | 12/12 |
+| 服务内存记录 / 原子写 / 幂等 | `node --test tests/interaction-store.test.mjs` | 6/6 |
+| HTTP 路由与 SSE 三帧 | `node --test tests/interaction-service.test.mjs` | 6/6 |
+| 端到端负例（真实服务） | `node --test tests/interaction-integration.test.mjs` | 6/6 |
+| 控制台 reducer / 面板模型 / 面板源码契约 / 客户端 | `node --test tests/interaction-reducer.test.ts tests/interaction-panel-model.test.ts tests/interaction-panel-contract.test.ts tests/interaction-client.test.ts` | 11 + 8 + 5 + 7 |
+| 通知结构 | `node --test tests/agent-notification.test.ts` | 5/5 |
+| 安装器 | `node --test tests/install-interaction-hook.test.mjs` | 6/6 |
+| 全量回归 | `pnpm test` / `pnpm typecheck` / `pnpm build` / `pnpm build:docs` | 见计划进度日志 |
+
+仍未执行（计划 F3）：真实 Claude `/hooks` 可见性、transcript 出现
+`Allowed by PermissionRequest hook`、ZCode 新会话日志无 `hook.run.failed`。
+本机 `command -v claude` / `command -v zcode` / `command -v codebuddy` 均无输出，
+只有配置目录，无法启动宿主，因此该项保持未勾选，计划不归档。
 
 ## 11. 实施任务拆解
 
@@ -416,8 +459,10 @@ A1–F5，待执行状态）。本节只给出阶段总览与依赖，每条任�
 加 1 个测试文件，验收点是一条可运行断言或一个 spawn 命令；不含「完成某模块」这类
 无法判定的描述。
 
-实施开始前请注意：本文仍是**规划项 / 未实现**。只有 F5 完成后才可以把状态标注
-改为「已实现」，且不得先于 32 条任务全部勾选。
+实施状态：32 条任务中 31 条已勾选（A–E、F1、F2、F4、F5）；F3 的真实宿主验收
+因本机没有 `claude` / `zcode` / `codebuddy` 二进制而阻塞，保持未勾选，计划因此留在
+`plans/planing/`、尚未归档。除 F3 外，本文的通道、消息与字段约束均已有实现与测试
+对应；F3 完成前不要把「宿主实测通过」写进任何文档。
 
 ## 12. 参考
 

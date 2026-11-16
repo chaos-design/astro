@@ -110,6 +110,13 @@ Rate-limited `StopFailure` events and waiting notifications retain their
 native semantics so the UI can show a waiting state. Other unknown names
 survive normalization and render with Unknown semantics.
 
+When an interaction hook request closes, the service writes one `Notification`:
+`payload` carries `notification_type` (`answer_applied` / `answer_cancelled` /
+`interaction_timeout` / `fallback_prompt`), `notification_id`,
+`interaction_request_id` and an `answered` count. It describes the outcome and
+the device, never an answer value, and passes through the §10 recursive
+redaction before it is written.
+
 The projection layer maps `PermissionRequest`, `PermissionDenied`,
 `Elicitation`, `ElicitationResult`, and `Notification` to the
 `user.question` display key. Generic tool lifecycles named
@@ -139,8 +146,9 @@ Auto-approval introduces no new canonical event name, so the
 
 The full interaction-hook flow (option clicks, free-text input, cancel, timeout
 and Agent notification), message formats and field constraints are specified in
-`docs/interaction-hooks-en.md` as a **planned, unimplemented design**. This
-section remains the only description of the shipped payload shapes.
+`docs/interaction-hooks-en.md`. It reuses the same `answers` payload rule:
+`tool_input.answers` is still injected by the host hook, not a new fact produced
+by the console.
 
 ### 4.1 Error and Exception Events
 
@@ -441,6 +449,15 @@ are answered with `reset-same` (a few dozen bytes), so the page transfers
 nothing and parses nothing; a changed history misses the key and gets the
 regular `reset` plus batched `trace` frames. The key only answers "is this the
 same history" and takes no part in event deduplication.
+
+The interaction channel (the optional interaction hook) reuses the same stream:
+it adds `interaction.open` (`InteractionRequest`), `interaction.update`
+(`InteractionEvent`) and `interaction.close` (`InteractionResult`). Interactions
+are live-only and are not replayed after `reset` / `reset-same`; the write side
+is `POST /api/interactions`, `POST /api/interactions/<id>/events`,
+`POST /api/interactions/<id>/close` and `GET /api/interactions/<id>` — see
+`docs/interaction-hooks-en.md` §5–§6. `POST /api/events` still only writes
+TraceEvents and is not the answer channel.
 
 The server advertises `retry: 1000`. A plain reconnect receives another
 snapshot before live increments, so follow-up turns missed during disconnection

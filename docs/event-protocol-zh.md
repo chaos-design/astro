@@ -111,6 +111,11 @@ ASTRO 事件协议把不同编码智能体的生命周期、消息、工具和�
 限流类 `StopFailure` 和等待类通知会保留原始语义，使界面可显示等待态。未识别
 事件按原名称保留，前端以 Unknown 语义显示。
 
+交互 Hook 关闭请求时，服务额外写一条 `Notification`：`payload` 含
+`notification_type`（`answer_applied` / `answer_cancelled` / `interaction_timeout` /
+`fallback_prompt`）、`notification_id`、`interaction_request_id` 与 `answered`
+计数，只描述结果与设备，不含答案值；写入前同样经过 §10 递归脱敏。
+
 投影层将 `PermissionRequest`、`PermissionDenied`、`Elicitation`、
 `ElicitationResult` 和 `Notification` 映射为 `user.question` 显示键。通用工具
 生命周期中的 `AskUserQuestion`、`request_user_input` 或 `UserQuestion` 也映射到
@@ -133,8 +138,8 @@ ASTRO 事件协议把不同编码智能体的生命周期、消息、工具和�
 `PermissionRequest` / `PostToolUse` 的配对关系与等待态口径保持不变。
 
 交互 Hook（选项点击、文本输入、取消、超时、通知 Agent）的完整流程、消息格式与
-字段约束见 `docs/interaction-hooks-zh.md`，**属规划项，当前未实现**；本节描述的
-仍是唯一已实现的载荷口径。
+字段约束见 `docs/interaction-hooks-zh.md`；它与自动同意共用同一份 `answers` 载荷
+口径：`tool_input.answers` 仍由宿主 Hook 注入，不是在控制台里新增的事实字段。
 
 ### 4.1 错误与异常事件
 
@@ -422,6 +427,14 @@ max(已记录跨度, 当前时间 - 开始时间)
 续传游标、改为按当前窗口请求快照，并带上自己已有的签名：历史与窗口都没有变化时
 服务端回 `reset-same`（几十字节），页面既不重新传输也不重新解析；有变化时签名不匹配，
 照常下发 `reset` + 分批 `trace`。签名只描述「是不是同一份历史」，不参与事件去重。
+
+交互通道（可选交互 Hook）复用同一条流：除上述帧外还会发送 `interaction.open`
+（`InteractionRequest`）、`interaction.update`（`InteractionEvent`）与
+`interaction.close`（`InteractionResult`）。交互只在连接存续期间有效，`reset` /
+`reset-same` 后不补播；写侧为 `POST /api/interactions`、
+`POST /api/interactions/<id>/events`、`POST /api/interactions/<id>/close` 与
+`GET /api/interactions/<id>`，契约见 `docs/interaction-hooks-zh.md` §5–§6。
+`POST /api/events` 仍只写 TraceEvent，不是答案回传通道。
 
 服务声明 `retry: 1000`。普通重连会再次收到快照，因此断线期间遗漏的后续问答能够被
 补齐。因标签页长时间不可视而挂起的控制台会用 `?since=<eventId>` 重连，收到只含遗漏

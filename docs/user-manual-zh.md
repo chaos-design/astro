@@ -564,6 +564,51 @@ ASTRO 数据。
 英文完整说明见 `docs/plugin-installation.md` 的
 「Optional: auto-approve user questions」。
 
+### 5.5.2 在控制台回答用户提问（可选）
+
+交互 Hook 让 Agent 把 `AskUserQuestion` 与 `ExitPlanMode` 提问交给控制台：中央
+工作区右下角浮出交互面板，点选项或输入文本后答案直接回传宿主，无需切回 Agent
+App。它与自动同意是**两个独立的可选 Hook**，采集记录器仍只读；两者不要安装在
+同一个事件上（自动同意会立即 `allow`，交互面板就失去意义）。
+
+**启用**（先预览再写入）：
+
+```bash
+pnpm install:interaction -- --client=claude
+pnpm install:interaction -- --client=claude --apply
+```
+
+`--client` 支持 `claude`、`codebuddy`、`zcode`；默认只挂 `PermissionRequest`，
+需要拦截工具执行前的提问时加 `--events=PreToolUse`。安装器与自动同意共用合并、
+校验与卸载逻辑：保留已有 hooks 和顶层键、重复执行幂等、写入前备份，`--remove
+--apply` 只移除自己的分组。
+
+**时间窗**：Hook 是同步阻塞的，宿主给 5 秒，实际留给面板作答约 4.5 秒
+（`ttlMs = 超时 - 500ms`）。超时、取消或服务未启动时 Hook 空输出退出 0，宿主回落
+到原生弹窗；答案只在窗口内有效，不会补发。
+
+**面板行为**：单选点击即选中；多选按选项原顺序逗号连接；「Other」输入自由文本；
+必答题全部有答案才能提交；Esc 或取消结束请求并回退原生弹窗；已由其他设备回答时
+面板转为只读。`ExitPlanMode` 显示为「Approve this plan?」二选一，只有 Approve
+会回传决策，计划原文原样回显。
+
+**参数**：`ASTRO_INTERACTION_SERVICE`（默认 `http://127.0.0.1:5678`）、
+`ASTRO_INTERACTION_TIMEOUT_MS`（默认 5000）、`ASTRO_INTERACTION_POLL_MS`（默认
+100）、`ASTRO_INTERACTION_SOURCE`、`ASTRO_INTERACTION_EVENTS` / `TOOLS` /
+`INPUT_FIELD`，由宿主 Hook 进程继承。
+
+**记录方式**：提问行仍由 recorder 写入；关闭请求时服务额外写一条既有事件名
+`Notification`，只含回答数量、设备与耗时，不含答案值；答案本身由宿主写在
+`PostToolUse` 的 `tool_input.answers` 里，控制台的 Answers 段只做展示解析。
+
+**验证**：`node --test tests/interaction-hook.test.mjs`、
+`node --test tests/interaction-integration.test.mjs`；在宿主触发一次提问，确认
+面板出现、回答后 Agent 继续、LOG 只有一行提问与一行回答。
+
+完整契约与边界见 `docs/interaction-hooks-zh.md`；英文安装说明见
+`docs/plugin-installation.md` 的「Optional: answer user questions from the
+console」。
+
 ### 5.6 会话状态
 
 - `active`：最近一轮尚未出现完成、失败或终止信号；持续时间每秒更新，直到达到配置
@@ -941,6 +986,7 @@ GET /api/search?q=<query>
 GET /api/search?q=<query>&source=codex&session=<sessionId>
 GET /api/stream
 GET /api/demo-events
+GET /api/interactions/<requestId>    读取待答交互 {request, events, result}
 ```
 
 注意：服务端 `/api/search` 可跨嵌套字段搜索；当前 UI 的 LOG 搜索只过滤选中的
@@ -953,6 +999,18 @@ Prompt 子运行，无 Prompt 时才回退到完整会话，不直接调用服�
 文件缺失 404、非法 500；`/api/health` 的 `corsOrigins` 字段报告当前跨域允许列表。
 两者都供「部署预览页面」使用：部署页默认连接 `http://127.0.0.1:5678`，允许列表
 见第 4.3 节。
+
+交互通道（可选 Hook 使用，见 5.5.2）：
+
+```text
+POST /api/interactions                      注册待答请求
+POST /api/interactions/<requestId>/events   追加作答事件（seq 递增）
+POST /api/interactions/<requestId>/close    关闭并生成结果
+GET  /api/interactions/<requestId>          晚到页面读取请求与结果
+```
+
+`/api/stream` 另发 `interaction.open` / `interaction.update` /
+`interaction.close` 三帧；交互只存在内存与结果文件中，`reset` 后不补播。
 
 ### 13.5 服务管理
 

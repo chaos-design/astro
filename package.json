@@ -23,6 +23,7 @@
     "dev:docs": "vite --config site/vite.config.ts",
     "install-hooks": "node scripts/install-hooks.mjs",
     "install:auto-approve": "node scripts/install-auto-approve-hook.mjs",
+    "install:interaction": "node scripts/install-interaction-hook.mjs",
     "install-opencode-plugin": "node scripts/install-opencode-plugin.mjs",
     "install-pi-plugin": "node scripts/install-pi-plugin.mjs",
     "install-plugins": "node scripts/install-plugins.mjs",
