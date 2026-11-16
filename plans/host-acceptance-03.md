@@ -1,11 +1,12 @@
 # Host integration equivalence acceptance (plan F3)
 
-Generated: 2026-11-16T03:28:09.931Z
+Generated: 2026-11-16T04:11:43.886Z
 
 This record covers protocol-level acceptance using captured payloads and real
 hook processes. It does **not** replace launching Claude Code or ZCode:
 `/hooks` visibility, transcript wording and `hook.run.failed` in a fresh session
-remain unverified on this machine because no host binary is installed.
+still need a host session. The probe below records what this machine can and
+cannot verify; the runbook lists the remaining steps.
 
 | Check | Result | Detail |
 | --- | --- | --- |
@@ -18,24 +19,38 @@ remain unverified on this machine because no host binary is installed.
 
 Summary: 6/6 passed.
 
-## Addendum 2026-11-16: host binary availability re-check
+## Host availability probe
 
-Re-verified what "no host binary" means on this machine before asking for a
-host-equipped environment:
+Machine-generated on every run; this is the evidence behind the F3 blocker.
 
-- Claude Code: still absent. No `claude` executable in PATH, login shell,
-  Homebrew, `/usr/local/bin`, `~/.local/bin`, npm/pnpm globals, or inside
-  `/Applications/ZCode.app` / `AgnesCode.app` / `WorkBuddy.app`.
-- ZCode: `/Applications/ZCode.app` exists and its CLI is actively used
-  (`~/.zcode/cli/log/zcode-<date>.jsonl` written daily; hooks config absent from
-  `~/.zcode/cli/config.json`). The CLI entry lives inside the app bundle
-  (`app.asar` exports `/cli.js` and `/cli-daemon/program.js`), but the host
-  cannot be driven headlessly from a non-interactive sandbox: invoking the
-  Electron binary with the asar loads the GUI main entry (`BrowserWindow`
-  required), and the binary disables Node environment variables when it is
-  spawned by another process, so neither `ELECTRON_RUN_AS_NODE` nor a
-  redirected home can isolate a session. Real F3 acceptance therefore still
-  needs a manually driven ZCode session.
-- CodeBuddy: the running host itself has recorder hooks in
-  `~/.codebuddy/settings.json` (`--source=workbuddy`), but CodeBuddy is not a
-  target of F3.
+| Host | Finding | Detail |
+| --- | --- | --- |
+| claude | config-only | only the config directory exists (recorder hooks or settings); no binary |
+| zcode | app | the agent runs only inside the GUI app process; no standalone CLI is shipped, so a real session must be driven by hand (/Applications/ZCode.app/Contents/MacOS/ZCode) |
+| codebuddy | app | the agent runs only inside the GUI app process; a real session must be driven by hand (/Applications/AgnesCode.app/Contents/MacOS/AgnesCode) |
+
+## Runbook for the host-equipped machine (F3)
+
+The equivalence checks above pass on any machine. The three remaining F3
+items need a real host session; execute them in order and record the
+outcome here, then tick F3 in `plans/pending/03-ask-user-question-
+implementation-breakdown.md` and archive the plan.
+
+1. Claude `/hooks` visibility and transcript wording
+   - `pnpm install:interaction -- --client=claude --apply` (backs up
+     `~/.claude/settings.json` first).
+   - Start Claude Code in any directory, run `/hooks`, and confirm the
+     `interaction-hook.mjs` handler is listed under PermissionRequest.
+   - Trigger an AskUserQuestion, answer from the ASTRO console, then check
+     the session transcript for `Allowed by PermissionRequest hook`.
+2. ZCode fresh-session log
+   - `pnpm install:interaction -- --client=zcode --apply` (sets
+     `hooks.enabled=true` in `~/.zcode/cli/config.json`).
+   - Open a **new** ZCode session (hooks are snapshotted at session start),
+     trigger an AskUserQuestion, answer or let the 4.5 s window expire.
+   - `grep hook.run.failed ~/.zcode/cli/log/zcode-$(date +%F).jsonl` must
+     report no match, and the session log must show the hook ran.
+3. Record: paste both evidences into this file under a dated section, tick
+   F3, `plan_flow.py --root plans move 03 planing`, complete the remaining
+   DoD boxes (`code`, `func_test_result`) and archive.
+
