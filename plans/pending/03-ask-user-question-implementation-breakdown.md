@@ -26,17 +26,9 @@ updated: 2026-11-16 11:26:34
 
 ## 待决事项
 
-- [ ] F3 需要在能驱动真实宿主会话的环境完成宿主验收：Claude
-  `/hooks` 可见且 transcript 出现 `Allowed by PermissionRequest hook`；ZCode
-  新会话日志无 `hook.run.failed`。本机探测（每次运行由
-  `pnpm verify:host-integration` 的「Host availability probe」机器生成）：
-  claude 只有配置目录、无二进制；zcode / codebuddy 是 Electron 桌面应用，
-  代理只活在 GUI 进程里，无独立 CLI 可无头驱动（ZCode.app 的 asar 内是
-  `out/main` 与 `out/renderer` 的桌面 app，不是 CLI；`~/.zcode/cli/node-fallback`
-  只是 app 生成的 shim）。故仍需人工在有宿主会话的环境执行。等价验收 6/6
-  （`pnpm verify:host-integration -- --out plans/host-acceptance-03.md`）
-  加宿主机器 runbook 已入库，但不覆盖上述三项。请在能驱动宿主的环境执行
-  runbook 三步后勾选本项，再 `move 03 planing`、补齐完成标准后归档。
+- [ ] F3 真实宿主验收三项中，**ZCode「新会话日志无 `hook.run.failed`」一项本机已满足**：`pnpm verify:host-integration` 现每次运行自动扫描当天 ZCode CLI 日志（`~/.zcode/cli/log/zcode-$(date +%F).jsonl`），本机今日 300+ 条 `hook.run.allowed`、**0 条 `hook.run.failed`**、全部 ASTRO 来源（`plugin.astro@astro-zcode-local`），证明真宿主 hook 机制健康、当日会话干净，证据机器生成进 `plans/host-acceptance-03.md` 的「Live ZCode host session」段。
+  **仍待人工宿主环境执行的**：① Claude `/hooks` 可见且 transcript 出现 `Allowed by PermissionRequest hook`（本机 Claude 无二进制、无凭证）；② interaction-hook 闭环——把交互 Hook 装进宿主并触发一次 `AskUserQuestion`，确认控制台作答把 `answers` 回传给宿主（上面那条只证明 recorder 插件的 hook 跑通了，不等于 interaction hook 的应答链路）。
+  本机探测（每次运行由 `pnpm verify:host-integration` 机器生成）：claude 仅配置目录、无二进制；zcode / codebuddy 是 Electron 桌面应用、无独立 CLI 可无头驱动，但**当前确有活跃的真实 ZCode 会话在跑 ASTRO hook**。等价验收 6/6 已入库。请在装有 Claude 的环境执行 ①、并在任一宿主里装交互 Hook 触发一次提问完成 ②，再把 ZCode 项与 ①② 一起勾选，`move 03 planing`、补齐完成标准后归档。
 
 ## 拆解口径
 

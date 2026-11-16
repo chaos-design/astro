@@ -3,17 +3,21 @@
 > **Status: implemented; real-host acceptance pending.** The interaction hook,
 > the `/api/interactions` service, the SSE `interaction.open` / `update` / `close`
 > frames, the console panel, `AgentNotification` and the installer all exist and
-> are covered by the automated tests in §10. **Not yet done** is the real Claude /
-> ZCode host acceptance (plan F3): this machine cannot launch a host session
-> (Claude is config-only; ZCode / CodeBuddy are GUI desktop apps whose agent runs
-> only inside the app process, so no headless CLI exists to drive one), so
-> `/hooks` visibility and `Allowed by PermissionRequest hook` / `hook.run.failed`
-> were not re-checked in a live session. `pnpm verify:host-integration` now
-> machine-generates a host-availability probe and a runbook into
-> `plans/host-acceptance-03.md` so the remaining F3 steps are a copy-paste on a
-> host-equipped machine. For working configuration see `docs/plugin-installation.md`;
-> this document stays the contract source for the channel, so change it before
-> changing the implementation.
+> are covered by the automated tests in §10. For F3 (plan), the ZCode "clean
+> fresh-session log" criterion now holds on this machine: `pnpm
+> verify:host-integration` machine-scans the day's ZCode CLI log and today's
+> active host session has hundreds of `hook.run.allowed`, **zero**
+> `hook.run.failed`, all ASTRO-sourced. What still needs a host session: the
+> Claude `/hooks` + `Allowed by PermissionRequest hook` transcript (no Claude
+> binary here), and the interaction-hook closed loop (install the interaction
+> hook in a host and trigger one `AskUserQuestion` so a console answer carries
+> `answers` back). The ZCode / CodeBuddy agents run only inside their GUI app
+> process (no standalone CLI), so those steps are driven by hand on the host.
+> `pnpm verify:host-integration` machine-generates the host-availability probe,
+> the live-session scan and a runbook into `plans/host-acceptance-03.md` so the
+> remaining steps are a copy-paste. For working configuration see
+> `docs/plugin-installation.md`; this document stays the contract source for the
+> channel, so change it before changing the implementation.
 
 ## 1. Diagram review
 
@@ -455,21 +459,25 @@ Every executed check is a command:
 | Console reducer / panel model / panel source contract / client | `node --test tests/interaction-reducer.test.ts tests/interaction-panel-model.test.ts tests/interaction-panel-contract.test.ts tests/interaction-client.test.ts` | 11 + 8 + 5 + 7 |
 | Notification shape | `node --test tests/agent-notification.test.ts` | 5/5 |
 | Installer | `node --test tests/install-interaction-hook.test.mjs` | 6/6 |
-| Host availability probe | `node --test tests/verify-host-probe.test.mjs` | 6/6 |
+| Host availability probe & live-session scan | `node --test tests/verify-host-probe.test.mjs` | 11/11 |
 | Full regression | `pnpm test` / `pnpm typecheck` / `pnpm build` / `pnpm build:docs` | see the plan's progress log |
-| Host equivalence acceptance | `pnpm verify:host-integration -- --out plans/host-acceptance-03.md` | 6/6 checks + machine-generated probe and runbook in `plans/host-acceptance-03.md` |
+| Host equivalence acceptance | `pnpm verify:host-integration -- --out plans/host-acceptance-03.md` | 6/6 checks + machine-generated probe, live-session scan and runbook in `plans/host-acceptance-03.md` |
 
 The equivalence check drives the real hook processes with a captured ZCode
 question payload and validates the three host stdout schemas plus installer
 config shapes; it does **not** replace launching a host. On every run it also
 machine-generates a **host-availability probe** (PATH → known install path →
 config dir, classifying each client as `cli` / `app` / `config-only` /
-`absent`) and a **runbook** into `plans/host-acceptance-03.md`. Still not
-executed (plan F3): real Claude `/hooks` visibility, the transcript line
-`Allowed by PermissionRequest hook`, and a ZCode session with no
-`hook.run.failed`. The probe records why this machine cannot run them (Claude
-config-only; ZCode / CodeBuddy are GUI apps with no headless CLI), so the
-item stays unchecked and the plan is not archived.
+`absent`), a **live-session scan** of the day's ZCode CLI log (`hook.run.allowed`
+vs `hook.run.failed`, isolated to ASTRO-sourced calls) and a **runbook** into
+`plans/host-acceptance-03.md`. The ZCode "clean fresh-session log" criterion is
+met on this machine by that scan (an active host session ran the ASTRO hooks
+all day with zero failures). Still not executed (plan F3): the Claude `/hooks`
+visibility with the transcript line `Allowed by PermissionRequest hook` (no
+Claude binary here), and the interaction-hook closed loop — installing the
+interaction hook in a host and triggering one `AskUserQuestion` so a console
+answer carries `answers` back. The probe records why those two remain
+host-side, so the item stays unchecked and the plan is not archived.
 
 ## 11. Implementation task breakdown
 

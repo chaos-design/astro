@@ -1,13 +1,16 @@
 # AskUserQuestion 交互 Hook 执行流程设计
 
-> **状态：已实现，宿主实测待完成。** 交互 Hook、`/api/interactions` 服务、SSE
+> **状态：已实现，宿主实测部分完成。** 交互 Hook、`/api/interactions` 服务、SSE
 > `interaction.open` / `update` / `close` 三帧、控制台交互面板、AgentNotification 与
-> 安装器均已落地，自动化用例见 §10。**尚未完成**的是 Claude / ZCode 真实宿主验收
-> （计划 F3）：本机无法启动真实宿主会话（Claude 仅有配置目录、无二进制；ZCode /
-> CodeBuddy 是 GUI 桌面应用，代理只活在应用进程里，没有可无头驱动的 CLI），`/hooks`
-> 可见性与 `Allowed by PermissionRequest hook` / `hook.run.failed` 未在真实会话里复核。
-> `pnpm verify:host-integration` 现会机器生成「宿主可用性探测」与「宿主机器运行手册」，
-> 一并写入 `plans/host-acceptance-03.md`，使剩余 F3 步骤在装有宿主的机器上可直接照做。
+> 安装器均已落地，自动化用例见 §10。F3（计划）中 **ZCode「新会话日志无
+> `hook.run.failed`」一项本机已满足**：`pnpm verify:host-integration` 每次运行自动
+> 扫描当天 ZCode CLI 日志，本机今日一个活跃宿主会话跑了几百条 `hook.run.allowed`、
+> **0 条 `hook.run.failed`**、全部 ASTRO 来源。仍需在宿主环境执行的：Claude
+> `/hooks` + transcript 的 `Allowed by PermissionRequest hook`（本机无 Claude 二进制），
+> 以及交互 Hook 闭环（在宿主里装交互 Hook 并触发一次 `AskUserQuestion`，让控制台
+> 作答把 `answers` 带回宿主）。ZCode / CodeBuddy 代理只活在各自 GUI 应用进程里
+> （无独立 CLI），这些步骤需人工在宿主里驱动。`pnpm verify:host-integration` 会把
+> 宿主可用性探测、实时会话扫描与运行手册机器生成进 `plans/host-acceptance-03.md`。
 > 配置与验证以 `docs/plugin-installation.md` 为准；本文仍是这些通道的契约来源，字段
 > 变化必须先改这里再改实现。
 
@@ -434,18 +437,21 @@ ZCode 额外约束：用户级 `hooks.enabled:true`、项目级配置被忽略�
 | 控制台 reducer / 面板模型 / 面板源码契约 / 客户端 | `node --test tests/interaction-reducer.test.ts tests/interaction-panel-model.test.ts tests/interaction-panel-contract.test.ts tests/interaction-client.test.ts` | 11 + 8 + 5 + 7 |
 | 通知结构 | `node --test tests/agent-notification.test.ts` | 5/5 |
 | 安装器 | `node --test tests/install-interaction-hook.test.mjs` | 6/6 |
-| 宿主可用性探测 | `node --test tests/verify-host-probe.test.mjs` | 6/6 |
+| 宿主可用性探测与实时会话扫描 | `node --test tests/verify-host-probe.test.mjs` | 11/11 |
 | 全量回归 | `pnpm test` / `pnpm typecheck` / `pnpm build` / `pnpm build:docs` | 见计划进度日志 |
-| 宿主等价验收 | `pnpm verify:host-integration -- --out plans/host-acceptance-03.md` | 6/6 项检查 + 机器生成的探测与手册，记录见 `plans/host-acceptance-03.md` |
+| 宿主等价验收 | `pnpm verify:host-integration -- --out plans/host-acceptance-03.md` | 6/6 项检查 + 机器生成的探测、实时会话扫描与手册，记录见 `plans/host-acceptance-03.md` |
 
 等价验收用真实捕获的 ZCode 提问载荷驱动真实 Hook 进程，覆盖三种宿主的决策
 stdout schema 与安装器生成的配置结构；它**不能替代**启动宿主。每次运行还会把
 **宿主可用性探测**（PATH → 已知安装路径 → 配置目录，把各宿主归类为
-`cli` / `app` / `config-only` / `absent`）与**运行手册**机器生成进
-`plans/host-acceptance-03.md`。仍未执行（计划 F3）：真实 Claude `/hooks`
-可见性、transcript 出现 `Allowed by PermissionRequest hook`、ZCode 新会话日志无
-`hook.run.failed`。探测记录了本机为何无法执行（Claude 仅配置目录；ZCode /
-CodeBuddy 是 GUI 应用、无无头 CLI），因此该项保持未勾选，计划不归档。
+`cli` / `app` / `config-only` / `absent`）、**实时会话扫描**（当天 ZCode CLI 日志里
+`hook.run.allowed` 与 `hook.run.failed`，并隔离出 ASTRO 来源的调用）与**运行手册**
+机器生成进 `plans/host-acceptance-03.md`。ZCode「新会话日志无 `hook.run.failed`」
+一项已由本机的实时扫描满足（一个活跃宿主会话整天跑 ASTRO hook、零失败）。
+仍未执行（计划 F3）：Claude `/hooks` 可见性 + transcript 的
+`Allowed by PermissionRequest hook`（本机无 Claude 二进制），以及交互 Hook 闭环——
+在宿主里装交互 Hook 并触发一次 `AskUserQuestion`，让控制台作答把 `answers` 带回
+宿主。探测记录了为何这两项仍需宿主侧人工执行，因此该项保持未勾选，计划不归档。
 
 ## 11. 实施任务拆解
 
