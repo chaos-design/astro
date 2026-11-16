@@ -1,7 +1,7 @@
 # ASTRO OpenCode Plugin
 
 Records OpenCode sessions into the local ASTRO trace store so they show up in the
-ASTRO dashboard next to Claude Code, Codex, Trae, CodeBuddy and DeepSeek runs.
+ASTRO dashboard next to Claude Code, ChatGPT, Trae, CodeBuddy and DeepSeek runs.
 
 ## Install
 

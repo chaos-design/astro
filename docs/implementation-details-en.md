@@ -226,7 +226,7 @@ The agent filter is the **outer** filter, and the live index follows it:
 produce the `liveSessionKeys` the list actually uses — so the count, the pin,
 the window exemption and the Live filter always describe one list. The previous
 implementation merged other agents' live sessions into `historySessions`, which
-is how a Codex view showed the Claude message that was executing at the time,
+is how a ChatGPT view showed the Claude message that was executing at the time,
 pinned on top; that path is gone. A neighbour that is running is signalled by
 the agent picker instead: `scopeLiveRunIndex` also returns the machine-wide
 `sources`, and `AgentSelect` marks those entries with a `--status-running`

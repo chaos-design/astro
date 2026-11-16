@@ -6,7 +6,7 @@
 
 ASTRO expands to **Agent State Trace & Runtime Observations**.
 
-ASTRO is a local-first runtime observability platform for coding agents. It normalizes heterogeneous events from Trae, Claude Code, Codex, DeepSeek Harness, WorkBuddy / CodeBuddy Code, browser extensions, and custom clients into a versioned trace envelope, persists those events in local JSONL, and provides live inspection, search, and historical replay.
+ASTRO is a local-first runtime observability platform for coding agents. It normalizes heterogeneous events from Trae, Claude Code, ChatGPT, DeepSeek Harness, WorkBuddy / CodeBuddy Code, browser extensions, and custom clients into a versioned trace envelope, persists those events in local JSONL, and provides live inspection, search, and historical replay.
 
 The system has three explicit boundaries:
 
@@ -26,7 +26,7 @@ flowchart LR
   subgraph Sources["Event Sources"]
     T["Trae Hooks"]
     C["Claude Code Hooks"]
-    X["Codex Hooks / Rollout JSONL"]
+    X["ChatGPT Hooks / Rollout JSONL"]
     D["DeepSeek Harness Bundle"]
     W["WorkBuddy / CodeBuddy Hooks"]
     B["Browser SDK"]
@@ -63,7 +63,7 @@ flowchart LR
 flowchart TB
   subgraph Capture["01 Capture"]
     IR["trace-recorder.cjs<br/>normalize, redact, persist"]
-    CA["codex-adapter.cjs<br/>Codex history adapter"]
+    CA["chatgpt-adapter.cjs<br/>ChatGPT history adapter"]
     BC["browser-client.js<br/>browser SDK"]
     IN["install-plugins.mjs<br/>hook configuration merge"]
     CLI["astro-trace CLI"]
@@ -146,9 +146,9 @@ The persisted protocol is `schemaVersion: 2`. The frontend also accepts earlier 
 | Field | Type | Meaning |
 | --- | --- | --- |
 | `schemaVersion` | number | Recorder currently writes `2` |
-| `id` | string | Global event ID; Codex history uses deterministic hashes |
+| `id` | string | Global event ID; ChatGPT history uses deterministic hashes |
 | `capturedAt` | ISO 8601 string | Capture timestamp |
-| `source` | string | Normalized source, such as `trae`, `claude`, `codex`, `workbuddy`, or `browser` |
+| `source` | string | Normalized source, such as `trae`, `claude`, `chatgpt`, `workbuddy`, or `browser` |
 | `sourceVersion` | string \| null | Source client version |
 | `workspaceId` | string | Workspace identity; defaults to the first 12 SHA-256 characters of absolute `cwd` |
 | `sessionId` | string | Native source session ID |
@@ -199,7 +199,7 @@ This prevents collisions when different agent platforms use the same native sess
 
 - Trae: `<workspace>/.trae/hooks.json`
 - Claude Code: `<workspace>/.claude/settings.local.json`
-- Codex: `$CODEX_HOME/hooks.json`, normally `~/.codex/hooks.json`
+- ChatGPT: `$CHATGPT_HOME/hooks.json`, normally `~/.chatgpt/hooks.json`
 - WorkBuddy: `<workspace>/.codebuddy/settings.json` or
   `$CODEBUDDY_HOME/settings.json`
 
@@ -207,8 +207,8 @@ Hooks pass native events through standard input to `plugin/trace-recorder.cjs`.
 Parse or persistence failures still exit successfully, so observability cannot
 interrupt the agent execution path, while a persistence or dashboard diagnostic
 is written to stderr instead of being silently discarded. Claude Code, Trae,
-and WorkBuddy receive `{"continue":true}`; Codex uses quiet mode to keep stdout empty because
-some Codex hook events do not accept a control object. All clients use the same
+and WorkBuddy receive `{"continue":true}`; ChatGPT uses quiet mode to keep stdout empty because
+some ChatGPT hook events do not accept a control object. All clients use the same
 user-level `~/.astrox` data and runtime root.
 
 On `SessionStart` or `UserPromptSubmit`, the recorder also checks
@@ -225,9 +225,9 @@ the moment a console page attaches to `/api/stream`. The server completes port
 fallback before opening the actual URL. Launch or browser-open failures remain
 isolated from the hook result.
 
-### 6.2 Codex History
+### 6.2 ChatGPT History
 
-`plugin/codex-adapter.cjs` imports rollout JSONL from `sessions` and `archived_sessions`. IDs are derived from the file path, row index, timestamp, type, and call ID. Re-importing unchanged files is idempotent.
+`plugin/chatgpt-adapter.cjs` imports rollout JSONL from `sessions` and `archived_sessions`. IDs are derived from the file path, row index, timestamp, type, and call ID. Re-importing unchanged files is idempotent.
 
 ### 6.3 DeepSeek Harness Bundle
 
@@ -268,7 +268,7 @@ The default root is `ASTRO_HOME=~/.astrox` for every client:
 ~/.astrox/
   plugins/astro/
   claude/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
-  codex/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
+  chatgpt/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
   deepseek/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
   trae/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
   workbuddy/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
@@ -422,7 +422,7 @@ failure > stop > recovery**):
 | Scope | Event or condition | Status | Notes |
 | --- | --- | --- | --- |
 | Turn | `StopFailure` | `failed` | stop-level failure ends the run; progress noise afterwards (e.g. `SubagentStop`) never resurrects the status to `active` |
-| Turn | `Stop` + `status=failed` | `failed` | client folds the failure (Codex `turn.failed`); also terminal |
+| Turn | `Stop` + `status=failed` | `failed` | client folds the failure (ChatGPT `turn.failed`); also terminal |
 | Tool | `PostToolUseFailure`, `PostToolUse` with `tool_response.error` / non-zero `exitCode` | `failed` | mid-run failure; if execution progress follows, the run is considered recoverable and returns to `active` |
 | Interaction | `PermissionDenied` | `failed` | user decision, recoverable; `waiting` when `payload.retry=true` |
 | Turn | `Stop` | `complete` | normal completion; a `failed` status takes precedence |
@@ -645,7 +645,7 @@ Long-running, multi-workspace, or team deployments would require paged or stream
 | Worker unavailable | Use main-thread layout |
 | Routing cannot reach optimum | Return diagnostics and fallback routes where possible |
 | No events | Development/test can show Demo; production preserves the real empty state |
-| Hook parse/write failure | Report on stderr and exit successfully; Codex quiet mode preserves stdout compatibility |
+| Hook parse/write failure | Report on stderr and exit successfully; ChatGPT quiet mode preserves stdout compatibility |
 | localStorage unavailable or invalid | Fall back to responsive defaults without affecting trace data |
 | Advancing run reaches the configured timeout | Derive a capped `terminated` display, stop the shared clock when nothing else advances, and preserve persisted events |
 
@@ -656,7 +656,7 @@ Long-running, multi-workspace, or team deployments would require paged or stream
 | HTTP, SSE, static hosting | `server/server.mjs` |
 | JSONL store and tailing | `server/trace-store.mjs` |
 | Capture, normalization, redaction | `plugin/trace-recorder.cjs` |
-| Codex history adapter | `plugin/codex-adapter.cjs` |
+| ChatGPT history adapter | `plugin/chatgpt-adapter.cjs` |
 | Browser SDK | `plugin/browser-client.js` |
 | CLI | `bin/astro.mjs` |
 | Hook installation | `scripts/install-plugins.mjs` |
@@ -680,7 +680,7 @@ The current automated suite covers:
 
 - redaction and event normalization;
 - non-destructive hook configuration merge;
-- Codex history adaptation and deterministic deduplication;
+- ChatGPT history adaptation and deterministic deduplication;
 - session isolation, paired tool spans, and nested search;
 - dynamic subagent execution layers;
 - strictly ordered atomic projection and fold state;

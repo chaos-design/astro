@@ -23,7 +23,7 @@ import {
 
 /**
  * Agents with an official brand mark render it through a lucide icon so the
- * dropdown keeps one sizing and coloring contract for every entry. Codex uses
+ * dropdown keeps one sizing and coloring contract for every entry. ChatGPT uses
  * the OpenAI knot, DeepSeek inlines its whale path, and WorkBuddy is the one
  * raster tile (inlined at build time) — every mark is available synchronously,
  * so opening the dropdown never paints an empty icon slot first.
@@ -32,7 +32,7 @@ const brandIcons: Readonly<
   Partial<Record<PlatformId, typeof ClaudeIcon>>
 > = {
   claude: ClaudeIcon,
-  codex: GptIcon,
+  chatgpt: GptIcon,
   deepseek: DeepSeekIcon,
   gemini: GeminiIcon,
   llama: LlamaIcon,

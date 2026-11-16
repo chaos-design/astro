@@ -39,11 +39,11 @@ function createStableEventId(fileKey, row, index) {
     .slice(0, 32);
 }
 
-function adaptCodexRows(rows, options = {}) {
+function adaptChatGPTRows(rows, options = {}) {
   let sessionId = options.sessionId || "";
   let cwd = options.cwd || "";
   let turnId = null;
-  const fileKey = options.fileKey || "codex-stream";
+  const fileKey = options.fileKey || "chatgpt-stream";
 
   return rows.map((row, index) => {
     if (row.type === "session_meta") {
@@ -62,8 +62,8 @@ function adaptCodexRows(rows, options = {}) {
     }
 
     return createTraceEvent(row, {
-      source: "codex",
-      sessionId: sessionId || `codex-${path.basename(fileKey)}`,
+      source: "chatgpt",
+      sessionId: sessionId || `chatgpt-${path.basename(fileKey)}`,
       cwd,
       turnId,
       id: createStableEventId(fileKey, row, index),
@@ -97,15 +97,15 @@ function readKnownIds(traceRoot) {
   );
 }
 
-function importCodexFiles(files, environment = process.env) {
-  const traceRoot = resolveTraceDirectory("codex", {}, environment);
+function importChatGPTFiles(files, environment = process.env) {
+  const traceRoot = resolveTraceDirectory("chatgpt", {}, environment);
   const knownIds = readKnownIds(traceRoot);
   const events = [];
 
   for (const file of files) {
     const absoluteFile = path.resolve(file);
     const rows = parseJsonLines(fs.readFileSync(absoluteFile, "utf8"));
-    const adapted = adaptCodexRows(rows, { fileKey: absoluteFile });
+    const adapted = adaptChatGPTRows(rows, { fileKey: absoluteFile });
     for (const event of adapted) {
       if (!knownIds.has(event.id)) {
         events.push(event);
@@ -115,13 +115,13 @@ function importCodexFiles(files, environment = process.env) {
   }
 
   if (events.length) {
-    appendTraceEvents(events, environment, { source: "codex" });
+    appendTraceEvents(events, environment, { source: "chatgpt" });
   }
   return events;
 }
 
 module.exports = {
-  adaptCodexRows,
-  importCodexFiles,
+  adaptChatGPTRows,
+  importChatGPTFiles,
   parseJsonLines,
 };

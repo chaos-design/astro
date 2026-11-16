@@ -2102,7 +2102,7 @@ pre,
   background: var(--amber);
 }
 
-.history-search__filter-menu i.source-codex,
+.history-search__filter-menu i.source-chatgpt,
 .history-search__filter-menu i.source-deepseek,
 .history-search__filter-menu i.tone-prompt {
   color: var(--blue);
@@ -3756,7 +3756,7 @@ pre,
   color: #d97757;
 }
 
-.platform-icon--codex {
+.platform-icon--chatgpt {
   color: #10a37f;
 }
 

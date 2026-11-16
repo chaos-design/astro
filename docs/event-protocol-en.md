@@ -1,7 +1,7 @@
 # ASTRO Event Protocol Reference
 
 > Protocol version: Schema v2  
-> Scope: hook recorder, Codex history import, Browser SDK, HTTP API, JSONL import/export, and frontend projection
+> Scope: hook recorder, ChatGPT history import, Browser SDK, HTTP API, JSONL import/export, and frontend projection
 
 ## 1. Design Goals
 
@@ -48,9 +48,9 @@ The ASTRO protocol converts lifecycle, message, tool, and subagent signals from 
 | Field | Type | Required | Meaning and generation rule |
 | --- | --- | --- | --- |
 | `schemaVersion` | number | yes | Writers emit `2`; readers normalize older input. |
-| `id` | string | yes | Unique event ID. Live capture normally uses UUIDs; Codex history import uses a deterministic hash. |
+| `id` | string | yes | Unique event ID. Live capture normally uses UUIDs; ChatGPT history import uses a deterministic hash. |
 | `capturedAt` | ISO 8601 string | yes | Source or capture time, normalized to an ISO string. |
-| `source` | string | yes | Normalized producer such as `trae`, `claude`, `codex`, `workbuddy`, or `browser`. |
+| `source` | string | yes | Normalized producer such as `trae`, `claude`, `chatgpt`, `workbuddy`, or `browser`. |
 | `sourceVersion` | string or null | yes | Producer version when available. |
 | `workspaceId` | string | yes | Workspace isolation key; defaults to the first 12 SHA-256 characters of absolute `cwd`. |
 | `sessionId` | string | yes | Native session ID, or `unknown-session`. |
@@ -73,7 +73,7 @@ Source values are lowercased and classified as follows:
 | Input contains | Canonical source |
 | --- | --- |
 | `claude` | `claude` |
-| `codex` or `openai` | `codex` |
+| `chatgpt` or `openai` | `chatgpt` |
 | `deepseek` or exact `dsh` | `deepseek` |
 | `workbuddy` or `codebuddy` | `workbuddy` |
 | `trae` | `trae` |
@@ -161,7 +161,7 @@ so the contract fixes scope, event, trigger, and behavior together.
 | Tool | `PostToolUseFailure` | A tool call returned a failure; paired with `PreToolUse` by `toolUseId` | `failed` | `failed` | No |
 | Tool | `PostToolUse` | Success channel carried `tool_response.error` or `exitCode > 0` | producer value | `failed` | No |
 | Turn | `StopFailure` | A model or API fault prevented the turn from finishing | `failed` | `failed`; `waiting` when throttling evidence is present | Yes |
-| Turn | `Stop` + `status=failed` | The client folds the failure into its stop event (Codex `turn.failed`) | `failed` | `failed` | Yes |
+| Turn | `Stop` + `status=failed` | The client folds the failure into its stop event (ChatGPT `turn.failed`) | `failed` | `failed` | Yes |
 | Interaction | `PermissionDenied` | The auto-mode classifier denied a tool call, or the user rejected it | producer value | `failed`; `waiting` when `payload.retry=true` | No |
 | Session/Turn | `Interrupt` | The user aborted or cancelled, or the runtime was stopped | `interrupted` | `terminated` | Yes |
 | Session | `SessionEnd` | The session ended, including abnormal exits | producer value | `terminated` | Yes |
@@ -198,7 +198,7 @@ Five boundaries:
 Exception capture entry points per client (`—` means the client produces none,
 not "not implemented yet"):
 
-| Exception | Claude | Codex | WorkBuddy | Trae | ZCode | DeepSeek | OpenCode | Pi |
+| Exception | Claude | ChatGPT | WorkBuddy | Trae | ZCode | DeepSeek | OpenCode | Pi |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | Tool failure | `PostToolUseFailure` | folded into `PostToolUse` + `failed` | `PostToolUseFailure` | folded into `PostToolUse` | `PostToolUseFailure` | `tool/result` `isError` | `session.tool.failed` | `tool_result` `isError` |
 | Turn/model failure | `StopFailure` | folded into `Stop` + `failed` | `StopFailure` | `StopFailure` | — | `turn/end` `failed` / `blocked` | derived `session.step.failed` | `message_end.stopReason=error` |
@@ -215,9 +215,9 @@ timeout, exit code 0 on every path, and write or configuration failures
 reported on stderr with that single event dropped. **Observability must never
 block the agent.**
 
-## 5. Codex Mapping
+## 5. ChatGPT Mapping
 
-| Codex record | ASTRO event |
+| ChatGPT record | ASTRO event |
 | --- | --- |
 | `session_meta`, `thread.started` | `SessionStart` |
 | `turn.started`, runtime errors, other status signals | `Notification` |
@@ -288,7 +288,7 @@ that same result:
   identity", not "most events do". A source that names even one turn is
   authoritative for the whole batch: unnumbered events ride in the turn that
   was executing, and a later `UserPromptSubmit` does not open a new turn. The
-  official adapters honour this (DeepSeek/Codex stamp every turn,
+  official adapters honour this (DeepSeek/ChatGPT stamp every turn,
   Claude/ZCode/Pi/WorkBuddy stamp none). A *partially*-stamped source — a
   third-party HTTP collector or a future adapter that names only some turns —
   is the documented exception: its unnumbered later prompts fold into the
@@ -374,7 +374,7 @@ With a 24-hour limit:
 - Repository aggregation sorts by `capturedAt`, then `id`.
 - Session construction sorts by `capturedAt`, then `sequence` for equal times.
 - API and repository writes deduplicate by event `id`.
-- Codex history IDs depend on file path, line number, timestamp, type, and call ID, making unchanged imports repeatable.
+- ChatGPT history IDs depend on file path, line number, timestamp, type, and call ID, making unchanged imports repeatable.
 - Live hooks generate a new ID for each real event. Identical follow-up questions and answers remain separate events.
 
 Never deduplicate by message text, and never compare sequence numbers across unrelated producers.

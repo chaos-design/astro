@@ -3,7 +3,7 @@
   "description": "Sample agent run used by the console's Demo mode. The service reads this file and serves it as GET /api/demo-events; the console renders it only when it has no captured events and runs in development or test mode. Event times are offsets from the moment the console loads the dataset, in milliseconds, so the sample always lands inside the hours-based RUN HISTORY window instead of aging out of it.",
   "session": {
     "id": "demo-runtime-7f31",
-    "source": "codex",
+    "source": "chatgpt",
     "workspaceId": "demo-workspace",
     "cwd": "/workspace/astro"
   },
@@ -170,7 +170,7 @@
       "eventName": "AgentMessage",
       "payload": {
         "message": "The loop-aware execution trajectory is ready.",
-        "model": "gpt-5.1-codex",
+        "model": "gpt-5.1-chatgpt",
         "turn": 3,
         "turn_id": "demo-turn-3"
       }

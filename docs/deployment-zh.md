@@ -53,7 +53,7 @@ pnpm start        # 服务：127.0.0.1:5678，托管 dist/
 
 `config.yaml` 字段：`server.host` / `server.port` / `server.maxBodyBytes` /
 `server.corsOrigins`、`runtime.autoOpen`、`storage.traceDir` /
-`storage.projectDir`、`clients.{codex,claude,deepseek,workbuddy}.{home,command}`
+`storage.projectDir`、`clients.{chatgpt,claude,deepseek,workbuddy}.{home,command}`
 （完整注释见仓库根目录的 `config.example.yaml`）。
 
 **优先级**：显式 CLI 参数 → 继承的进程环境变量 → 升级兼容的旧变量（
@@ -90,13 +90,13 @@ pnpm start        # 服务：127.0.0.1:5678，托管 dist/
 
 ### 2.5 启用各客户端的采集
 
-- **直接 Hook（通用）**：`pnpm install-plugins [--clients codex,claude,...]`。
+- **直接 Hook（通用）**：`pnpm install-plugins [--clients chatgpt,claude,...]`。
   自动把记录器、`dist/`、`server/` 与 `config.yaml` 装进
   `<ASTRO_HOME>/plugins/astro/` 并写好各客户端的 hook 配置；`dist/` 缺失时
   先自动执行 `pnpm build`（`--no-build` 可跳过）。
 - **原生插件**：先 `pnpm build:native-plugins`（把运行时同步进
   `*-plugin/` 并打版本号），再按客户端安装：
-  - Codex：`codex plugin add astro@astro-local`
+  - ChatGPT：`chatgpt plugin add astro@astro-local`
   - Claude Code：`claude plugin install astro@astro-local --scope user`
   - WorkBuddy：`codebuddy plugin add astro@astro-local`
   - DeepSeek Harness：`dsh plugin --profile web add file:~/.astrox/plugins/astro/deepseek-plugin`（安装后用 `dsh --profile web --dump-config` 确认 `astro-trace` 已出现在配置树中）

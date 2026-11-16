@@ -7,7 +7,7 @@
 ASTRO 是 **Agent State Trace & Runtime Observations** 的缩写，即“智能体状态追踪与
 运行时观测”。
 
-ASTRO 是面向编码智能体的本地优先运行时可观测平台。它把 Trae、Claude Code、Codex、DeepSeek Harness、WorkBuddy / CodeBuddy Code、浏览器扩展和自定义客户端产生的异构事件统一为版本化 Trace 事件，在本地 JSONL 文件中持久化，并提供实时观察、搜索、检查和历史回放。
+ASTRO 是面向编码智能体的本地优先运行时可观测平台。它把 Trae、Claude Code、ChatGPT、DeepSeek Harness、WorkBuddy / CodeBuddy Code、浏览器扩展和自定义客户端产生的异构事件统一为版本化 Trace 事件，在本地 JSONL 文件中持久化，并提供实时观察、搜索、检查和历史回放。
 
 系统有三条明确边界：
 
@@ -26,7 +26,7 @@ flowchart LR
   subgraph Sources["事件来源 / Event Sources"]
     T["Trae Hooks"]
     C["Claude Code Hooks"]
-    X["Codex Hooks / Rollout JSONL"]
+    X["ChatGPT Hooks / Rollout JSONL"]
     D["DeepSeek Harness Bundle"]
     W["WorkBuddy / CodeBuddy Hooks"]
     B["Browser SDK"]
@@ -63,7 +63,7 @@ flowchart LR
 flowchart TB
   subgraph Capture["01 采集层"]
     IR["trace-recorder.cjs<br/>标准化、脱敏、落盘"]
-    CA["codex-adapter.cjs<br/>Codex 历史适配"]
+    CA["chatgpt-adapter.cjs<br/>ChatGPT 历史适配"]
     BC["browser-client.js<br/>浏览器采集 SDK"]
     IN["install-plugins.mjs<br/>Hook 配置合并"]
     CLI["astro-trace CLI"]
@@ -146,9 +146,9 @@ sequenceDiagram
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
 | `schemaVersion` | number | 当前采集器写入 `2` |
-| `id` | string | 全局事件 ID；Codex 历史导入使用确定性哈希 |
+| `id` | string | 全局事件 ID；ChatGPT 历史导入使用确定性哈希 |
 | `capturedAt` | ISO 8601 string | 事件采集时间 |
-| `source` | string | 规范化来源，如 `trae`、`claude`、`codex`、`workbuddy`、`browser` |
+| `source` | string | 规范化来源，如 `trae`、`claude`、`chatgpt`、`workbuddy`、`browser` |
 | `sourceVersion` | string \| null | 来源客户端版本 |
 | `workspaceId` | string | 工作区标识；缺省时由绝对 `cwd` 的 SHA-256 前 12 位生成 |
 | `sessionId` | string | 来源侧原生会话 ID |
@@ -198,14 +198,14 @@ source::workspaceId::sessionId
 
 - Trae：写入目标项目的 `.trae/hooks.json`。
 - Claude Code：写入目标项目的 `.claude/settings.local.json`。
-- Codex：写入 `$CODEX_HOME/hooks.json`，默认 `~/.codex/hooks.json`。
+- ChatGPT：写入 `$CHATGPT_HOME/hooks.json`，默认 `~/.chatgpt/hooks.json`。
 - WorkBuddy：写入目标项目的 `.codebuddy/settings.json`，或用户级
   `$CODEBUDDY_HOME/settings.json`。
 
 Hook 通过标准输入把原生事件传给 `plugin/trace-recorder.cjs`。采集器即使遇到解析或
 写入错误也会正常退出，避免可观测系统中断智能体主执行路径，同时把“事件未写入”
 或“控制台未启动”的诊断写到 stderr，防止静默丢失。Claude Code、Trae 与 WorkBuddy 会收到
-`{"continue":true}`；Codex 使用 quiet 模式保持 stdout 为空，因为部分 Codex Hook
+`{"continue":true}`；ChatGPT 使用 quiet 模式保持 stdout 为空，因为部分 ChatGPT Hook
 事件不接受 `continue` 字段。所有客户端统一使用用户级 `~/.astrox` 数据与运行时根目录。
 
 标准化事件为 `SessionStart` 或 `UserPromptSubmit` 时，采集器还会检查
@@ -218,9 +218,9 @@ Hook 打开一次（自愈「启动时浏览器打开失败」的情况），否
 持久化为 `ASTRO_HOME` 下的 `preview-state.json`。服务完成端口回退并开始
 监听后，才打开实际 URL。启动或打开失败都被隔离在观测路径内，不改变 Hook 的放行结果。
 
-### 6.2 Codex 历史导入
+### 6.2 ChatGPT 历史导入
 
-`plugin/codex-adapter.cjs` 支持导入 `sessions` 和 `archived_sessions` 中的 rollout JSONL。事件 ID 由文件路径、行号、时间、类型和调用 ID 共同哈希，因此重复导入不会产生副本。
+`plugin/chatgpt-adapter.cjs` 支持导入 `sessions` 和 `archived_sessions` 中的 rollout JSONL。事件 ID 由文件路径、行号、时间、类型和调用 ID 共同哈希，因此重复导入不会产生副本。
 
 ### 6.3 DeepSeek Harness Bundle
 
@@ -258,7 +258,7 @@ Hook 命令使用 `${CODEBUDDY_PLUGIN_ROOT}`，并保留权限、Elicitation、�
 ~/.astrox/
   plugins/astro/
   claude/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
-  codex/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
+  chatgpt/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
   deepseek/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
   trae/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
   workbuddy/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
@@ -391,7 +391,7 @@ Run History 行的状态必须与运行的真实结局一致：运行一旦真�
 | 作用域 | 事件或条件 | 状态 | 说明 |
 | --- | --- | --- | --- |
 | 轮次 | `StopFailure` | `failed` | stop 级失败，运行结束；其后到达的进度噪声（如 `SubagentStop`）不会把状态复活为 `active` |
-| 轮次 | `Stop` + `status=failed` | `failed` | 客户端折叠失败（Codex `turn.failed`）；同样按终态处理 |
+| 轮次 | `Stop` + `status=failed` | `failed` | 客户端折叠失败（ChatGPT `turn.failed`）；同样按终态处理 |
 | 工具 | `PostToolUseFailure`、`PostToolUse` 的 `tool_response.error` / 非零 `exitCode` | `failed` | 运行中途失败；若随后仍有执行进度事件，则视为可恢复，状态回到 `active` |
 | 交互 | `PermissionDenied` | `failed` | 用户决定，可恢复；`payload.retry=true` 时为 `waiting` |
 | 轮次 | `Stop` | `complete` | 正常收尾；带 `failed` 时按上行处理 |
@@ -589,7 +589,7 @@ localStorage 不可用时回退默认值，Trace 数据和当前页面操作不�
 | Worker 创建失败 | 回退到主线程布局 |
 | 路由无法达到最优 | 返回诊断与 `fallback` 标记，尽量继续渲染 |
 | 无事件 | development/test 使用内置 Demo；production 保持真实空状态 |
-| Hook 解析/落盘错误 | stderr 报告诊断，正常退出且不阻断 Agent；Codex quiet 模式保持 stdout 兼容 |
+| Hook 解析/落盘错误 | stderr 报告诊断，正常退出且不阻断 Agent；ChatGPT quiet 模式保持 stdout 兼容 |
 | localStorage 不可用或值非法 | 回退响应式默认值；不影响 Trace 读取和当前页操作 |
 | 仍在计时的运行达到配置阈值 | 派生封顶的 `terminated` 展示；没有其他计时项时停止共享时钟，并保留持久化事件 |
 
@@ -600,7 +600,7 @@ localStorage 不可用时回退默认值，Trace 数据和当前页面操作不�
 | HTTP、SSE、静态站点 | `server/server.mjs` |
 | JSONL 存储与文件跟随 | `server/trace-store.mjs` |
 | 采集、归一化、脱敏 | `plugin/trace-recorder.cjs` |
-| Codex 历史适配 | `plugin/codex-adapter.cjs` |
+| ChatGPT 历史适配 | `plugin/chatgpt-adapter.cjs` |
 | Browser SDK | `plugin/browser-client.js` |
 | CLI | `bin/astro.mjs` |
 | Hook 安装 | `scripts/install-plugins.mjs` |
@@ -624,7 +624,7 @@ localStorage 不可用时回退默认值，Trace 数据和当前页面操作不�
 
 - 敏感信息脱敏和事件标准化；
 - Hook 安装配置的增量合并；
-- Codex 历史导入与确定性去重；
+- ChatGPT 历史导入与确定性去重；
 - 会话隔离、工具开始/结束配对和搜索；
 - 子智能体动态执行层；
 - Trace 到 AtomicFlowEvent 的严格序列投影；

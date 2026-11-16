@@ -29,7 +29,7 @@ test("detects direct hooks without depending on unrelated hook groups", (t) => {
             hooks: [
               {
                 command:
-                  "node ~/.astrox/plugins/astro/plugin/trace-recorder.cjs --source=codex",
+                  "node ~/.astrox/plugins/astro/plugin/trace-recorder.cjs --source=chatgpt",
               },
             ],
           },
@@ -38,12 +38,12 @@ test("detects direct hooks without depending on unrelated hook groups", (t) => {
     }),
   );
 
-  assert.equal(hasInstalledHook(configFile, "codex"), true);
+  assert.equal(hasInstalledHook(configFile, "chatgpt"), true);
   assert.equal(hasInstalledHook(configFile, "claude"), false);
 });
 
 test("detects enabled native ASTRO plugins from client JSON output", () => {
-  const status = inspectNativePlugin("codex", {
+  const status = inspectNativePlugin("chatgpt", {
     run: () => ({
       status: 0,
       stdout: JSON.stringify({

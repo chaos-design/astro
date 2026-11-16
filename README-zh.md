@@ -16,7 +16,7 @@
 “智能体状态追踪与运行时观测”。它是编码智能体可观测系统，与 Astro Web 框架无关。
 
 一个面向编码智能体的本地优先运行时可观测、搜索与回放控制台。
-ASTRO 将 Trae、Claude Code、Codex、DeepSeek Harness、WorkBuddy / CodeBuddy Code、
+ASTRO 将 Trae、Claude Code、ChatGPT、DeepSeek Harness、WorkBuddy / CodeBuddy Code、
 OpenCode、ZCode、Pi、浏览器扩展和自定义客户端接入统一的版本化事件协议，无需将追踪数据发送到本机之外。
 
 ![ASTRO 桌面控制台](docs/assets/astro-desktop.png)
@@ -102,7 +102,7 @@ ASTRO 只观察智能体执行，不负责调用模型、调度工具、批准�
 - 选择一条结果即可联动定位 Session、Prompt 子运行、事件日志、检查器和拓扑原子。
 - 使用 `source`、`session` 和 `event` 查询参数生成深链接。
 - 支持 JSON/JSONL 导入、按 Prompt 子运行导出 JSONL 和清空本地事件。
-- Codex 历史导入使用确定性 ID，重复导入未变化文件不会产生副本。
+- ChatGPT 历史导入使用确定性 ID，重复导入未变化文件不会产生副本。
 - 在持久化前递归脱敏敏感信息。
 - 支持浅色、深色和系统主题，不依赖 CDN 或远程字体。
 - History、Events、主题和平台偏好使用 `ASTROX_*` 本地键持久化。
@@ -118,7 +118,7 @@ ASTRO 只观察智能体执行，不负责调用模型、调度工具、批准�
 | --- | --- | --- | --- | --- |
 | Trae | 支持 | UI 导入 JSON/JSONL | `~/.astrox/trae/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` | 项目 Hook |
 | Claude Code | 支持 | UI 导入 JSON/JSONL | `~/.astrox/claude/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` | 原生插件或直接 Hook |
-| Codex | 支持 | 活跃与归档 rollout JSONL | `~/.astrox/codex/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` | 原生插件、直接 Hook 与适配器 |
+| ChatGPT | 支持 | 活跃与归档 rollout JSONL | `~/.astrox/chatgpt/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` | 原生插件、直接 Hook 与适配器 |
 | DeepSeek Harness | 支持 | UI 导入 JSON/JSONL | `~/.astrox/deepseek/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` | 原生 `dsh` bundle |
 | WorkBuddy / CodeBuddy Code | 支持 | UI 导入 JSON/JSONL | `~/.astrox/workbuddy/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` | 原生插件或直接 Hook |
 | OpenCode | 支持 | 仅原生事件 | `~/.astrox/opencode/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` | 全局 OpenCode 插件 |
@@ -136,7 +136,7 @@ Hook 支持范围取决于各运行时实际开放的事件能力。无法识别
 
 - 与项目清单兼容的当前 Node.js LTS 版本。
 - 通过 Corepack 激活的 `pnpm`。
-- 仅在安装对应接入时需要 Codex、Claude Code、DeepSeek Harness、Trae 或 WorkBuddy。
+- 仅在安装对应接入时需要 ChatGPT、Claude Code、DeepSeek Harness、Trae 或 WorkBuddy。
 - 支持 ES Module、Web Worker、SSE、`ResizeObserver` 和现代 CSS 的浏览器。
 - 可用的本机回环端口。服务从 `5678` 开始，首选端口被占用时最多继续尝试后续
   20 个端口。
@@ -168,7 +168,7 @@ pnpm start
 
 | 运行时 | 推荐安装方式 | 作用域 | 写入位置 |
 | --- | --- | --- | --- |
-| Codex | 原生 `codex-plugin/` | 用户级 | `~/.astrox/codex/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` |
+| ChatGPT | 原生 `chatgpt-plugin/` | 用户级 | `~/.astrox/chatgpt/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` |
 | Claude Code | 原生 `claude-plugin/` | 用户级、项目级或本地 | `~/.astrox/claude/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` |
 | DeepSeek Harness | `deepseek-plugin/` bundle | Profile | `~/.astrox/deepseek/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` |
 | WorkBuddy / CodeBuddy Code | 原生 `workbuddy-plugin/` | 用户级、项目级或本地 | `~/.astrox/workbuddy/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` |
@@ -179,7 +179,7 @@ pnpm start
 | 浏览器 / 扩展 | Browser SDK | 客户端自定义 | `~/.astrox/browser/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` |
 | 自定义智能体 | HTTP API 或 CLI | 客户端自定义 | `~/.astrox/<source>/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` |
 
-同一个 Codex、Claude Code 或 WorkBuddy 环境只能选择“原生插件”或“直接 Hook”中的一种。两者
+同一个 ChatGPT、Claude Code 或 WorkBuddy 环境只能选择“原生插件”或“直接 Hook”中的一种。两者
 同时启用会让同一生命周期事件被采集两次。
 
 ### 部署预览页面（Vercel / GitHub Pages）
@@ -200,13 +200,13 @@ RUN HISTORY 与拓扑实时更新。
 本机轨迹数据的跨域读取边界，请只列自己控制的域名。完整清单见使用手册
 「部署预览页面」一节。
 
-### Codex、Claude Code 与 WorkBuddy 原生插件
+### ChatGPT、Claude Code 与 WorkBuddy 原生插件
 
 仓库提供三个自包含的原生插件包：
 
 | 插件目录 | Manifest | Hook 配置 |
 | --- | --- | --- |
-| `codex-plugin/` | `.codex-plugin/plugin.json` | `hooks/hooks.json` |
+| `chatgpt-plugin/` | `.chatgpt-plugin/plugin.json` | `hooks/hooks.json` |
 | `claude-plugin/` | `.claude-plugin/plugin.json` | `hooks/hooks.json` |
 | `workbuddy-plugin/` | `.codebuddy-plugin/plugin.json` | `hooks/hooks.json` |
 
@@ -216,14 +216,14 @@ RUN HISTORY 与拓扑实时更新。
 pnpm build:native-plugins
 ```
 
-通过当前仓库的 marketplace 安装 Codex 插件：
+通过当前仓库的 marketplace 安装 ChatGPT 插件：
 
 ```bash
-codex plugin marketplace add /absolute/path/to/astro
-codex plugin add astro@astro-local
+chatgpt plugin marketplace add /absolute/path/to/astro
+chatgpt plugin add astro@astro-local
 ```
 
-新建 Codex 会话后打开 `/hooks`，检查并信任 ASTRO Hook。Codex 会跳过尚未确认的
+新建 ChatGPT 会话后打开 `/hooks`，检查并信任 ASTRO Hook。ChatGPT 会跳过尚未确认的
 新增或已变化命令 Hook，这是预期的安全机制。
 
 直接加载 Claude Code 插件进行测试：
@@ -242,10 +242,10 @@ claude plugin install astro@astro-local --scope user
 `--scope project` 用于可提交的共享项目配置，`--scope local` 用于不提交到版本库的
 项目本地配置。启用插件后需要重启 Claude Code 或新建会话。
 
-两个原生插件分别写入 `~/.astrox/codex/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` 和
+两个原生插件分别写入 `~/.astrox/chatgpt/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` 和
 `~/.astrox/claude/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl`。直接安装会立即启动并打开控制台；原生 Hook 还会在
 `SessionStart` 时确保控制台已打开，并以第一条提示词作为兼容回退。完整的使用与
-卸载步骤见 [Codex 插件指南](codex-plugin/README.md) 和
+卸载步骤见 [ChatGPT 插件指南](chatgpt-plugin/README.md) 和
 [Claude Code 插件指南](claude-plugin/README.md)。
 
 WorkBuddy / CodeBuddy Code 插件可通过本地 marketplace 校验并安装：
@@ -337,31 +337,31 @@ pnpm install-plugins
 Hook；除非设置 `--no-migrate`，否则还会迁移旧数据。安装后会立即幂等启动独立
 控制台并打开浏览器；新建 Agent 会话时会复用该进程并定位到当前会话。
 
-#### 在 Codex 中安装和使用
+#### 在 ChatGPT 中安装和使用
 
-为当前用户安装 Codex Hook：
-
-```bash
-pnpm install-plugins -- --clients=codex
-```
-
-该命令会更新 `$CODEX_HOME/hooks.json`，默认位置是 `~/.codex/hooks.json`。使用自定义
-Codex Home 时执行：
+为当前用户安装 ChatGPT Hook：
 
 ```bash
-pnpm install-plugins -- --clients=codex --codex-home=/path/to/.codex
+pnpm install-plugins -- --clients=chatgpt
 ```
 
-安装后重启 Codex，进入需要观测的项目并新建会话：
+该命令会更新 `$CHATGPT_HOME/hooks.json`，默认位置是 `~/.chatgpt/hooks.json`。使用自定义
+ChatGPT Home 时执行：
+
+```bash
+pnpm install-plugins -- --clients=chatgpt --chatgpt-home=/path/to/.chatgpt
+```
+
+安装后重启 ChatGPT，进入需要观测的项目并新建会话：
 
 ```bash
 cd /path/to/workspace
-codex
+chatgpt
 ```
 
 提交提示词并正常调用工具后，会话、提示词、工具、权限、上下文压缩、子智能体、
-中断和停止事件会写入 `~/.astrox/codex/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl`。如需查看安装前已有的 Codex
-rollout 历史，可执行 `pnpm import-codex`。
+中断和停止事件会写入 `~/.astrox/chatgpt/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl`。如需查看安装前已有的 ChatGPT
+rollout 历史，可执行 `pnpm import-chatgpt`。
 
 #### 在 Claude Code 中安装和使用
 
@@ -429,7 +429,7 @@ ASTRO_AUTO_OPEN=0 pnpm start
 node ~/.astrox/plugins/astro/server/server.mjs
 ```
 
-在 **Run History** 中选择新会话，并在平台选择器中选择 Codex、Claude Code、
+在 **Run History** 中选择新会话，并在平台选择器中选择 ChatGPT、Claude Code、
 DeepSeek、Trae 或 WorkBuddy。控制台服务只负责页面和实时推送；即使服务未启动，Hook 仍会继续写入本地
 JSONL。设置 `ASTRO_AUTO_OPEN=0` 可长期关闭消息触发的自动启动。
 
@@ -437,7 +437,7 @@ JSONL。设置 `ASTRO_AUTO_OPEN=0` 可长期关闭消息触发的自动启动。
 
 ```bash
 find ~/.astrox -type f -name events.jsonl -print
-tail -n 1 ~/.astrox/codex/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
+tail -n 1 ~/.astrox/chatgpt/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
 tail -n 1 ~/.astrox/claude/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
 tail -n 1 ~/.astrox/deepseek/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
 tail -n 1 ~/.astrox/trae/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
@@ -450,7 +450,7 @@ tail -n 1 ~/.astrox/workbuddy/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
 | --- | --- | --- |
 | Trae | `<workspace>/.trae/hooks.json` | 会话开始、提示词、工具开始/结果、停止、通知 |
 | Claude Code | `~/.claude/settings.json` 或 `<workspace>/.claude/settings.local.json` | 会话、提示词、工具、失败、权限、通知、子智能体、压缩、停止 |
-| Codex | `$CODEX_HOME/hooks.json` | 会话、提示词、工具、权限、上下文压缩、子智能体、中断、停止 |
+| ChatGPT | `$CHATGPT_HOME/hooks.json` | 会话、提示词、工具、权限、上下文压缩、子智能体、中断、停止 |
 | DeepSeek Harness | `$DSH_HOME/profiles/<profile>/package.json` | 会话、提示词、模型回复、工具、推理、结束与中断 |
 | WorkBuddy | `$CODEBUDDY_HOME/settings.json` 或 `<workspace>/.codebuddy/settings.json` | 会话、提示词、工具、权限、通知、任务、Elicitation、压缩、失败与停止 |
 
@@ -488,7 +488,7 @@ pnpm dev
   采集器始终不参与权限决策，详见 `docs/plugin-installation.md`。
 - **原始事实优先：**`TraceEvent` 是持久化事实，原子和轨迹是可重建视图。
 - **本地优先持久化：**不要求数据库、云端采集器或 CDN。
-- **采集失败放行：**采集器异常时仍正常退出，避免 Hook 阻断智能体；Codex 静默
+- **采集失败放行：**采集器异常时仍正常退出，避免 Hook 阻断智能体；ChatGPT 静默
   返回，兼容客户端收到 `{"continue":true}`。
 - **协议可移植：**JSONL 和 HTTP 写入使接入方不依赖 React 界面。
 
@@ -499,14 +499,14 @@ flowchart LR
   subgraph Sources["事件来源"]
     Trae["Trae Hooks"]
     Claude["Claude Code Hooks"]
-    Codex["Codex Hooks<br/>与 rollout JSONL"]
+    ChatGPT["ChatGPT Hooks<br/>与 rollout JSONL"]
     Browser["Browser SDK"]
     Custom["自定义 HTTP<br/>或 CLI 客户端"]
   end
 
   subgraph Capture["采集与规范化"]
     Recorder["Schema v2 规范化<br/>字段补全<br/>敏感信息脱敏"]
-    Adapter["Codex 历史适配器<br/>确定性事件 ID"]
+    Adapter["ChatGPT 历史适配器<br/>确定性事件 ID"]
   end
 
   subgraph Storage["本地持久化"]
@@ -530,7 +530,7 @@ flowchart LR
 
   Trae --> Recorder
   Claude --> Recorder
-  Codex --> Adapter --> Recorder
+  ChatGPT --> Adapter --> Recorder
   Browser --> API
   Custom --> API
   API --> Recorder
@@ -551,7 +551,7 @@ flowchart TB
   subgraph Plugin["plugin/"]
     TR["trace-recorder.cjs<br/>规范化、脱敏、追加写入"]
     SP["storage-paths.cjs<br/>解析 AOT 数据目录"]
-    CA["codex-adapter.cjs<br/>rollout 转换"]
+    CA["chatgpt-adapter.cjs<br/>rollout 转换"]
     BC["browser-client.js<br/>浏览器采集 API"]
   end
 
@@ -666,7 +666,7 @@ sequenceDiagram
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
 | `schemaVersion` | number | 持久化协议版本；当前采集器写入 `2` |
-| `id` | string | 全局事件 ID；Codex 导入使用确定性哈希 |
+| `id` | string | 全局事件 ID；ChatGPT 导入使用确定性哈希 |
 | `capturedAt` | ISO 8601 string | 事件采集时间 |
 | `source` | string | 规范化后的客户端名称 |
 | `sourceVersion` | string 或 null | 可选客户端版本 |
@@ -814,7 +814,7 @@ flowchart LR
       trace-recorder.cjs
   claude/
     YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
-  codex/
+  chatgpt/
     YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
   trae/
     YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
@@ -859,7 +859,7 @@ node bin/astro.mjs migrate /path/to/.agent-trace
 node bin/astro.mjs migrate ~/.astrox
 ```
 
-Codex 或 Claude Code 原生插件安装不会执行仓库脚本；如果只通过原生插件升级，需要
+ChatGPT 或 Claude Code 原生插件安装不会执行仓库脚本；如果只通过原生插件升级，需要
 手动执行一次 `node bin/astro.mjs migrate`。
 
 迁移过程会重新规范化记录，并跳过目标位置已有的事件 ID。安装 Hook 时使用
@@ -879,10 +879,10 @@ Codex 或 Claude Code 原生插件安装不会执行仓库脚本；如果只通�
 
 ```text
 node bin/astro.mjs serve
-node bin/astro.mjs install [--target DIR] [--clients trae,claude,codex,deepseek,workbuddy] [--no-migrate]
+node bin/astro.mjs install [--target DIR] [--clients trae,claude,chatgpt,deepseek,workbuddy] [--no-migrate]
 node bin/astro.mjs doctor [--scope user|project] [--deepseek-profile web]
 node bin/astro.mjs migrate [FILE_OR_DIR]
-node bin/astro.mjs import-codex [FILE ...] [--codex-home DIR]
+node bin/astro.mjs import-chatgpt [FILE ...] [--chatgpt-home DIR]
 node bin/astro.mjs ingest [FILE] [--source NAME]
 ```
 
@@ -901,19 +901,19 @@ printf '%s\n' \
   | node bin/astro.mjs ingest --source custom-agent
 ```
 
-### Codex 历史记录
+### ChatGPT 历史记录
 
-从 `$CODEX_HOME` 导入所有已持久化的活跃会话和归档会话：
+从 `$CHATGPT_HOME` 导入所有已持久化的活跃会话和归档会话：
 
 ```bash
-pnpm import-codex
+pnpm import-chatgpt
 ```
 
-导入指定 rollout 文件或使用其他 Codex 主目录：
+导入指定 rollout 文件或使用其他 ChatGPT 主目录：
 
 ```bash
-node bin/astro.mjs import-codex /path/to/rollout.jsonl
-node bin/astro.mjs import-codex --codex-home=/path/to/.codex
+node bin/astro.mjs import-chatgpt /path/to/rollout.jsonl
+node bin/astro.mjs import-chatgpt --chatgpt-home=/path/to/.chatgpt
 ```
 
 事件 ID 由文件路径、行号、时间戳、事件类型和调用 ID 生成。重复导入未修改的文件
@@ -983,8 +983,8 @@ curl -X POST http://127.0.0.1:5678/api/events \
 
 ```bash
 curl http://127.0.0.1:5678/api/health
-curl 'http://127.0.0.1:5678/api/events?source=codex&session=s1'
-curl 'http://127.0.0.1:5678/api/search?q=readFile&source=codex'
+curl 'http://127.0.0.1:5678/api/events?source=chatgpt&session=s1'
+curl 'http://127.0.0.1:5678/api/search?q=readFile&source=chatgpt'
 curl -N http://127.0.0.1:5678/api/stream
 ```
 
@@ -1145,12 +1145,12 @@ EXAMPLE_API_KEY=replace-with-a-local-secret
 
 ```text
 .
-├── .agents/plugins/             # Codex 本地 marketplace
+├── .agents/plugins/             # ChatGPT 本地 marketplace
 ├── .claude-plugin/              # Claude Code 本地 marketplace
 ├── .codebuddy-plugin/           # WorkBuddy 本地 marketplace
 ├── bin/                         # astro-trace CLI
 ├── claude-plugin/               # Claude Code 原生插件
-├── codex-plugin/                # Codex 原生插件
+├── chatgpt-plugin/                # ChatGPT 原生插件
 ├── deepseek-plugin/             # DeepSeek Harness bundle
 ├── workbuddy-plugin/            # WorkBuddy / CodeBuddy Code 原生插件
 ├── docs/                        # 架构、使用手册和本地资源
@@ -1224,7 +1224,7 @@ Lucide 图标和本地打包的 Geist 字体。
 | 没有事件 | development/test 展示本地示例数据集；production 保持真实空状态 |
 | 示例数据集缺失或格式错误 | 服务返回 404/500，控制台提示「示例数据不可用」并保留真实事件 |
 | 部署页面连不上本机服务 | 弹一次「无法连接本地服务」（含 `ASTRO_CORS_ORIGINS` 提示）后保持 `offline`；来源加入允许列表并重启服务即可恢复 |
-| Hook 解析或写入失败 | stderr 输出诊断并正常退出；不阻断智能体，Codex quiet 模式保持 stdout 兼容 |
+| Hook 解析或写入失败 | stderr 输出诊断并正常退出；不阻断智能体，ChatGPT quiet 模式保持 stdout 兼容 |
 | 控制台启动或浏览器打开失败 | Trace 仍正常写入；下次提示词会在 PID 失效后重试 |
 | active 或 waiting Prompt 到达超时阈值 | 封顶继续增加的时长，派生 `terminated`，停止当前选中运行的 Live 效果且不新增事件 |
 
@@ -1244,10 +1244,10 @@ pnpm build:native-plugins
 - 事件规范化、敏感信息脱敏和按来源存储；
 - 安装与 Agent 启动时打开控制台，以及 PID 防重复启动；
 - Hook 配置合并和独立运行时安装；
-- Codex、Claude Code 与 WorkBuddy 原生插件的 Manifest、Hook 路径和采集器同步；
+- ChatGPT、Claude Code 与 WorkBuddy 原生插件的 Manifest、Hook 路径和采集器同步；
 - Claude Hook 声明的全部生命周期处理器可执行验证；
 - 旧版数据迁移；
-- Codex 适配和确定性去重；
+- ChatGPT 适配和确定性去重；
 - 会话隔离和嵌套搜索；
 - 工具开始/结果配对和轨迹构建；
 - 动态子智能体拓扑；
@@ -1275,7 +1275,7 @@ pnpm build:native-plugins
 | `pnpm build` | 构建生产前端 |
 | `pnpm build:native-plugins` | 同步原生插件的采集器、服务端和控制台 |
 | `pnpm install-plugins` | 安装受支持的 Hook |
-| `pnpm import-codex` | 导入活跃与归档 Codex 历史 |
+| `pnpm import-chatgpt` | 导入活跃与归档 ChatGPT 历史 |
 | `pnpm build:plugin` | 构建便携式 Hook 插件压缩包 |
 
 ### 便携式插件包
@@ -1293,7 +1293,7 @@ pnpm build:plugin
 ```bash
 pnpm dlx /absolute/path/to/astro-plugin.tgz \
   --target /path/to/workspace \
-  --clients trae,claude,codex,deepseek,workbuddy
+  --clients trae,claude,chatgpt,deepseek,workbuddy
 ```
 
 打包后的采集器没有运行时 npm 依赖。详情参见
@@ -1355,7 +1355,7 @@ curl http://127.0.0.1:5678/api/demo-events
 运行中的 Hook 可能在文件截断后立即写入新事件。如果需要空数据目录，应先停止当前
 智能体会话再清空。
 
-### Codex 导入出现重复
+### ChatGPT 导入出现重复
 
 未变化的导入具有幂等性。移动 rollout 文件、改变行顺序或修改行内容都会改变
 确定性 ID，因此可能产生新记录。

@@ -17,7 +17,7 @@ ASTRO 用于在本机采集、查看和回放编码智能体的运行事件。�
 - 从执行拓扑理解工具调用、观察结果、记忆、质量门禁和输出提交之间的关系；
 - 检查某个工具调用的输入、输出、耗时和原始载荷；
 - 回放历史会话，定位失败发生前后的状态变化；
-- 在 Trae、Claude Code、Codex、DeepSeek Harness、WorkBuddy 和浏览器客户端之间使用统一事件格式；
+- 在 Trae、Claude Code、ChatGPT、DeepSeek Harness、WorkBuddy 和浏览器客户端之间使用统一事件格式；
 - 导入、导出和分享单次运行的 JSONL Trace。
 
 ![ASTRO 桌面界面](assets/astro-desktop.png)
@@ -102,11 +102,11 @@ pnpm dev
 pnpm build:native-plugins
 ```
 
-然后通过当前仓库的 marketplace 安装 Codex 插件：
+然后通过当前仓库的 marketplace 安装 ChatGPT 插件：
 
 ```bash
-codex plugin marketplace add /absolute/path/to/astro
-codex plugin add astro@astro-local
+chatgpt plugin marketplace add /absolute/path/to/astro
+chatgpt plugin add astro@astro-local
 ```
 
 Claude Code 可以直接加载原生插件：
@@ -125,25 +125,25 @@ claude plugin install astro@astro-local --scope user
 以下各节介绍直接写入 Hook 配置的兼容安装方式，适用于 Trae 或不支持原生插件的
 运行环境。
 
-#### 4.2.1 Codex
+#### 4.2.1 ChatGPT
 
-将当前用户的 Hook 安装到 `$CODEX_HOME/hooks.json`：
+将当前用户的 Hook 安装到 `$CHATGPT_HOME/hooks.json`：
 
 ```bash
-pnpm install-plugins -- --clients=codex
+pnpm install-plugins -- --clients=chatgpt
 ```
 
-使用非默认 Codex Home：
+使用非默认 ChatGPT Home：
 
 ```bash
-pnpm install-plugins -- --clients=codex --codex-home=/path/to/.codex
+pnpm install-plugins -- --clients=chatgpt --chatgpt-home=/path/to/.chatgpt
 ```
 
-安装后重启 Codex，在需要观测的项目中执行 `codex` 并新建会话。实时事件写入
-`~/.astrox/codex/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl`。如需导入已有的活动和归档 rollout：
+安装后重启 ChatGPT，在需要观测的项目中执行 `chatgpt` 并新建会话。实时事件写入
+`~/.astrox/chatgpt/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl`。如需导入已有的活动和归档 rollout：
 
 ```bash
-pnpm import-codex
+pnpm import-chatgpt
 ```
 
 #### 4.2.2 Claude Code
@@ -428,7 +428,7 @@ deepseek 的 `AgentMessage` 携带结构化 `model`/`provider`，opencode 的 st
 通知携带 `model`（更早的数据从消息文本解析），ZCode 在 `SessionStart` 上报
 会话所用模型（会话中途切换模型时，后续消息显示的仍是会话起始模型）；
 一条运行内切换过模型时显示最后一次。未上报模型的客户端（如 claude、
-codex 的 Hook）不显示该标签，与「没有模型」不加区分。一个 Prompt 子运行从对应
+chatgpt 的 Hook）不显示该标签，与「没有模型」不加区分。一个 Prompt 子运行从对应
 `UserPromptSubmit` 开始，到下一条 Prompt 之前结束。
 
 点击子行会把它设为当前诊断范围；点击父行会选择最新 Prompt。界面同时只展开一个
@@ -447,7 +447,7 @@ codex 的 Hook）不显示该标签，与「没有模型」不加区分。一个
 
 工具栏功能：
 
-- 平台语义：Codex、Claude Code、Trae，以及其他已配置的智能体，外加末尾的
+- 平台语义：ChatGPT、Claude Code、Trae，以及其他已配置的智能体，外加末尾的
   **Others** 兜底项；
 - 拓扑/轨迹切换；
 - 原子与连线指南；
@@ -537,7 +537,7 @@ pnpm install:auto-approve -- --client=claude --apply
 **宿主差异**：Claude Code 用 `/hooks` 确认注册；ZCode 项目级 hooks 被忽略、配置在
 会话启动时快照，必须**新开会话**，失败查 `~/.zcode/cli/log/zcode-<date>.jsonl`；
 CodeBuddy 用 `--event=PreToolUse` 并设置
-`ASTRO_AUTO_APPROVE_INPUT_FIELD=modifiedInput`；Codex / OpenCode / Pi / DeepSeek
+`ASTRO_AUTO_APPROVE_INPUT_FIELD=modifiedInput`；ChatGPT / OpenCode / Pi / DeepSeek
 Harness 没有命令 Hook 决策通道，只能用宿主原生权限模式。
 
 **参数**：`ASTRO_AUTO_APPROVE_EVENTS` / `TOOLS` / `ANSWER`（`first` / `last` /
@@ -835,31 +835,31 @@ astro-<source>-<sessionId>-prompt-<number>.jsonl
 页面会把当前定位写入查询参数：
 
 ```text
-?agent=codex&session=<sessionId>&event=<eventId>
+?agent=chatgpt&session=<sessionId>&event=<eventId>
 ```
 
 `agent` 与下拉选择保持一致（已配置的智能体 ID 或 `others`）。打开该 URL 时，
 页面会优先选择匹配的智能体、会话、包含该事件的 Prompt 子运行并定位事件。
 深链依赖目标环境中已存在对应 Trace 数据，旧的 `?source=` 链接仍然可用。
 
-## 11. 导入 Codex 历史
+## 11. 导入 ChatGPT 历史
 
-导入默认 Codex 目录下所有活动和归档会话：
+导入默认 ChatGPT 目录下所有活动和归档会话：
 
 ```bash
-pnpm import-codex
+pnpm import-chatgpt
 ```
 
 导入指定 rollout 文件：
 
 ```bash
-node bin/astro.mjs import-codex /path/to/rollout.jsonl
+node bin/astro.mjs import-chatgpt /path/to/rollout.jsonl
 ```
 
-指定 Codex Home：
+指定 ChatGPT Home：
 
 ```bash
-node bin/astro.mjs import-codex --codex-home=/path/to/.codex
+node bin/astro.mjs import-chatgpt --chatgpt-home=/path/to/.chatgpt
 ```
 
 导入器生成确定性事件 ID，因此同一文件重复导入时不会产生重复事件。
@@ -868,11 +868,11 @@ node bin/astro.mjs import-codex --codex-home=/path/to/.codex
 
 ```text
 astro-trace serve
-astro-trace install [--target DIR] [--clients trae,claude,codex,deepseek,workbuddy] [--scope user|project]
+astro-trace install [--target DIR] [--clients trae,claude,chatgpt,deepseek,workbuddy] [--scope user|project]
 astro-trace update [--no-deepseek]
 astro-trace doctor [--target DIR] [--scope user|project] [--deepseek-profile NAME]
 astro-trace migrate [FILE_OR_DIR] [--astro-home DIR]
-astro-trace import-codex [FILE ...] [--codex-home DIR]
+astro-trace import-chatgpt [FILE ...] [--chatgpt-home DIR]
 astro-trace ingest [FILE] [--source NAME]
 ```
 
@@ -918,8 +918,8 @@ astrox path                   打印 ASTRO home、插件目录与 CLI 入口
 - `start` 启动仪表盘守护进程（默认 `127.0.0.1:5678`）。它会同时把当前入口注册为全局 `astrox` 命令——在 Unix 下软链到 `/usr/local/bin`、`~/.local/bin` 或 `~/bin` 中第一个可写目录，在 Windows 下写入 `%USERPROFILE%\.astrox\bin\astrox.cmd`。已存在的同名软链若指向本入口则复用，指向其他文件则保留不动。`--no-global` 跳过注册，`--bin-dir DIR` 指定候选目录，`--open` 在启动后自动打开浏览器。
 - 守护进程启动后写入 `<ASTRO_HOME>/dashboard-<port>.pid`（含 `pid` 与 `url`），运行日志落在 `<ASTRO_HOME>/dashboard.log`。`logs [--lines N]` 默认查看末尾 40 行。
 - `stop` 向守护进程发送 `SIGTERM`（必要时 `SIGKILL`）并结束进程，不触发额外清理；`restart` 等价于先 `stop` 再 `start`。
-- `status` 汇总插件配置（config.yaml / .env 的 OK、WARN、MISSING）、global cli 状态、仪表盘运行状态，以及各客户端 Hook 集成（codex、claude、workbuddy、trae、deepseek）。`--json` 输出机器可读报告。
-- `info` 列出每个来源（claude、codex、copilot、cursor、deepseek、gemini、iflow、llama、opencode、pi、qwen、trae、workbuddy、zcode 等）的 trace 文件数与字节数及合计，并展示 trace 根目录、插件目录与全局 CLI 路径。`--json` 同效。
+- `status` 汇总插件配置（config.yaml / .env 的 OK、WARN、MISSING）、global cli 状态、仪表盘运行状态，以及各客户端 Hook 集成（chatgpt、claude、workbuddy、trae、deepseek）。`--json` 输出机器可读报告。
+- `info` 列出每个来源（claude、chatgpt、copilot、cursor、deepseek、gemini、iflow、llama、opencode、pi、qwen、trae、workbuddy、zcode 等）的 trace 文件数与字节数及合计，并展示 trace 根目录、插件目录与全局 CLI 路径。`--json` 同效。
 - `update` 原地刷新已安装的插件运行时（等价于 `astro-trace update`），`--no-deepseek` 跳过 DeepSeek 插件包。
 
 > 控制命令依赖已安装的插件运行时；首次使用请先执行 `astrox install`（或 `astro-trace install`）。
@@ -980,10 +980,10 @@ curl -X POST http://127.0.0.1:5678/api/events \
 
 ```text
 GET /api/events
-GET /api/events?source=codex&session=<sessionId>
+GET /api/events?source=chatgpt&session=<sessionId>
 GET /api/events/<eventId>
 GET /api/search?q=<query>
-GET /api/search?q=<query>&source=codex&session=<sessionId>
+GET /api/search?q=<query>&source=chatgpt&session=<sessionId>
 GET /api/stream
 GET /api/demo-events
 GET /api/interactions/<requestId>    读取待答交互 {request, events, result}
@@ -1110,7 +1110,7 @@ astro-trace doctor
 | 键 | 值 | 说明 |
 | --- | --- | --- |
 | `ASTROX_THEME` | `light` / `dark` / `system` | 主题 |
-| `ASTROX_PLATFORM` | 如 `codex` / `claude` / `deepseek` / `trae` / `workbuddy` | 平台上下文 |
+| `ASTROX_PLATFORM` | 如 `chatgpt` / `claude` / `deepseek` / `trae` / `workbuddy` | 平台上下文 |
 | `ASTROX_HISTORY_OPEN` | `true` / `false` | 左侧 History 展开状态 |
 | `ASTROX_CONSOLE_OPEN` | `true` / `false` | 右侧 Events/Inspector 展开状态 |
 | `ASTROX_HISTORY_RANGE` | `1h` / `3h` / `6h` / `12h` / `1d` / `3d` / `5d` / `7d` | 默认时间范围，默认 `3h` |
@@ -1287,7 +1287,7 @@ JSONL 后服务才会推送），以及页面是否处于暂停同步状态（�
 4. SSE 重连后首先收到包含完整事件列表的 `reset`；
 5. 修改 Hook 配置后已重载工作区或重启客户端。
 
-### Codex 导入后重复
+### ChatGPT 导入后重复
 
 同一文件正常不会重复。若文件路径、行顺序或原始行内容变化，确定性 ID 也会变化，可能被视为新事件。
 

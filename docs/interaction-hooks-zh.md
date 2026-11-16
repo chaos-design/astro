@@ -29,7 +29,7 @@
 | D | 缺多 hook 聚合与不可绕过规则 | 聚合 `deny > ask > allow`；显式 deny、计划模式写禁、硬工具限制优先；recorder 的 `{continue:true}` 是中立输出，不参与决策 | §2、§9 |
 | E | 观测通道止于「只写 JSONL」 | JSONL → `GET /api/stream`（`reset` / `trace` / `ready` / `resume`）→ 控制台 `user.question` 预览，已支持 `prompts` / `message` / `plan` / `answers` 四种形状 | §2、§6.3 |
 | F | 未标注「必须切回 App」的根因 | `/api/events` 只写入 TraceEvent，`/api/stream` 只单向推送，服务端没有反向应答通道 | §2.1、§6.3 |
-| G | 缺宿主覆盖差异 | Claude / ZCode / CodeBuddy 三套配置；Codex、OpenCode、Pi、DeepSeek Harness 无命令 Hook 决策通道 | §2.1、§9 |
+| G | 缺宿主覆盖差异 | Claude / ZCode / CodeBuddy 三套配置；ChatGPT、OpenCode、Pi、DeepSeek Harness 无命令 Hook 决策通道 | §2.1、§9 |
 | H | 缺 `answers` 语义 | 键为问题原文、值为选项 label，多选逗号连接；`ANSWER=all` 与 `ASTRO_AUTO_APPROVE_ANSWERS` 可覆盖；由宿主 Hook 注入，不是 Agent 事实 | §5.4、§6.2 |
 | I | 完全没有人工交互闭环 | 已补齐：交互 Hook 注册 → SSE `interaction.open` → 控制台面板作答 → `InteractionResult` → `answers` 回传 → `Notification` 通知 Agent；真实宿主实测仍待完成（计划 F3） | §3–§8（已实现） |
 
@@ -421,7 +421,7 @@ ZCode 额外约束：用户级 `hooks.enabled:true`、项目级配置被忽略�
 | 长度 | 单事件 ≤ 8 KiB；`answers` ≤ 4000 字符；通知字符串 ≤ 10,000 字符 |
 | 时间 | `ttlMs ≤ hookTimeoutMs - 500`；`expiresAt` ISO 8601；单定时器，不补播 |
 | 数据 | 原始 `TraceEvent` 不可变；`answers` 只做展示解析；递归脱敏后才落盘 |
-| 客户端 | Codex / OpenCode / Pi / DeepSeek Harness 无命令 Hook 决策通道，走宿主原生权限模式 |
+| 客户端 | ChatGPT / OpenCode / Pi / DeepSeek Harness 无命令 Hook 决策通道，走宿主原生权限模式 |
 
 ## 10. 验证方式
 

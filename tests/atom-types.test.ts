@@ -27,7 +27,7 @@ test("TYPE reads the atom's key/kind, never the event name", () => {
 });
 
 test("every LOG row names the TYPE of its primary projected atom", () => {
-  const projection = projectTraceEvents(events, "codex");
+  const projection = projectTraceEvents(events, "chatgpt");
   const atomBySequence = new Map(
     projection.events.map((entry) => [entry.sequence, entry.atom]),
   );
@@ -37,7 +37,7 @@ test("every LOG row names the TYPE of its primary projected atom", () => {
   ]);
 
   for (const event of events) {
-    const type = eventAtomType(event, "codex");
+    const type = eventAtomType(event, "chatgpt");
     assert.ok(type, `${event.eventName} has no atom type`);
     assert.ok(allowed.has(type.label), `${type.label} is not a known TYPE`);
     assert.notEqual(type.label, event.eventName);
@@ -58,7 +58,7 @@ test("known events resolve through the atom map with normalised kinds", () => {
   const typeFor = (eventName: string) =>
     eventAtomType(
       events.find((event) => event.eventName === eventName)!,
-      "codex",
+      "chatgpt",
     );
 
   // `observation` / `question` / `telemetry` are projection-layer aliases;
@@ -91,8 +91,8 @@ test("known events resolve through the atom map with normalised kinds", () => {
 });
 
 test("atom lookups are cached per platform, not rebuilt per row", () => {
-  const first = eventAtomType(events[0], "codex");
-  assert.equal(eventAtomType(events[0], "codex"), first);
+  const first = eventAtomType(events[0], "chatgpt");
+  assert.equal(eventAtomType(events[0], "chatgpt"), first);
   // All platforms share the same atom definition table in this build.
   assert.deepEqual(eventAtomType(events[0], "claude"), first);
   assert.equal(eventAtomType(events[0], "claude")?.label, first?.label);

@@ -4,8 +4,8 @@ deploy/
 artifacts/
 claude-plugin/dist/
 claude-plugin/server/
-codex-plugin/dist/
-codex-plugin/server/
+chatgpt-plugin/dist/
+chatgpt-plugin/server/
 .claude/settings.local.json
 
 docs/superpowers/

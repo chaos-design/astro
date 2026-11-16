@@ -227,7 +227,7 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   selected agent's sessions. RUN HISTORY only ever consumes the intersection.
   The dropdown is the *outer* filter — agent first, then the time window — so a
   neighbour's live run must not be merged into this list. It used to be, which
-  put the Claude message that was executing at the top of the Codex history.
+  put the Claude message that was executing at the top of the ChatGPT history.
 - A neighbouring agent that is running is signalled by a live dot in the agent
   picker (`scopeLiveRunIndex().sources` → `AgentSelect liveAgents`). Cross-agent
   messages are reached by switching the dropdown, never by adding their rows to

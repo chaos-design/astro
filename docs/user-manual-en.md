@@ -17,7 +17,7 @@ ASTRO captures, inspects, and replays coding-agent runtime events on the local m
 - understanding tool execution, observations, memory, quality gates, and output through an execution topology;
 - inspecting tool input, output, duration, and raw payload;
 - replaying a historical session to locate the state before a failure;
-- using one event model across Trae, Claude Code, Codex, DeepSeek Harness, WorkBuddy, browser clients, and custom integrations;
+- using one event model across Trae, Claude Code, ChatGPT, DeepSeek Harness, WorkBuddy, browser clients, and custom integrations;
 - importing, exporting, and sharing one run as JSONL.
 
 ![ASTRO desktop console](assets/astro-desktop.png)
@@ -111,11 +111,11 @@ server, and built dashboard:
 pnpm build:native-plugins
 ```
 
-Then install the Codex plugin through the repository marketplace:
+Then install the ChatGPT plugin through the repository marketplace:
 
 ```bash
-codex plugin marketplace add /absolute/path/to/astro
-codex plugin add astro@astro-local
+chatgpt plugin marketplace add /absolute/path/to/astro
+chatgpt plugin add astro@astro-local
 ```
 
 Claude Code can load its native package directly:
@@ -134,26 +134,26 @@ claude plugin install astro@astro-local --scope user
 The sections below describe the direct Hook installer, which remains useful
 for Trae and environments where native plugin installation is unavailable.
 
-#### 4.2.1 Codex
+#### 4.2.1 ChatGPT
 
-Install the current-user hook in `$CODEX_HOME/hooks.json`:
-
-```bash
-pnpm install-plugins -- --clients=codex
-```
-
-For a non-default Codex home:
+Install the current-user hook in `$CHATGPT_HOME/hooks.json`:
 
 ```bash
-pnpm install-plugins -- --clients=codex --codex-home=/path/to/.codex
+pnpm install-plugins -- --clients=chatgpt
 ```
 
-Restart Codex, run `codex` from the project to observe, and create a new
-session. Live events are appended to `~/.astrox/codex/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl`. Import
+For a non-default ChatGPT home:
+
+```bash
+pnpm install-plugins -- --clients=chatgpt --chatgpt-home=/path/to/.chatgpt
+```
+
+Restart ChatGPT, run `chatgpt` from the project to observe, and create a new
+session. Live events are appended to `~/.astrox/chatgpt/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl`. Import
 existing active and archived rollout files with:
 
 ```bash
-pnpm import-codex
+pnpm import-chatgpt
 ```
 
 #### 4.2.2 Claude Code
@@ -511,7 +511,7 @@ notification (older captures are read from the message text), and ZCode
 reports its session's model on `SessionStart` — if the model is switched
 mid-session, later messages still show the session-start model. A mid-run
 model switch shows the last observation. Clients that do not report a model
-(for example the claude and codex hooks) show no tag — an unreported model is
+(for example the claude and chatgpt hooks) show no tag — an unreported model is
 not rendered as "unknown". A prompt run begins with one
 `UserPromptSubmit` and contains every following event before the next prompt.
 
@@ -534,7 +534,7 @@ The workspace renders the selected prompt run. It provides:
 
 Toolbar controls:
 
-- platform context: Codex, Claude Code, Trae, and other configured agents,
+- platform context: ChatGPT, Claude Code, Trae, and other configured agents,
   plus an **Others** catch-all;
 - topology/trajectory switch;
 - atom and edge guide;
@@ -645,7 +645,7 @@ for ZCode it also sets `hooks.enabled: true` and writes `hooks.events`.
 project-level hooks and snapshots the configuration at session start, so open a
 **new session**; failures appear in
 `~/.zcode/cli/log/zcode-<date>.jsonl`. CodeBuddy needs `--event=PreToolUse` plus
-`ASTRO_AUTO_APPROVE_INPUT_FIELD=modifiedInput`. Codex, OpenCode, Pi and DeepSeek
+`ASTRO_AUTO_APPROVE_INPUT_FIELD=modifiedInput`. ChatGPT, OpenCode, Pi and DeepSeek
 Harness have no command-hook decision channel; use the host's native permission
 mode instead.
 
@@ -989,7 +989,7 @@ native browser alert.
 The page writes the current selection into:
 
 ```text
-?agent=codex&session=<sessionId>&event=<eventId>
+?agent=chatgpt&session=<sessionId>&event=<eventId>
 ```
 
 `agent` mirrors the dropdown filter (a configured agent id or `others`).
@@ -997,24 +997,24 @@ Opening the URL selects the matching agent, session, containing prompt run,
 and event when that trace data exists in the target environment. Legacy
 `?source=` links keep working.
 
-## 11. Import Codex History
+## 11. Import ChatGPT History
 
-Import active and archived sessions from the default Codex home:
+Import active and archived sessions from the default ChatGPT home:
 
 ```bash
-pnpm import-codex
+pnpm import-chatgpt
 ```
 
 Import selected rollouts:
 
 ```bash
-node bin/astro.mjs import-codex /path/to/rollout.jsonl
+node bin/astro.mjs import-chatgpt /path/to/rollout.jsonl
 ```
 
-Use another Codex home:
+Use another ChatGPT home:
 
 ```bash
-node bin/astro.mjs import-codex --codex-home=/path/to/.codex
+node bin/astro.mjs import-chatgpt --chatgpt-home=/path/to/.chatgpt
 ```
 
 Deterministic IDs make unchanged imports idempotent.
@@ -1023,11 +1023,11 @@ Deterministic IDs make unchanged imports idempotent.
 
 ```text
 astro-trace serve
-astro-trace install [--target DIR] [--clients trae,claude,codex,deepseek,workbuddy] [--scope user|project]
+astro-trace install [--target DIR] [--clients trae,claude,chatgpt,deepseek,workbuddy] [--scope user|project]
 astro-trace update [--no-deepseek] [--astro-home DIR]
 astro-trace doctor [--target DIR] [--scope user|project] [--deepseek-profile NAME]
 astro-trace migrate [FILE_OR_DIR] [--astro-home DIR]
-astro-trace import-codex [FILE ...] [--codex-home DIR]
+astro-trace import-chatgpt [FILE ...] [--chatgpt-home DIR]
 astro-trace ingest [FILE] [--source NAME]
 ```
 
@@ -1088,9 +1088,9 @@ astrox path                    print ASTRO home, plugin dir, and CLI entry
   process; no extra cleanup runs. `restart` is `stop` followed by `start`.
 - `status` summarizes the plugin config (config.yaml / .env as OK, WARN, or
   MISSING), the global CLI state, the dashboard run state, and per-client hook
-  integrations (codex, claude, workbuddy, trae, deepseek). `--json` emits a
+  integrations (chatgpt, claude, workbuddy, trae, deepseek). `--json` emits a
   machine-readable report.
-- `info` lists each source's trace file count and byte total (claude, codex,
+- `info` lists each source's trace file count and byte total (claude, chatgpt,
   copilot, cursor, deepseek, gemini, iflow, llama, opencode, pi, qwen, trae,
   workbuddy, zcode, …) plus the trace root, plugin directory, and global CLI
   path. `--json` behaves the same.
@@ -1156,10 +1156,10 @@ Or:
 
 ```text
 GET /api/events
-GET /api/events?source=codex&session=<sessionId>
+GET /api/events?source=chatgpt&session=<sessionId>
 GET /api/events/<eventId>
 GET /api/search?q=<query>
-GET /api/search?q=<query>&source=codex&session=<sessionId>
+GET /api/search?q=<query>&source=chatgpt&session=<sessionId>
 GET /api/stream
 GET /api/demo-events
 GET /api/interactions/<requestId>    pending interaction {request, events, result}
@@ -1299,7 +1299,7 @@ only effective display state.
 | Key | Values | Purpose |
 | --- | --- | --- |
 | `ASTROX_THEME` | `light` / `dark` / `system` | Theme |
-| `ASTROX_PLATFORM` | e.g. `codex` / `claude` / `deepseek` / `trae` / `workbuddy` | Platform context |
+| `ASTROX_PLATFORM` | e.g. `chatgpt` / `claude` / `deepseek` / `trae` / `workbuddy` | Platform context |
 | `ASTROX_HISTORY_OPEN` | `true` / `false` | Left History panel |
 | `ASTROX_CONSOLE_OPEN` | `true` / `false` | Right Events/Inspector panel |
 | `ASTROX_HISTORY_RANGE` | `1h` / `3h` / `6h` / `12h` / `1d` / `3d` / `5d` / `7d` | Default time range, `3h` unless changed |
@@ -1508,7 +1508,7 @@ Check:
 4. SSE reconnect begins with a full `reset` containing every turn.
 5. The workspace or client was reloaded after hook configuration changed.
 
-### Codex Imports Appear Duplicated
+### ChatGPT Imports Appear Duplicated
 
 Unchanged files are idempotent. A changed path, row order, or row content changes deterministic IDs and may create new events.
 

@@ -17,7 +17,7 @@ observability system for coding-agent execution and is unrelated to the Astro
 web framework.
 
 Local-first runtime observability, search, and replay for coding agents.
-ASTRO gives Trae, Claude Code, Codex, DeepSeek Harness, WorkBuddy / CodeBuddy
+ASTRO gives Trae, Claude Code, ChatGPT, DeepSeek Harness, WorkBuddy / CodeBuddy
 Code, OpenCode, ZCode, Pi, browser extensions, and custom clients one versioned
 event protocol and one execution console without sending trace data off the
 machine.
@@ -137,7 +137,7 @@ picked in the console back to the host inside its short hook window. See
   and mapped topology atom.
 - Deep links using `source`, `session`, and `event` query parameters.
 - JSON/JSONL import, per-prompt-run JSONL export, and local event clearing.
-- Deterministic Codex history imports, making unchanged re-imports idempotent.
+- Deterministic ChatGPT history imports, making unchanged re-imports idempotent.
 - Recursive secret redaction before persistence.
 - Light, dark, and system themes; no CDN or remote font dependency.
 - Persisted History, Events, theme, and platform preferences under `ASTROX_*` keys.
@@ -155,7 +155,7 @@ picked in the console back to the host inside its short hook window. See
 | --- | --- | --- | --- | --- |
 | Trae | Yes | JSON/JSONL UI import | `~/.astrox/trae/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` | Project hooks |
 | Claude Code | Yes | JSON/JSONL UI import | `~/.astrox/claude/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` | Native plugin or direct hooks |
-| Codex | Yes | Active and archived rollout JSONL | `~/.astrox/codex/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` | Native plugin, direct hooks, and adapter |
+| ChatGPT | Yes | Active and archived rollout JSONL | `~/.astrox/chatgpt/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` | Native plugin, direct hooks, and adapter |
 | DeepSeek Harness | Yes | JSON/JSONL UI import | `~/.astrox/deepseek/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` | Native `dsh` bundle |
 | WorkBuddy / CodeBuddy Code | Yes | JSON/JSONL UI import | `~/.astrox/workbuddy/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` | Native plugin or direct hooks |
 | OpenCode | Yes | Native events only | `~/.astrox/opencode/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` | Global OpenCode plugin |
@@ -173,7 +173,7 @@ event names are preserved instead of discarded.
 
 - A current Node.js LTS release compatible with the package manifest.
 - `pnpm` activated through Corepack.
-- Codex, Claude Code, DeepSeek Harness, Trae, or WorkBuddy only when installing that runtime integration.
+- ChatGPT, Claude Code, DeepSeek Harness, Trae, or WorkBuddy only when installing that runtime integration.
 - A modern browser with ES modules, Web Workers, SSE, `ResizeObserver`, and
   modern CSS support.
 - An available loopback port. The server starts at `5678` and tries up to 20
@@ -212,7 +212,7 @@ Direct hook installation starts and opens the dashboard automatically.
 
 | Runtime | Recommended installation | Scope | Writes to |
 | --- | --- | --- | --- |
-| Codex | Native `codex-plugin/` | User | `~/.astrox/codex/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` |
+| ChatGPT | Native `chatgpt-plugin/` | User | `~/.astrox/chatgpt/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` |
 | Claude Code | Native `claude-plugin/` | User, project, or local | `~/.astrox/claude/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` |
 | DeepSeek Harness | `deepseek-plugin/` bundle | Profile | `~/.astrox/deepseek/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` |
 | WorkBuddy / CodeBuddy Code | Native `workbuddy-plugin/` | User, project, or local | `~/.astrox/workbuddy/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` |
@@ -223,7 +223,7 @@ Direct hook installation starts and opens the dashboard automatically.
 | Browser / extension | Browser SDK | Client-defined | `~/.astrox/browser/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` |
 | Custom agent | HTTP API or CLI | Client-defined | `~/.astrox/<source>/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` |
 
-Use either the native plugin or direct hooks for the same Codex, Claude Code,
+Use either the native plugin or direct hooks for the same ChatGPT, Claude Code,
 or WorkBuddy
 installation, not both. Enabling both records the same lifecycle event twice.
 
@@ -249,13 +249,13 @@ The full reference — local install, every environment variable, `astrox`
 service management, the CORS and data-directory details, and a troubleshooting
 quick table — is in `docs/deployment-en.md` (and `docs/deployment-zh.md`).
 
-### Native Codex, Claude Code, and WorkBuddy plugins
+### Native ChatGPT, Claude Code, and WorkBuddy plugins
 
 The repository includes three self-contained native plugin packages:
 
 | Package | Manifest | Hook configuration |
 | --- | --- | --- |
-| `codex-plugin/` | `.codex-plugin/plugin.json` | `hooks/hooks.json` |
+| `chatgpt-plugin/` | `.chatgpt-plugin/plugin.json` | `hooks/hooks.json` |
 | `claude-plugin/` | `.claude-plugin/plugin.json` | `hooks/hooks.json` |
 | `workbuddy-plugin/` | `.codebuddy-plugin/plugin.json` | `hooks/hooks.json` |
 
@@ -266,15 +266,15 @@ installation:
 pnpm build:native-plugins
 ```
 
-Install the Codex plugin from the repository marketplace:
+Install the ChatGPT plugin from the repository marketplace:
 
 ```bash
-codex plugin marketplace add /absolute/path/to/astro
-codex plugin add astro@astro-local
+chatgpt plugin marketplace add /absolute/path/to/astro
+chatgpt plugin add astro@astro-local
 ```
 
-Start a new Codex session, open `/hooks`, and trust the ASTRO
-hooks. Codex intentionally skips new or changed command hooks until they are
+Start a new ChatGPT session, open `/hooks`, and trust the ASTRO
+hooks. ChatGPT intentionally skips new or changed command hooks until they are
 reviewed.
 
 Test the Claude Code plugin directly:
@@ -294,11 +294,11 @@ Use `--scope project` to write shared project configuration or
 `--scope local` for a project-specific, uncommitted installation. Restart
 Claude Code or start a new session after enabling the plugin.
 
-The native plugins write to `~/.astrox/codex/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` and
+The native plugins write to `~/.astrox/chatgpt/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl` and
 `~/.astrox/claude/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl`. Direct installation starts and opens the
 dashboard immediately. Native hooks also ensure it is open at `SessionStart`
 and fall back to the first submitted prompt. See the
-[Codex plugin guide](codex-plugin/README.md) and
+[ChatGPT plugin guide](chatgpt-plugin/README.md) and
 [Claude Code plugin guide](claude-plugin/README.md) for complete usage and
 removal instructions.
 
@@ -404,33 +404,33 @@ unrelated hooks, and migrates legacy `.agent-trace/events.jsonl`, project-local
 `--no-migrate` is set. Installation starts and opens the standalone dashboard;
 new Agent sessions reuse it and select the current run.
 
-#### Codex
+#### ChatGPT
 
-Install the Codex hooks for the current user:
-
-```bash
-pnpm install-plugins -- --clients=codex
-```
-
-This updates `$CODEX_HOME/hooks.json`, normally `~/.codex/hooks.json`. For a
-custom Codex home:
+Install the ChatGPT hooks for the current user:
 
 ```bash
-pnpm install-plugins -- --clients=codex --codex-home=/path/to/.codex
+pnpm install-plugins -- --clients=chatgpt
 ```
 
-Restart Codex after installation, enter the project to observe, and begin a
+This updates `$CHATGPT_HOME/hooks.json`, normally `~/.chatgpt/hooks.json`. For a
+custom ChatGPT home:
+
+```bash
+pnpm install-plugins -- --clients=chatgpt --chatgpt-home=/path/to/.chatgpt
+```
+
+Restart ChatGPT after installation, enter the project to observe, and begin a
 new session:
 
 ```bash
 cd /path/to/workspace
-codex
+chatgpt
 ```
 
 New sessions, prompts, tool calls, permission requests, compactions, subagent
 events, interruptions, and stops are written to
-`~/.astrox/codex/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl`. Existing Codex rollout history can also be loaded
-with `pnpm import-codex`.
+`~/.astrox/chatgpt/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl`. Existing ChatGPT rollout history can also be loaded
+with `pnpm import-chatgpt`.
 
 #### Claude Code
 
@@ -503,7 +503,7 @@ ASTRO_AUTO_OPEN=0 pnpm start
 node ~/.astrox/plugins/astro/server/server.mjs
 ```
 
-Select the new run in **Run History**, then choose Codex, Claude Code, DeepSeek,
+Select the new run in **Run History**, then choose ChatGPT, Claude Code, DeepSeek,
 Trae, or WorkBuddy in the platform selector. The server is required for live browser updates,
 but hooks continue writing local JSONL while it is stopped. Set
 `ASTRO_AUTO_OPEN=0` to keep prompt-triggered startup disabled.
@@ -512,7 +512,7 @@ To confirm capture independently of the UI:
 
 ```bash
 find ~/.astrox -type f -name events.jsonl -print
-tail -n 1 ~/.astrox/codex/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
+tail -n 1 ~/.astrox/chatgpt/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
 tail -n 1 ~/.astrox/claude/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
 tail -n 1 ~/.astrox/deepseek/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
 tail -n 1 ~/.astrox/trae/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
@@ -525,7 +525,7 @@ Only the file for a client that has emitted an event is expected to exist.
 | --- | --- | --- |
 | Trae | `<workspace>/.trae/hooks.json` | Session start, prompt, tool start/result, stop, notification |
 | Claude Code | `~/.claude/settings.json` or `<workspace>/.claude/settings.local.json` | Session, prompt, tool, failure, permission, notification, subagent, compact, stop |
-| Codex | `$CODEX_HOME/hooks.json` | Session, prompt, tool, permission, compaction, subagent, interrupt, stop |
+| ChatGPT | `$CHATGPT_HOME/hooks.json` | Session, prompt, tool, permission, compaction, subagent, interrupt, stop |
 | DeepSeek Harness | `$DSH_HOME/profiles/<profile>/package.json` | Session, prompt, model response, tool, reasoning, completion, interrupt |
 | WorkBuddy | `$CODEBUDDY_HOME/settings.json` or `<workspace>/.codebuddy/settings.json` | Session, prompt, tool, permission, notification, task, elicitation, compaction, failure, stop |
 
@@ -564,7 +564,7 @@ Open the URL printed by Vite, normally `http://127.0.0.1:5173`.
 - **Local-first persistence:** no database, cloud collector, or CDN is
   required.
 - **Fail-open capture:** recorder failures exit successfully so a hook cannot
-  block the agent; Codex uses quiet output while compatible clients receive
+  block the agent; ChatGPT uses quiet output while compatible clients receive
   `{"continue":true}`.
 - **Portable protocol:** JSONL and HTTP ingestion keep integrations independent
   of the React UI.
@@ -576,14 +576,14 @@ flowchart LR
   subgraph Sources["Event sources"]
     Trae["Trae hooks"]
     Claude["Claude Code hooks"]
-    Codex["Codex hooks<br/>and rollout JSONL"]
+    ChatGPT["ChatGPT hooks<br/>and rollout JSONL"]
     Browser["Browser SDK"]
     Custom["Custom HTTP<br/>or CLI client"]
   end
 
   subgraph Capture["Capture and normalization"]
     Recorder["Schema v2 normalizer<br/>field enrichment<br/>secret redaction"]
-    Adapter["Codex history adapter<br/>deterministic IDs"]
+    Adapter["ChatGPT history adapter<br/>deterministic IDs"]
   end
 
   subgraph Storage["Local persistence"]
@@ -607,7 +607,7 @@ flowchart LR
 
   Trae --> Recorder
   Claude --> Recorder
-  Codex --> Adapter --> Recorder
+  ChatGPT --> Adapter --> Recorder
   Browser --> API
   Custom --> API
   API --> Recorder
@@ -628,7 +628,7 @@ flowchart TB
   subgraph Plugin["plugin/"]
     TR["trace-recorder.cjs<br/>normalize, redact, append"]
     SP["storage-paths.cjs<br/>resolve AOT directories"]
-    CA["codex-adapter.cjs<br/>rollout conversion"]
+    CA["chatgpt-adapter.cjs<br/>rollout conversion"]
     BC["browser-client.js<br/>browser capture API"]
   end
 
@@ -743,7 +743,7 @@ normalizes earlier or raw hook-like payloads during import.
 | Field | Type | Meaning |
 | --- | --- | --- |
 | `schemaVersion` | number | Persisted protocol version; recorder writes `2` |
-| `id` | string | Global event ID; Codex imports use deterministic hashes |
+| `id` | string | Global event ID; ChatGPT imports use deterministic hashes |
 | `capturedAt` | ISO 8601 string | Capture timestamp |
 | `source` | string | Normalized client name |
 | `sourceVersion` | string or null | Optional client version |
@@ -900,7 +900,7 @@ optimization passes.
       server/
   claude/
     YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
-  codex/
+  chatgpt/
     YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
   trae/
     YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
@@ -947,7 +947,7 @@ node bin/astro.mjs migrate /path/to/.agent-trace
 node bin/astro.mjs migrate ~/.astrox
 ```
 
-Native Codex or Claude Code plugin installation does not execute repository
+Native ChatGPT or Claude Code plugin installation does not execute repository
 scripts, so run `node bin/astro.mjs migrate` once when upgrading through a
 native plugin only.
 
@@ -969,10 +969,10 @@ Run the repository CLI directly:
 
 ```text
 node bin/astro.mjs serve
-node bin/astro.mjs install [--clients trae,claude,codex,deepseek,workbuddy] [--scope user|project]
+node bin/astro.mjs install [--clients trae,claude,chatgpt,deepseek,workbuddy] [--scope user|project]
 node bin/astro.mjs doctor [--scope user|project] [--deepseek-profile web]
 node bin/astro.mjs migrate [FILE_OR_DIR]
-node bin/astro.mjs import-codex [FILE ...] [--codex-home DIR]
+node bin/astro.mjs import-chatgpt [FILE ...] [--chatgpt-home DIR]
 node bin/astro.mjs ingest [FILE] [--source NAME]
 ```
 
@@ -991,19 +991,19 @@ printf '%s\n' \
   | node bin/astro.mjs ingest --source custom-agent
 ```
 
-### Codex history
+### ChatGPT history
 
-Import all persisted active and archived sessions from `$CODEX_HOME`:
+Import all persisted active and archived sessions from `$CHATGPT_HOME`:
 
 ```bash
-pnpm import-codex
+pnpm import-chatgpt
 ```
 
-Import selected rollout files or use a custom Codex home:
+Import selected rollout files or use a custom ChatGPT home:
 
 ```bash
-node bin/astro.mjs import-codex /path/to/rollout.jsonl
-node bin/astro.mjs import-codex --codex-home=/path/to/.codex
+node bin/astro.mjs import-chatgpt /path/to/rollout.jsonl
+node bin/astro.mjs import-chatgpt --chatgpt-home=/path/to/.chatgpt
 ```
 
 IDs are derived from file path, row index, timestamp, event type, and call ID.
@@ -1074,8 +1074,8 @@ Read and search:
 
 ```bash
 curl http://127.0.0.1:5678/api/health
-curl 'http://127.0.0.1:5678/api/events?source=codex&session=s1'
-curl 'http://127.0.0.1:5678/api/search?q=readFile&source=codex'
+curl 'http://127.0.0.1:5678/api/events?source=chatgpt&session=s1'
+curl 'http://127.0.0.1:5678/api/search?q=readFile&source=chatgpt'
 curl -N http://127.0.0.1:5678/api/stream
 ```
 
@@ -1277,12 +1277,12 @@ build uses the same policy.
 
 ```text
 .
-├── .agents/plugins/             # Codex local marketplace
+├── .agents/plugins/             # ChatGPT local marketplace
 ├── .claude-plugin/              # Claude Code local marketplace
 ├── .codebuddy-plugin/           # WorkBuddy local marketplace
 ├── bin/                         # astro-trace CLI
 ├── claude-plugin/               # native Claude Code plugin
-├── codex-plugin/                # native Codex plugin
+├── chatgpt-plugin/                # native ChatGPT plugin
 ├── deepseek-plugin/             # DeepSeek Harness bundle
 ├── workbuddy-plugin/            # WorkBuddy / CodeBuddy Code native plugin
 ├── docs/                        # architecture, manuals, and local assets
@@ -1363,7 +1363,7 @@ pagination or streaming history, authentication, and archival before use.
 | No events | Development/test renders the local sample dataset; production preserves the real empty state |
 | Sample dataset missing or malformed | The service answers 404/500, the console reports `示例数据不可用` and keeps captured events |
 | Deployed page cannot reach the local service | One `无法连接本地服务` notice (with the `ASTRO_CORS_ORIGINS` hint) and `offline`; add the page origin to the allowlist and restart the service |
-| Hook parse or write failure | Report on stderr and exit successfully; Codex quiet mode preserves stdout compatibility |
+| Hook parse or write failure | Report on stderr and exit successfully; ChatGPT quiet mode preserves stdout compatibility |
 | Dashboard launch or browser open failure | Keep writing trace data and retry after a stale PID is detected |
 | Active or waiting Prompt reaches the timeout | Cap its advancing duration, derive `terminated`, and stop selected-run live effects without appending an event |
 
@@ -1383,10 +1383,10 @@ The automated suite covers:
 - normalization, secret redaction, and source-specific storage;
 - first-prompt dashboard launch and PID-based duplicate prevention;
 - hook configuration merge and standalone runtime installation;
-- native Codex, Claude Code, and WorkBuddy plugin manifests, hook paths, and recorder sync;
+- native ChatGPT, Claude Code, and WorkBuddy plugin manifests, hook paths, and recorder sync;
 - executable Claude Hook validation across every declared lifecycle handler;
 - legacy migration;
-- Codex adaptation and deterministic deduplication;
+- ChatGPT adaptation and deterministic deduplication;
 - session isolation and nested search;
 - tool start/result pairing and trajectory construction;
 - dynamic child-agent topology;
@@ -1415,7 +1415,7 @@ Useful scripts:
 | `pnpm build` | Build the production frontend |
 | `pnpm build:native-plugins` | Synchronize native plugin recorders, server, and dashboard |
 | `pnpm install-plugins` | Install supported hooks |
-| `pnpm import-codex` | Import active and archived Codex history |
+| `pnpm import-chatgpt` | Import active and archived ChatGPT history |
 | `pnpm build:plugin` | Build the portable hook plugin archive |
 
 ### Portable plugin package
@@ -1432,7 +1432,7 @@ Install the archive from another workspace:
 
 ```bash
 pnpm dlx /absolute/path/to/astro-plugin.tgz install \
-  --clients codex,claude,deepseek,workbuddy \
+  --clients chatgpt,claude,deepseek,workbuddy \
   --scope user
 
 node ~/.astrox/plugins/astro/server/server.mjs
@@ -1501,7 +1501,7 @@ as `ASTRO event was not recorded`.
 A running hook can append another event immediately after truncation. Stop the
 active agent session before clearing if an empty store is required.
 
-### Codex imports look duplicated
+### ChatGPT imports look duplicated
 
 Unchanged imports are idempotent. Moving a rollout file, changing row order, or
 changing row content changes deterministic IDs and can create new records.

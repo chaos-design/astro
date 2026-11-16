@@ -870,7 +870,7 @@
           ],
           "thinking": [
             "先别急着选型，先列出采集端的硬约束：事件写入发生在被观测的 Agent 宿主进程里，任何异常都不能影响 Agent 本身（代码里对应 <code>run()</code> 的 try/catch 与注释「Observability must never interrupt the Agent execution path」）。",
-            "其次要问「谁在写」：可能同时有多个 Claude / Codex / OpenCode 会话并行写，也可能同一会话被多个进程写（hook 每次拉起一个新 node 进程）。",
+            "其次要问「谁在写」：可能同时有多个 Claude / ChatGPT / OpenCode 会话并行写，也可能同一会话被多个进程写（hook 每次拉起一个新 node 进程）。",
             "最后问「谁在读」：本地 dashboard 单进程扫描目录 + SSE 推送，且需要容忍「读到一半的会话」。"
           ],
           "answer": [
@@ -908,7 +908,7 @@
           ],
           "answer": [
             "输出的规范事件包含：<code>schemaVersion: 2</code>、<code>id</code>、<code>capturedAt</code>、<code>source</code>、<code>sourceVersion</code>、<code>workspaceId</code>、<code>sessionId</code>、<code>turnId</code>、<code>parentId</code>、<code>eventName</code>、<code>nativeEventName</code>、<code>toolUseId</code>、<code>toolName</code>、<code>cwd</code>、<code>status</code>、<code>sequence</code>、<code>payload</code>、<code>locator</code>。",
-            "<code>source</code> 经过 <code>normalizeSource</code>：包含 <code>claude</code> → <code>claude</code>，包含 <code>codex</code>/<code>openai</code> → <code>codex</code>，<code>workbuddy</code>/<code>codebuddy</code> → <code>workbuddy</code>，<code>trae</code>、<code>browser/chrome/extension</code> 同理；未知值按 <code>[^a-z0-9._-]+</code> 替换为 <code>-</code>，同时 <code>storage-paths.normalizeAgentName</code> 拒绝 <code>. </code>、<code>..</code>、<code>plugins</code> 这类保留目录名，避免目录穿越与遮蔽 <code>plugins/</code> 目录。",
+            "<code>source</code> 经过 <code>normalizeSource</code>：包含 <code>claude</code> → <code>claude</code>，包含 <code>chatgpt</code>/<code>openai</code> → <code>chatgpt</code>，<code>workbuddy</code>/<code>codebuddy</code> → <code>workbuddy</code>，<code>trae</code>、<code>browser/chrome/extension</code> 同理；未知值按 <code>[^a-z0-9._-]+</code> 替换为 <code>-</code>，同时 <code>storage-paths.normalizeAgentName</code> 拒绝 <code>. </code>、<code>..</code>、<code>plugins</code> 这类保留目录名，避免目录穿越与遮蔽 <code>plugins/</code> 目录。",
             "<code>nativeEventName</code> 保留客户端原始事件名（<code>payload.type</code> / <code>hook_event_name</code> 等），用于「规范化没覆盖到的新事件」排查，也让 UI 能显示来源系统的原名。",
             "<code>locator</code> = <code>trace://&lt;source&gt;/&lt;sessionId&gt;/&lt;eventId&gt;</code>，是一条稳定引用：UI、文档、外部工具可以互相引用同一事件而不依赖文件路径，文件被迁移也不影响引用有效性。",
             "刻意<b>不</b>做的事：不追加合成的终止事件、不改写已落盘事件的状态。所有「当前状态」都在读取/渲染时派生，这是 AGENTS.md 里 Run Timeout 不变量的前提。"
@@ -1053,17 +1053,17 @@
           "module": "多端适配",
           "difficulty": 4,
           "tags": ["事件名映射", "协议差异", "向前兼容"],
-          "question": "<code>canonicalEventNames</code> 用一个 Map 同时登记 <code>lowercase</code> 与 <code>snake_case</code> 两种 key。<code>inferCodexEventName()</code> 又要处理 <code>session_meta</code> / <code>thread.started</code> / <code>turn.started</code> / <code>item.started</code> / <code>event_msg</code> / <code>response_item</code> 等多种形态。为什么不统一让客户端发规范名，而要在服务端做推断？",
+          "question": "<code>canonicalEventNames</code> 用一个 Map 同时登记 <code>lowercase</code> 与 <code>snake_case</code> 两种 key。<code>inferChatGPTEventName()</code> 又要处理 <code>session_meta</code> / <code>thread.started</code> / <code>turn.started</code> / <code>item.started</code> / <code>event_msg</code> / <code>response_item</code> 等多种形态。为什么不统一让客户端发规范名，而要在服务端做推断？",
           "focus": ["适配层职责", "多协议共存", "推断的边界"],
           "thinking": [
-            "先看约束：客户端是第三方程序（Codex CLI 的 <code>notify</code> 协议、Claude Code hooks、TRAE、CodeBuddy、DeepSeek Harness、浏览器扩展）。ASTRO 不能要求它们改造。",
-            "再看推断的代价：推断可能猜错（比如把 <code>turn.failed</code> 映射成 <code>Stop</code>）。所以推断只在 <b>source 为 codex</b> 时启用，且规范名优先（<code>payload.eventName</code> 存在时直接采信）。",
+            "先看约束：客户端是第三方程序（ChatGPT CLI 的 <code>notify</code> 协议、Claude Code hooks、TRAE、CodeBuddy、DeepSeek Harness、浏览器扩展）。ASTRO 不能要求它们改造。",
+            "再看推断的代价：推断可能猜错（比如把 <code>turn.failed</code> 映射成 <code>Stop</code>）。所以推断只在 <b>source 为 chatgpt</b> 时启用，且规范名优先（<code>payload.eventName</code> 存在时直接采信）。",
             "关键设计：显式 &gt; 推断。规范名可用时绝不用推断结果，避免「错误的推断覆盖了正确的显式声明」。"
           ],
           "answer": [
             "<b>职责划分</b>：录制器是唯一收口点。所有客户端把「自己那套事件」丢进来，录制器负责 ①规范名 ②source ③脱敏 ④定位 ⑤落盘。客户端只做最薄的转发（hook 里一行 <code>node trace-recorder.cjs --source=x</code>），因此新增客户端的成本接近于零。",
-            "<b>两种 key 的必要性</b>：Map 里对每个规范名同时插入 <code>name.toLowerCase()</code>（<code>pretooluse</code>）与 <code>name.replace(/([a-z])([A-Z])/g, \"$1_$2\").toLowerCase()</code>（<code>pre_tool_use</code>），覆盖 Codex 的 <code>pre_tool_use</code> 与其他客户端的 <code>PreToolUse</code>。这比维护一张手写别名表更不容易漏。",
-            "<b>Codex 推断的形态差异</b>：同一语义在不同协议版本里位置不同——<code>session_meta</code>/<code>thread.started</code> 是会话开始；<code>turn.started</code>/<code>event_msg.task_started</code> 是轮次开始；<code>item.started</code> 需再用 <code>codexToolTypes</code> 判定是工具（<code>PreToolUse</code>）还是消息（<code>Notification</code>）；<code>response_item</code> 则按内层 <code>payload.type</code> 与 <code>payload.role</code> 区分工具调用、工具输出、reasoning、user/assistant message。",
+            "<b>两种 key 的必要性</b>：Map 里对每个规范名同时插入 <code>name.toLowerCase()</code>（<code>pretooluse</code>）与 <code>name.replace(/([a-z])([A-Z])/g, \"$1_$2\").toLowerCase()</code>（<code>pre_tool_use</code>），覆盖 ChatGPT 的 <code>pre_tool_use</code> 与其他客户端的 <code>PreToolUse</code>。这比维护一张手写别名表更不容易漏。",
+            "<b>ChatGPT 推断的形态差异</b>：同一语义在不同协议版本里位置不同——<code>session_meta</code>/<code>thread.started</code> 是会话开始；<code>turn.started</code>/<code>event_msg.task_started</code> 是轮次开始；<code>item.started</code> 需再用 <code>chatgptToolTypes</code> 判定是工具（<code>PreToolUse</code>）还是消息（<code>Notification</code>）；<code>response_item</code> 则按内层 <code>payload.type</code> 与 <code>payload.role</code> 区分工具调用、工具输出、reasoning、user/assistant message。",
             "<b>推断不到时的兜底</b>：返回 <code>Notification</code> 而不是丢弃事件——「未知但值得记录」优于「静默丢失」，UI 上 <code>Notification</code> 归入 <code>trace-append</code> 原子，不会破坏主链路语义。",
             "<b>未覆盖事件名的处理</b>：<code>canonicalizeEventName</code> 找不到映射就原样保留（前端 <code>eventMeta</code> 提供 <code>Unknown</code> 兜底），这让新事件名天然可见，而不是被悄悄改写成错误类别。"
           ],
@@ -1074,7 +1074,7 @@
           "followups": [
             {
               "q": "什么时候应该在客户端适配，而不是在录制器推断？",
-              "a": "当客户端能提供稳定、明确的语义时。例如 OpenCode 的 <code>session.inbox.enqueued</code> 明确表示用户消息，就在 opencode 插件里直接映射成 <code>UserPromptSubmit</code>；录制器只保留 <code>inferCodexEventName</code> 这种「协议本身没给出明确名字」的历史兼容逻辑。"
+              "a": "当客户端能提供稳定、明确的语义时。例如 OpenCode 的 <code>session.inbox.enqueued</code> 明确表示用户消息，就在 opencode 插件里直接映射成 <code>UserPromptSubmit</code>；录制器只保留 <code>inferChatGPTEventName</code> 这种「协议本身没给出明确名字」的历史兼容逻辑。"
             },
             {
               "q": "规范名列表会无限增长吗？",
@@ -1097,7 +1097,7 @@
           "answer": [
             "<b>(1) 归属判定</b>：<code>emit()</code> 先取 <code>event.location.directory</code>（或 <code>event.data.location.directory</code>），不等于 <code>ctx.location.directory</code> 就直接 return。问题是 <code>session.execution.failed</code>、<code>session.deleted</code> 这类事件<b>不带 location</b>，所以维护 <code>sessionDirs</code> 缓存：只要见过该 session 任一带 location 的事件就记录归属，之后无 location 的事件查缓存。归属未知的事件直接丢弃，宁可漏也不污染。",
             "<b>(2) 运行时差异</b>：OpenCode 服务由 bun 打包，<code>process.execPath</code> 是 opencode 可执行文件；用它 spawn recorder 会把 <code>trace-recorder.cjs --source=opencode</code> 当成 CLI 参数，事件全丢且不报错。规避方式是 <b>双通道</b>：优先 <code>createRequire(import.meta.url)</code> 在进程内 <code>require</code> CJS 录制器并调用 <code>appendTraceEvents(batch, process.env, { source })</code>；require 失败或抛错时回退 <code>spawn(\"node\", [...])</code>（显式 <code>node</code>，不依赖 <code>process.execPath</code>）。",
-            "<b>(3) Stop 粒度</b>：Claude Code 在每次助手回复结束发 <code>Stop</code>，Codex 用 <code>turn.completed</code>。OpenCode 的一次「回复」对应一个 <code>session.step.ended</code>，其 <code>finish</code> 为 <code>stop</code> 表示模型自然收尾，而 <code>finish: \"tool-calls\"</code> 只表示「还要继续调工具」，此时若发 <code>Stop</code> 会把一次 run 切成多段，时长/状态统计全错。<code>session.execution.succeeded</code> 是「整个 prompt 执行完毕」，用它会让长循环只有一条 Stop，丢失中间的回复边界。因此映射规则是：<code>terminalFinish</code>（stop/end_turn/eog/stop_sequence）→ <code>Stop</code>；<code>failedFinish</code>（error/failed/length/content_filter）→ <code>StopFailure</code>；<code>tool-calls</code> → 不发事件。",
+            "<b>(3) Stop 粒度</b>：Claude Code 在每次助手回复结束发 <code>Stop</code>，ChatGPT 用 <code>turn.completed</code>。OpenCode 的一次「回复」对应一个 <code>session.step.ended</code>，其 <code>finish</code> 为 <code>stop</code> 表示模型自然收尾，而 <code>finish: \"tool-calls\"</code> 只表示「还要继续调工具」，此时若发 <code>Stop</code> 会把一次 run 切成多段，时长/状态统计全错。<code>session.execution.succeeded</code> 是「整个 prompt 执行完毕」，用它会让长循环只有一条 Stop，丢失中间的回复边界。因此映射规则是：<code>terminalFinish</code>（stop/end_turn/eog/stop_sequence）→ <code>Stop</code>；<code>failedFinish</code>（error/failed/length/content_filter）→ <code>StopFailure</code>；<code>tool-calls</code> → 不发事件。",
             "<b>(4) 写入批量</b>：事件流是高频的（<code>text.delta</code>、<code>tool.progress</code>），虽然只订阅 <code>.ended</code> 级事件仍有突发。实现里用 150ms 微批 + <code>appendTraceEvents</code>，把 N 次 IO 压成 1 次文件追加，避免每个事件一次 <code>appendFileSync</code>。",
             "<b>(5) 纯函数映射便于测试</b>：映射逻辑抽到 <code>opencode-plugin/mapping.ts</code> 的 <code>mapOpenCodeEvent(event)</code>，返回 <code>AstroPayload[]</code>（无 sessionId 的事件直接返回空数组），用 <code>tests/opencode-mapping.test.ts</code> 做表驱动断言，不依赖 OpenCode 运行时。"
           ],
@@ -1121,7 +1121,7 @@
           "module": "多端适配",
           "difficulty": 2,
           "tags": ["语义映射", "产品决策"],
-          "question": "AGENTS.md 明确写着「<code>Notification</code> 在事件日志中显示为 <code>user.question</code>（AskUserQuestion）」。但 <code>Notification</code> 在 Codex 适配里也被用作「轮次开始」等纯技术事件。这会不会造成语义污染？应该如何理解这个约定？",
+          "question": "AGENTS.md 明确写着「<code>Notification</code> 在事件日志中显示为 <code>user.question</code>（AskUserQuestion）」。但 <code>Notification</code> 在 ChatGPT 适配里也被用作「轮次开始」等纯技术事件。这会不会造成语义污染？应该如何理解这个约定？",
           "focus": ["语义设计", "文档与实现一致性", "历史兼容"],
           "thinking": [
             "先分清「事件名」与「显示键」：规范事件名是稳定的跨端契约，显示键是 UI 层映射。",
@@ -1191,7 +1191,7 @@
           "answer": [
             "<b>两个命题分离</b>：①会话是否真的结束 → 由 <code>Stop</code>/<code>StopFailure</code>/<code>Interrupt</code> 等事件回答；②观测上是否还应该显示「运行中」→ 由「已流逝时长 ≥ 策略上限」回答。补写 <code>Stop</code> 等于用②的结论污染①的事实，而事实上会话可能仍在跑（用户只是关了 TUI）。",
             "<b>派生实现</b>：<code>getSessionDisplayState(session, now, activeRunTimeoutMs)</code> 只在 <code>status</code> 为 <code>active</code>/<code>waiting</code> 时计算 <code>liveDuration = max(session.duration, now - session.start)</code>；<code>timedOut = liveDuration >= durationLimit</code>；返回 <code>duration = min(liveDuration, durationLimit)</code> 与 <code>status = timedOut ? \"terminated\" : session.status</code>。非推进态直接原样返回，零副作用。",
-            "<b>为什么必须「不覆盖已持久化状态」</b>：事件文件是跨端共享的事实源。一旦把「超时」写成 <code>Stop</code>，Codex/Claude/OpenCode 三端与 dashboard 会得到互相矛盾的结论（客户端认为在跑，本地认为已结束），且无法自愈——除非引入迁移逻辑去区分「真实 Stop」与「合成 Stop」，那是典型的信息熵泄漏。",
+            "<b>为什么必须「不覆盖已持久化状态」</b>：事件文件是跨端共享的事实源。一旦把「超时」写成 <code>Stop</code>，ChatGPT/Claude/OpenCode 三端与 dashboard 会得到互相矛盾的结论（客户端认为在跑，本地认为已结束），且无法自愈——除非引入迁移逻辑去区分「真实 Stop」与「合成 Stop」，那是典型的信息熵泄漏。",
             "<b>连带约束</b>：AGENTS.md 同时要求「已超时的选中 run 不得继续保持拓扑动画与日志运行标记」。因为动画/运行标记也是派生状态（<code>flowActive</code>、<code>gateState</code> 等），一旦时长封顶，它们必须同步失效，否则出现「显示已终止但仍跳动」的自相矛盾。",
             "<b>策略集中</b>：<code>app-config.ts</code> 的 <code>appTimings</code> 是唯一定义点，<code>app.tsx</code> 四处使用都从它读取，避免多处硬编码 24h 造成策略漂移。"
           ],
@@ -1245,10 +1245,10 @@
           "module": "前端领域建模",
           "difficulty": 4,
           "tags": ["子代理", "拓扑", "ID 推断"],
-          "question": "Codex / OpenCode 的事件里不一定有显式 <code>parentId</code>，但拓扑需要还原「子代理」层级。<code>getSubagentId()</code> 与 <code>getSubagentRuns()</code> 分别做了什么？如果一条 <code>SubagentStop</code> 找不到对应 <code>SubagentStart</code>，你希望拓扑怎么处理？",
+          "question": "ChatGPT / OpenCode 的事件里不一定有显式 <code>parentId</code>，但拓扑需要还原「子代理」层级。<code>getSubagentId()</code> 与 <code>getSubagentRuns()</code> 分别做了什么？如果一条 <code>SubagentStop</code> 找不到对应 <code>SubagentStart</code>，你希望拓扑怎么处理？",
           "focus": ["缺失数据下的结构推断", "拓扑健壮性", "降级策略"],
           "thinking": [
-            "先看真实数据形态：Claude 有 <code>SubagentStart</code>/<code>SubagentStop</code>；Codex 的 <code>thread.started</code> 会被规范化为 SessionStart，多个 run 共享 session，靠 <code>turnId</code> 区分。",
+            "先看真实数据形态：Claude 有 <code>SubagentStart</code>/<code>SubagentStop</code>；ChatGPT 的 <code>thread.started</code> 会被规范化为 SessionStart，多个 run 共享 session，靠 <code>turnId</code> 区分。",
             "所以子代理层级要么来自显式字段（<code>parentId</code>/<code>agent_id</code>），要么从「同一 session 内的 run 分组」推断。",
             "关键策略问题：推断失败时是丢弃、还是挂在主 run 上？我倾向挂主 run 并降级显示。"
           ],
@@ -1261,8 +1261,8 @@
           ],
           "followups": [
             {
-              "q": "为什么 <code>SubagentStart</code> 在 Codex 适配里可能根本不会出现？",
-              "a": "因为 Codex 的 <code>thread.started</code> 被规范化为 <code>SessionStart</code>，且 Code Mode 里的并发工具调用（如 Code Mode 命名空间执行）不产生独立生命周期事件。ASTRO 的策略是「不臆造事件」——拓扑里这些调用显示为主 run 内的并行工具分支，而不是虚假的子代理。"
+              "q": "为什么 <code>SubagentStart</code> 在 ChatGPT 适配里可能根本不会出现？",
+              "a": "因为 ChatGPT 的 <code>thread.started</code> 被规范化为 <code>SessionStart</code>，且 Code Mode 里的并发工具调用（如 Code Mode 命名空间执行）不产生独立生命周期事件。ASTRO 的策略是「不臆造事件」——拓扑里这些调用显示为主 run 内的并行工具分支，而不是虚假的子代理。"
             },
             {
               "q": "如何避免节点 id 在重渲染时抖动？",
@@ -1534,7 +1534,7 @@
             "<b>清单</b>：①<code>src/types/trace.ts</code> 的 <code>PlatformId</code>；②<code>src/config/atom-platforms.ts</code> 的 <code>platformDefinitions</code>（label/source/runtime/eventAtomMap）；③<code>src/components/platform-icon.tsx</code> 图标（路径图或内联 SVG，必要时加入 <code>Exclude</code>）；④<code>src/lib/trace-model.ts</code> 的 <code>normalizeSource()</code> 与 <code>sourceMeta</code>；⑤录制端映射（<code>canonicalEventNames</code> / 客户端适配器 / opencode 插件）；⑥语义差异大时再覆盖 <code>eventAtomMap</code>。",
             "<b>类型强制</b>：加 <code>PlatformId</code> 成员后，<code>platformDefinitions</code> 立刻要求补 key，<code>paths</code> 立刻要求补图标（本次因 opencode 用内联 SVG 而必须加进 <code>Exclude</code>）。编译期失败，不会出现「UI 找不到图标」。",
             "<b>类型管不到</b>：<code>normalizeSource()</code> 是运行时字符串匹配，新增 source 必须手工加分支，否则历史数据里的 <code>\"opencode\"</code> 会走 fallback 显示成原始小写。这类映射只能靠表驱动测试兜住。",
-            "<b>验证</b>：<code>pnpm test</code> + <code>pnpm typecheck</code> + <code>pnpm build</code>。另外 <code>resolvePlatform()</code> 对未知平台 fallback 到 codex 配置，保证漏改也不会白屏——这是有意的降级设计。"
+            "<b>验证</b>：<code>pnpm test</code> + <code>pnpm typecheck</code> + <code>pnpm build</code>。另外 <code>resolvePlatform()</code> 对未知平台 fallback 到 chatgpt 配置，保证漏改也不会白屏——这是有意的降级设计。"
           ],
           "followups": [
             {
@@ -1542,8 +1542,8 @@
               "a": "两者服务不同 UI：<code>sourceMeta</code> 是事件日志里的全大写标签 + 色调（如 <code>OPENCODE / violet</code>），<code>platformDefinitions</code> 是拓扑选择器 + 标签（如 <code>OpenCode</code>）。前者还要覆盖 <code>browser</code>、<code>generic</code> 这些没有拓扑的平台，因此不能合并。"
             },
             {
-              "q": "未知平台 fallback 到 codex 拓扑合理吗？",
-              "a": "合理但要显式：拓扑只依赖 17 个规范事件名，与平台无关，用 codex 定义作为默认是最小惊讶；UI 仍显示该平台自己的 <code>sourceMeta</code> 标签。等该平台语义真正不同，再引入独立 <code>eventAtomMap</code>。"
+              "q": "未知平台 fallback 到 chatgpt 拓扑合理吗？",
+              "a": "合理但要显式：拓扑只依赖 17 个规范事件名，与平台无关，用 chatgpt 定义作为默认是最小惊讶；UI 仍显示该平台自己的 <code>sourceMeta</code> 标签。等该平台语义真正不同，再引入独立 <code>eventAtomMap</code>。"
             }
           ]
         }
@@ -1583,28 +1583,28 @@
           "module": "多端适配",
           "difficulty": 3,
           "tags": ["hook 协议", "超时", "失败隔离"],
-          "question": "<code>claude-plugin/hooks/hooks.json</code> 里几乎每个事件都挂 <code>node trace-recorder.cjs</code> 且 <code>timeout: 5</code>；codex 版本额外加 <code>--quiet</code>，收尾事件 <code>timeout: 3</code>。为什么 hook 一律有超时？为什么 codex 必须 <code>--quiet</code>？",
+          "question": "<code>claude-plugin/hooks/hooks.json</code> 里几乎每个事件都挂 <code>node trace-recorder.cjs</code> 且 <code>timeout: 5</code>；chatgpt 版本额外加 <code>--quiet</code>，收尾事件 <code>timeout: 3</code>。为什么 hook 一律有超时？为什么 chatgpt 必须 <code>--quiet</code>？",
           "focus": ["宿主超时语义", "stdout 协议", "失败隔离"],
           "thinking": [
             "先确认 hook 是同步阻塞的：宿主执行命令并等待返回，超时则放弃。因此 recorder 耗时直接占用用户每次工具调用的延迟。",
-            "再确认 stdout 敏感性：Claude Code 会解析 hook stdout 的 JSON（<code>continue</code>、<code>systemMessage</code>）；Codex 的 notify 通道不消费该对象，多余输出会干扰宿主。",
+            "再确认 stdout 敏感性：Claude Code 会解析 hook stdout 的 JSON（<code>continue</code>、<code>systemMessage</code>）；ChatGPT 的 notify 通道不消费该对象，多余输出会干扰宿主。",
             "最后算成本：一次工具调用 = 一个 hook 子进程 = 一次 node 启动（约 30~60ms），必须严格控制。"
           ],
           "answer": [
             "<b>超时保护的是用户</b>：宿主超时后放弃等待并继续主流程。没有 timeout，一个卡住的 recorder（例如网络盘导致 <code>appendFileSync</code> 阻塞）会让每次工具调用都卡住。5 秒足够容纳磁盘抖动，又短到用户可接受。",
             "<b>每事件一个 hook 是协议决定的</b>：宿主只在事件发生时回调，没有批量接口，这不是设计偷懒。",
-            "<b><code>--quiet</code> 的原因</b>：非 quiet 时 <code>run()</code> 向 stdout 输出 <code>{ continue: true, systemMessage? }</code>（Claude Code 的 hook 协议）；Codex notify 通道不消费它，多余输出会污染解析。因此 codex 侧一律 <code>--quiet</code>，把提示改写到 stderr（<code>else if (dashboardMessage &amp;&amp; !failureReported)</code> 分支）。",
+            "<b><code>--quiet</code> 的原因</b>：非 quiet 时 <code>run()</code> 向 stdout 输出 <code>{ continue: true, systemMessage? }</code>（Claude Code 的 hook 协议）；ChatGPT notify 通道不消费它，多余输出会污染解析。因此 chatgpt 侧一律 <code>--quiet</code>，把提示改写到 stderr（<code>else if (dashboardMessage &amp;&amp; !failureReported)</code> 分支）。",
             "<b>失败隔离</b>：<code>run()</code> 的 try/catch 覆盖读 stdin、JSON 解析、写入、启动 dashboard 全流程；失败时把错误码归一（<code>replace(/[^a-zA-Z0-9_-]/g, \"\")</code>）写 stderr，同时<b>仍然返回 <code>continue: true</code></b>，保证「ASTRO 坏了，Agent 照常工作」。",
             "<b>超时分级</b>：<code>SessionEnd</code>/<code>Interrupt</code> 用 3 秒（用户已在等待），其余 5 秒——按「用户感知成本」而非「技术难度」分级。"
           ],
           "followups": [
             {
               "q": "能不能把多次事件合并上报以减少进程开销？",
-              "a": "hook 协议由宿主决定无法合并；可优化的是进程内部：<code>appendTraceEvents()</code> 支持批量（数组入参、按文件分组后一次 write），OpenCode 插件就用 150ms 微批把高频事件压成一次写入。Claude/Codex 侧除非改常驻进程 + IPC，否则无法优化，而常驻进程的复杂度远大于收益。"
+              "a": "hook 协议由宿主决定无法合并；可优化的是进程内部：<code>appendTraceEvents()</code> 支持批量（数组入参、按文件分组后一次 write），OpenCode 插件就用 150ms 微批把高频事件压成一次写入。Claude/ChatGPT 侧除非改常驻进程 + IPC，否则无法优化，而常驻进程的复杂度远大于收益。"
             },
             {
-              "q": "codex 侧事件比 claude 少（例如没有 <code>PostToolUseFailure</code>）合理吗？",
-              "a": "合理。Codex 协议没有可判定的工具失败事件，<code>inferCodexEventName()</code> 只能把 <code>turn.failed</code> 映射为 <code>Stop</code>、<code>item.completed</code> 按工具类型分派。宁可少标一类，也不臆造语义不准的事件。"
+              "q": "chatgpt 侧事件比 claude 少（例如没有 <code>PostToolUseFailure</code>）合理吗？",
+              "a": "合理。ChatGPT 协议没有可判定的工具失败事件，<code>inferChatGPTEventName()</code> 只能把 <code>turn.failed</code> 映射为 <code>Stop</code>、<code>item.completed</code> 按工具类型分派。宁可少标一类，也不臆造语义不准的事件。"
             }
           ]
         },
@@ -1705,10 +1705,10 @@
           "module": "架构取舍",
           "difficulty": 5,
           "tags": ["最小公倍数", "规范事件", "抽象成本"],
-          "question": "规范事件名只有 17 个，却要覆盖 Claude Code、Codex、Trae、CodeBuddy、DeepSeek、OpenCode 六种完全不同的协议。「最小公倍数」应该定在哪一层？过度抽象的代价是什么？",
+          "question": "规范事件名只有 17 个，却要覆盖 Claude Code、ChatGPT、Trae、CodeBuddy、DeepSeek、OpenCode 六种完全不同的协议。「最小公倍数」应该定在哪一层？过度抽象的代价是什么？",
           "focus": ["抽象层级", "语义损失", "演进路径"],
           "thinking": [
-            "先看六个协议的表达差异：Claude 有完整生命周期（Start/Stop/Subagent/Compact/Permission）；Codex 是 item 流；OpenCode 是 step/inbox/tool 三套；Trae 有 Elicitation；DeepSeek 是自定义事件。",
+            "先看六个协议的表达差异：Claude 有完整生命周期（Start/Stop/Subagent/Compact/Permission）；ChatGPT 是 item 流；OpenCode 是 step/inbox/tool 三套；Trae 有 Elicitation；DeepSeek 是自定义事件。",
             "再看交集：都是「用户输入 → 模型推理 → 工具调用 → 工具结果 → 最终回复 → 结束/中断」，加少量控制面事件（权限、提问、子代理、压缩）。这就是 17 个名字的来源。",
             "最后评估：抽象过窄无法表达差异，过宽则每加客户端就要改核心。"
           ],
@@ -1717,7 +1717,7 @@
             "<b>差异如何承载</b>：①表达不了的部分放进 <code>payload</code>（无损保留原字段）；②需要独立展示的差异用既有规范名表达（等待类一律用 <code>Notification</code>/<code>PermissionRequest</code>）；③平台级差异用 <code>PlatformDefinition.eventAtomMap</code> 覆盖，不动核心。",
             "<b>过度抽象的代价</b>：①新增规范名成本是「四处补齐」（<code>defaultEventAtomMap</code>、<code>eventMeta</code>、<code>trace-status</code>、<code>atomic-projection</code>），不能为「精确」随手加；②规范名越多，跨端统计口径越碎；③抽象层越高，越难回答「这个客户端到底发生了什么」。",
             "<b>判断准则</b>：只有当某类事件<b>在两个以上客户端中语义相同、且需要独立展示或统计</b>时才新增规范名。这把成本与收益绑定，避免抽象膨胀。",
-            "<b>Codex 适配是压力测试</b>：它没有失败事件也没有子代理事件，只能映射到最近似的规范名。结论是「映射到最接近的 + 在 payload 保留原名」，而不是新增 <code>TurnFailed</code> 这类平台专属名——后者会让规范名退化成各客户端事件名的并集。"
+            "<b>ChatGPT 适配是压力测试</b>：它没有失败事件也没有子代理事件，只能映射到最近似的规范名。结论是「映射到最接近的 + 在 payload 保留原名」，而不是新增 <code>TurnFailed</code> 这类平台专属名——后者会让规范名退化成各客户端事件名的并集。"
           ],
           "followups": [
             {

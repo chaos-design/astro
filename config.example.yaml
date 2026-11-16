@@ -26,8 +26,8 @@ storage:
   projectDir: null
 
 clients:
-  codex:
-    home: ~/.codex
+  chatgpt:
+    home: ~/.chatgpt
   claude:
     home: ~/.claude
   deepseek:

@@ -18,8 +18,8 @@ import { createDemoEvents } from "./helpers/demo-fixture.ts";
 
 test("carries closed-pair durations on atoms and turns", () => {
   const events = createDemoEvents(2_000_000_000_000);
-  const projection = projectTraceEvents(events, "codex");
-  const topology = buildHarnessFlow(events, "codex");
+  const projection = projectTraceEvents(events, "chatgpt");
+  const topology = buildHarnessFlow(events, "chatgpt");
   const model = buildTrajectoryModel(
     events,
     projection.events,
@@ -82,8 +82,8 @@ test("a turn with no closed pair reports zero pairs and no total", () => {
       event.eventName !== "PostToolUse" &&
       event.eventName !== "PostToolUseFailure",
   );
-  const projection = projectTraceEvents(events, "codex");
-  const topology = buildHarnessFlow(events, "codex");
+  const projection = projectTraceEvents(events, "chatgpt");
+  const topology = buildHarnessFlow(events, "chatgpt");
   const model = buildTrajectoryModel(
     events,
     projection.events,
@@ -101,8 +101,8 @@ test("a turn with no closed pair reports zero pairs and no total", () => {
 
 test("builds loop turns with expandable atomic children", () => {
   const events = createDemoEvents(2_000_000_000_000);
-  const projection = projectTraceEvents(events, "codex");
-  const topology = buildHarnessFlow(events, "codex");
+  const projection = projectTraceEvents(events, "chatgpt");
+  const topology = buildHarnessFlow(events, "chatgpt");
   const model = buildTrajectoryModel(
     events,
     projection.events,
@@ -135,8 +135,8 @@ test("uses explicit turn metadata before inferring loop boundaries", () => {
 
 test("orders the rendered trajectory newest first without touching the model", () => {
   const events = createDemoEvents(2_000_000_000_000);
-  const projection = projectTraceEvents(events, "codex");
-  const topology = buildHarnessFlow(events, "codex");
+  const projection = projectTraceEvents(events, "chatgpt");
+  const topology = buildHarnessFlow(events, "chatgpt");
   const model = buildTrajectoryModel(events, projection.events, topology.nodes);
 
   const display = orderTrajectoryNewestFirst(model);
@@ -310,12 +310,12 @@ test("numbers opaque turn identities in order and keeps regressions distinct", (
     capturedAt: new Date(0).toISOString(),
     id,
     payload: {},
-    source: "codex",
+    source: "chatgpt",
     eventName: "AgentMessage",
     turnId,
   });
   const events = [
-    // Codex reports opaque ids (`turn_1`), so they get ordinals …
+    // ChatGPT reports opaque ids (`turn_1`), so they get ordinals …
     hook("a", "turn_1"),
     hook("b", "turn_2"),
     // … and after a numeric identity, a lower one is a *new* group rather than

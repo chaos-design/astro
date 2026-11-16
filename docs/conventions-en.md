@@ -248,7 +248,7 @@
   index with the selected agent's sessions, so the `N LIVE` count, the pin, the
   window exemption and the Live filter always describe the same list. A message
   executing under another agent must not leak into this one's history: the old
-  `historySessions` merged foreign live sessions in, which is how a Codex view
+  `historySessions` merged foreign live sessions in, which is how a ChatGPT view
   showed — pinned, no less — the Claude message that was running at the time.
 - Whether a neighbour is running is signalled by the **live dot in the agent
   picker**: `scopeLiveRunIndex` also returns the machine-wide `sources`, and

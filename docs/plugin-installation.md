@@ -2,7 +2,7 @@
 
 ASTRO means **Agent State Trace & Runtime Observations**.
 
-This package installs local trace integrations for Trae, Claude Code, Codex,
+This package installs local trace integrations for Trae, Claude Code, ChatGPT,
 DeepSeek Harness, and WorkBuddy / CodeBuddy Code.
 It does not upload trace data. Portable runtimes bundle the configuration
 parsers they need and do not fetch dependencies while an Agent Hook runs.
@@ -22,12 +22,12 @@ pnpm build:native-plugins
 ```
 
 4. Choose one integration per client. Do not install both the native plugin
-   and direct hooks for the same Codex, Claude Code, or WorkBuddy environment,
+   and direct hooks for the same ChatGPT, Claude Code, or WorkBuddy environment,
    because both receive the same lifecycle events.
 
 5. Confirm the client process can write the data root. The default is
-   `~/.astrox`; Codex direct-hook installation also needs write access to
-   `$CODEX_HOME` (normally `~/.codex`). Sandboxed IDEs may require these
+   `~/.astrox`; ChatGPT direct-hook installation also needs write access to
+   `$CHATGPT_HOME` (normally `~/.chatgpt`). Sandboxed IDEs may require these
    directories to be added to their explicit write allowlist.
 
 ## Native client plugins
@@ -39,30 +39,30 @@ native plugins:
 pnpm build:native-plugins
 ```
 
-### Codex plugin
+### ChatGPT plugin
 
-The Codex package lives in `codex-plugin/` and is listed by
+The ChatGPT package lives in `chatgpt-plugin/` and is listed by
 `.agents/plugins/marketplace.json`.
 
 ```bash
-codex plugin marketplace add /absolute/path/to/astro
-codex plugin add astro@astro-local
+chatgpt plugin marketplace add /absolute/path/to/astro
+chatgpt plugin add astro@astro-local
 ```
 
 Start a new session, open `/hooks`, and trust the ASTRO hooks.
-Codex requires explicit trust when a plugin installs or changes command hooks.
+ChatGPT requires explicit trust when a plugin installs or changes command hooks.
 
 Verify discovery and installation:
 
 ```bash
-codex plugin marketplace list
-codex plugin list --json
+chatgpt plugin marketplace list
+chatgpt plugin list --json
 ```
 
 Remove the plugin:
 
 ```bash
-codex plugin remove astro@astro-local
+chatgpt plugin remove astro@astro-local
 ```
 
 ### Claude Code plugin
@@ -264,7 +264,7 @@ Host notes:
 - CodeBuddy Code: its `PreToolUse` uses `modifiedInput` instead of
   `updatedInput`. Set `ASTRO_AUTO_APPROVE_INPUT_FIELD=modifiedInput` in the
   host environment and register with `--event=PreToolUse`.
-- Codex, OpenCode, Pi and DeepSeek Harness have no command-hook decision
+- ChatGPT, OpenCode, Pi and DeepSeek Harness have no command-hook decision
   channel; use the host's native permission mode instead.
 
 Keep one decision hook per request. Multiple hooks aggregate as
@@ -354,7 +354,7 @@ Host notes:
   event: auto-approve returns `allow` immediately, the interaction hook still
   waits out its window, and the panel is pointless. Pick one per event.
 - Only Claude Code, ZCode and CodeBuddy have a command-hook decision channel;
-  Codex, OpenCode, Pi and DeepSeek Harness keep their native permission mode.
+  ChatGPT, OpenCode, Pi and DeepSeek Harness keep their native permission mode.
 
 Environment overrides inherited from the host process (all optional):
 
@@ -392,24 +392,24 @@ the three SSE frames) is in `docs/interaction-hooks-en.md`.
 
 ## Install and use each client
 
-### Codex
+### ChatGPT
 
 Install for the current user:
 
 ```bash
-pnpm install-plugins -- --clients=codex
+pnpm install-plugins -- --clients=chatgpt
 ```
 
-The hook configuration is `$CODEX_HOME/hooks.json`, normally
-`~/.codex/hooks.json`. Use `--codex-home=/path/to/.codex` when Codex stores its
+The hook configuration is `$CHATGPT_HOME/hooks.json`, normally
+`~/.chatgpt/hooks.json`. Use `--chatgpt-home=/path/to/.chatgpt` when ChatGPT stores its
 configuration elsewhere.
 
-Restart Codex, run `codex` in the project to observe, and start a new session.
-Live events are written to `~/.astrox/codex/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl`. To add active and
+Restart ChatGPT, run `chatgpt` in the project to observe, and start a new session.
+Live events are written to `~/.astrox/chatgpt/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl`. To add active and
 archived sessions created before hook installation:
 
 ```bash
-pnpm import-codex
+pnpm import-chatgpt
 ```
 
 ### Claude Code
@@ -502,7 +502,7 @@ Build the package with `pnpm build:plugin`. The generated `.tgz` is placed in
 PLUGIN_TGZ=/absolute/path/to/astro-plugin.tgz
 
 pnpm dlx "$PLUGIN_TGZ" install \
-  --clients codex,claude,workbuddy \
+  --clients chatgpt,claude,workbuddy \
   --scope user
 
 pnpm dlx "$PLUGIN_TGZ" install \
@@ -611,7 +611,7 @@ For a source installation, inspect the generated configuration and data:
 
 ```bash
 find ~/.astrox -type f -name events.jsonl -print
-tail -n 1 ~/.astrox/codex/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
+tail -n 1 ~/.astrox/chatgpt/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
 tail -n 1 ~/.astrox/claude/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
 tail -n 1 ~/.astrox/deepseek/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
 tail -n 1 ~/.astrox/trae/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
@@ -656,7 +656,7 @@ trajectory, log, replay, and `-prompt-<number>.jsonl` export.
 
 ## How capture works
 
-1. Trae, Claude Code, Codex, or WorkBuddy invokes a command hook with JSON on stdin;
+1. Trae, Claude Code, ChatGPT, or WorkBuddy invokes a command hook with JSON on stdin;
    DeepSeek Harness publishes its native session events to the Cordis plugin.
 2. The recorder normalizes the event and redacts common secrets.
 3. The event is appended to
@@ -683,7 +683,7 @@ captured content to a remote service.
     server/
   dashboard-5678.pid
   claude/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
-  codex/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
+  chatgpt/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
   deepseek/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
   trae/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
   browser/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl

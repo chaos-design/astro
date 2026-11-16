@@ -6047,7 +6047,7 @@ export default function App() {
    *
    * Scoped by the dropdown, not machine-wide. Counting or pinning a live run of
    * another agent put that row at the top of every agent's history, which is
-   * how a Codex view ended up showing the Claude message that was executing at
+   * how a ChatGPT view ended up showing the Claude message that was executing at
    * the time. The neighbour's run stays discoverable through
    * {@link scopeLiveRunIndex}'s `sources` — the picker marks those agents — so
    * nothing is lost by keeping this list honest.
@@ -6196,7 +6196,7 @@ export default function App() {
     // The dropdown owns the fallback pool: arriving without a session — or
     // switching agents — opens the selected agent's newest run. The previous
     // version fell back to `sessions[0]`, the newest run on the machine, which
-    // is how a Codex view kept a Claude run on the canvas with no row beside
+    // is how a ChatGPT view kept a Claude run on the canvas with no row beside
     // it. An agent with nothing recorded leaves the pool empty and the canvas
     // empty; borrowing another agent's run is exactly the leak this prevents.
     const fallbackPool = filteredSessions;

@@ -23,7 +23,7 @@ This directory separates task-oriented guides from protocol, architecture, and o
 | [实现细节与规划状态](implementation-details-zh.md) | 开发、评审与答辩人员 | 设计落地总表、实现机制、代码与测试证据、边界，以及明确标记的规划项。 |
 | [项目约定与执行规则](conventions-zh.md) | 贡献者与编码智能体 | 目录职责、分支与提交、代码约定、时间窗口与 Live 筛选不变量、设置与偏好、文档同步和验证清单。 |
 | [交互 Hook 流程设计与契约](interaction-hooks-zh.md) | 集成开发者 | AskUserQuestion 交互时序、行为矩阵、五类消息契约、`/api/interactions` 路由、SSE 三帧、通知规范与字段约束；宿主实测状态单独标注。 |
-| [插件安装](plugin-installation.md) | 客户端管理员 | Codex、Claude Code、DeepSeek Harness、WorkBuddy、Trae、直接 Hook、便携包安装，以及可选的自动同意与「控制台作答」两个交互 Hook。 |
+| [插件安装](plugin-installation.md) | 客户端管理员 | ChatGPT、Claude Code、DeepSeek Harness、WorkBuddy、Trae、直接 Hook、便携包安装，以及可选的自动同意与「控制台作答」两个交互 Hook。 |
 | [项目架构与功能演示](project-overview-slides-zh.html) | 分享与评审 | 自包含、可离线打开和打印的 22 页 16:9 交互演示，含设计落地地图、实时状态边界与共享运行时配置。 |
 | [技术面试项目深讲](project-interview-zh.html) | 面试与答辩 | 14 页演示与 41 题交互题库，区分事实与规划，并提供详细答案、递进追问、筛选及考试复盘。 |
 
@@ -40,7 +40,7 @@ This directory separates task-oriented guides from protocol, architecture, and o
 | [Implementation Details and Delivery Status](implementation-details-en.md) | Developers and reviewers | Delivery matrix, mechanisms, code and test evidence, boundaries, and explicitly marked plans. |
 | [Project Conventions and Execution Rules](conventions-en.md) | Contributors and coding agents | Directory responsibilities, branches and commits, code conventions, time window and Live filter invariants, settings and preferences, doc sync, verification. |
 | [Interaction Hook Flow Design and Contract](interaction-hooks-en.md) | Integration developers | AskUserQuestion interaction timing, behavior matrix, five message contracts, `/api/interactions` routes, three SSE frames, notification spec and field constraints; host acceptance status is called out separately. |
-| [Plugin Installation](plugin-installation.md) | Client administrators | Codex, Claude Code, DeepSeek Harness, WorkBuddy, Trae, direct hooks, portable archive installation, and the two optional hooks (auto-approve, answer from the console). |
+| [Plugin Installation](plugin-installation.md) | Client administrators | ChatGPT, Claude Code, DeepSeek Harness, WorkBuddy, Trae, direct hooks, portable archive installation, and the two optional hooks (auto-approve, answer from the console). |
 
 ## Recommended Reading Paths
 

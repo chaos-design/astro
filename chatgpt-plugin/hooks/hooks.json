@@ -1,12 +1,12 @@
 {
-  "description": "Capture Codex lifecycle events in the local ASTRO data store.",
+  "description": "Capture ChatGPT lifecycle events in the local ASTRO data store.",
   "hooks": {
     "SessionStart": [
       {
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${PLUGIN_ROOT}/plugin/trace-recorder.cjs\" --source=codex --quiet",
+            "command": "node \"${PLUGIN_ROOT}/plugin/trace-recorder.cjs\" --source=chatgpt --quiet",
             "timeout": 5
           }
         ]
@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${PLUGIN_ROOT}/plugin/trace-recorder.cjs\" --source=codex --quiet",
+            "command": "node \"${PLUGIN_ROOT}/plugin/trace-recorder.cjs\" --source=chatgpt --quiet",
             "timeout": 3
           }
         ]
@@ -28,7 +28,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${PLUGIN_ROOT}/plugin/trace-recorder.cjs\" --source=codex --quiet",
+            "command": "node \"${PLUGIN_ROOT}/plugin/trace-recorder.cjs\" --source=chatgpt --quiet",
             "timeout": 5
           }
         ]
@@ -40,7 +40,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${PLUGIN_ROOT}/plugin/trace-recorder.cjs\" --source=codex --quiet",
+            "command": "node \"${PLUGIN_ROOT}/plugin/trace-recorder.cjs\" --source=chatgpt --quiet",
             "timeout": 5
           }
         ]
@@ -52,7 +52,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${PLUGIN_ROOT}/plugin/trace-recorder.cjs\" --source=codex --quiet",
+            "command": "node \"${PLUGIN_ROOT}/plugin/trace-recorder.cjs\" --source=chatgpt --quiet",
             "timeout": 5
           }
         ]
@@ -64,7 +64,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${PLUGIN_ROOT}/plugin/trace-recorder.cjs\" --source=codex --quiet",
+            "command": "node \"${PLUGIN_ROOT}/plugin/trace-recorder.cjs\" --source=chatgpt --quiet",
             "timeout": 5
           }
         ]
@@ -76,7 +76,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${PLUGIN_ROOT}/plugin/trace-recorder.cjs\" --source=codex --quiet",
+            "command": "node \"${PLUGIN_ROOT}/plugin/trace-recorder.cjs\" --source=chatgpt --quiet",
             "timeout": 5
           }
         ]
@@ -88,7 +88,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${PLUGIN_ROOT}/plugin/trace-recorder.cjs\" --source=codex --quiet",
+            "command": "node \"${PLUGIN_ROOT}/plugin/trace-recorder.cjs\" --source=chatgpt --quiet",
             "timeout": 5
           }
         ]
@@ -100,7 +100,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${PLUGIN_ROOT}/plugin/trace-recorder.cjs\" --source=codex --quiet",
+            "command": "node \"${PLUGIN_ROOT}/plugin/trace-recorder.cjs\" --source=chatgpt --quiet",
             "timeout": 5
           }
         ]
@@ -112,7 +112,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${PLUGIN_ROOT}/plugin/trace-recorder.cjs\" --source=codex --quiet",
+            "command": "node \"${PLUGIN_ROOT}/plugin/trace-recorder.cjs\" --source=chatgpt --quiet",
             "timeout": 5
           }
         ]
@@ -123,7 +123,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${PLUGIN_ROOT}/plugin/trace-recorder.cjs\" --source=codex --quiet",
+            "command": "node \"${PLUGIN_ROOT}/plugin/trace-recorder.cjs\" --source=chatgpt --quiet",
             "timeout": 5
           }
         ]
@@ -134,7 +134,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${PLUGIN_ROOT}/plugin/trace-recorder.cjs\" --source=codex --quiet",
+            "command": "node \"${PLUGIN_ROOT}/plugin/trace-recorder.cjs\" --source=chatgpt --quiet",
             "timeout": 3
           }
         ]

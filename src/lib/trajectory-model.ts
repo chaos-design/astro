@@ -280,7 +280,7 @@ export function buildTraceTurnIndex(
   // batch, and `UserPromptSubmit` stops incrementing the counter — identity-less
   // events in the same batch ride in the turn that was executing (a source with
   // *no* identity at all falls through to the structural prompt/loop inference
-  // below). The official adapters honour this: DeepSeek and Codex stamp every
+  // below). The official adapters honour this: DeepSeek and ChatGPT stamp every
   // turn, Claude/ZCode/Pi/WorkBuddy stamp none. A *partially*-stamped source
   // (a third-party HTTP collector or future adapter that names only some turns)
   // is the documented exception: its unnumbered later prompts fold into the

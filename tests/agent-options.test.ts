@@ -9,7 +9,7 @@ test("the agent dropdown pins high-frequency agents, then sorts the rest", () =>
   // The agents switched between most often keep this exact order.
   assert.deepEqual(ids.slice(0, 9), [
     "claude",
-    "codex",
+    "chatgpt",
     "deepseek",
     "workbuddy",
     "zcode",
@@ -18,7 +18,7 @@ test("the agent dropdown pins high-frequency agents, then sorts the rest", () =>
     "qwen",
     "trae",
   ]);
-  // GPT has no capture adapter of its own; Codex covers the OpenAI runtime.
+  // GPT has no capture adapter of its own; ChatGPT covers the OpenAI runtime.
   assert.equal((ids as string[]).includes("gpt"), false);
   assert.equal(ids[0], "claude");
   assert.equal(new Set(ids).size, ids.length);

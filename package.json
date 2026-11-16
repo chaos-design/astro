@@ -28,7 +28,7 @@
     "install-pi-plugin": "node scripts/install-pi-plugin.mjs",
     "install-plugins": "node scripts/install-plugins.mjs",
     "install-zcode-plugin": "node scripts/install-zcode-plugin.mjs",
-    "import-codex": "node bin/astro.mjs import-codex",
+    "import-chatgpt": "node bin/astro.mjs import-chatgpt",
     "perf:fixture": "node scripts/perf-fixture.mjs",
     "perf:bench": "node scripts/perf-derive-bench.mjs",
     "start": "node server/server.mjs",

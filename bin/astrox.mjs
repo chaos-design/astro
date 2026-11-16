@@ -71,7 +71,7 @@ const IS_WINDOWS = platform() === "win32";
 /** Sources inspected by `status` and `info`. */
 const TRACE_SOURCES = [
   "claude",
-  "codex",
+  "chatgpt",
   "copilot",
   "cursor",
   "deepseek",
@@ -547,9 +547,9 @@ async function statusCommand() {
   const otherDashboards = readDashboardStates(astroHome).filter(
     (candidate) => candidate.running && candidate.url !== (dashboard?.url ?? ""),
   );
-  const codexHome = resolve(
+  const chatgptHome = resolve(
     deps.expandHome(
-      getOption("codex-home") || environment.CODEX_HOME || join(homedir(), ".codex"),
+      getOption("chatgpt-home") || environment.CHATGPT_HOME || join(homedir(), ".chatgpt"),
     ),
   );
   const claudeHome = resolve(
@@ -572,7 +572,7 @@ async function statusCommand() {
     ),
   );
   const integrations = [
-    ["codex", deps.hasInstalledHook(join(codexHome, "hooks.json"), "codex")],
+    ["chatgpt", deps.hasInstalledHook(join(chatgptHome, "hooks.json"), "chatgpt")],
     [
       "claude",
       deps.hasInstalledHook(join(claudeHome, "settings.json"), "claude"),

@@ -68,7 +68,7 @@ export const eventMeta: Record<string, EventMeta> = {
 export const sourceMeta = {
   trae: { label: "TRAE", tone: "lime" },
   claude: { label: "CLAUDE", tone: "amber" },
-  codex: { label: "CODEX", tone: "cyan" },
+  chatgpt: { label: "CHATGPT", tone: "cyan" },
   deepseek: { label: "DEEPSEEK", tone: "cyan" },
   browser: { label: "BROWSER", tone: "violet" },
   opencode: { label: "OPENCODE", tone: "violet" },
@@ -151,7 +151,7 @@ function stableHash(value: string) {
 function normalizeSource(value: unknown, fallback = "generic") {
   const source = String(value || fallback).trim().toLowerCase();
   if (source.includes("claude")) return "claude";
-  if (source.includes("codex") || source.includes("openai")) return "codex";
+  if (source.includes("chatgpt") || source.includes("openai")) return "chatgpt";
   if (source.includes("deepseek") || source === "dsh") return "deepseek";
   if (source.includes("workbuddy") || source.includes("codebuddy")) {
     return "workbuddy";
@@ -1644,7 +1644,7 @@ export function buildPairLinks(
 
 export function buildHarnessFlow(
   inputEvents: Array<TraceEvent | TraceEventInput>,
-  platformId = "codex",
+  platformId = "chatgpt",
 ) {
   return buildExecutionTopology(inputEvents.map(normalizeTraceEvent), platformId);
 }

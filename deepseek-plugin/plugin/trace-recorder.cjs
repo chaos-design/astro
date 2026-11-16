@@ -62,7 +62,7 @@ const canonicalEventNames = new Map(
   ]),
 );
 
-const codexToolTypes = new Set([
+const chatgptToolTypes = new Set([
   "command_execution",
   "file_change",
   "mcp_tool_call",
@@ -116,8 +116,8 @@ function normalizeSource(value) {
   if (source.includes("claude")) {
     return "claude";
   }
-  if (source.includes("codex") || source.includes("openai")) {
-    return "codex";
+  if (source.includes("chatgpt") || source.includes("openai")) {
+    return "chatgpt";
   }
   if (source.includes("deepseek") || source === "dsh") {
     return "deepseek";
@@ -159,7 +159,7 @@ function inferEventStatus(eventName, payload) {
   if (eventName === "Interrupt") {
     return "interrupted";
   }
-  // Codex folds an aborted turn into Stop and reports the outcome on the
+  // ChatGPT folds an aborted turn into Stop and reports the outcome on the
   // outer record type instead of a hook event name.
   if (eventName === "Stop" && payload.type === "turn.failed") {
     return "failed";
@@ -167,15 +167,15 @@ function inferEventStatus(eventName, payload) {
   return null;
 }
 
-function getCodexItem(payload) {
+function getChatGPTItem(payload) {
   return payload.item || payload.payload?.item || payload.payload || {};
 }
 
-function isCodexToolItem(item) {
-  return codexToolTypes.has(item?.type || item?.item_type);
+function isChatGPTToolItem(item) {
+  return chatgptToolTypes.has(item?.type || item?.item_type);
 }
 
-function inferCodexEventName(payload) {
+function inferChatGPTEventName(payload) {
   const outerType = payload.type;
   const innerType = payload.payload?.type;
 
@@ -202,13 +202,13 @@ function inferCodexEventName(payload) {
     return "Notification";
   }
   if (outerType === "item.started") {
-    return isCodexToolItem(getCodexItem(payload))
+    return isChatGPTToolItem(getChatGPTItem(payload))
       ? "PreToolUse"
       : "Notification";
   }
   if (outerType === "item.completed") {
-    const item = getCodexItem(payload);
-    if (isCodexToolItem(item)) {
+    const item = getChatGPTItem(payload);
+    if (isChatGPTToolItem(item)) {
       return "PostToolUse";
     }
     if (["agent_message", "assistant_message"].includes(item.type)) {
@@ -264,8 +264,8 @@ function inferEventName(payload, source) {
   if (hookName) {
     return canonicalizeEventName(hookName);
   }
-  if (source === "codex") {
-    return inferCodexEventName(payload);
+  if (source === "chatgpt") {
+    return inferChatGPTEventName(payload);
   }
   return canonicalizeEventName(payload.type);
 }
@@ -299,7 +299,7 @@ function parseArguments(value) {
 }
 
 function enrichPayload(payload, eventName) {
-  const item = getCodexItem(payload);
+  const item = getChatGPTItem(payload);
   const safePayload = { ...payload };
 
   if (eventName === "UserPromptSubmit" && !safePayload.prompt) {
@@ -398,7 +398,7 @@ function createTraceEvent(payload, optionsOrCapturedAt = {}, legacyCapturedAt, e
   const eventName = canonicalizeEventName(
     options.eventName || payload.eventName || inferEventName(payload, source),
   );
-  const item = getCodexItem(payload);
+  const item = getChatGPTItem(payload);
   const cwd = String(
     options.cwd ||
       payload.cwd ||
@@ -1030,7 +1030,7 @@ module.exports = {
   createTraceEvent,
   createTraceLocator,
   createWorkspaceId,
-  inferCodexEventName,
+  inferChatGPTEventName,
   launchDashboardForEvents,
   markPreviewOpened,
   normalizeSource,

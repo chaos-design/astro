@@ -36,7 +36,7 @@ diagram is **incomplete**.
 | D | No aggregation or non-bypassable rules | `deny > ask > allow`; explicit deny rules, plan-mode write bans and hard tool limits win; the recorder's `{continue:true}` is neutral | §2, §9 |
 | E | Observation channel stops at JSONL | JSONL → `GET /api/stream` (`reset` / `trace` / `ready` / `resume`) → console `user.question` preview with `prompts` / `message` / `plan` / `answers` | §2, §6.3 |
 | F | Root cause of the app switch not labelled | `POST /api/events` only writes TraceEvents; `/api/stream` is one-way; there is no reverse answer channel | §2.1, §6.3 |
-| G | No host coverage differences | Three configs (Claude / ZCode / CodeBuddy); Codex, OpenCode, Pi and DeepSeek Harness have no command-hook decision channel | §2.1, §9 |
+| G | No host coverage differences | Three configs (Claude / ZCode / CodeBuddy); ChatGPT, OpenCode, Pi and DeepSeek Harness have no command-hook decision channel | §2.1, §9 |
 | H | No `answers` semantics | Keys are exact question text, values are option labels, multi-select is comma-joined; `ANSWER=all` and `ASTRO_AUTO_APPROVE_ANSWERS` override; injected by the host hook, not produced by the agent | §5.4, §6.2 |
 | I | No human-interaction loop | Closed: interaction hook registers → SSE `interaction.open` → console panel answers → `InteractionResult` → `answers` returned → `Notification` informs the Agent; real-host acceptance still pending (plan F3) | §3–§8 (implemented) |
 
@@ -443,7 +443,7 @@ permission outcome.
 | Sizes | ≤ 8 KiB per event; `answers` ≤ 4000 chars; notification strings ≤ 10,000 chars |
 | Time | `ttlMs ≤ hookTimeoutMs - 500`; ISO 8601 `expiresAt`; single timer, no replay |
 | Data | Raw `TraceEvent` immutable; `answers` display-only; redact before write |
-| Clients | Codex / OpenCode / Pi / DeepSeek Harness have no command-hook decision channel |
+| Clients | ChatGPT / OpenCode / Pi / DeepSeek Harness have no command-hook decision channel |
 
 ## 10. Verification
 

@@ -1,7 +1,7 @@
 # ASTRO 事件协议参考
 
 > 协议版本：Schema v2  
-> 适用范围：Hook 采集器、Codex 历史导入、Browser SDK、HTTP API、JSONL 导入导出与前端投影
+> 适用范围：Hook 采集器、ChatGPT 历史导入、Browser SDK、HTTP API、JSONL 导入导出与前端投影
 
 ## 1. 设计目标
 
@@ -50,9 +50,9 @@ ASTRO 事件协议把不同编码智能体的生命周期、消息、工具和�
 | 字段 | 类型 | 必填 | 语义与生成规则 |
 | --- | --- | --- | --- |
 | `schemaVersion` | number | 是 | 当前写入值为 `2`；读取端仍会归一化旧格式。 |
-| `id` | string | 是 | 事件唯一 ID。实时采集默认生成 UUID；Codex 历史导入使用确定性哈希。 |
+| `id` | string | 是 | 事件唯一 ID。实时采集默认生成 UUID；ChatGPT 历史导入使用确定性哈希。 |
 | `capturedAt` | ISO 8601 string | 是 | 来源时间或采集时间，写入时标准化为 ISO 字符串。 |
-| `source` | string | 是 | 规范化来源名，例如 `trae`、`claude`、`codex`、`workbuddy`、`browser`。 |
+| `source` | string | 是 | 规范化来源名，例如 `trae`、`claude`、`chatgpt`、`workbuddy`、`browser`。 |
 | `sourceVersion` | string | null | 是 | 来源客户端版本；无法获知时为 `null`。 |
 | `workspaceId` | string | 是 | 工作区隔离键；缺省时由绝对 `cwd` 的 SHA-256 前 12 位生成。 |
 | `sessionId` | string | 是 | 来源侧会话 ID；无法获知时为 `unknown-session`。 |
@@ -75,7 +75,7 @@ ASTRO 事件协议把不同编码智能体的生命周期、消息、工具和�
 | 输入包含 | 标准来源 |
 | --- | --- |
 | `claude` | `claude` |
-| `codex` 或 `openai` | `codex` |
+| `chatgpt` 或 `openai` | `chatgpt` |
 | `deepseek` 或精确的 `dsh` | `deepseek` |
 | `workbuddy` 或 `codebuddy` | `workbuddy` |
 | `trae` | `trae` |
@@ -151,7 +151,7 @@ ASTRO 事件协议把不同编码智能体的生命周期、消息、工具和�
 | 工具 | `PostToolUseFailure` | 工具调用失败返回，`toolUseId` 与 `PreToolUse` 配对 | `failed` | `failed` | 否 |
 | 工具 | `PostToolUse` | 成功通道返回，但 `tool_response.error` 非空或 `exitCode > 0` | 客户端原值 | `failed` | 否 |
 | 轮次 | `StopFailure` | 模型或 API 故障导致本轮无法正常收尾 | `failed` | `failed`；带限流/退避证据时为 `waiting` | 是 |
-| 轮次 | `Stop` + `status=failed` | 客户端把失败折叠进停止事件（Codex `turn.failed`） | `failed` | `failed` | 是 |
+| 轮次 | `Stop` + `status=failed` | 客户端把失败折叠进停止事件（ChatGPT `turn.failed`） | `failed` | `failed` | 是 |
 | 交互 | `PermissionDenied` | 自动模式分类器拒绝工具调用，或用户拒绝权限 | 客户端原值 | `failed`；`payload.retry=true` 时为 `waiting` | 否 |
 | 会话/轮次 | `Interrupt` | 用户中止、取消，或运行时被结束 | `interrupted` | `terminated` | 是 |
 | 会话 | `SessionEnd` | 会话终止，含异常退出 | 客户端原值 | `terminated` | 是 |
@@ -182,7 +182,7 @@ ASTRO 事件协议把不同编码智能体的生命周期、消息、工具和�
 
 各客户端的异常采集入口（`—` 表示该客户端不产生，不是"暂未实现"）：
 
-| 异常场景 | Claude | Codex | WorkBuddy | Trae | ZCode | DeepSeek | OpenCode | Pi |
+| 异常场景 | Claude | ChatGPT | WorkBuddy | Trae | ZCode | DeepSeek | OpenCode | Pi |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 工具调用失败 | `PostToolUseFailure` | 折叠为 `PostToolUse` + `failed` | `PostToolUseFailure` | 折叠为 `PostToolUse` | `PostToolUseFailure` | `tool/result` 的 `isError` | `session.tool.failed` | `tool_result` 的 `isError` |
 | 轮次/模型失败 | `StopFailure` | 折叠为 `Stop` + `failed` | `StopFailure` | `StopFailure` | — | `turn/end` 的 `failed` / `blocked` | 推导 `session.step.failed` 等 | `message_end.stopReason=error` |
@@ -196,11 +196,11 @@ ASTRO 事件协议把不同编码智能体的生命周期、消息、工具和�
 异常 Hook 与其他 Hook 使用同一套执行约束：命令超时 5 秒，采集器始终以退出码 0
 结束，写盘或配置失败只在 stderr 报告并丢弃该条事件，**不得阻断智能体执行**。
 
-## 5. Codex 原生事件映射
+## 5. ChatGPT 原生事件映射
 
-Codex Hook 或 rollout 记录会按外层 `type` 和内层 `payload.type` 推断：
+ChatGPT Hook 或 rollout 记录会按外层 `type` 和内层 `payload.type` 推断：
 
-| Codex 记录 | ASTRO 事件 |
+| ChatGPT 记录 | ASTRO 事件 |
 | --- | --- |
 | `session_meta`、`thread.started` | `SessionStart` |
 | `turn.started`、运行错误或其他状态信号 | `Notification` |
@@ -263,7 +263,7 @@ source::workspaceId::sessionId
   开始编号。
 - 切到身份模式的判定是「批内任一带轮次标识」而非「多数带」：来源只要命名过任
   一轮次即视为整批权威，其后无编号的事件跟随当时正在执行的轮次，后续的
-  `UserPromptSubmit` 不再开新轮。官方适配器都遵守这条（DeepSeek/Codex 给每轮都
+  `UserPromptSubmit` 不再开新轮。官方适配器都遵守这条（DeepSeek/ChatGPT 给每轮都
   盖章，Claude/ZCode/Pi/WorkBuddy 一个都不盖）。*部分*盖章的来源——第三方 HTTP
   采集器，或未来只给部分轮次命名标识的适配器——是文档化的例外：它无编号的后续
   prompt 折入上一轮，而不是新开分组，因为标识的存在本身已把该来源标记为权威。
@@ -339,7 +339,7 @@ max(已记录跨度, 当前时间 - 开始时间)
 - Repository 聚合多个文件时先按 `capturedAt`，再按 `id` 排序。
 - 会话模型内部先按 `capturedAt`，同时间再按 `sequence` 排序。
 - API 与 Repository 以 `id` 去重；已存在 ID 不会再次追加。
-- Codex 历史导入 ID 由文件路径、行号、时间、类型和调用 ID 共同确定，因此未变化的文件可重复导入。
+- ChatGPT 历史导入 ID 由文件路径、行号、时间、类型和调用 ID 共同确定，因此未变化的文件可重复导入。
 - 实时 Hook 事件默认生成随机 ID；两个内容完全相同的后续问题或回答仍是两条独立事件。
 
 消费端不得按消息文本去重，也不应假设不同来源的 `sequence` 可比较。

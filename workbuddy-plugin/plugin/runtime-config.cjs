@@ -480,10 +480,10 @@ const fields = [
     normalize: nullableStringValue,
   },
   {
-    path: ["clients", "codex", "home"],
-    environment: "CODEX_HOME",
+    path: ["clients", "chatgpt", "home"],
+    environment: "CHATGPT_HOME",
     legacy: [],
-    defaultValue: "~/.codex",
+    defaultValue: "~/.chatgpt",
     normalize: stringValue,
   },
   {
@@ -528,8 +528,8 @@ const allowedKeys = new Map([
   ["server", new Set(["host", "port", "maxBodyBytes", "corsOrigins"])],
   ["runtime", new Set(["autoOpen"])],
   ["storage", new Set(["traceDir", "projectDir"])],
-  ["clients", new Set(["codex", "claude", "deepseek", "workbuddy"])],
-  ["clients.codex", new Set(["home"])],
+  ["clients", new Set(["chatgpt", "claude", "deepseek", "workbuddy"])],
+  ["clients.chatgpt", new Set(["home"])],
   ["clients.claude", new Set(["home"])],
   ["clients.deepseek", new Set(["home", "command"])],
   ["clients.workbuddy", new Set(["home", "command"])],
@@ -766,7 +766,7 @@ function createResolvedConfig(rawConfig) {
     runtime: {},
     storage: {},
     clients: {
-      codex: {},
+      chatgpt: {},
       claude: {},
       deepseek: {},
       workbuddy: {},

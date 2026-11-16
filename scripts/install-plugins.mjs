@@ -110,7 +110,7 @@ const eventDefinitions = {
     ["ElicitationResult"],
     ["SessionEnd"],
   ],
-  codex: [
+  chatgpt: [
     ["SessionStart"],
     ["SessionEnd"],
     ["UserPromptSubmit"],
@@ -167,7 +167,7 @@ export function getHookCommand(source, installedRecorderFile, astroHome, eventNa
     shellPath(installedRecorderFile),
     `--source=${source}`,
   ];
-  if (source === "codex") {
+  if (source === "chatgpt") {
     parts.push("--quiet");
   }
   // WorkBuddy runs command hooks without piping its event payload into
@@ -561,8 +561,8 @@ export function installDeepseekPlugin({
 
 export function installClients({
   targetDir = process.cwd(),
-  clients = ["trae", "claude", "codex"],
-  codexHome,
+  clients = ["trae", "claude", "chatgpt"],
+  chatgptHome,
   claudeHome,
   workbuddyHome,
   dshHome,
@@ -599,8 +599,8 @@ export function installClients({
     },
   });
   const effectiveEnvironment = loadedConfig.environment;
-  const resolvedCodexHome =
-    codexHome || effectiveEnvironment.CODEX_HOME || join(homedir(), ".codex");
+  const resolvedChatGPTHome =
+    chatgptHome || effectiveEnvironment.CHATGPT_HOME || join(homedir(), ".chatgpt");
   const resolvedClaudeHome =
     claudeHome ||
     effectiveEnvironment.CLAUDE_HOME ||
@@ -673,15 +673,15 @@ export function installClients({
       ),
     );
   }
-  if (clients.includes("codex")) {
+  if (clients.includes("chatgpt")) {
     installed.push(
       installHookConfig(
         join(
-          resolveHomePath(resolvedCodexHome, join(homedir(), ".codex")),
+          resolveHomePath(resolvedChatGPTHome, join(homedir(), ".chatgpt")),
           "hooks.json",
         ),
-        "codex",
-        getHookCommand("codex", sharedRuntime.recorderFile, resolvedAstroHome),
+        "chatgpt",
+        getHookCommand("chatgpt", sharedRuntime.recorderFile, resolvedAstroHome),
       ),
     );
   }
@@ -711,8 +711,8 @@ export function openInstalledDashboard({
 }) {
   const source = clients.includes("trae")
     ? "trae"
-    : clients.includes("codex")
-      ? "codex"
+    : clients.includes("chatgpt")
+      ? "chatgpt"
       : clients[0] || "generic";
   const sharedRuntimeHome = resolveAstroHome({
     ...environment,
@@ -764,11 +764,11 @@ function getOption(name) {
 const invokedFile = process.argv[1] ? realpathSync(process.argv[1]) : "";
 if (invokedFile === realpathSync(fileURLToPath(import.meta.url))) {
   const targetDir = getOption("target") || process.cwd();
-  const clients = (getOption("clients") || "trae,claude,codex")
+  const clients = (getOption("clients") || "trae,claude,chatgpt")
     .split(",")
     .map((value) => value.trim().toLowerCase())
     .filter(Boolean);
-  const codexHome = getOption("codex-home") || undefined;
+  const chatgptHome = getOption("chatgpt-home") || undefined;
   const claudeHome = getOption("claude-home") || undefined;
   const workbuddyHome = getOption("workbuddy-home") || undefined;
   const dshHome = getOption("dsh-home") || undefined;
@@ -799,7 +799,7 @@ if (invokedFile === realpathSync(fileURLToPath(import.meta.url))) {
   const installed = installClients({
     targetDir,
     clients,
-    codexHome,
+    chatgptHome,
     claudeHome,
     workbuddyHome,
     dshHome,

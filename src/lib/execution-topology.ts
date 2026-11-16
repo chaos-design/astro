@@ -395,7 +395,7 @@ function getRouteKind(
 
 export function buildExecutionTopology(
   events: TraceEvent[],
-  platformId = "codex",
+  platformId = "chatgpt",
 ): ExecutionTopology {
   const platform = getAtomPlatformConfig(platformId);
   const subagentRuns = buildSubagentRuns(events);

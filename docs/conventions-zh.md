@@ -188,7 +188,7 @@
   `scopeLiveRunIndex` 拿全机器 live 索引与本智能体的会话求交得到。`N LIVE`、置顶、
   窗口豁免、Live 筛选四个口径因此永远描述同一个列表。别的智能体正在执行的消息不得
   混进本智能体的历史：旧实现用 `historySessions` 把其它智能体的 live 会话补进列表，
-  于是「Codex」视图里出现 Claude 正在跑的那条消息，还被置顶。
+  于是「ChatGPT」视图里出现 Claude 正在跑的那条消息，还被置顶。
 - 别的智能体是否在跑由**下拉框的 live 圆点**提示：`scopeLiveRunIndex` 同时返回全
   机器的 `sources`，命中项的智能体在 `AgentSelect` 里带一个 `--status-running`
   圆点。跨智能体的消息靠切换下拉框查看，不靠塞进当前列表。

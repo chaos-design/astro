@@ -551,10 +551,10 @@ const defaultEventAtomMap: Record<string, string> = {
 };
 
 const platformDefinitions: Record<PlatformId, PlatformDefinition> = {
-  codex: {
-    id: "codex",
-    label: "Codex",
-    source: "codex",
+  chatgpt: {
+    id: "chatgpt",
+    label: "ChatGPT",
+    source: "chatgpt",
     runtime: "OpenAI coding runtime",
     eventAtomMap: defaultEventAtomMap,
   },
@@ -682,7 +682,7 @@ export const atomPlatformOptions = Object.values(platformDefinitions);
  */
 const pinnedAgentOrder: readonly PlatformId[] = [
   "claude",
-  "codex",
+  "chatgpt",
   "deepseek",
   "workbuddy",
   "zcode",
@@ -714,11 +714,11 @@ export function getWaitingEventsForSource(
 }
 
 function resolvePlatform(platformId: string): PlatformDefinition {
-  return platformDefinitions[platformId as PlatformId] || platformDefinitions.codex;
+  return platformDefinitions[platformId as PlatformId] || platformDefinitions.chatgpt;
 }
 
 export function getAtomPlatformConfig(
-  platformId: string = "codex",
+  platformId: string = "chatgpt",
 ): PlatformConfig {
   const platform = resolvePlatform(platformId);
   return {
@@ -731,7 +731,7 @@ export function getAtomPlatformConfig(
 
 export function getAtomIdForEvent(
   event: TraceEvent | null,
-  platformId: string = "codex",
+  platformId: string = "chatgpt",
 ) {
   if (!event) return "";
   if (isUserQuestionEvent(event)) {

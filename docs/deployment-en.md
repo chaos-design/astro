@@ -60,7 +60,7 @@ prints the actual one.
 
 `config.yaml` fields: `server.host` / `server.port` / `server.maxBodyBytes` /
 `server.corsOrigins`, `runtime.autoOpen`, `storage.traceDir` /
-`storage.projectDir`, `clients.{codex,claude,deepseek,workbuddy}.{home,command}`
+`storage.projectDir`, `clients.{chatgpt,claude,deepseek,workbuddy}.{home,command}`
 (fully commented in `config.example.yaml` at the repo root).
 
 **Precedence**: explicit CLI flags → inherited process environment → legacy
@@ -100,13 +100,13 @@ and removal.
 
 ### 2.5 Enabling capture per client
 
-- **Direct hooks (generic)**: `pnpm install-plugins [--clients codex,claude,...]`.
+- **Direct hooks (generic)**: `pnpm install-plugins [--clients chatgpt,claude,...]`.
   Copies the recorder, `dist/`, `server/` and `config.yaml` into
   `<ASTRO_HOME>/plugins/astro/` and writes each client's hook config; it runs
   `pnpm build` first when `dist/` is missing (`--no-build` skips it).
 - **Native plugins**: `pnpm build:native-plugins` first (syncs the runtime into
   `*-plugin/` and stamps versions), then install per client:
-  - Codex: `codex plugin add astro@astro-local`
+  - ChatGPT: `chatgpt plugin add astro@astro-local`
   - Claude Code: `claude plugin install astro@astro-local --scope user`
   - WorkBuddy: `codebuddy plugin add astro@astro-local`
   - DeepSeek Harness: `dsh plugin --profile web add file:~/.astrox/plugins/astro/deepseek-plugin` (verify with `dsh --profile web --dump-config` that `astro-trace` appears in the composed tree)

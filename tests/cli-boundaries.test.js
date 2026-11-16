@@ -27,7 +27,7 @@ function fixture(t) {
   return { root, environment };
 }
 
-test("imports explicit Codex files and remains idempotent on reimport", async (t) => {
+test("imports explicit ChatGPT files and remains idempotent on reimport", async (t) => {
   const { root, environment } = fixture(t);
   const file = join(root, "rollout.jsonl");
   writeFileSync(file, `${JSON.stringify({
@@ -35,7 +35,7 @@ test("imports explicit Codex files and remains idempotent on reimport", async (t
     payload: { id: "session", cwd: root },
   })}\n`);
   const run = () => spawnSync(process.execPath, [
-    "bin/astro.mjs", "import-codex", file,
+    "bin/astro.mjs", "import-chatgpt", file,
   ], { encoding: "utf8", env: environment, timeout: 10_000 });
   const first = run();
   assert.equal(first.status, 0, first.stderr);
@@ -45,7 +45,7 @@ test("imports explicit Codex files and remains idempotent on reimport", async (t
 
 test("ingest preserves each canonical source unless an override is explicit", async (t) => {
   const { environment } = fixture(t);
-  const input = ["codex", "claude"].map((source) => JSON.stringify({
+  const input = ["chatgpt", "claude"].map((source) => JSON.stringify({
     id: source, source, sessionId: "session", eventName: "SessionStart",
     capturedAt: "2026-09-10T00:00:00Z", payload: {},
   })).join("\n");
@@ -56,7 +56,7 @@ test("ingest preserves each canonical source unless an override is explicit", as
   const repository = new TraceRepository(environment);
   await repository.initialize();
   t.after(() => repository.stop());
-  assert.deepEqual(repository.getEvents().map((event) => event.source).sort(), ["claude", "codex"]);
+  assert.deepEqual(repository.getEvents().map((event) => event.source).sort(), ["chatgpt", "claude"]);
 });
 
 test("migrate normalizes legacy session directory names", (t) => {

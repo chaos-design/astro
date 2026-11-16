@@ -33,7 +33,7 @@ interface RuntimeConfigResult {
       projectDir: string | null;
     };
     clients: {
-      codex: { home: string };
+      chatgpt: { home: string };
       claude: { home: string };
       deepseek: { home: string; command: string };
       workbuddy: { home: string; command: string };

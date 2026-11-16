@@ -21,8 +21,8 @@ const packageMetadata = JSON.parse(
 
 const pluginDefinitions = [
   {
-    directory: "codex-plugin",
-    manifest: join(".codex-plugin", "plugin.json"),
+    directory: "chatgpt-plugin",
+    manifest: join(".chatgpt-plugin", "plugin.json"),
   },
   {
     directory: "claude-plugin",

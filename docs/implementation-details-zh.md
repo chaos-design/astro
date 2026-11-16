@@ -188,7 +188,7 @@ Guide 的观测列表保留语义化 `ul` / `li`，使用原生 `disc` 标记。
 智能体筛选是**外层**，实时索引随之收窄：`collectLiveRunKeys` 只回答「这台机器上有
 谁在跑」，`scopeLiveRunIndex` 再把它与所选智能体的会话求交，得到列表真正使用的
 `liveSessionKeys`，计数、置顶、窗口豁免与 Live 筛选因此永远描述同一个列表。早期实现
-把别的智能体的 live 会话直接补进 `historySessions`，于是 Codex 视图里也能看到 Claude
+把别的智能体的 live 会话直接补进 `historySessions`，于是 ChatGPT 视图里也能看到 Claude
 正在执行的那条消息，还被置顶——这条路径已经删掉。别的智能体是否在跑改由智能体下拉框
 提示：`scopeLiveRunIndex` 同时返回全机器的 `sources`，命中项的智能体在 `AgentSelect`
 里带一个 `--status-running` 呼吸圆点。切换智能体时清空当前选中（`activeSessionKey`
