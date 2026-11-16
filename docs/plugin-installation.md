@@ -328,11 +328,13 @@ pnpm install:interaction -- --client=codebuddy --apply
 pnpm install:interaction -- --client=claude --remove --apply   # uninstall
 ```
 
-The default event is `PermissionRequest`; add `--events=PreToolUse` (or
-`--events=PreToolUse,PermissionRequest`) when the host should also intercept
-`PreToolUse`. Only `PreToolUse` can carry `additionalContext` / `systemMessage`
-back to the model — `PermissionRequest` stdout must keep exactly
-`decision.behavior` + `decision.updatedInput` for ZCode's strict schema.
+The default event is `PermissionRequest` for Claude Code and ZCode, but
+`PreToolUse` for CodeBuddy Code, because its `modifiedInput` override is only
+documented on `PreToolUse`. Override with `--events=PreToolUse` or
+`--events=PreToolUse,PermissionRequest` when needed. Only `PreToolUse` can carry
+`additionalContext` / `systemMessage` back to the model — `PermissionRequest`
+stdout must keep exactly `decision.behavior` + `decision.updatedInput` for
+ZCode's strict schema.
 `ExitPlanMode` renders as an “Approve this plan?” card: only Approve returns a
 decision, and the plan text is echoed without `answers`.
 
@@ -341,8 +343,9 @@ Host notes:
 - The service must be running. The window is host-bound: a 5 s hook timeout
   leaves about 4.5 s to answer (`ttlMs = timeout - 500`), then the native prompt
   appears. Do not raise the host timeout just to answer questions.
-- CodeBuddy answers arrive in `modifiedInput`; the installer appends
-  `--input-field=modifiedInput` and `--source=workbuddy` automatically.
+- CodeBuddy answers arrive in `modifiedInput`; the installer registers the
+  handler under `PreToolUse` and appends `--input-field=modifiedInput` and
+  `--source=workbuddy` automatically.
 - ZCode needs `hooks.enabled: true` and a new session; the installer sets the
   flag and validates `hooks.events` before writing.
 - Claude Code: `/hooks` lists the group; the transcript shows the allowed

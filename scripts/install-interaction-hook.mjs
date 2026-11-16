@@ -33,7 +33,14 @@ import {
 const HOOK_SCRIPT = resolve(import.meta.dirname, "interaction-hook.mjs");
 const HOOK_MARKER = "interaction-hook.mjs";
 const MATCHER = "AskUserQuestion|ExitPlanMode";
-const DEFAULT_EVENTS = ["PermissionRequest"];
+// CodeBuddy only documents `modifiedInput` on PreToolUse; PermissionRequest
+// hosts use `decision.updatedInput`. Register the event each host actually
+// understands instead of forcing one event on all three.
+const DEFAULT_EVENTS = {
+  claude: ["PermissionRequest"],
+  zcode: ["PermissionRequest"],
+  codebuddy: ["PreToolUse"],
+};
 const SOURCE_BY_CLIENT = {
   claude: "claude",
   codebuddy: "workbuddy",
@@ -61,7 +68,7 @@ export function parseArgs(argv) {
     client: "claude",
     apply: false,
     remove: false,
-    events: [...DEFAULT_EVENTS],
+    events: null,
   };
   for (const arg of argv) {
     if (arg === "--apply") {
@@ -90,6 +97,9 @@ export function parseArgs(argv) {
   if (!CLIENTS.has(options.client)) {
     throw new Error(`unsupported client: ${options.client}`);
   }
+  if (!options.events) {
+    options.events = [...DEFAULT_EVENTS[options.client]];
+  }
   return options;
 }
 
@@ -109,7 +119,7 @@ export function runInstaller(options, io = {}) {
     ? JSON.parse(readFileSync(target, "utf8") || "{}")
     : {};
   const shared = {
-    events: options.events?.length ? options.events : DEFAULT_EVENTS,
+    events: options.events?.length ? options.events : DEFAULT_EVENTS[client],
     hookArgs: hookArgsFor(client),
     hookMarker: HOOK_MARKER,
     hookPath: options.hookPath || HOOK_SCRIPT,

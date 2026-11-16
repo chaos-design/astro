@@ -170,19 +170,29 @@ test("F2: CodeBuddy uses modifiedInput and ZCode validation needs every event", 
       apply: true,
     }, quietSink());
     const saved = JSON.parse(readFileSync(target, "utf8"));
+    // CodeBuddy reads `modifiedInput` only on PreToolUse; registering the
+    // handler under PermissionRequest would produce a decision the host
+    // ignores.
+    assert.equal(saved.hooks.PermissionRequest, undefined);
     assert.match(
-      saved.hooks.PermissionRequest[0].hooks[0].command,
+      saved.hooks.PreToolUse[0].hooks[0].command,
       /--input-field=modifiedInput/,
     );
 
+    const codebuddyEvents = {
+      events: ["PreToolUse"],
+      hookMarker: "interaction-hook.mjs",
+      label: "interaction-hook",
+    };
+    assert.equal(
+      validateHookConfig(saved, "codebuddy", codebuddyEvents).valid,
+      true,
+    );
     const shared = {
       events: ["PreToolUse", "PermissionRequest"],
       hookMarker: "interaction-hook.mjs",
       label: "interaction-hook",
     };
-    const missing = validateHookConfig(saved, "codebuddy", shared);
-    assert.equal(missing.valid, false);
-    assert.match(missing.errors.join(), /missing for PreToolUse/);
 
     const zcode = {
       hooks: {
