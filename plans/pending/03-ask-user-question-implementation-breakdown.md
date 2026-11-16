@@ -2,7 +2,7 @@
 title: AskUserQuestion 交互 Hook 实施任务拆解
 priority: P2
 created: 2026-11-15 22:51:45
-updated: 2026-11-16 10:51:19
+updated: 2026-11-16 11:26:34
 ---
 
 # AskUserQuestion 交互 Hook 实施任务拆解
@@ -23,6 +23,16 @@ updated: 2026-11-16 10:51:19
   把规划项改成「已实现」；写入使用者真实的 `~/.claude`、`~/.codebuddy`、
   `~/.zcode` 配置；新建 Git 提交（按 `plans/README.md` 约定）；重开
   `plans/archive/01-*.md` 与 `plans/archive/02-*.md`。
+
+## 待决事项
+
+- [ ] F3 需要在装有 `claude` / `zcode` 二进制的环境完成真实宿主验收：Claude
+  `/hooks` 可见且 transcript 出现 `Allowed by PermissionRequest hook`；ZCode
+  新会话日志无 `hook.run.failed`。本机 `command -v claude` / `zcode` /
+  `codebuddy` 均无输出，只有配置目录，无法启动宿主。等价验收已通过 6/6
+  （`pnpm verify:host-integration -- --out plans/host-acceptance-03.md`），
+  但不覆盖上述三项。请在有宿主二进制的环境执行后勾选本项，再把计划
+  `move 03 planing`，补齐完成标准后归档。
 
 ## 拆解口径
 
@@ -213,3 +223,5 @@ updated: 2026-11-16 10:51:19
 - 2026-11-16 10:51:19 完成 #37 status: 剩余风险（宿主协议版本差异、hook 超时窗口、默认关闭策略）与回滚方式（逐条 revert 或 --remove）已记录
 - 2026-11-16 10:51:19 risks rewritten in 风险与回滚: host protocol drift (F3 unverified), 4.5 s window, default-off policy and the do-not-mix rule for the two hooks, loopback-only /api/interactions attack surface, answers are host-injected facts, and the single PermissionRequest writer; rollback is --remove --apply for the hook and per-file git revert for service/console/docs, no data migration because Notification is an existing event name
 - 2026-11-16 10:51:37 修正 B2：交互 Hook 不再写 `PermissionRequest` TraceEvent。recorder 已为同一宿主事件写该行，两者并行执行时重复写会在 LOG 产生两行相同提问；`tests/interaction-hook.test.mjs` 改为断言不 POST `/api/events`，文档 §3.2/§6.4 同步为「提问行只由 recorder 写」。
+- 2026-11-16 11:26:34 转入 pending：F3 真实宿主验收需要 claude / zcode 二进制；本机 command -v 均无输出。等价验收 6/6 已通过并记录于 plans/host-acceptance-03.md，但 /hooks 可见性、transcript 文本与 ZCode 新会话日志仍需宿主环境。
+- 2026-11-16 11:28:10 修正 CodeBuddy 注册事件：官方只在 `PreToolUse` 文档化 `modifiedInput`，原安装器注册在 `PermissionRequest` 会让决策被宿主忽略；`install-interaction-hook.mjs` 改为按客户端选默认事件（claude/zcode=PermissionRequest，codebuddy=PreToolUse），`tests/install-interaction-hook.test.mjs` 与 `docs/plugin-installation.md` 同步。新增 `scripts/verify-host-integration.mjs`（`pnpm verify:host-integration`）与验收记录 `plans/host-acceptance-03.md`；全量 660/660、两处 tsc、两处 build 均通过。

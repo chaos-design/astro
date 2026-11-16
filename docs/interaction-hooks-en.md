@@ -451,8 +451,12 @@ Every executed check is a command:
 | Notification shape | `node --test tests/agent-notification.test.ts` | 5/5 |
 | Installer | `node --test tests/install-interaction-hook.test.mjs` | 6/6 |
 | Full regression | `pnpm test` / `pnpm typecheck` / `pnpm build` / `pnpm build:docs` | see the plan's progress log |
+| Host equivalence acceptance | `pnpm verify:host-integration -- --out plans/host-acceptance-03.md` | 6/6, record in `plans/host-acceptance-03.md` |
 
-Still not executed (plan F3): real Claude `/hooks` visibility, the transcript
+The equivalence check drives the real hook processes with a captured ZCode
+question payload and validates the three host stdout schemas plus installer
+config shapes; it does **not** replace launching a host. Still not executed
+(plan F3): real Claude `/hooks` visibility, the transcript
 line `Allowed by PermissionRequest hook`, and a ZCode session with no
 `hook.run.failed`. On this machine `command -v claude` / `command -v zcode` /
 `command -v codebuddy` print nothing and only their config directories exist, so

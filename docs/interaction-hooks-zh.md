@@ -432,8 +432,10 @@ ZCode 额外约束：用户级 `hooks.enabled:true`、项目级配置被忽略�
 | 通知结构 | `node --test tests/agent-notification.test.ts` | 5/5 |
 | 安装器 | `node --test tests/install-interaction-hook.test.mjs` | 6/6 |
 | 全量回归 | `pnpm test` / `pnpm typecheck` / `pnpm build` / `pnpm build:docs` | 见计划进度日志 |
+| 宿主等价验收 | `pnpm verify:host-integration -- --out plans/host-acceptance-03.md` | 6/6，记录见 `plans/host-acceptance-03.md` |
 
-仍未执行（计划 F3）：真实 Claude `/hooks` 可见性、transcript 出现
+等价验收用真实捕获的 ZCode 提问载荷驱动真实 Hook 进程，覆盖三种宿主的决策
+stdout schema 与安装器生成的配置结构；它**不能替代**启动宿主。仍未执行（计划 F3）：真实 Claude `/hooks` 可见性、transcript 出现
 `Allowed by PermissionRequest hook`、ZCode 新会话日志无 `hook.run.failed`。
 本机 `command -v claude` / `command -v zcode` / `command -v codebuddy` 均无输出，
 只有配置目录，无法启动宿主，因此该项保持未勾选，计划不归档。

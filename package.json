@@ -35,7 +35,8 @@
     "test": "node --test tests/*.test.*",
     "typecheck": "tsc --noEmit",
     "validate:claude-hooks": "node scripts/validate-claude-hooks.mjs",
-    "verify:console-build": "node scripts/verify-console-build.mjs"
+    "verify:console-build": "node scripts/verify-console-build.mjs",
+    "verify:host-integration": "node scripts/verify-host-integration.mjs"
   },
   "dependencies": {
     "@fontsource-variable/geist": "^5.3.0",
