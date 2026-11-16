@@ -138,6 +138,26 @@ tool events named `AskUserQuestion`, `request_user_input`, or `UserQuestion`
 also map to that atom. A start waits for user input; its completion closes the
 same instance.
 
+Recognizing `AskUserQuestion` rests on one test — "is this a question tool"
+(`isUserQuestionToolEvent` in `src/lib/trace-event-kind.ts`). Its input types
+fall into four dimensions; any combination must hit the `user.question` atom
+(so the `user-question` node lights up in the Flow, and its waiting state is
+decided by the last event):
+
+| Dimension | Values |
+| --- | --- |
+| Event name | `PreToolUse` / `PostToolUse` (recognized by tool name); `PermissionRequest` (recognized by event name, waiting state) |
+| Tool-name field | top-level `toolName`, or snake `payload.tool_name`, or camel `payload.toolName`, or nested in the tool input (`payload.tool_input.name` / `.tool_name` / `payload.toolInput.name` / `.toolName`) |
+| Question location | `payload.tool_input.questions` and its camel mirror `payload.toolInput.questions`; top-level `payload.questions` is also accepted |
+| Options / answers | options are `{ label, description? }` objects or plain strings; `multiSelect` may be boolean; `tool_input.answers` / `tool_response.answers` injected by the auto-approve hook are preview-only and never change event classification |
+
+The camel tool-name spellings (`payload.toolName` / `payload.toolInput.*`) are
+required: real ZCode and WorkBuddy events carry both the snake field and the
+top-level `toolName`, but a collector that writes only the camel fields would
+be misread as a generic `tool.call` without them, darkening the Flow's
+question node. The "every spelling routes to the user.question atom" case in
+`tests/user-question-projection.test.ts` guards this per spelling.
+
 ## 5. Storage Layout and Migration
 
 The canonical path is:

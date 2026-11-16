@@ -116,6 +116,24 @@ Prompt、状态、来源、时间、事件标签、摘要和规范化可搜索�
 `AskUserQuestion`、`request_user_input` 和 `UserQuestion` 也映射到同一原子；
 开始事件进入等待态，结束事件关闭对应实例。
 
+`AskUserQuestion` 的识别只依据「这是提问工具」这一判定
+（`src/lib/trace-event-kind.ts` 的 `isUserQuestionToolEvent`），输入类型可归纳为
+四个维度，任意组合都必须命中 `user.question` 原子（Flow 的 `user-question` 节点
+因此会点亮，等待态由「最后一条事件」判定）：
+
+| 维度 | 取值 |
+| --- | --- |
+| 事件名 | `PreToolUse` / `PostToolUse`（按工具名识别）；`PermissionRequest`（按事件名识别，等待态） |
+| 工具名字段 | 顶层 `toolName`，或 snake `payload.tool_name`，或 camel `payload.toolName`，或嵌套在工具输入里（`payload.tool_input.name` / `.tool_name` / `payload.toolInput.name` / `.toolName`） |
+| 问题位置 | `payload.tool_input.questions` 与 camel 镜像 `payload.toolInput.questions`；顶层 `payload.questions` 也接受 |
+| 选项/答案 | 选项为 `{ label, description? }` 对象或纯字符串；`multiSelect` 可为布尔；自动同意 Hook 注入的 `tool_input.answers` / `tool_response.answers` 仅作预览展示，不改变事件分类 |
+
+camel 工具名（`payload.toolName` / `payload.toolInput.*`）是识别的必需项：ZCode
+与 WorkBuddy 的真实事件同时带 snake 与顶层 `toolName`，但若某采集端只写 camel
+字段，缺失识别会把该事件误判为通用 `tool.call`，使 Flow 的提问节点变暗
+（`tests/user-question-projection.test.ts` 的「each spelling routes to the
+user.question atom」用例逐条守住）。
+
 ## 5. 存储路径与迁移
 
 规范路径为：

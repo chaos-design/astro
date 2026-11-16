@@ -7,6 +7,7 @@ import {
   getTraceEventKey,
   isUserQuestionEvent,
   isUserQuestionStartEvent,
+  isUserQuestionToolEvent,
 } from "../src/lib/trace-event-kind.ts";
 import {
   buildSessions,
@@ -132,6 +133,119 @@ test("treats a denied question as failed unless it is retryable", () => {
 
   assert.equal(buildSessions([denied])[0]?.status, "failed");
   assert.equal(buildSessions([retryable])[0]?.status, "waiting");
+});
+
+/**
+ * AskUserQuestion's input types, catalogued against the classifier.
+ *
+ * A question tool event reaches the `user.question` atom when its tool name is
+ * recognisable. The name can sit under several spellings — the canonical
+ * recorder's snake `tool_name`, ZCode's camel `toolName` twin, or nested inside
+ * the tool-input object (`tool_input.name` / `toolInput.name`) — and any of the
+ * three question event names. Every row must light the same atom; a row that
+ * falls through to a generic `tool.call` is a regression that leaves the
+ * question's node dark in the Flow.
+ */
+function questionRaw(
+  eventName: "PreToolUse" | "PostToolUse" | "PermissionRequest",
+  payload: Record<string, unknown>,
+) {
+  return normalizeTraceEvent({
+    capturedAt: "2026-09-10T10:00:00.000Z",
+    eventName,
+    id: `raw-${eventName}`,
+    payload,
+    sessionId: "session",
+    source: "zcode",
+    workspaceId: "workspace",
+  });
+}
+
+const questionNameSpells: Array<
+  [string, Record<string, unknown>, "PreToolUse" | "PostToolUse"]
+> = [
+  [
+    "top-level toolName (normalized host)",
+    { toolName: "AskUserQuestion", tool_input: { questions: [] } },
+    "PermissionRequest",
+  ],
+  [
+    "snake payload.tool_name",
+    { tool_name: "AskUserQuestion" },
+    "PostToolUse",
+  ],
+  [
+    "camel payload.toolName only",
+    { toolName: "AskUserQuestion" },
+    "PreToolUse",
+  ],
+  [
+    "snake tool_input.name",
+    { tool_input: { name: "AskUserQuestion" } },
+    "PreToolUse",
+  ],
+  [
+    "snake tool_input.tool_name",
+    { tool_input: { tool_name: "AskUserQuestion" } },
+    "PreToolUse",
+  ],
+  [
+    "camel toolInput.name",
+    { toolInput: { name: "AskUserQuestion" } },
+    "PreToolUse",
+  ],
+  [
+    "camel toolInput.toolName",
+    { toolInput: { toolName: "AskUserQuestion" } },
+    "PreToolUse",
+  ],
+];
+
+test("every AskUserQuestion tool-name spelling routes to the user.question atom", () => {
+  for (const [label, payload, eventName] of questionNameSpells) {
+    const event = questionRaw(eventName, payload);
+    // Tool-lifecycle rows (Pre/PostToolUse) are recognised by their tool name;
+    // an explicit `PermissionRequest` row is recognised by its event name, so
+    // the tool-name predicate is only asserted for the former.
+    if (eventName !== "PermissionRequest") {
+      assert.equal(
+        isUserQuestionToolEvent(event),
+        true,
+        `spelling "${label}" should be recognised as a question tool`,
+      );
+    }
+    assert.equal(
+      isUserQuestionEvent(event),
+      true,
+      `spelling "${label}" should be a user question event`,
+    );
+    assert.equal(
+      getAtomIdForEvent(event, "zcode"),
+      "harness-user-question",
+      `spelling "${label}" should match the dedicated atom`,
+    );
+  }
+});
+
+test("non-question tool events keep their generic tool atoms", () => {
+  const bash = questionRaw("PreToolUse", {
+    toolName: "Bash",
+    tool_input: { command: "ls" },
+  });
+  const nameless = questionRaw("PreToolUse", { tool_input: { questions: [] } });
+  assert.equal(isUserQuestionToolEvent(bash), false);
+  assert.equal(isUserQuestionToolEvent(nameless), false);
+  assert.equal(getTraceEventKey(bash), "tool.call");
+  assert.equal(getAtomIdForEvent(bash, "zcode"), "harness-tool-call");
+});
+
+test("question start and answer are split by event, not by tool name", () => {
+  const start = questionRaw("PreToolUse", { toolName: "AskUserQuestion" });
+  const answer = questionRaw("PostToolUse", { toolName: "AskUserQuestion" });
+  assert.equal(isUserQuestionStartEvent(start), true);
+  assert.equal(isUserQuestionStartEvent(answer), false);
+  assert.equal(getTraceEventKey(start), "user.question");
+  assert.equal(getTraceEventKey(answer), "user.answer");
 });
 
 test("a ZCode ExitPlanMode approval is a user.question whose plan is displayable", () => {
