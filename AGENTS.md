@@ -544,6 +544,15 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   installer copies no package manifest), so an installed service can report its
   release instead of `unknown`. A mismatch is called out, and an unreadable
   manifest renders "未上报" with the reason — never a bare `unknown`.
+- The card's restart button is honest about the browser boundary. With a live
+  health response it posts `/api/restart` and waits for the new pid; with no
+  service it does **not** fetch a dead port — it copies
+  `buildServiceCliCommand(apiBase)` (`pnpm service:up --port=<api port>`) and
+  says so. `scripts/service-cli.mjs` is the out-of-band control surface: `up`
+  restarts a running service or starts a downed one on the same port (installed
+  runtime wins, checkout server is the fallback), `status` / `start` / `stop`
+  are the single actions. A static page cannot spawn a local process; pretending
+  otherwise would leave the reader staring at an offline card with a dead button.
 
 
 ## First Paint, Rendering, Feedback

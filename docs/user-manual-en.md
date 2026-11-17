@@ -366,7 +366,11 @@ HTTP service.
 - Theme: light, dark, or system; stored in `ASTROX_THEME`.
 - Service chip (the local service's uptime): opens the service card with the
   console/service versions, process details, session counts, the data directory
-  and "restart local service". The uptime follows a sync pause: while the sync
+  and "restart local service". While the service answers, that button posts
+  `/api/restart`; when it is unreachable the button becomes "copy start command"
+  and copies `pnpm service:up --port=<current port>` — a browser cannot spawn a
+  local process, so the CLI is the out-of-band start path. The uptime follows a
+  sync pause: while the sync
   is stopped at its cap (`paused`) the clock stops counting too, it continues
   from the frozen reading when sync resumes, and restarting the local service
   recounts from the new process. The "change" control next to the data directory
@@ -1085,6 +1089,8 @@ Deterministic IDs make unchanged imports idempotent.
 ## 12. CLI
 
 ```text
+pnpm service:up [--port N] [--home DIR]       # restart in place if running, start if down
+pnpm service:start|restart|status             # single-action shortcuts
 astro-trace serve
 astro-trace install [--target DIR] [--clients trae,claude,chatgpt,deepseek,workbuddy] [--scope user|project]
 astro-trace update [--no-deepseek] [--astro-home DIR]

@@ -321,7 +321,10 @@ JSONL，服务通过 SSE 推送给页面，RUN HISTORY、拓扑与轨迹实时�
 - 设置图标（齿轮）：打开设置，配置默认时间范围和 Live 筛选。
 - 主题：浅色、深色、跟随系统；选择保存在 `ASTROX_THEME`。
 - 服务状态胶囊（显示本地服务运行时长）：点开是本地服务卡片，列出控制台/服务版本、
-  进程信息、会话计数、数据目录和「重启本地服务」。运行时长跟随同步暂停：同步按
+  进程信息、会话计数、数据目录和「重启本地服务」。服务还活着时该按钮走
+`POST /api/restart` 原地重启；服务不可达时按钮改为「复制启动命令」，复制
+`pnpm service:up --port=<当前端口>`——浏览器不能在本机拉起进程，这条命令是脱离
+HTTP 的带外启动入口。运行时长跟随同步暂停：同步按
   上限停止（`paused`）时这里也停止计时，恢复同步后从暂停时的读数继续，重启本地
   服务则从新进程重新计时。数据目录右侧的「更改」可以填入
   另一个已存在的绝对路径（支持 `~/`），「保存并重启」会把它写入安装运行时的
@@ -913,6 +916,8 @@ node bin/astro.mjs import-chatgpt --chatgpt-home=/path/to/.chatgpt
 ## 12. CLI
 
 ```text
+pnpm service:up [--port N] [--home DIR]       # 服务在跑就原地重启，没跑就启动
+pnpm service:start|restart|status             # 单动作快捷方式
 astro-trace serve
 astro-trace install [--target DIR] [--clients trae,claude,chatgpt,deepseek,workbuddy] [--scope user|project]
 astro-trace update [--no-deepseek]

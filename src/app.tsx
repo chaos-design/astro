@@ -315,6 +315,7 @@ import {
 } from "./lib/trace-event-kind";
 import { hasPlanContent, userQuestionSummary } from "./lib/user-question-content";
 import { buildConsoleLocationSearch } from "./lib/console-location";
+import { buildServiceCliCommand } from "./lib/service-cli-command";
 import type {
   HarnessNode,
   HarnessNodeData,
@@ -1222,7 +1223,11 @@ function ServiceStatus({
               data-icon="inline-start"
               className={restarting ? "animate-spin" : ""}
             />
-            {restarting ? "正在重启…" : "重启本地服务"}
+            {restarting
+              ? "正在重启…"
+              : error || !service
+                ? "复制启动命令"
+                : "重启本地服务"}
           </Button>
         </div>
       </PopoverContent>
@@ -6928,6 +6933,20 @@ export default function App() {
 
   const restartDashboard = async () => {
     if (isDemo) {
+      return;
+    }
+    const offline = !service || Boolean(serviceError);
+    if (offline) {
+      // A browser cannot spawn a process on the reader's machine. Give the
+      // reader the exact command instead of silently failing against a port
+      // nobody is listening on.
+      const command = buildServiceCliCommand(apiBase);
+      try {
+        await navigator.clipboard?.writeText(command);
+      } catch {
+        // Clipboard permission is optional; the notice still shows the command.
+      }
+      pushNotice("info", "本地服务不可达", `已复制启动命令：${command}`);
       return;
     }
     if (
