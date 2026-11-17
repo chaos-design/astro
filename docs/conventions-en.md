@@ -335,6 +335,11 @@
   switch; that switch is the only off control). The sound is generated locally
   with a Web Audio oscillator in `src/lib/task-completion-chime.ts` — no audio
   asset, so a deployed console under a project path needs no `assetUrl()` call.
+  The tone is keyed by the terminal status in that same module (`getChimeTone`):
+  complete ascends, failed descends, terminated is a neutral double tap, so the
+  sound alone tells a success from a failure from a plain stop. A batch plays
+  one sound, chosen by `resolveChimeStatus` (failed > terminated > complete) —
+  a batch that also failed must not be announced with the success chime.
   Terminal transitions are detected by `collectTerminalTransitions` from the
   **recorded** status (`getRunHistoryDisplayStatus`), never the freshness/timeout
   display status, so a live run that merely *looks* terminated cannot chime. The

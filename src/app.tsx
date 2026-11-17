@@ -305,6 +305,7 @@ import {
 import {
   collectTerminalTransitions,
   playTaskCompletionChime,
+  resolveChimeStatus,
 } from "./lib/task-completion-chime";
 import {
   attachScrollFpsTracker,
@@ -6176,7 +6177,12 @@ export default function App() {
     knownTerminalKeysRef.current = nextKnown;
     chimeBaselineSeededRef.current = true;
     if (taskCompletionChime && newlyTerminal.length > 0) {
-      playTaskCompletionChime();
+      // One chime per batch: the tone announces the most important outcome
+      // (failed > terminated > complete), so a batch that also failed is not
+      // announced with the success chime.
+      playTaskCompletionChime(
+        resolveChimeStatus(newlyTerminal.map((entry) => entry.status)),
+      );
     }
   }, [eventsLoaded, isDemo, promptRunsBySession, sessions, taskCompletionChime]);
   const configuredSources = useMemo(

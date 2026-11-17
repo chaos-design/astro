@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { TraceRunStatus } from "../src/types/trace.ts";
-import { collectTerminalTransitions } from "../src/lib/task-completion-chime.ts";
+import {
+  collectTerminalTransitions,
+  getChimeTone,
+  resolveChimeStatus,
+} from "../src/lib/task-completion-chime.ts";
 
 function run(key: string, status: TraceRunStatus) {
   return { key, status };
@@ -26,7 +30,9 @@ test("chimes when a watched run enters a terminal state", () => {
     known,
     false,
   );
-  assert.deepEqual(result.newlyTerminal, ["new"]);
+  // The transition carries the recorded status so the effect can pick the
+  // tone for that state without deriving it a second time.
+  assert.deepEqual(result.newlyTerminal, [{ key: "new", status: "complete" }]);
   assert.deepEqual([...result.nextKnown].sort(), ["new", "old"]);
   // The live run is not remembered, so it can chime on its own completion.
   assert.equal(result.nextKnown.has("live"), false);
@@ -42,7 +48,9 @@ test("a terminal run is reported once until it runs again", () => {
     first.nextKnown,
     false,
   );
-  assert.deepEqual(completed.newlyTerminal, ["s"]);
+  assert.deepEqual(completed.newlyTerminal, [
+    { key: "s", status: "complete" },
+  ]);
 
   const repeat = collectTerminalTransitions(
     [run("s", "complete")],
@@ -65,7 +73,7 @@ test("a terminal run is reported once until it runs again", () => {
     resumed.nextKnown,
     false,
   );
-  assert.deepEqual(finishedAgain.newlyTerminal, ["s"]);
+  assert.deepEqual(finishedAgain.newlyTerminal, [{ key: "s", status: "failed" }]);
 });
 
 test("waiting is live and therefore never counts as terminal", () => {
@@ -76,4 +84,36 @@ test("waiting is live and therefore never counts as terminal", () => {
   );
   assert.deepEqual(result.newlyTerminal, []);
   assert.equal(result.nextKnown.size, 0);
+});
+
+test("a mixed batch resolves to the most important outcome", () => {
+  // A failure is the one the reader must not miss, so it outranks a plain
+  // stop and a success; the batch plays exactly one sound.
+  assert.equal(
+    resolveChimeStatus(["complete", "failed", "terminated"]),
+    "failed",
+  );
+  assert.equal(resolveChimeStatus(["complete", "terminated"]), "terminated");
+  assert.equal(resolveChimeStatus(["terminated", "complete"]), "terminated");
+  assert.equal(resolveChimeStatus(["complete"]), "complete");
+  assert.equal(resolveChimeStatus(["failed"]), "failed");
+  assert.equal(resolveChimeStatus([]), "terminated");
+});
+
+test("each terminal state has its own tone", () => {
+  const complete = getChimeTone("complete");
+  const failed = getChimeTone("failed");
+  const terminated = getChimeTone("terminated");
+  // Distinct contours: success ascends, failure descends, termination is flat.
+  assert.notDeepEqual(complete, failed);
+  assert.notDeepEqual(failed, terminated);
+  assert.notDeepEqual(complete, terminated);
+  const [completeFirst, completeSecond] = complete.notes;
+  assert.ok(completeFirst.frequency < completeSecond.frequency);
+  const [failedFirst, failedSecond] = failed.notes;
+  assert.ok(failedFirst.frequency > failedSecond.frequency);
+  assert.equal(terminated.notes[0].frequency, terminated.notes[1].frequency);
+  // A live status never reaches the player, but an unforeseen value must not
+  // be announced as a success either — it gets the neutral tone.
+  assert.deepEqual(getChimeTone("active"), terminated);
 });

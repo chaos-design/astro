@@ -900,6 +900,9 @@ the footer's **Done** button only closes the dialog — there is no Apply step:
 - **Task-completion chime**: play a short sound when a run reaches a complete,
   failed, or terminated state, on by default (`ASTROX_TASK_COMPLETION_CHIME`) so it
   works without hunting for a switch; switch it off in Settings to keep quiet.
+  The three states sound different — complete ascends, failed descends in a
+  lower register, and terminated is a neutral double tap — so the sound alone
+  tells a success from a failure from a plain stop.
   The sound is generated locally in the browser with Web Audio — no audio file is
   downloaded. Only a run the console watched finish while it was open makes a
   sound: history that was already terminal on load stays silent. Receiving a new

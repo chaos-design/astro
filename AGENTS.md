@@ -396,8 +396,12 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   hunting for a switch). That switch is its only off control: the
   sound is generated locally with the Web Audio API in
   `src/lib/task-completion-chime.ts` — no audio asset, so a deployed console under
-  a project path needs no `assetUrl()` call. The terminal transition itself is
-  detected by `collectTerminalTransitions` from the **recorded** status
+  a project path needs no `assetUrl()` call. The tone is keyed by the recorded
+  terminal status in that same module (`getChimeTone`): complete ascends, failed
+  descends, terminated is a neutral double tap; a batch plays one sound, chosen
+  by `resolveChimeStatus` (failed > terminated > complete) — a batch that also
+  failed must not be announced with the success chime. The terminal transition
+  itself is detected by `collectTerminalTransitions` from the **recorded** status
   (`getRunHistoryDisplayStatus`), never the freshness/timeout display status, so
   a live run that merely *looks* terminated does not chime. The effect in
   `app.tsx` seeds its known-terminal set from the first real snapshot (already
