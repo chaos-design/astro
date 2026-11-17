@@ -63,7 +63,7 @@ export function buildInteractionNotification(request, result, options = {}) {
   const count = `${answered} question${answered === 1 ? "" : "s"}`;
   const summary =
     result.status === "answered"
-      ? `User answered ${count} via ${device}; the answers were injected by the host hook.`
+      ? `User answered ${count} via ${device}.`
       : result.status === "cancelled" && device === "service"
         ? "No console page was attached, so the question was closed at once; the host's native prompt is in charge."
         : result.status === "cancelled"

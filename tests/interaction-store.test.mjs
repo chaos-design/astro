@@ -331,6 +331,10 @@ test("E3: a close yields one notification with counts and the device, never answ
   assert.equal(notification.detail.answered, 1);
   assert.equal(notification.detail.answeredBy, "laptop");
   assert.match(notification.summary, /answered 1 question via laptop/);
+  // A Reject is recorded as answered but the hook falls open; claiming the
+  // answers were injected would be false. The notification only reports the
+  // count, device and elapsed time.
+  assert.doesNotMatch(notification.summary, /inject/);
   assert.doesNotMatch(JSON.stringify(notification), /Vue/);
 
   const cancelled = buildInteractionNotification(request, {
