@@ -220,6 +220,7 @@ import {
   pinLiveRunHistory,
   scopeLiveRunIndex,
   selectLiveRunHistory,
+  selectScopeFallbackRun,
   selectVisibleRunHistory,
 } from "./lib/run-history-window";
 import {
@@ -7165,13 +7166,16 @@ export default function App() {
    */
   const handleReplayExit = useCallback(() => {
     startTransition(() => {
-      const liveSession = filteredSessions.find((session) =>
-        liveSessionKeys.has(session.key),
-      );
       const targetSession =
         activeSession && promptExecuting
           ? activeSession
-          : liveSession ?? filteredSessions[0];
+          : selectScopeFallbackRun(
+              filteredSessions,
+              liveSessionKeys,
+              (session) =>
+                promptRunsBySession.get(session.key)?.at(-1)?.start ??
+                session.start,
+            );
       if (!targetSession) {
         return;
       }
@@ -7639,12 +7643,30 @@ export default function App() {
                       if (nextAgent !== OTHERS_AGENT_ID) {
                         setPlatformId(nextAgent);
                       }
-                      // The open run belongs to the scope that was just left.
-                      // Dropping the selection lands the canvas, the log and
-                      // the list on the new agent's newest message instead of
-                      // leaving another agent's run on screen with no row to
-                      // point at.
-                      setActiveSessionKey("");
+                      // The open run belongs to the scope just left, so the
+                      // selection is dropped. If the new agent has a message
+                      // executing right now, land on it instead of the newest
+                      // finished run: a resumed run may have started days ago
+                      // and would otherwise be missed, leaving the footer
+                      // Live button dark while the agent is in fact running.
+                      const scoped = filterSessionsByAgent(
+                        sessions,
+                        nextAgent,
+                        configuredSources,
+                      );
+                      const scopedLiveKeys = scopeLiveRunIndex(
+                        sessions,
+                        machineLiveKeys,
+                        scoped,
+                      ).keys;
+                      const fallback = selectScopeFallbackRun(
+                        scoped,
+                        scopedLiveKeys,
+                        (session) =>
+                          promptRunsBySession.get(session.key)?.at(-1)?.start ??
+                          session.start,
+                      );
+                      setActiveSessionKey(fallback?.key || "");
                       setActivePromptRunKey("");
                       setSelectedEventId("");
                       setSelectedAtomId(undefined);

@@ -233,9 +233,14 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   messages are reached by switching the dropdown, never by adding their rows to
   the open agent's history.
 - Switching agent clears the open selection (`activeSessionKey`,
-  `activePromptRunKey`, `selectedEventId`, `selectedAtomId`) so the canvas, the
-  log and the list all land on the new agent's newest message; the fallback run
-  is `filteredSessions[0]`, never `sessions[0]`. A `?session=` deep link that
+  `activePromptRunKey`, `selectedEventId`, `selectedAtomId`). When the new scope
+  has a message executing now, `selectScopeFallbackRun` (`run-history-window.ts`)
+  lands on that live message instead of the newest finished one — a resumed run
+  can start days ago, and opening the finished row leaves the footer Live button
+  dark. The same helper drives the footer Live jump, so both entry points land
+  on the message the pinned list and `N LIVE` name. Without a live run the
+  fallback is the newest run of the scope (`filteredSessions[0]`), never
+  `sessions[0]`. A `?session=` deep link that
   names another agent's run moves the dropdown to that agent instead of leaving
   the canvas on a run the list cannot show.
 - A live message is marked on the row (status accent plus a `RUNNING` /

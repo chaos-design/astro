@@ -11,6 +11,7 @@ import {
   pinLiveRunHistory,
   scopeLiveRunIndex,
   selectLiveRunHistory,
+  selectScopeFallbackRun,
   selectVisibleRunHistory,
 } from "../src/lib/run-history-window.ts";
 import type { TraceSession } from "../src/types/trace.ts";
@@ -146,6 +147,43 @@ test("pins the executing run above runs that started later", () => {
       new Set([resumed.key, other.key]),
     ).map((entry) => entry.key),
     [other.key, resumed.key, newest.key],
+  );
+});
+
+test("scope fallback picks the executing run, not the newest finished one", () => {
+  const resumed = session(1_000, "claude");
+  const finished = session(9_000, "claude");
+  const newerLive = session(5_000, "claude");
+  const messageStart = (row: TraceSession) =>
+    row.key === resumed.key ? 8_000 : row.start;
+
+  assert.equal(
+    selectScopeFallbackRun(
+      [finished, resumed],
+      new Set([resumed.key]),
+      messageStart,
+    )?.key,
+    resumed.key,
+    "a resumed run executing now outranks a newer finished run",
+  );
+  assert.equal(
+    selectScopeFallbackRun(
+      [finished, resumed, newerLive],
+      new Set([resumed.key, newerLive.key]),
+      messageStart,
+    )?.key,
+    resumed.key,
+    "two live rows use the same newest-message ordering as the pinned list",
+  );
+  assert.equal(
+    selectScopeFallbackRun([finished, resumed], new Set())?.key,
+    finished.key,
+    "without a live run the newest row of the scope stays the fallback",
+  );
+  assert.equal(
+    selectScopeFallbackRun([], new Set()),
+    undefined,
+    "an empty scope has no run to open",
   );
 });
 

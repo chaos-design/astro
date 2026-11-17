@@ -291,8 +291,13 @@
   `AgentSelect` marks those entries with a `--status-running` dot. Cross-agent
   messages are reached by switching the dropdown, not by adding their rows here.
 - Switching agent after opening a run clears the selection
-  (`activeSessionKey` / `activePromptRunKey` / `selectedEventId`), so the canvas,
-  the log and the list all land on the new agent's newest message. When a
+  (`activeSessionKey` / `activePromptRunKey` / `selectedEventId`). If the new
+  agent has a message executing now, `selectScopeFallbackRun` lands on that live
+  message instead of the newest finished one — a resumed run may have started
+  days ago, otherwise the footer Live button stays dark and the canvas opens the
+  wrong run. The live candidates use the same newest-message-start ordering as
+  the pinned list, `N LIVE` and the footer Live jump; only an agent with no live
+  run falls back to its newest message. When a
   `?session=` deep link names another agent's run, the dropdown follows it and
   the address bar's `agent` is rewritten — the open run must always be a row of
   the list beside it. URL writes live only in `src/lib/console-location.ts`:

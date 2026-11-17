@@ -219,7 +219,11 @@
   机器的 `sources`，命中项的智能体在 `AgentSelect` 里带一个 `--status-running`
   圆点。跨智能体的消息靠切换下拉框查看，不靠塞进当前列表。
 - 打开运行后再切智能体，会清空当前选中（`activeSessionKey` / `activePromptRunKey` /
-  `selectedEventId`），画布、日志、列表一起落到新智能体的最新消息；深链
+  `selectedEventId`）；新智能体有正在执行的消息时，落点由
+  `selectScopeFallbackRun` 选那条 Live 消息而不是最新完成的消息——被恢复的会话可能
+  几天前才开始，否则底部 Live 按钮会是暗的、画布停在错误的运行上。落点按最新消息
+  开始时间排序，与 RUN HISTORY 置顶、`N LIVE`、底部 Live 跳转共用同一顺序；
+  没有 Live 时才退回新智能体最新一条。深链
   `?session=` 指向别的智能体时，下拉框跟着跳到该智能体，地址栏的 `agent` 同步重写，
   保证“打开的运行一定在列表里”。地址栏的参数写入只在 `src/lib/console-location.ts`
   一处完成：切换时旧 `session` / `event` 丢弃，新智能体有数据时画布定位到它的

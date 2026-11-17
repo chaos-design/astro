@@ -438,8 +438,12 @@ message runs (no shuffling as events keep arriving) — only a newly sent
 prompt takes the top. A message executing under another agent is not part of
 this list; the agent picker signals it instead, with a pulsing dot on the
 agent that is running, and switching to it shows the message.
-Switching agents also moves the canvas, the log and the selection onto the new
-agent's newest message rather than leaving the previous run on screen.
+Switching agents also moves the canvas, the log and the selection into the new
+scope. If that agent has a message executing right now, it lands on that live
+message and the footer Live button is lit by default — not on the newest finished
+run, because a resumed run may have sent its first prompt days ago. Without a
+live message it falls back to the newest run. The footer Live button uses the
+same selection when you press it from a non-live state.
 
 The `N LIVE` chip in the panel header toggles the Live filter:
 
