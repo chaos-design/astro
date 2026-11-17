@@ -547,12 +547,17 @@ use Node.js ES modules or CommonJS according to their existing file extension.
 - The card's restart button is honest about the browser boundary. With a live
   health response it posts `/api/restart` and waits for the new pid; with no
   service it does **not** fetch a dead port — it copies
-  `buildServiceCliCommand(apiBase)` (`pnpm service:up --port=<api port>`) and
-  says so. `scripts/service-cli.mjs` is the out-of-band control surface: `up`
-  restarts a running service or starts a downed one on the same port (installed
-  runtime wins, checkout server is the fallback), `status` / `start` / `stop`
-  are the single actions. A static page cannot spawn a local process; pretending
-  otherwise would leave the reader staring at an offline card with a dead button.
+  `buildServiceCliCommands(apiBase, origin)` (repo: `pnpm service:up --port=N`,
+  installed bundle: `ASTRO_PORT=N astro-trace serve`) and the notice states
+  exactly whether the clipboard succeeded. A same-origin page takes its port
+  from `window.location`, not the default 5678. `scripts/service-cli.mjs` is the
+  out-of-band control surface: `up` restarts a running service or starts a
+  downed one on the same port (installed runtime wins, checkout server is the
+  fallback), `status` / `start` / `stop` are the single actions; `restart` on a
+  downed service starts it rather than waiting for a dead health endpoint. A
+  handover waits for a **new pid**, never reports the old process as ready.
+  A static page cannot spawn a local process; pretending otherwise would leave
+  the reader staring at an offline card with a dead button.
 
 
 ## First Paint, Rendering, Feedback
@@ -894,11 +899,13 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   `GET /api/interactions/:id`; `/api/stream` adds `interaction.open` /
   `update` / `close` and clears them on `reset` / `reset-same`. Writing an
   answer back is the `close` route plus the result file — never
-  `POST /api/events`. When the **last** stream client leaves, `cancelOrphaned()`
+  `POST /api/events`. When the **last** stream client leaves, a one-second grace
+  absorbs an EventSource reconnect; if no client returns, `cancelOrphaned()`
   finishes every open request as `cancelled/service` through the same `finish()`
-  path: the frames are never replayed, so a disconnected reader must not hold
-  the host for the rest of its window. Creating a new record removes any old
-  result file for the same deterministic id before the hook can poll it.
+  path. The frames are never replayed, so a disconnected reader must not hold
+  the host for the rest of its window, but a one-second blip must not throw away
+  a live question either. Creating a new record removes any old result file for
+  the same deterministic id before the hook can poll it.
 - `Notification` hooks have no decision control; never wrap an answer as
   `UserPromptSubmit`. `additionalContext` / `systemMessage` /
   `permissionDecisionReason` are capped at 10,000 characters and only

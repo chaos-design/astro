@@ -54,6 +54,11 @@ export function parseServiceArgs(argv = []) {
       options.foreground = true;
     } else if (argument === "--open") {
       options.open = true;
+    } else if (argument.startsWith("--timeout=")) {
+      const value = Number(argument.slice("--timeout=".length));
+      if (Number.isFinite(value) && value > 0) {
+        options.timeoutMs = value;
+      }
     }
   }
   if (!Number.isFinite(options.port) || options.port <= 0) {
@@ -108,11 +113,11 @@ export async function probeHealth(url, fetchImpl = fetch, timeoutMs = 2000) {
   }
 }
 
-async function waitForHealth(url, timeoutMs, fetchImpl) {
+async function waitForHealth(url, timeoutMs, fetchImpl, ready = () => true) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const health = await probeHealth(url, fetchImpl, Math.min(1000, timeoutMs));
-    if (health) {
+    if (health && ready(health)) {
       return health;
     }
     await new Promise((done) => setTimeout(done, 200));
@@ -142,6 +147,8 @@ async function restartThroughHttp(url, fetchImpl) {
   if (!response.ok) {
     throw new Error(`restart endpoint returned ${response.status}`);
   }
+  const body = await response.json().catch(() => ({}));
+  return body.previousPid ?? null;
 }
 
 function stopRecordedPid(health) {
@@ -186,18 +193,33 @@ export async function runServiceCli(argv, dependencies = {}) {
     console.log(`Local service stopping: ${url}`);
     return { options, health: null };
   }
+  let previousPid = null;
   if (health && (options.command === "restart" || options.command === "up")) {
-    await restartThroughHttp(url, fetchImpl);
-  } else if (options.command === "start" || options.command === "up") {
+    previousPid = await restartThroughHttp(url, fetchImpl);
+  } else if (
+    options.command === "start" ||
+    options.command === "up" ||
+    options.command === "restart"
+  ) {
+    // `restart` on a downed service starts it: waiting 15 s for a health
+    // endpoint nobody is serving was the old, misleading failure mode. The
+    // caller who only wants an error can use `status`.
     if (!existsSync(serverFile)) {
       throw new Error(`Service entry not found: ${serverFile}`);
     }
     launchImpl(serverFile, options, env, home);
   }
-  const ready = await waitForHealth(url, options.timeoutMs, fetchImpl);
+  const ready = await waitForHealth(
+    url,
+    options.timeoutMs,
+    fetchImpl,
+    (candidate) => !previousPid || candidate.pid !== previousPid,
+  );
   if (!ready) {
     throw new Error(
-      `Local service did not become healthy on ${url}. Check ${join(home, "service-cli.log")}.`,
+      previousPid
+        ? `The service on ${url} never handed over from pid ${previousPid}.`
+        : `Local service did not become healthy on ${url}. Check ${join(home, "service-cli.log")}.`,
     );
   }
   console.log(`Local service ready: ${url} (pid ${ready.pid ?? "unknown"})`);

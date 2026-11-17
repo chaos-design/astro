@@ -94,12 +94,29 @@ const clients = new Set();
  * interaction can no longer be answered (frames are never replayed), so every
  * in-flight request is cancelled here and the host's synchronous hook falls
  * back to its native prompt instead of blocking for the full window.
+ * EventSource reconnects after a brief blip, so a one-second grace lets the
+ * page come back before a live question is thrown away — a second is nothing
+ * against a 600-second host window.
  */
+let orphanGraceTimer = null;
+function clearOrphanGrace() {
+  if (orphanGraceTimer) {
+    clearTimeout(orphanGraceTimer);
+    orphanGraceTimer = null;
+  }
+}
 function removeStreamClient(response) {
   clients.delete(response);
-  if (clients.size === 0) {
-    interactions.cancelOrphaned();
+  if (clients.size > 0 || orphanGraceTimer) {
+    return;
   }
+  orphanGraceTimer = setTimeout(() => {
+    orphanGraceTimer = null;
+    if (clients.size === 0) {
+      interactions.cancelOrphaned();
+    }
+  }, 1000);
+  orphanGraceTimer.unref?.();
 }
 /**
  * Snapshot frames are written in small batches. One `JSON.stringify` of the
@@ -925,6 +942,7 @@ async function handleRequest(request, response) {
       "Content-Type": "text/event-stream",
     });
     response.write("retry: 1000\n\n");
+    clearOrphanGrace();
     clients.add(response);
     request.on("close", () => removeStreamClient(response));
     // A console page attaching to the event stream is the one truthful signal

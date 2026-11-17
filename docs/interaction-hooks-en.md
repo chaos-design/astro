@@ -126,7 +126,9 @@ takes the **fast path**:
    (interaction frames are never replayed on reconnect, so a request nobody saw
    can never be answered) and the hook fails open at once — a long window never
    stalls an unattended agent. Losing the last stream mid-request takes the same
-   path: `cancelOrphaned()` finishes every open request through the normal close.
+   path after a one-second grace: a reconnecting EventSource keeps the question,
+  and `cancelOrphaned()` finishes every still-open request through the normal
+  close only when no client returned.
    Creating a new record also removes any stale result file for the same
    deterministic id, so a host retry cannot replay an old answer.
 3. **Re-entry path (not implemented, kept as an alternative)**: return `deny`

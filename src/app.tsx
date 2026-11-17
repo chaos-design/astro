@@ -315,7 +315,11 @@ import {
 } from "./lib/trace-event-kind";
 import { hasPlanContent, userQuestionSummary } from "./lib/user-question-content";
 import { buildConsoleLocationSearch } from "./lib/console-location";
-import { buildServiceCliCommand } from "./lib/service-cli-command";
+import {
+  buildServiceCliCommands,
+  offlineRestartNotice,
+  serviceCardHint,
+} from "./lib/service-cli-command";
 import type {
   HarnessNode,
   HarnessNodeData,
@@ -1207,9 +1211,7 @@ function ServiceStatus({
         <div className="service-card__footer">
           {error ? <p className="service-card__error">{error}</p> : null}
           <p className="service-card__hint">
-            {syncPaused
-              ? "已按「最长同步时长」停止接收新事件；重启服务、点击顶部 paused 标记，或在设置中调高「最长同步时长」，都可以继续同步。"
-              : "重启会保留当前端口，页面与事件流会自动重连。"}
+            {serviceCardHint(syncPaused, Boolean(error) || !service)}
           </p>
           <Button
             type="button"
@@ -6935,18 +6937,20 @@ export default function App() {
     if (isDemo) {
       return;
     }
+    const commands = buildServiceCliCommands(apiBase, window.location.origin);
     const offline = !service || Boolean(serviceError);
     if (offline) {
       // A browser cannot spawn a process on the reader's machine. Give the
       // reader the exact command instead of silently failing against a port
-      // nobody is listening on.
-      const command = buildServiceCliCommand(apiBase);
+      // nobody is listening on. The wording follows the clipboard outcome.
+      let copied = false;
       try {
-        await navigator.clipboard?.writeText(command);
+        await navigator.clipboard?.writeText(commands.repo);
+        copied = Boolean(navigator.clipboard);
       } catch {
         // Clipboard permission is optional; the notice still shows the command.
       }
-      pushNotice("info", "本地服务不可达", `已复制启动命令：${command}`);
+      pushNotice("info", "本地服务不可达", offlineRestartNotice(copied, commands));
       return;
     }
     if (

@@ -339,6 +339,81 @@ test("F4: the last console leaving cancels an open request instead of blocking t
   }
 });
 
+test("F4: reconnecting inside the grace window keeps a live question", async (t) => {
+  const { url, home } = await startServer(t);
+  const firstController = new AbortController();
+  const first = await fetch(`${url}/api/stream`, {
+    headers: { Accept: "text/event-stream" },
+    signal: firstController.signal,
+  });
+  const reader = first.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  const hook = runHook(askPayload(), {
+    ASTRO_INTERACTION_SERVICE: url,
+    ASTRO_HOME: home,
+    ASTRO_INTERACTION_TIMEOUT_MS: "3000",
+  });
+
+  try {
+    for (;;) {
+      const chunk = await reader.read();
+      if (chunk.done) {
+        throw new Error("stream ended before interaction.open");
+      }
+      buffer += decoder.decode(chunk.value, { stream: true });
+      if (/event: interaction\.open/.test(buffer)) {
+        break;
+      }
+    }
+    const line = buffer
+      .split("\n")
+      .find((item) => item.startsWith("data: ") && item.includes("requestId"));
+    const request = JSON.parse(line.slice("data: ".length));
+
+    // A one-second blip must not cancel a question the reader can still see
+    // after EventSource reconnects.
+    firstController.abort();
+    const secondController = new AbortController();
+    const second = await fetch(`${url}/api/stream`, {
+      headers: { Accept: "text/event-stream" },
+      signal: secondController.signal,
+    });
+    assert.equal(second.status, 200);
+    await second.body.cancel();
+
+    const submitted = await fetch(
+      `${url}/api/interactions/${request.requestId}/events`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          requestId: request.requestId,
+          eventId: "iev-reconnect-1",
+          seq: 1,
+          action: "submit",
+          final: true,
+          deviceId: "console",
+          at: new Date().toISOString(),
+          question: "Which framework?",
+          optionLabel: "React",
+          answers: { "Which framework?": "React" },
+        }),
+      },
+    );
+    assert.equal(submitted.status, 202, "the request survived the reconnect");
+    assert.equal((await submitted.json()).result.status, "answered");
+    const output = JSON.parse((await hook).stdout);
+    assert.equal(
+      output.hookSpecificOutput.decision.updatedInput.answers["Which framework?"],
+      "React",
+    );
+    secondController.abort();
+  } finally {
+    firstController.abort();
+  }
+});
+
 test("F4: a service that is down still fails open", async () => {
   const home = new URL("./__missing__", import.meta.url).pathname;
   const result = await runHook(askPayload(), {

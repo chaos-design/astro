@@ -78,11 +78,13 @@ test("health probe fails open on a refused or slow service", async () => {
   );
 });
 
-test("up restarts a running service through the HTTP route", async () => {
+test("up restarts a running service and waits for the new pid", async () => {
   const health = { pid: 4242, port: 4401 };
   const { calls, fetchImpl } = fetchStub([
     { body: health },
-    { body: {} },
+    { body: { status: "restarting", previousPid: 4242, pid: 4243 } },
+    // The old process still answers for a moment after the 202.
+    { body: health },
     { body: { ...health, pid: 4243 } },
   ]);
   const launched = [];
@@ -97,6 +99,46 @@ test("up restarts a running service through the HTTP route", async () => {
     "http://127.0.0.1:4401/api/restart",
   );
   assert.equal(launched.length, 0, "a live service is restarted, not spawned twice");
+});
+
+test("restart on a downed service starts it instead of waiting for a dead port", async () => {
+  const { calls, fetchImpl } = fetchStub([
+    { ok: false, status: 500 },
+    { body: { pid: 77 } },
+  ]);
+  const launched = [];
+  await runServiceCli(["restart", "--port=4403"], {
+    env: { ASTRO_HOME: "/tmp/astro-cli-restart-down" },
+    fetchImpl,
+    launchImpl: (...args) => launched.push(args),
+  });
+  assert.equal(launched.length, 1);
+  assert.equal(calls.some((call) => call.url.endsWith("/api/restart")), false);
+});
+
+test("up fails loudly when the old pid never hands over", async () => {
+  const health = { pid: 4242 };
+  const responses = [
+    { body: health },
+    { body: { status: "restarting", previousPid: 4242, pid: 4243 } },
+  ];
+  const fetchImpl = async () => {
+    if (responses.length) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => responses.shift().body,
+      };
+    }
+    return { ok: true, status: 200, json: async () => health };
+  };
+  await assert.rejects(
+    runServiceCli(["up", "--port=4404", "--timeout=1"], {
+      env: { ASTRO_HOME: "/tmp/astro-cli-stale" },
+      fetchImpl,
+      launchImpl: () => {},
+    }),
+  );
 });
 
 test("up starts a downed service and waits for health", async () => {
