@@ -391,8 +391,21 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   from an effect keyed on that flag, and `resolvePerfHudInitial` honours the
   retired `?perf=1` legacy flag (`astro:perf-hud` = `"1"`) once — the first
   write of `ASTROX_PERF_HUD` removes the legacy key.
+- `appDefaults.taskCompletionChime` is the single default of the task-completion
+  chime (Settings → 通知, off by default). The preference is the only opt-in: the
+  sound is generated locally with the Web Audio API in
+  `src/lib/task-completion-chime.ts` — no audio asset, so a deployed console under
+  a project path needs no `assetUrl()` call. The terminal transition itself is
+  detected by `collectTerminalTransitions` from the **recorded** status
+  (`getRunHistoryDisplayStatus`), never the freshness/timeout display status, so
+  a live run that merely *looks* terminated does not chime. The effect in
+  `app.tsx` seeds its known-terminal set from the first real snapshot (already
+  finished history stays silent), removes a key while the run is live so a
+  resumed run can chime again, and skips Demo entirely. Refs hold this state, not
+  React state, so a streamed batch never re-renders the studio just to record a
+  completion.
 - The dialog is a two-pane card: `.settings-nav` (外观 / 运行历史 / 画布 / 面板 /
-  性能 / 关于) beside a `.settings-pane` that renders only the active section,
+  性能 / 通知 / 关于) beside a `.settings-pane` that renders only the active section,
   carried by
   a vertical Radix `Tabs` so arrow keys work. A single stacked column scrolled the
   whole dialog or squeezed the controls on a short window. Header and footer are

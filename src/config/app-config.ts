@@ -53,6 +53,12 @@ type AppDefaults = {
    */
   perfHud: boolean;
   /**
+   * Whether a short chime plays when a run reaches a terminal state. Off by
+   * default: sound is intrusive, so the reader opts in through Settings →
+   * Notifications rather than being startled by a browser audio context.
+   */
+  taskCompletionChime: boolean;
+  /**
    * Fallback agent when no preference is stored. This mirrors the first entry
    * of the agent dropdown so the default selection is the top of the list.
    */
@@ -79,6 +85,7 @@ export const appDefaults: AppDefaults = {
   maxSync: "8h",
   menuOpen: false,
   perfHud: false,
+  taskCompletionChime: false,
   platform: "claude",
   replayCursor: 0,
   replayMode: false,
@@ -261,6 +268,8 @@ export const storageKeys = {
   platform: "ASTROX_PLATFORM",
   /** The performance HUD toggle (Settings → 性能). */
   perfHud: "ASTROX_PERF_HUD",
+  /** Task-completion chime (Settings → 通知). */
+  taskCompletionChime: "ASTROX_TASK_COMPLETION_CHIME",
   runHistoryLiveView: "ASTROX_RUN_HISTORY_LIVE_VIEW",
   theme: "ASTROX_THEME",
 } as const;

@@ -842,7 +842,7 @@ duration even when it is longer than the current limit.
 
 The gear in the header opens the settings dialog. It is a two-pane card: a
 section rail on the left (Appearance, Run history, Canvas, Panels, Performance,
-About) and
+Notifications, About) and
 the active section's fields on the right. Every entry applies immediately, and
 the footer's **Done** button only closes the dialog — there is no Apply step:
 
@@ -895,6 +895,17 @@ the footer's **Done** button only closes the dialog — there is no Apply step:
   that stored it is honoured once on first load, after which this switch owns
   the state. See "The Performance Panel" below.
 
+**Notifications**
+
+- **Task-completion chime**: play a short sound when a run reaches a complete,
+  failed, or terminated state, off by default (`ASTROX_TASK_COMPLETION_CHIME`).
+  The sound is generated locally in the browser with Web Audio — no audio file is
+  downloaded. Only a run the console watched finish while it was open makes a
+  sound: history that was already terminal on load stays silent. Receiving a new
+  prompt puts a session back in a live state, so its next completion chimes
+  again. Demo traces never make a sound. Browsers generally allow audio only
+  after the first interaction with the page.
+
 **About**
 
 - The console version (`v<appVersion>` — the value in `src/config/app-config.ts`,
@@ -903,10 +914,10 @@ the footer's **Done** button only closes the dialog — there is no Apply step:
   presentation and never rewrite captured events.
 
 The values are written to `ASTROX_HISTORY_RANGE`, `ASTROX_RUN_HISTORY_LIVE_VIEW`,
-`ASTROX_MAX_SYNC`, `ASTROX_PERF_HUD` and the other keys above. **Reset**
-restores every section at once (3 hours, Live off, an 8-hour sync window,
-dark, topology, runtime atoms only, the performance panel off, and the
-width-based panel defaults).
+`ASTROX_MAX_SYNC`, `ASTROX_PERF_HUD`, `ASTROX_TASK_COMPLETION_CHIME` and the other
+keys above. **Reset** restores every section at once (3 hours, Live off, an
+8-hour sync window, dark, topology, runtime atoms only, the performance panel
+off, the task-completion chime off, and the width-based panel defaults).
 
 ## 6. Execution Topology
 
@@ -1378,6 +1389,7 @@ only effective display state.
 | `ASTROX_ACTIVE_VIEW` | `topology` / `trajectory` | Last canvas view |
 | `ASTROX_DEEP_VIEW` | `true` / `false` | Runtime-only atoms in the topology |
 | `ASTROX_PERF_HUD` | `true` / `false` | Performance panel on, `false` unless changed |
+| `ASTROX_TASK_COMPLETION_CHIME` | `true` / `false` | Task-completion chime on, `false` unless changed |
 
 Legacy `astro-theme`, `astro-platform`, and `astro:perf-hud` values are removed
 after the corresponding new key is written: the first two migrate automatically;

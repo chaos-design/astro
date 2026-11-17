@@ -233,7 +233,7 @@
 
 - 设置弹窗只承载浏览器本地偏好，立即生效，不经过服务端，不需要“应用”按钮。
 - 弹窗是**两栏卡片**：左侧 `settings-nav` 分区栏（外观 / 运行历史 / 画布 / 面板 /
-  性能 / 关于），右侧 `settings-pane` 只渲染当前分区的字段；改用 `Tabs orientation="vertical"`
+  性能 / 通知 / 关于），右侧 `settings-pane` 只渲染当前分区的字段；改用 `Tabs orientation="vertical"`
   取得方向键导航，不再把全部偏好叠成一列。弹窗固定 920×672（窄屏退化为上下两段），
   头部与底部固定，只有右侧面板滚动。底部的「完成」只负责关闭——没有“应用”这一步。
 - 已在顶栏或工具栏有开关的偏好也要并列出来——一个能列全的入口胜过让用户去顶栏找。
@@ -243,6 +243,14 @@
 - 非法值必须回退到 `appDefaults`，不能让损坏的 localStorage 阻止页面渲染。
 - 新增偏好要同步：`storageKeys`、`appDefaults`、设置弹窗、`docs/user-manual-*.md`
   的 §15.1 表格，以及 `tests/app-config.test.ts`。
+- **任务完成提示音**是设置 → 通知里的一项本地偏好（`ASTROX_TASK_COMPLETION_CHIME`，
+  默认关闭）。声音由 `src/lib/task-completion-chime.ts` 用 Web Audio 振荡器本地生成，
+  不引入音频资源，因此部署在项目路径下也无需 `assetUrl()`。终态转换只由
+  `collectTerminalTransitions` 依据**已记录**的状态（`getRunHistoryDisplayStatus`）
+  判断，不采用新鲜度/超时派生出来的显示状态——只是“看起来终止”的活跃运行不能响。
+  `app.tsx` 里的效果首次快照时把已经结束的运行记入基线（历史不响），运行重新活跃时
+  移除该键（再次完成还能响），示例数据完全跳过；这份账本放在 ref 而非 state，流式批次
+  不因记录一次完成而重渲染整个 studio。
 - 语义变化的旧键不迁移、直接退役并删除（`retiredStorageKeys`）。Live 筛选就是例子：
   旧值 `true` 表示“显示全部消息”，迁移过来会变成“开着筛选却看不到东西”。
 - **最长同步时长是一项本地偏好，也是一个硬上限**：`ASTROX_MAX_SYNC`

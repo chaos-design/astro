@@ -293,6 +293,7 @@ import {
   getRunDisplayState,
   getRunFreshness,
   getRunHistoryDisplayState,
+  getRunHistoryDisplayStatus,
   getRunHistoryTerminalInfo,
   isLiveRunStatus,
   isSparseRunHistoryList,
@@ -301,6 +302,10 @@ import {
   quantizeTimestamp,
   toggleExpandedRun,
 } from "./lib/run-history-state";
+import {
+  collectTerminalTransitions,
+  playTaskCompletionChime,
+} from "./lib/task-completion-chime";
 import {
   attachScrollFpsTracker,
   getPerfSnapshot,
@@ -5305,6 +5310,16 @@ export default function App() {
   const [perfHud, setPerfHud] = useState<boolean>(() =>
     resolvePerfHudInitial(window.localStorage),
   );
+  // Task-completion chime: a switch in Settings → 通知, off by default so a
+  // console never starts making noise on its own. One preference drives both
+  // the persisted value and the terminal-transition effect below.
+  const [taskCompletionChime, setTaskCompletionChime] = useState<boolean>(() =>
+    readStorageBoolean(
+      window.localStorage,
+      storageKeys.taskCompletionChime,
+      appDefaults.taskCompletionChime,
+    ),
+  );
   const [guideOpen, setGuideOpen] = useState<boolean>(appDefaults.guideOpen);
   const [historySearchOpen, setHistorySearchOpen] = useState(false);
   // The dialog chunk is requested on idle; the component is mounted the first
@@ -5524,6 +5539,14 @@ export default function App() {
       legacyStorageKeys.perfHud,
     );
   }, [perfHud]);
+
+  useEffect(() => {
+    writeStorageValue(
+      window.localStorage,
+      storageKeys.taskCompletionChime,
+      taskCompletionChime,
+    );
+  }, [taskCompletionChime]);
 
   // The HUD is pure DOM outside the React tree (the tool that measures must
   // never enter the render path); React only decides *whether* it exists.
@@ -6123,6 +6146,39 @@ export default function App() {
       ),
     [sessions],
   );
+  // Terminal-transition bookkeeping for the optional completion chime. Kept in
+  // refs, not state: a streamed event batch must not re-render the studio just
+  // to record that a run finished. The set is seeded once from the first real
+  // snapshot, so history that was already terminal on load stays silent.
+  const knownTerminalKeysRef = useRef<ReadonlySet<string>>(new Set());
+  const chimeBaselineSeededRef = useRef(false);
+  useEffect(() => {
+    // Demo traces are synthetic and never live; they must never make a sound or
+    // pollute the baseline that real runs are judged against.
+    if (!eventsLoaded || isDemo || sessions.length === 0) {
+      return;
+    }
+    const runs = sessions.map((session) => ({
+      key: session.key,
+      // The recorded status, not the display one: a live run that only *looks*
+      // terminated because the freshness/timeout gate fired did not actually
+      // finish, and must not chime.
+      status: getRunHistoryDisplayStatus(
+        session.status,
+        promptRunsBySession.get(session.key) ?? [],
+      ),
+    }));
+    const { newlyTerminal, nextKnown } = collectTerminalTransitions(
+      runs,
+      knownTerminalKeysRef.current,
+      !chimeBaselineSeededRef.current,
+    );
+    knownTerminalKeysRef.current = nextKnown;
+    chimeBaselineSeededRef.current = true;
+    if (taskCompletionChime && newlyTerminal.length > 0) {
+      playTaskCompletionChime();
+    }
+  }, [eventsLoaded, isDemo, promptRunsBySession, sessions, taskCompletionChime]);
   const configuredSources = useMemo(
     () => new Set(atomPlatformOptions.map((platform) => platform.source)),
     [],
@@ -7552,6 +7608,7 @@ export default function App() {
               liveView={liveFilter}
               maxSync={maxSync}
               perfHud={perfHud}
+              taskCompletionChime={taskCompletionChime}
               theme={theme}
               onActiveViewChange={(view) => {
                 setActiveView(view);
@@ -7566,6 +7623,7 @@ export default function App() {
               onLiveViewChange={setLiveFilter}
               onMaxSyncChange={setMaxSync}
               onPerfHudChange={setPerfHud}
+              onTaskCompletionChimeChange={setTaskCompletionChime}
               onThemeChange={setTheme}
             />
             <ThemeSwitcher theme={theme} onChange={setTheme} />

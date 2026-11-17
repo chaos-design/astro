@@ -107,6 +107,13 @@ test("resolves the performance HUD's initial state, migrating the legacy opt-in"
   assert.equal(resolvePerfHudInitial(createMemoryStorage()), false);
 });
 
+test("keeps the task-completion chime off until the reader opts in", () => {
+  // Sound is intrusive and browser autoplay is gated on user interaction, so
+  // Settings → 通知 is the single opt-in rather than a surprising default.
+  assert.equal(appDefaults.taskCompletionChime, false);
+  assert.equal(storageKeys.taskCompletionChime, "ASTROX_TASK_COMPLETION_CHIME");
+});
+
 test("caps the console's sync window at eight hours by default", () => {
   // A console left open overnight must stop appending events on its own; eight
   // hours covers a working day and the setting can raise it or remove it.

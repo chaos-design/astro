@@ -693,7 +693,7 @@ console」。
 ### 5.8 设置
 
 顶栏的齿轮图标打开设置弹窗。弹窗是一个两栏卡片：左侧分区栏列出外观、运行历史、
-画布、面板、性能、关于，右侧只显示当前分区的配置；每一条都是浏览器本地偏好，改完立即
+画布、面板、性能、通知、关于，右侧只显示当前分区的配置；每一条都是浏览器本地偏好，改完立即
 生效，底部的「完成」只关闭弹窗，不需要「应用」。
 
 **外观**
@@ -733,6 +733,14 @@ console」。
   跨次保留。早前的 `?perf=1` 参数已退役——存过该参数的浏览器首次加载时仍会按
   开启处理一次，之后改由这个开关管理。详见下文「页面性能面板」一节。
 
+**通知**
+
+- **任务完成提示音**：某条运行进入完成、失败或终止状态时，播放一段简短提示音，
+  默认关闭（`ASTROX_TASK_COMPLETION_CHIME`）。声音在浏览器本地用 Web Audio 生成，
+  不加载任何音频文件。只有在这台控制台打开期间“看着它结束”的运行才会响：页面加载时
+  就已经结束的历史保持安静；会话收到新消息重新运行后，再次完成会重新提示。示例数据
+  永远不会响。浏览器通常在首次与页面交互后才允许播放声音。
+
 **关于**
 
 - 当前控制台版本（`v<appVersion>`，即 `src/config/app-config.ts` 里的值，在「关于」
@@ -740,9 +748,10 @@ console」。
   「设置只影响展示、不写回事件」的说明。
 
 偏好分别写入 `ASTROX_HISTORY_RANGE`、`ASTROX_RUN_HISTORY_LIVE_VIEW`、
-`ASTROX_MAX_SYNC` 与 `ASTROX_PERF_HUD` 等键；「恢复默认」把这些分区的值一起还原
+`ASTROX_MAX_SYNC`、`ASTROX_PERF_HUD` 与 `ASTROX_TASK_COMPLETION_CHIME` 等键；
+「恢复默认」把这些分区的值一起还原
 （3 小时、Live 关闭、最长同步 8 小时、深色、拓扑、仅运行时原子、按窗口宽度决定
-左右面板是否展开、性能面板关闭）。
+左右面板是否展开、性能面板关闭、任务完成提示音关闭）。
 
 ## 6. 执行拓扑操作
 
@@ -1171,6 +1180,7 @@ astro-trace doctor
 | `ASTROX_ACTIVE_VIEW` | `topology` / `trajectory` | 上次使用的画布视图 |
 | `ASTROX_DEEP_VIEW` | `true` / `false` | 拓扑是否只显示运行时原子 |
 | `ASTROX_PERF_HUD` | `true` / `false` | 性能面板是否开启，默认 `false` |
+| `ASTROX_TASK_COMPLETION_CHIME` | `true` / `false` | 任务完成提示音是否开启，默认 `false` |
 
 旧 `astro-theme`、`astro-platform` 与 `astro:perf-hud` 会在对应新键写入后删除：
 前两者自动迁移，`astro:perf-hud` 是早版 `?perf=1` 参数留下的开启标记（值为 `1`），

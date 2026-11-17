@@ -311,8 +311,9 @@
 - The settings dialog holds browser-local preferences only. Changes apply
   immediately, with no server round trip and no Apply button.
 - It is a **two-pane card**: a `settings-nav` rail on the left (appearance / run
-  history / canvas / panels / performance / about) and a `settings-pane` on the right that
-  renders only the active section, built on vertical `Tabs` so arrow keys work.
+  history / canvas / panels / performance / notifications / about) and a `settings-pane` on
+  the right that renders only the active section, built on vertical `Tabs` so arrow keys
+  work.
   A single stacked column either scrolled the whole dialog or squeezed every
   control on a short window. The card is 920×672 on a wide viewport (stacked on
   narrow ones); header and footer stay fixed and only the pane scrolls. The
@@ -329,6 +330,18 @@
 - A new preference must update: `storageKeys`, `appDefaults`, the settings
   dialog, the §15.1 table in `docs/user-manual-*.md`, and
   `tests/app-config.test.ts`.
+- **The task-completion chime** is a local preference in Settings → Notifications
+  (`ASTROX_TASK_COMPLETION_CHIME`, off by default). The sound is generated locally
+  with a Web Audio oscillator in `src/lib/task-completion-chime.ts` — no audio
+  asset, so a deployed console under a project path needs no `assetUrl()` call.
+  Terminal transitions are detected by `collectTerminalTransitions` from the
+  **recorded** status (`getRunHistoryDisplayStatus`), never the freshness/timeout
+  display status, so a live run that merely *looks* terminated cannot chime. The
+  effect in `app.tsx` seeds its known-terminal set from the first real snapshot
+  (history that already finished stays silent), drops a key while the run is live
+  so a resumed run can chime again, and skips Demo entirely. The bookkeeping lives
+  in refs, not React state, so a streamed batch never re-renders the studio just
+  to record a completion.
 - A key whose *meaning* changed is retired (`retiredStorageKeys`) and deleted on
   write instead of migrated. The Live filter is the example: its stored `true`
   meant "show every message", which would arm the new filter on a machine where

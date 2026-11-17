@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { CSSProperties } from "react";
 import {
+  Bell,
   Check,
   Gauge,
   History,
@@ -87,6 +88,14 @@ const settingsSections = [
     description:
       "页面性能诊断面板：滚动帧率、列表渲染与长任务。只采集、不修改已记录的事件。",
     icon: Gauge,
+  },
+  {
+    id: "notifications",
+    label: "通知",
+    hint: "任务完成提示音",
+    title: "通知",
+    description: "运行进入完成、失败或终止状态时是否播放一段简短提示音。",
+    icon: Bell,
   },
   {
     id: "about",
@@ -181,8 +190,8 @@ function SwitchField({
 
 /**
  * Console settings: every browser-local preference the console has, grouped by
- * what it changes — appearance, RUN HISTORY, the canvas, the two panels, and
- * the performance HUD.
+ * what it changes — appearance, RUN HISTORY, the canvas, the two panels,
+ * notifications, and the performance HUD.
  *
  * The dialog edits the same values the panels restore on reload, so there is
  * no apply step and no server round trip. Preferences that also have an inline
@@ -203,6 +212,7 @@ export function SettingsDialog({
   liveView,
   maxSync,
   perfHud,
+  taskCompletionChime,
   theme,
   onActiveViewChange,
   onConsoleOpenChange,
@@ -212,6 +222,7 @@ export function SettingsDialog({
   onLiveViewChange,
   onMaxSyncChange,
   onPerfHudChange,
+  onTaskCompletionChimeChange,
   onThemeChange,
 }: {
   activeView: ActiveView;
@@ -222,6 +233,7 @@ export function SettingsDialog({
   liveView: boolean;
   maxSync: MaxSyncId;
   perfHud: boolean;
+  taskCompletionChime: boolean;
   theme: Theme;
   onActiveViewChange: (view: ActiveView) => void;
   onConsoleOpenChange: (open: boolean) => void;
@@ -231,6 +243,7 @@ export function SettingsDialog({
   onLiveViewChange: (liveView: boolean) => void;
   onMaxSyncChange: (maxSync: MaxSyncId) => void;
   onPerfHudChange: (perfHud: boolean) => void;
+  onTaskCompletionChimeChange: (value: boolean) => void;
   onThemeChange: (theme: Theme) => void;
 }) {
   const [section, setSection] = useState<SettingsSectionId>("appearance");
@@ -243,6 +256,7 @@ export function SettingsDialog({
     liveView === appDefaults.liveView &&
     maxSync === appDefaults.maxSync &&
     perfHud === appDefaults.perfHud &&
+    taskCompletionChime === appDefaults.taskCompletionChime &&
     theme === appDefaults.theme &&
     activeView === appDefaults.activeView &&
     deepView === appDefaults.deepView &&
@@ -254,6 +268,7 @@ export function SettingsDialog({
     onLiveViewChange(appDefaults.liveView);
     onMaxSyncChange(appDefaults.maxSync);
     onPerfHudChange(appDefaults.perfHud);
+    onTaskCompletionChimeChange(appDefaults.taskCompletionChime);
     onThemeChange(appDefaults.theme);
     onActiveViewChange(appDefaults.activeView);
     onDeepViewChange(appDefaults.deepView);
@@ -441,6 +456,15 @@ export function SettingsDialog({
                 description="在页面右下角浮出性能诊断面板：滚动帧率、列表渲染、长任务，可拖动；状态保存在浏览器本地，只采集、不写回事件。"
                 value={perfHud}
                 onChange={onPerfHudChange}
+              />
+            </TabsContent>
+
+            <TabsContent className="settings-section" value="notifications">
+              <SwitchField
+                label="任务完成提示音"
+                description="某条运行进入完成、失败或终止状态时播放一段简短提示音；示例数据不会触发。默认关闭，浏览器在首次交互后才允许播放声音。"
+                value={taskCompletionChime}
+                onChange={onTaskCompletionChimeChange}
               />
             </TabsContent>
 
