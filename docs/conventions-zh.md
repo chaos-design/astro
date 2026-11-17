@@ -107,7 +107,9 @@
     `idle_prompt`、`auth_success` 与其他工具的权限提示不算，仍只是运行信号；
     是否**阻塞**另由 `isBlockingUserQuestionStartEvent` 判定：权限请求与权限提示
     通知必须带非空 `questions` / `plan` 才进入等待态与 Flow 作答，没有参数的
-    是系统授权，显示键 `permission.request`、投影到 Action Gate；
+    是系统授权，显示键 `permission.request`：裸 `PermissionRequest(Bash/Edit)`
+    投影到 Action Gate，点名提问工具的 WorkBuddy 权限通知仍留在 User Question 原子
+    的 delta 阶段，好让后续带参数的 `PreToolUse` 接管同一个原子；
     `user-question` 原子绑定的事件只在 `src/lib/execution-topology.ts` 取
     最后一条提问开始事件，状态另由最后一条匹配事件决定；
   - 提问与交互请求的关联只在 `src/lib/question-interaction.ts`：先按

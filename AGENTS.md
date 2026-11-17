@@ -497,8 +497,9 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   entries of their own.
 - Query-parameter writes for the current position live only in
   `src/lib/console-location.ts`. Switching agent rewrites `agent` immediately
-  and clears `session` / `event` until a run of the new agent is actually open:
-  a `?session=` of the agent just left would otherwise win over the dropdown on
+  and clears `session` / `event` until the reader explicitly picks a run — the
+  implicit fallback selection of the new agent does not write them back: a
+  `?session=` of the agent just left would otherwise win over the dropdown on
   the next reload (deep links outrank the filter). Connection parameters such
   as `?api=` are preserved, and the legacy `?source=` is replaced, never
   accumulated.
@@ -705,13 +706,14 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   `isBlockingUserQuestionStartEvent` requires answerable parameters (a non-empty
   `questions` or `plan`). A parameterless `PermissionRequest` / permission
   notification is host **system authorization**: it displays as
-  `permission.request`, projects onto `harness-action-gate` (not the question
-  atom), and never puts the run in `waiting` or mounts an answer box. ZCode's
-  `Bash`/`Edit` grants and WorkBuddy's "needs your permission to use
-  AskUserQuestion" notification are the common shapes; WorkBuddy's real
-  `questions` arrive with a later `PreToolUse`. An explicit question event
-  (Elicitation, a question-named event, a question-tool lifecycle row) blocks
-  without the parameter check.
+  `permission.request` and never puts the run in `waiting` or mounts an answer
+  box. A bare `PermissionRequest(Bash/Edit)` projects onto
+  `harness-action-gate`; a permission notification naming a question tool stays
+  on `harness-user-question` in the `delta` phase so the canvas is already there
+  when WorkBuddy's real `questions` arrive with a later `PreToolUse` — the
+  parameterized question then takes over the same atom and is reachable. An
+  explicit question event (Elicitation, a question-named event, a question-tool
+  lifecycle row) blocks without the parameter check.
 - `PreToolUse` / `PostToolUse` of `ExitPlanMode` keep their `tool.call` /
   `tool.result` display keys. `hasPlanContent()` in the same extractor lets the
   inspector preview their plan without adding `exitplanmode` to the
@@ -782,8 +784,9 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   `Notification { notification_type: "permission_prompt", message: "needs your
   permission to use AskUserQuestion" }`; the tool's real `questions` arrive with
   a later `PreToolUse`. That notification is a system authorization (see Event
-  Labels): recognise only permission prompts naming a question tool, and never
-  let the parameterless shape block the run or claim a pending question.
+  Labels): recognise only permission prompts naming a question tool, never let
+  the parameterless shape block the run, and keep it on the User Question atom
+  so the later parameterized question is reachable from the same spot.
 
 ## Pi Capture
 

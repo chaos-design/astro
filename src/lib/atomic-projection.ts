@@ -174,7 +174,8 @@ export function projectTraceEvents(
     const answerableQuestion =
       isUserQuestionEvent(traceEvent) &&
       (!isUserQuestionStartEvent(traceEvent) ||
-        isBlockingUserQuestionStartEvent(traceEvent));
+        isBlockingUserQuestionStartEvent(traceEvent) ||
+        traceEvent.eventName === "Notification");
     const steps: readonly ProjectionStep[] = answerableQuestion
       ? userQuestionProjection(traceEvent)
       : isWaitingTraceEvent(traceEvent, config.waitingEvents)
@@ -274,7 +275,9 @@ function userQuestionProjection(
     (event.eventName === "PermissionDenied" && event.payload.retry !== true)
       ? "error"
       : isUserQuestionStartEvent(event)
-        ? "waiting"
+        ? isBlockingUserQuestionStartEvent(event)
+          ? "waiting"
+          : "delta"
         : "end";
   return [
     {

@@ -179,12 +179,15 @@ function createBaseNodes(
   }));
 
   for (const event of events) {
-    // A permission gate without answerable parameters belongs to Action Gate,
-    // not to the question atom: the reader cannot answer a system prompt, and
-    // lighting User Question would make the canvas claim otherwise.
+    // A bare permission gate belongs to Action Gate. A permission notification
+    // that names a question tool stays on the question atom: WorkBuddy's real
+    // `questions` arrive later, and the reader should already be at User
+    // Question when they do.
     const question =
       isUserQuestionEvent(event) &&
-      (!isUserQuestionStartEvent(event) || isBlockingUserQuestionStartEvent(event));
+      (!isUserQuestionStartEvent(event) ||
+        isBlockingUserQuestionStartEvent(event) ||
+        event.eventName === "Notification");
     const excluded = isUserQuestionToolEvent(event);
     for (const state of accumulators) {
       // Precedence mirrors `atomMatchesEvent`: a positive user-question match

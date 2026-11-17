@@ -5259,6 +5259,13 @@ export default function App() {
   const [now, setNow] = useState(() => Date.now());
   const [activeSessionKey, setActiveSessionKey] = useState("");
   const [activePromptRunKey, setActivePromptRunKey] = useState("");
+  // Switching agent clears the deep link. The new agent's fallback run is
+  // selected implicitly, so `activeSession` is never empty in a rendered
+  // commit — without a flag the URL effect would immediately write the new
+  // `session` back. Keep the link suppressed until the reader picks a run (or
+  // a real deep link is consumed), so a shared URL after the switch names only
+  // the agent.
+  const suppressSessionLinkRef = useRef(false);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [selectedAtomId, setSelectedAtomId] =
     useState<AtomSelection>(undefined);
@@ -6311,6 +6318,9 @@ export default function App() {
     );
     const nextSession = currentSession || deepLinkedSession || fallbackPool[0];
     if (!nextSession) {
+      if (requested) {
+        suppressSessionLinkRef.current = false;
+      }
       setInitialLocation(null);
       return;
     }
@@ -6357,6 +6367,12 @@ export default function App() {
         setSelectedEventId(linkedEvent.id);
         setSelectedAtomId(getAtomIdForEvent(linkedEvent, platformId));
       }
+    }
+    // A real deep link was consumed: the URL now describes an explicit pick,
+    // so later session writes are allowed again. A post-switch fallback has no
+    // link and keeps the suppression until the reader picks a run.
+    if (requested) {
+      suppressSessionLinkRef.current = false;
     }
     setInitialLocation(null);
   }, [
@@ -6537,6 +6553,7 @@ export default function App() {
       sessionId: activeSession?.id,
       eventId: selectedEventId,
       eventIds: new Set(activeEvents.map((event) => event.id)),
+      suppressSession: suppressSessionLinkRef.current,
     });
     if (search === window.location.search) {
       return;
@@ -6678,6 +6695,9 @@ export default function App() {
       // selection); a finished one lands nowhere, so it must not locate the
       // last atom either.
       const atomSelection = getPromptAtomSelection(status);
+      // An explicit pick ends the post-switch suppression, so the URL follows
+      // the run the reader actually chose.
+      suppressSessionLinkRef.current = false;
       setActiveSessionKey(key);
       setActivePromptRunKey(promptRun?.key || "");
       setSelectedEventId(event?.id || "");
@@ -6707,6 +6727,7 @@ export default function App() {
         ? (entry.source as PlatformId)
         : OTHERS_AGENT_ID,
     );
+    suppressSessionLinkRef.current = false;
     setActiveSessionKey(entry.sessionKey);
     setActivePromptRunKey(entry.promptRunKey);
     setSelectedEventId(entry.eventId);
@@ -7620,6 +7641,7 @@ export default function App() {
                     // the whole flow for large sessions; keep the picker
                     // responsive by treating the derived work as a transition.
                     startTransition(() => {
+                      suppressSessionLinkRef.current = true;
                       setAgentId(nextAgent);
                       // Another agent starts at the configured default range:
                       // keeping a window the previous agent needed would

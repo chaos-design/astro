@@ -177,10 +177,12 @@ persisted event. Whether a named event blocks depends on answerable parameters
 (`questions` / `plan`): a question with parameters enters `user.question`, the
 waiting state and the Flow answer box. A parameterless `PermissionRequest` or
 `permission_prompt` notification is a host system authorization instead: it
-displays as `permission.request`, projects onto Action Gate, and neither blocks
-nor offers an answer (WorkBuddy emits only a permission notification naming
-`AskUserQuestion`; its real `questions` arrive with a later `PreToolUse`).
-Every other `Notification` stays a display-only signal.
+displays as `permission.request` and neither blocks nor offers an answer. A bare
+`PermissionRequest(Bash/Edit)` projects onto Action Gate; WorkBuddy's permission
+notification naming `AskUserQuestion` stays on the User Question atom in the
+`delta` phase, so the canvas is already there when its real `questions` arrive
+with a later `PreToolUse`. Every other `Notification` stays a display-only
+signal.
 
 Unknown event names are retained and presented as `Unknown`.
 

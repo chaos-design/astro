@@ -176,9 +176,11 @@ sequenceDiagram
 （`AskUserQuestion`），但不会改写持久化事件。命名事件是否阻塞取决于载荷里有没有
 可作答参数（`questions` / `plan`）：带参数的提问进入 `user.question`、等待态与
 Flow 作答；没有参数的 `PermissionRequest` 与 `permission_prompt` 通知只是系统
-授权，显示为 `permission.request`、落在 Action Gate，不阻塞也不提供作答入口。
-（WorkBuddy 弹题时只有一条点名 `AskUserQuestion` 的权限通知，真正的 `questions`
-随后续 `PreToolUse` 落盘。）其余 `Notification` 只影响显示。
+授权，显示为 `permission.request`、不阻塞也不提供作答入口。裸
+`PermissionRequest(Bash/Edit)` 落在 Action Gate；WorkBuddy 那条点名
+`AskUserQuestion` 的权限通知仍留在 User Question 原子（delta），真正的
+`questions` 随后续 `PreToolUse` 落盘时画布已在该原子上，能直接到达带选项的提问。
+其余 `Notification` 只影响显示。
 
 未识别事件不会被丢弃，前端会按 `Unknown` 类型保留和展示。
 

@@ -609,9 +609,11 @@ Flow 原子只绑定最后一条提问开始事件，状态仍由最后一条匹
 作答区，你才能在 Flow 中键入参数值。没有参数的是宿主的**系统授权**——例如
 ZCode 的 `Bash` / `Edit` 权限请求，或 WorkBuddy 那条
 `notification_type: "permission_prompt"`、正文点名 `AskUserQuestion` 的通知。
-它们显示为 `permission.request`、落在 Action Gate，不阻塞运行也没有作答入口；
-WorkBuddy 真正的 `questions` 会随后续 `PreToolUse` 落盘，那时才作为提问处理。
-普通 `idle_prompt` / `auth_success` 通知仍只是运行信号。
+它们显示为 `permission.request`、不阻塞运行也没有作答入口。裸
+`PermissionRequest(Bash/Edit)` 落在 Action Gate；WorkBuddy 那条权限通知仍留在
+User Question 原子（delta），所以真正的 `questions` 随后续 `PreToolUse` 落盘时，
+画布已经在这个原子上，带选项的提问会接管它并能点开查看。普通
+`idle_prompt` / `auth_success` 通知仍只是运行信号。
 
 **参数**：`ASTRO_INTERACTION_SERVICE`（默认 `http://127.0.0.1:5678`）、
 `ASTRO_INTERACTION_TIMEOUT_MS`（默认取安装器 `--timeout`，5000 为无配置缺省）、
@@ -862,9 +864,10 @@ astro-<source>-<sessionId>-prompt-<number>.jsonl
 
 `agent` 与下拉选择保持一致（已配置的智能体 ID 或 `others`）。打开该 URL 时，
 页面会优先选择匹配的智能体、会话、包含该事件的 Prompt 子运行并定位事件。
-切换智能体时只保留必要的参数：`agent` 立即更新，`session` / `event` 会被清空，
-等新智能体的会话真正打开后再写回；否则旧会话的深链会在下次刷新时把下拉框拉回
-刚离开的智能体。`?api=` 等与服务连接有关的参数保持不变。
+切换智能体时只保留必要的参数：`agent` 立即更新，`session` / `event` 一律清空，
+即使用的是新智能体自动打开的那条最新会话也不写回，直到你显式选中某条运行；
+否则旧会话的深链会在下次刷新时把下拉框拉回刚离开的智能体。`?api=` 等与服务连接
+有关的参数保持不变。
 深链依赖目标环境中已存在对应 Trace 数据，旧的 `?source=` 链接仍然可用。
 
 ## 11. 导入 ChatGPT 历史

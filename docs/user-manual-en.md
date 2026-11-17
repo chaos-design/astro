@@ -736,10 +736,12 @@ before the run turns waiting and the `User Question` atom offers an answer box
 where you type the values in Flow. Without parameters it is a host **system
 authorization** — ZCode's `Bash` / `Edit` permission requests, or WorkBuddy's
 `notification_type: "permission_prompt"` notification naming `AskUserQuestion`.
-Those display as `permission.request`, project onto Action Gate, and neither
-block nor offer an answer; WorkBuddy's real `questions` arrive with a later
-`PreToolUse`. Plain `idle_prompt` / `auth_success` notifications stay runtime
-signals.
+Those display as `permission.request` and neither block nor offer an answer.
+A bare `PermissionRequest(Bash/Edit)` projects onto Action Gate; WorkBuddy's
+notification stays on the User Question atom in the `delta` phase, so when its
+real `questions` arrive with a later `PreToolUse` the parameterized question
+takes over the same atom and is reachable from the canvas. Plain
+`idle_prompt` / `auth_success` notifications stay runtime signals.
 
 Overrides, inherited from the host process: `ASTRO_INTERACTION_SERVICE`
 (default `http://127.0.0.1:5678`), `ASTRO_INTERACTION_TIMEOUT_MS` (defaults to
@@ -1024,11 +1026,11 @@ The page writes the current selection into:
 `agent` mirrors the dropdown filter (a configured agent id or `others`).
 Opening the URL selects the matching agent, session, containing prompt run,
 and event when that trace data exists in the target environment. Switching
-agents keeps only the necessary parameters: `agent` is rewritten at once while
-`session` / `event` are dropped until a run of the new agent is actually open —
-otherwise the stale deep link would pull the dropdown back on the next reload.
-Service parameters such as `?api=` are preserved. Legacy `?source=` links keep
-working.
+agents keeps only the necessary parameters: `agent` is rewritten at once and
+`session` / `event` are dropped — even when the new agent's newest run is opened
+implicitly — until the reader explicitly picks a run. Otherwise the stale deep
+link would pull the dropdown back on the next reload. Service parameters such
+as `?api=` are preserved. Legacy `?source=` links keep working.
 
 ## 11. Import ChatGPT History
 

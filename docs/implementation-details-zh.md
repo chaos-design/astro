@@ -119,8 +119,10 @@ Prompt、状态、来源、时间、事件标签、摘要和规范化可搜索�
 必须有非空 `questions` 或 `plan`，才算提问开始（`isBlockingUserQuestionStartEvent`
 是唯一判定）。WorkBuddy 在宿主弹题时只有一条点名 `AskUserQuestion` 的权限通知，
 真正的 `questions` 随之后的 `PreToolUse` 落盘；这条通知只是系统授权，不阻塞、不
-提供作答入口。其他权限请求（ZCode 的 `Bash` / `Edit` 等）同理，显示键为
-`permission.request`，投影到 Action Gate。
+提供作答入口。其他权限请求（ZCode 的 `Bash` / `Edit` 等）显示键同为
+`permission.request`、投影到 Action Gate；WorkBuddy 那条点名提问工具的通知仍留在
+User Question 原子（delta 阶段），这样后续带选项的 `PreToolUse` 能接管同一个原子，
+不会“到不了有选项的提问”。
 
 `AskUserQuestion` 的识别只依据「这是提问工具」这一判定
 （`src/lib/trace-event-kind.ts` 的 `isUserQuestionToolEvent`），输入类型可归纳为

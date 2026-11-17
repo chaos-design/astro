@@ -129,9 +129,11 @@ ASTRO 事件协议把不同编码智能体的生命周期、消息、工具和�
   进入 `waiting`、并在 Flow 的检查器作答区键入答案；
 - 没有参数的同类事件是宿主的**系统授权**（ZCode 日志里大量
   `PermissionRequest(Bash/Edit)`，WorkBuddy 的 `needs your permission to use
-  AskUserQuestion` 通知），显示键为 `permission.request`、投影到 Action Gate，
-  不阻塞运行，也不提供作答入口。WorkBuddy 通知正文里出现工具名只是识别形状，
-  真正的 `questions` 随之后的 `PreToolUse` 落盘。
+  AskUserQuestion` 通知），显示键为 `permission.request`，不阻塞运行，也不提供
+  作答入口。裸 `PermissionRequest(Bash/Edit)` 投影到 Action Gate；WorkBuddy
+  那条点名提问工具的通知仍落在 User Question 原子上（delta 阶段），这样真正的
+  `questions` 随后续 `PreToolUse` 落盘时，画布已经在提问原子上，能直接到达带选项
+  的那条提问。通知正文出现工具名只是识别形状，不构成可作答参数。
 - `idle_prompt`、`auth_success` 等普通 `Notification` 仍只是运行信号，显示键不变。
 
 持久化的 `eventName` 与 `nativeEventName` 保持不变，仍可在详情中检查。

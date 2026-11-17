@@ -15,6 +15,8 @@ export interface ConsoleLocation {
   eventId?: string | null;
   /** Event ids that belong to the open run; an id outside it is stale. */
   eventIds?: ReadonlySet<string>;
+  /** Switch in flight: keep only `agent`, never write session/event. */
+  suppressSession?: boolean;
 }
 
 export function buildConsoleLocationSearch({
@@ -23,12 +25,13 @@ export function buildConsoleLocationSearch({
   sessionId,
   eventId,
   eventIds,
+  suppressSession,
 }: ConsoleLocation) {
   const params = new URLSearchParams(search);
   // The renamed parameter replaces the legacy one instead of accumulating.
   params.delete("source");
   params.set("agent", agentId);
-  if (!sessionId) {
+  if (suppressSession || !sessionId) {
     // No run in this scope: a stale session/event would silently move the next
     // page load to another agent's message.
     params.delete("session");

@@ -142,9 +142,11 @@ or a `notification_type=permission_prompt` `Notification` needs a non-empty
 `questions` / `plan` to be a question start. WorkBuddy emits only a permission
 notification naming `AskUserQuestion` while the host asks; its real `questions`
 arrive with a later `PreToolUse`, so that notification is a system authorization
-— it neither blocks nor offers an answer. The same goes for ZCode's `Bash` /
-`Edit` permission requests: they display as `permission.request` and project
-onto Action Gate.
+— it neither blocks nor offers an answer. ZCode's `Bash` / `Edit` permission
+requests also display as `permission.request` and project onto Action Gate.
+WorkBuddy's notification stays on the User Question atom in the `delta` phase,
+so the later parameterized `PreToolUse` takes over the same atom and the
+question with options stays reachable.
 
 Recognizing `AskUserQuestion` rests on one test — "is this a question tool"
 (`isUserQuestionToolEvent` in `src/lib/trace-event-kind.ts`). Its input types

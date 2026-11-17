@@ -135,8 +135,11 @@
     **blocks** is decided only by `isBlockingUserQuestionStartEvent`: a
     permission request / notification needs non-empty `questions` / `plan` to
     enter the waiting state and the Flow answer box; without them it is a
-    system authorization, displayed as `permission.request` and projected onto
-    Action Gate. The `user-question` atom's bound event is chosen only in
+    system authorization displayed as `permission.request`. A bare
+    `PermissionRequest(Bash/Edit)` projects onto Action Gate, while WorkBuddy's
+    notification naming a question tool stays on the User Question atom in the
+    `delta` phase so the later parameterized `PreToolUse` takes it over. The
+    `user-question` atom's bound event is chosen only in
     `src/lib/execution-topology.ts` (the newest question *start*), while status
     follows the last matching event;
   - the binding between a question and an interaction request lives only in
@@ -286,9 +289,10 @@
   `?session=` deep link names another agent's run, the dropdown follows it and
   the address bar's `agent` is rewritten — the open run must always be a row of
   the list beside it. URL writes live only in `src/lib/console-location.ts`:
-  `agent` is always kept, `session` / `event` are written only while that run is
-  open and are cleared the moment the agent changes, and connection parameters
-  such as `?api=` survive untouched.
+  `agent` is always kept, `session` / `event` are cleared the moment the agent
+  changes and stay out until the reader explicitly picks a run (the implicit
+  fallback selection does not write them), and connection parameters such as
+  `?api=` survive untouched.
 
 ## 7. Settings and local preferences
 

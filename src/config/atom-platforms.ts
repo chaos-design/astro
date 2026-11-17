@@ -742,13 +742,15 @@ export function getAtomIdForEvent(
 ) {
   if (!event) return "";
   if (isUserQuestionEvent(event)) {
-    // Only an answerable question owns the question atom. A bare permission
-    // gate (no `questions` / `plan`) is a system decision: route it to Action
-    // Gate so the canvas never claims a question the reader cannot answer.
-    return !isUserQuestionStartEvent(event) ||
-      isBlockingUserQuestionStartEvent(event)
-      ? "harness-user-question"
-      : "harness-action-gate";
+    // Only a bare PermissionRequest (a system authorization for an ordinary
+    // tool) routes to Action Gate. A WorkBuddy permission notification naming
+    // a question tool stays on the question atom so the canvas is already at
+    // User Question when the real `questions` arrive; it still never blocks.
+    return isUserQuestionStartEvent(event) &&
+      !isBlockingUserQuestionStartEvent(event) &&
+      event.eventName === "PermissionRequest"
+      ? "harness-action-gate"
+      : "harness-user-question";
   }
   const platform = resolvePlatform(platformId);
   const atomId = platform.eventAtomMap[event.eventName] || "trace-append";

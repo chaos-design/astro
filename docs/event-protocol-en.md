@@ -133,9 +133,12 @@ predicate `isBlockingUserQuestionStartEvent` in `src/lib/trace-event-kind.ts`:
 - Without parameters it is a host **system authorization** (the many
   `PermissionRequest(Bash/Edit)` rows in ZCode logs, WorkBuddy's "needs your
   permission to use AskUserQuestion" notification). It displays as
-  `permission.request`, projects onto Action Gate, and never blocks or offers
-  an answer. Naming a tool in the notification prose only recognises the
-  shape; the real `questions` arrive with a later `PreToolUse`.
+  `permission.request`, never blocks or offers an answer. A bare
+  `PermissionRequest(Bash/Edit)` projects onto Action Gate; WorkBuddy's
+  notification naming a question tool stays on the User Question atom in the
+  `delta` phase, so when the real `questions` arrive with a later `PreToolUse`
+  the canvas is already on that atom and the parameterized question is
+  reachable. Naming a tool in prose only recognises the shape.
 - Plain `idle_prompt` / `auth_success` notifications stay runtime signals with
   their existing display key.
 

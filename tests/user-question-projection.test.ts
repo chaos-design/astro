@@ -100,23 +100,64 @@ test("a WorkBuddy permission prompt is system authorization, not a blocking ques
   assert.equal(isBlockingUserQuestionStartEvent(prompt), false);
   assert.equal(isWaitingTraceEvent(prompt), false);
   assert.equal(getTraceEventKey(prompt), "permission.request");
+  // It stays on the question atom so the canvas is already at User Question
+  // when the real questions arrive — only the blocking/answer half is off.
   assert.equal(
     getAtomIdForEvent(prompt, "workbuddy"),
-    "harness-action-gate",
+    "harness-user-question",
   );
   assert.match(getEventSummary(prompt), /AskUserQuestion/);
 
-  const projected = projectTraceEvents([prompt], "workbuddy").events;
-  assert.equal(
-    projected.some((event) => event.atom.key === "user.question"),
-    false,
+  const projected = projectTraceEvents([prompt], "workbuddy").events.filter(
+    (event) => event.atom.key === "user.question",
+  );
+  assert.deepEqual(
+    projected.map((event) => event.phase),
+    ["delta"],
   );
 
   const topology = buildExecutionTopology([prompt], "workbuddy");
   const question = topology.nodes.find(
     (node) => node.id === "harness-user-question",
   );
-  assert.equal(question?.data.count, 0);
+  assert.equal(question?.data.count, 1);
+  assert.equal(question?.data.status, "running");
+});
+
+test("the parameterized question takes over the atom from WorkBuddy's permission prompt", () => {
+  const prompt = normalizeTraceEvent({
+    capturedAt: "2026-09-10T10:00:00.000Z",
+    eventName: "Notification",
+    id: "permission-prompt",
+    payload: {
+      message: "needs your permission to use AskUserQuestion",
+      notification_type: "permission_prompt",
+    },
+    sessionId: "workbuddy-session",
+    source: "workbuddy",
+    workspaceId: "workspace",
+  });
+  const question = normalizeTraceEvent({
+    capturedAt: "2026-09-10T10:01:00.000Z",
+    eventName: "PreToolUse",
+    id: "real-question",
+    payload: {
+      tool_name: "AskUserQuestion",
+      tool_input: { questions: [{ question: "Which option?" }] },
+    },
+    sessionId: "workbuddy-session",
+    source: "workbuddy",
+    toolName: "AskUserQuestion",
+    workspaceId: "workspace",
+  });
+
+  const topology = buildExecutionTopology([prompt, question], "workbuddy");
+  const node = topology.nodes.find(
+    (candidate) => candidate.id === "harness-user-question",
+  );
+  assert.equal(node?.data.event?.id, question.id);
+  assert.equal(node?.data.status, "waiting");
+  assert.equal(node?.data.count, 2);
 });
 
 test("only permission requests carrying question parameters block the run", () => {
