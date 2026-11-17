@@ -8,11 +8,14 @@ import {
   appRepository,
   appTimings,
   appVersion,
+  chimeStyleOptions,
+  defaultChimeStyle,
   defaultHistoryRange,
   getHistoryRangeHours,
   getMaxSyncHours,
   getMaxSyncLabel,
   historyRangeOptions,
+  isChimeStyleId,
   isDemoGateOpen,
   isHistoryRangeId,
   isMaxSyncId,
@@ -113,6 +116,23 @@ test("arms the task-completion chime by default, with a switch to turn it off", 
   // first interaction before a sound can actually play, as the dialog says.
   assert.equal(appDefaults.taskCompletionChime, true);
   assert.equal(storageKeys.taskCompletionChime, "ASTROX_TASK_COMPLETION_CHIME");
+});
+
+test("defaults the chime to the bright style with a validated option list", () => {
+  // The style only changes the voice — the status contour rule lives in the
+  // chime module and holds in every style. An invalid stored value falls
+  // back to this default instead of muting or breaking the notification.
+  assert.equal(appDefaults.chimeStyle, "bright");
+  assert.equal(defaultChimeStyle, "bright");
+  assert.equal(storageKeys.chimeStyle, "ASTROX_CHIME_STYLE");
+  assert.deepEqual(
+    chimeStyleOptions.map((option) => option.id),
+    ["bright", "soft", "pulse"],
+  );
+  assert.ok(chimeStyleOptions.every((option) => option.label.length > 0));
+  assert.equal(isChimeStyleId("soft"), true);
+  assert.equal(isChimeStyleId("loud"), false);
+  assert.equal(isChimeStyleId(null), false);
 });
 
 test("caps the console's sync window at eight hours by default", () => {

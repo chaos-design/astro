@@ -27,16 +27,19 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   appDefaults,
   appVersion,
+  chimeStyleOptions,
   defaultHistoryRange,
   historyRangeOptions,
   maxSyncOptions,
   storageKeys,
   themeOptions,
   type ActiveView,
+  type ChimeStyleId,
   type HistoryRangeId,
   type MaxSyncId,
   type Theme,
 } from "@/config/app-config";
+import { playTaskCompletionChime } from "@/lib/task-completion-chime";
 import { cn } from "@/lib/utils";
 
 type ChoiceIcon = (typeof themeOptions)[number]["icon"];
@@ -205,6 +208,7 @@ function SwitchField({
  */
 export function SettingsDialog({
   activeView,
+  chimeStyle,
   consoleOpen,
   deepView,
   historyOpen,
@@ -215,6 +219,7 @@ export function SettingsDialog({
   taskCompletionChime,
   theme,
   onActiveViewChange,
+  onChimeStyleChange,
   onConsoleOpenChange,
   onDeepViewChange,
   onHistoryOpenChange,
@@ -226,6 +231,7 @@ export function SettingsDialog({
   onThemeChange,
 }: {
   activeView: ActiveView;
+  chimeStyle: ChimeStyleId;
   consoleOpen: boolean;
   deepView: boolean;
   historyOpen: boolean;
@@ -236,6 +242,7 @@ export function SettingsDialog({
   taskCompletionChime: boolean;
   theme: Theme;
   onActiveViewChange: (view: ActiveView) => void;
+  onChimeStyleChange: (style: ChimeStyleId) => void;
   onConsoleOpenChange: (open: boolean) => void;
   onDeepViewChange: (deepView: boolean) => void;
   onHistoryOpenChange: (open: boolean) => void;
@@ -257,6 +264,7 @@ export function SettingsDialog({
     maxSync === appDefaults.maxSync &&
     perfHud === appDefaults.perfHud &&
     taskCompletionChime === appDefaults.taskCompletionChime &&
+    chimeStyle === appDefaults.chimeStyle &&
     theme === appDefaults.theme &&
     activeView === appDefaults.activeView &&
     deepView === appDefaults.deepView &&
@@ -269,6 +277,7 @@ export function SettingsDialog({
     onMaxSyncChange(appDefaults.maxSync);
     onPerfHudChange(appDefaults.perfHud);
     onTaskCompletionChimeChange(appDefaults.taskCompletionChime);
+    onChimeStyleChange(appDefaults.chimeStyle);
     onThemeChange(appDefaults.theme);
     onActiveViewChange(appDefaults.activeView);
     onDeepViewChange(appDefaults.deepView);
@@ -462,10 +471,70 @@ export function SettingsDialog({
             <TabsContent className="settings-section" value="notifications">
               <SwitchField
                 label="任务完成提示音"
-                description="某条运行进入完成、失败或终止状态时播放一段简短提示音，状态不同音色不同：完成是上行双音，失败是下行低音，终止是中性双击；示例数据不会触发。默认开启，可在设置里关闭；浏览器在首次交互后才允许播放声音。"
+                description="某条运行进入完成、失败或终止状态时播放一段简短提示音，状态不同音调不同：完成上行、失败下行、终止中性双击；示例数据不会触发。默认开启，可在设置里关闭；浏览器在首次交互后才允许播放声音。"
                 value={taskCompletionChime}
                 onChange={onTaskCompletionChimeChange}
               />
+              <div className="settings-field">
+                <div className="settings-field__copy">
+                  <strong>提示音音色</strong>
+                  <span>
+                    更换提示音的音色与节奏；无论选哪种，完成上行、失败下行、终止中性的状态区分保持不变。
+                  </span>
+                </div>
+                <ChoiceGroup
+                  label="提示音音色"
+                  columns={3}
+                  value={chimeStyle}
+                  onChange={onChimeStyleChange}
+                  options={chimeStyleOptions.map((option) => ({
+                    id: option.id,
+                    label: option.label,
+                  }))}
+                />
+              </div>
+              <div className="settings-field">
+                <div className="settings-field__copy">
+                  <strong>试听</strong>
+                  <span>
+                    用当前音色播放一次对应终态的声音，挑选时可以先听再选。
+                  </span>
+                </div>
+                <div
+                  aria-label="试听任务完成提示音"
+                  className="settings-chime-preview"
+                  role="group"
+                >
+                  <Button
+                    onClick={() =>
+                      playTaskCompletionChime("complete", chimeStyle)
+                    }
+                    size="sm"
+                    type="button"
+                    variant="outline"
+                  >
+                    完成音
+                  </Button>
+                  <Button
+                    onClick={() => playTaskCompletionChime("failed", chimeStyle)}
+                    size="sm"
+                    type="button"
+                    variant="outline"
+                  >
+                    失败音
+                  </Button>
+                  <Button
+                    onClick={() =>
+                      playTaskCompletionChime("terminated", chimeStyle)
+                    }
+                    size="sm"
+                    type="button"
+                    variant="outline"
+                  >
+                    终止音
+                  </Button>
+                </div>
+              </div>
             </TabsContent>
 
             <TabsContent className="settings-section" value="about">

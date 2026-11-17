@@ -1,4 +1,5 @@
 import type { TraceRunStatus } from "../types/trace";
+import { defaultChimeStyle, type ChimeStyleId } from "../config/app-config.ts";
 import { isLiveRunStatus } from "./run-history-state.ts";
 
 /**
@@ -10,11 +11,13 @@ import { isLiveRunStatus } from "./run-history-state.ts";
  * Playback is gated by the Settings → 通知 preference (on by default); this
  * module only ever makes a sound when the caller has checked the stored value.
  *
- * The tone is keyed by the recorded terminal status: a completion ascends, a
- * failure descends in a lower register, and a termination is a neutral double
- * tap — the sound alone tells the reader whether the run succeeded, went
- * wrong, or merely stopped. When several runs finish between two observations
- * the batch plays one sound, chosen by `resolveChimeStatus`.
+ * A style (Settings → 通知, persisted as `ASTROX_CHIME_STYLE`) picks the
+ * timbre — waveform, loudness, attack and the note patterns themselves. What
+ * a style may never change is the contour rule that makes the sound readable
+ * without looking: within every style a completion ascends, a failure
+ * descends in a lower register, and a termination is a neutral double tap.
+ * When several runs finish between two observations the batch plays one
+ * sound, chosen by `resolveChimeStatus`.
  */
 
 type AudioContextCtor = new () => AudioContext;
@@ -29,50 +32,142 @@ export type ChimeToneSpec = {
   notes: readonly ChimeNote[];
 };
 
-/** Success: the original ascending two-note chime (A5 → D6). */
-const COMPLETE_TONE: ChimeToneSpec = {
-  notes: [
-    { frequency: 880, offset: 0, duration: 0.12 },
-    { frequency: 1174.66, offset: 0.14, duration: 0.18 },
-  ],
+type ChimeStatusKey = "complete" | "failed" | "terminated";
+
+/**
+ * Render parameters shared by every tone of one style: the oscillator
+ * timbre, the peak gain (the style's loudness) and the attack ramp (how
+ * percussive the onset is — a short attack with an exponential decay avoids
+ * the click of a hard start/stop).
+ */
+type ChimeStyleSpec = {
+  wave: OscillatorType;
+  gain: number;
+  attack: number;
+  tones: Record<ChimeStatusKey, ChimeToneSpec>;
 };
 
-/** Failure: a descending minor third in a lower register (C5 → G#4). */
-const FAILED_TONE: ChimeToneSpec = {
-  notes: [
-    { frequency: 523.25, offset: 0, duration: 0.14 },
-    { frequency: 415.3, offset: 0.16, duration: 0.2 },
-  ],
+/** 清脆 — the original bright sine chime. */
+const BRIGHT_STYLE: ChimeStyleSpec = {
+  wave: "sine",
+  gain: 0.12,
+  attack: 0.015,
+  tones: {
+    /** Success: the ascending two-note chime (A5 → D6). */
+    complete: {
+      notes: [
+        { frequency: 880, offset: 0, duration: 0.12 },
+        { frequency: 1174.66, offset: 0.14, duration: 0.18 },
+      ],
+    },
+    /** Failure: a descending minor third in a lower register (C5 → G#4). */
+    failed: {
+      notes: [
+        { frequency: 523.25, offset: 0, duration: 0.14 },
+        { frequency: 415.3, offset: 0.16, duration: 0.2 },
+      ],
+    },
+    /**
+     * Termination: two identical taps. A run that merely stopped is neither a
+     * success nor a failure, so the tone carries no rising or falling contour.
+     */
+    terminated: {
+      notes: [
+        { frequency: 659.33, offset: 0, duration: 0.09 },
+        { frequency: 659.33, offset: 0.15, duration: 0.09 },
+      ],
+    },
+  },
+};
+
+/** 柔和 — a warmer, quieter marimba-like tone with slower onsets and decays. */
+const SOFT_STYLE: ChimeStyleSpec = {
+  wave: "triangle",
+  gain: 0.09,
+  attack: 0.03,
+  tones: {
+    /** Success: E5 → A5, a gentle ascending fourth. */
+    complete: {
+      notes: [
+        { frequency: 659.25, offset: 0, duration: 0.16 },
+        { frequency: 880, offset: 0.18, duration: 0.26 },
+      ],
+    },
+    /** Failure: B4 → G4, a descending third in the middle register. */
+    failed: {
+      notes: [
+        { frequency: 493.88, offset: 0, duration: 0.18 },
+        { frequency: 392, offset: 0.2, duration: 0.28 },
+      ],
+    },
+    /** Termination: two identical soft taps on A4. */
+    terminated: {
+      notes: [
+        { frequency: 440, offset: 0, duration: 0.12 },
+        { frequency: 440, offset: 0.17, duration: 0.12 },
+      ],
+    },
+  },
+};
+
+/** 脉冲 — short percussive square blips, closer to a ticker than a bell. */
+const PULSE_STYLE: ChimeStyleSpec = {
+  wave: "square",
+  gain: 0.055,
+  attack: 0.004,
+  tones: {
+    /** Success: C6 → G6, two fast ascending blips. */
+    complete: {
+      notes: [
+        { frequency: 1046.5, offset: 0, duration: 0.07 },
+        { frequency: 1568, offset: 0.09, duration: 0.11 },
+      ],
+    },
+    /** Failure: E5 → B4, two fast descending blips. */
+    failed: {
+      notes: [
+        { frequency: 659.25, offset: 0, duration: 0.08 },
+        { frequency: 493.88, offset: 0.1, duration: 0.12 },
+      ],
+    },
+    /** Termination: two identical short taps on A5. */
+    terminated: {
+      notes: [
+        { frequency: 880, offset: 0, duration: 0.05 },
+        { frequency: 880, offset: 0.12, duration: 0.05 },
+      ],
+    },
+  },
 };
 
 /**
- * Termination: two identical taps. A run that merely stopped is neither a
- * success nor a failure, so the tone carries no rising or falling contour.
+ * The one style table. Keyed by `ChimeStyleId` (whose option list lives in
+ * `app-config.ts` beside the other preference options); tests pin the two
+ * lists to each other so a new id cannot be added to one and forgotten in
+ * the other.
  */
-const TERMINATED_TONE: ChimeToneSpec = {
-  notes: [
-    { frequency: 659.33, offset: 0, duration: 0.09 },
-    { frequency: 659.33, offset: 0.15, duration: 0.09 },
-  ],
+const CHIME_STYLE_SPECS: Record<ChimeStyleId, ChimeStyleSpec> = {
+  bright: BRIGHT_STYLE,
+  soft: SOFT_STYLE,
+  pulse: PULSE_STYLE,
 };
 
-const CHIME_TONES: Record<"complete" | "failed" | "terminated", ChimeToneSpec> =
-  {
-    complete: COMPLETE_TONE,
-    failed: FAILED_TONE,
-    terminated: TERMINATED_TONE,
-  };
-
 /**
- * The one tone lookup for a terminal status. Live statuses never reach the
- * player, and an unforeseen recorded status gets the neutral tone rather
- * than being announced as a success.
+ * The one tone lookup for a terminal status within a style. Live statuses
+ * never reach the player, and an unforeseen recorded status gets the
+ * style's neutral tone rather than being announced as a success. An unknown
+ * style id (an older build reading a newer value) falls back to the default
+ * style instead of staying silent.
  */
-export function getChimeTone(status: TraceRunStatus): ChimeToneSpec {
+export function getChimeTone(
+  status: TraceRunStatus,
+  style: ChimeStyleId = defaultChimeStyle,
+): ChimeToneSpec {
+  const spec = CHIME_STYLE_SPECS[style] ?? CHIME_STYLE_SPECS[defaultChimeStyle];
   if (status === "complete" || status === "failed" || status === "terminated") {
-    return CHIME_TONES[status];
+    return spec.tones[status];
   }
-  return TERMINATED_TONE;
+  return spec.tones.terminated;
 }
 
 // One sound per streamed batch: the tone announces the most important outcome.
@@ -121,33 +216,37 @@ function getAudioContext(): AudioContext | null {
 }
 
 /**
- * Play the chime for a terminal status (default: the success tone).
- * Best-effort by design: an unsupported browser, a blocked autoplay policy,
- * or a closed context must never throw into the render path. A suspended
- * context is resumed, so a reader who has already interacted with the page
- * hears the notification normally.
+ * Play the chime for a terminal status (default: the success tone of the
+ * default style). Best-effort by design: an unsupported browser, a blocked
+ * autoplay policy, or a closed context must never throw into the render
+ * path. A suspended context is resumed, so a reader who has already
+ * interacted with the page hears the notification normally.
  */
-export function playTaskCompletionChime(status: TraceRunStatus = "complete"): void {
+export function playTaskCompletionChime(
+  status: TraceRunStatus = "complete",
+  style: ChimeStyleId = defaultChimeStyle,
+): void {
   const context = getAudioContext();
   if (!context) {
     return;
   }
+  const spec = CHIME_STYLE_SPECS[style] ?? CHIME_STYLE_SPECS[defaultChimeStyle];
   try {
     if (context.state === "suspended") {
       void context.resume();
     }
     const start = context.currentTime;
-    for (const note of getChimeTone(status).notes) {
+    for (const note of getChimeTone(status, style).notes) {
       const oscillator = context.createOscillator();
       const gain = context.createGain();
-      oscillator.type = "sine";
+      oscillator.type = spec.wave;
       oscillator.frequency.value = note.frequency;
       const begin = start + note.offset;
       const end = begin + note.duration;
       // A short attack and an exponential decay avoid the click of a hard
-      // start/stop while keeping the whole sound under a fifth of a second.
+      // start/stop while keeping the whole sound short.
       gain.gain.setValueAtTime(0.0001, begin);
-      gain.gain.exponentialRampToValueAtTime(0.12, begin + 0.015);
+      gain.gain.exponentialRampToValueAtTime(spec.gain, begin + spec.attack);
       gain.gain.exponentialRampToValueAtTime(0.0001, end);
       oscillator.connect(gain);
       gain.connect(context.destination);

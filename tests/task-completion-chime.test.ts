@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { TraceRunStatus } from "../src/types/trace.ts";
+import { chimeStyleOptions } from "../src/config/app-config.ts";
 import {
   collectTerminalTransitions,
   getChimeTone,
@@ -116,4 +117,51 @@ test("each terminal state has its own tone", () => {
   // A live status never reaches the player, but an unforeseen value must not
   // be announced as a success either — it gets the neutral tone.
   assert.deepEqual(getChimeTone("active"), terminated);
+});
+
+test("every style keeps the status contour rule", () => {
+  // A style changes the voice (waveform, loudness, note patterns), never the
+  // meaning: within every style a completion ascends, a failure descends and
+  // a termination is a flat double tap, so the sound alone still tells a
+  // success from a failure from a plain stop.
+  for (const style of chimeStyleOptions) {
+    const complete = getChimeTone("complete", style.id);
+    const failed = getChimeTone("failed", style.id);
+    const terminated = getChimeTone("terminated", style.id);
+    assert.ok(complete.notes.length >= 2, `${style.id}: complete has notes`);
+    const [completeFirst, completeSecond] = complete.notes;
+    assert.ok(
+      completeFirst.frequency < completeSecond.frequency,
+      `${style.id}: complete ascends`,
+    );
+    const [failedFirst, failedSecond] = failed.notes;
+    assert.ok(
+      failedFirst.frequency > failedSecond.frequency,
+      `${style.id}: failed descends`,
+    );
+    assert.equal(
+      terminated.notes[0].frequency,
+      terminated.notes[1].frequency,
+      `${style.id}: terminated is flat`,
+    );
+    assert.notDeepEqual(complete, failed, `${style.id}: tones differ`);
+  }
+});
+
+test("styles sound different from one another for the same status", () => {
+  const [first, second, third] = chimeStyleOptions;
+  const toneOf = (style: typeof first.id) => getChimeTone("complete", style);
+  assert.notDeepEqual(toneOf(first.id), toneOf(second.id));
+  assert.notDeepEqual(toneOf(second.id), toneOf(third.id));
+  assert.notDeepEqual(toneOf(first.id), toneOf(third.id));
+});
+
+test("an unforeseen status gets the style's own neutral tone", () => {
+  for (const style of chimeStyleOptions) {
+    assert.deepEqual(
+      getChimeTone("active", style.id),
+      getChimeTone("terminated", style.id),
+      `${style.id}: live status falls back to the neutral tone`,
+    );
+  }
 });

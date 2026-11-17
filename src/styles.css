@@ -1503,6 +1503,15 @@ pre,
   line-height: 1.6;
 }
 
+/* Preview buttons for the task-completion chime (Settings → 通知): one per
+   terminal status, each playing the currently selected style. Plain outline
+   buttons — the same surface every outline button in the console renders. */
+.settings-chime-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 /* The pane already separates sections by heading; a rule per group only
  * fragments a page that is read one group at a time. */
 .settings-section {

@@ -137,6 +137,7 @@ import {
   getHistoryRangeOption,
   getMaxSyncHours,
   getMaxSyncLabel,
+  isChimeStyleId,
   isHistoryRangeId,
   isMaxSyncId,
   legacyStorageKeys,
@@ -151,6 +152,7 @@ import {
   themeOptions,
   trajectoryLanes,
   type ActiveView,
+  type ChimeStyleId,
   type HistoryRangeId,
   type MaxSyncId,
   type Theme,
@@ -5353,7 +5355,8 @@ export default function App() {
   );
   // Task-completion chime: a switch in Settings → 通知, on by default so the
   // notification works without hunting for a switch. One preference drives
-  // both the persisted value and the terminal-transition effect below.
+  // both the persisted value and the terminal-transition effect below. The
+  // style picks the timbre; the status contour rule holds in every style.
   const [taskCompletionChime, setTaskCompletionChime] = useState<boolean>(() =>
     readStorageBoolean(
       window.localStorage,
@@ -5361,6 +5364,14 @@ export default function App() {
       appDefaults.taskCompletionChime,
     ),
   );
+  const [chimeStyle, setChimeStyle] = useState<ChimeStyleId>(() => {
+    const stored = readStorageValue(
+      window.localStorage,
+      storageKeys.chimeStyle,
+      appDefaults.chimeStyle,
+    );
+    return isChimeStyleId(stored) ? stored : appDefaults.chimeStyle;
+  });
   const [guideOpen, setGuideOpen] = useState<boolean>(appDefaults.guideOpen);
   const [historySearchOpen, setHistorySearchOpen] = useState(false);
   // The dialog chunk is requested on idle; the component is mounted the first
@@ -5588,6 +5599,10 @@ export default function App() {
       taskCompletionChime,
     );
   }, [taskCompletionChime]);
+
+  useEffect(() => {
+    writeStorageValue(window.localStorage, storageKeys.chimeStyle, chimeStyle);
+  }, [chimeStyle]);
 
   // The HUD is pure DOM outside the React tree (the tool that measures must
   // never enter the render path); React only decides *whether* it exists.
@@ -6222,9 +6237,17 @@ export default function App() {
       // announced with the success chime.
       playTaskCompletionChime(
         resolveChimeStatus(newlyTerminal.map((entry) => entry.status)),
+        chimeStyle,
       );
     }
-  }, [eventsLoaded, isDemo, promptRunsBySession, sessions, taskCompletionChime]);
+  }, [
+    chimeStyle,
+    eventsLoaded,
+    isDemo,
+    promptRunsBySession,
+    sessions,
+    taskCompletionChime,
+  ]);
   const configuredSources = useMemo(
     () => new Set(atomPlatformOptions.map((platform) => platform.source)),
     [],
@@ -7647,6 +7670,7 @@ export default function App() {
           <div className="header-icon-group">
             <SettingsDialog
               activeView={activeView}
+              chimeStyle={chimeStyle}
               consoleOpen={consoleOpen}
               deepView={deepView}
               historyOpen={historyOpen}
@@ -7670,6 +7694,7 @@ export default function App() {
               onMaxSyncChange={setMaxSync}
               onPerfHudChange={setPerfHud}
               onTaskCompletionChimeChange={setTaskCompletionChime}
+              onChimeStyleChange={setChimeStyle}
               onThemeChange={setTheme}
             />
             <ThemeSwitcher theme={theme} onChange={setTheme} />

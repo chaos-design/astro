@@ -915,6 +915,13 @@ the footer's **Done** button only closes the dialog — there is no Apply step:
   prompt puts a session back in a live state, so its next completion chimes
   again. Demo traces never make a sound. Browsers generally allow audio only
   after the first interaction with the page.
+- **Chime style** (`ASTROX_CHIME_STYLE`): the notification offers three locally
+  generated timbres — 清脆 (bright, the default), 柔和 (soft) and 脉冲 (pulse).
+  A style changes the voice and the rhythm only; the status distinction
+  (complete ascends, failed descends, terminated neutral) holds in every one.
+  Preview buttons below the picker play the current style's complete, failed
+  and terminated tones once each, so the choice can be heard before it is
+  made.
 
 **About**
 
@@ -1400,6 +1407,7 @@ only effective display state.
 | `ASTROX_DEEP_VIEW` | `true` / `false` | Runtime-only atoms in the topology |
 | `ASTROX_PERF_HUD` | `true` / `false` | Performance panel on, `false` unless changed |
 | `ASTROX_TASK_COMPLETION_CHIME` | `true` / `false` | Task-completion chime on, `true` unless changed |
+| `ASTROX_CHIME_STYLE` | `bright` / `soft` / `pulse` | Chime timbre (bright/soft/pulse), `bright` unless changed |
 
 Legacy `astro-theme`, `astro-platform`, and `astro:perf-hud` values are removed
 after the corresponding new key is written: the first two migrate automatically;

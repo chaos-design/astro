@@ -249,9 +249,12 @@
 - **任务完成提示音**是设置 → 通知里的一项本地偏好（`ASTROX_TASK_COMPLETION_CHIME`，
   默认开启，无需找开关即可生效；该开关是唯一的关闭入口）。声音由
   `src/lib/task-completion-chime.ts` 用 Web Audio 振荡器本地生成，
-  不引入音频资源，因此部署在项目路径下也无需 `assetUrl()`。音色只按终态在该模块里
+  不引入音频资源，因此部署在项目路径下也无需 `assetUrl()`。音调只按终态在该模块里
   定义（`getChimeTone`）：完成上行、失败下行、终止中性双击，听声音即可区分成功、
-  出错与被停止；同一批次只播一声，由 `resolveChimeStatus` 择优（失败 > 终止 > 完成），
+  出错与被停止。音色偏好（`ASTROX_CHIME_STYLE`，选项列表与其它偏好一样放在
+  `app-config.ts`）挑选音色——波形、响度与音符节奏——但状态区分规则在任何音色下都
+  不变；设置弹窗按终态逐个试听当前音色。同一批次只播一声，由 `resolveChimeStatus`
+  择优（失败 > 终止 > 完成），
   批次里同时有失败时不能播成成功音。终态转换只由
   `collectTerminalTransitions` 依据**已记录**的状态（`getRunHistoryDisplayStatus`）
   判断，不采用新鲜度/超时派生出来的显示状态——只是“看起来终止”的活跃运行不能响。

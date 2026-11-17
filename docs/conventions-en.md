@@ -344,7 +344,11 @@
   asset, so a deployed console under a project path needs no `assetUrl()` call.
   The tone is keyed by the terminal status in that same module (`getChimeTone`):
   complete ascends, failed descends, terminated is a neutral double tap, so the
-  sound alone tells a success from a failure from a plain stop. A batch plays
+  sound alone tells a success from a failure from a plain stop. A style
+  (`ASTROX_CHIME_STYLE`, option list beside the other preference options in
+  `app-config.ts`) picks the timbre — waveform, loudness and note patterns —
+  and the status contour rule holds within every style; the settings dialog
+  previews the current style with one button per terminal status. A batch plays
   one sound, chosen by `resolveChimeStatus` (failed > terminated > complete) —
   a batch that also failed must not be announced with the success chime.
   Terminal transitions are detected by `collectTerminalTransitions` from the

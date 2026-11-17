@@ -59,6 +59,11 @@ type AppDefaults = {
    */
   taskCompletionChime: boolean;
   /**
+   * Which chime timbre the notification plays. The tone still tells the
+   * terminal status apart in every style; the style only changes the voice.
+   */
+  chimeStyle: ChimeStyleId;
+  /**
    * Fallback agent when no preference is stored. This mirrors the first entry
    * of the agent dropdown so the default selection is the top of the list.
    */
@@ -86,6 +91,7 @@ export const appDefaults: AppDefaults = {
   menuOpen: false,
   perfHud: false,
   taskCompletionChime: true,
+  chimeStyle: "bright",
   platform: "claude",
   replayCursor: 0,
   replayMode: false,
@@ -130,6 +136,34 @@ export const historyRangeOptions: ReadonlyArray<{
   { id: "5d", shortLabel: "5 天", label: "最近 5 天", hours: 5 * 24 },
   { id: "7d", shortLabel: "7 天", label: "最近 7 天", hours: 7 * 24 },
 ];
+
+/**
+ * Selectable chime timbres for the task-completion notification (Settings →
+ * 通知). The ids are the keys of the style table in
+ * `src/lib/task-completion-chime.ts`, which owns how each style actually
+ * sounds; a style changes the timbre and the note patterns, never the status
+ * contour rule (complete ascends, failed descends, terminated is a neutral
+ * double tap).
+ */
+export type ChimeStyleId = "bright" | "soft" | "pulse";
+
+export const chimeStyleOptions: ReadonlyArray<{
+  id: ChimeStyleId;
+  label: string;
+}> = [
+  { id: "bright", label: "清脆" },
+  { id: "soft", label: "柔和" },
+  { id: "pulse", label: "脉冲" },
+];
+
+/** Style used until the user picks another one in Settings. */
+export const defaultChimeStyle: ChimeStyleId = appDefaults.chimeStyle;
+
+export function isChimeStyleId(
+  value: string | null | undefined,
+): value is ChimeStyleId {
+  return chimeStyleOptions.some((option) => option.id === value);
+}
 
 /**
  * Longest history window the service will ship in one snapshot.
@@ -270,6 +304,8 @@ export const storageKeys = {
   perfHud: "ASTROX_PERF_HUD",
   /** Task-completion chime (Settings → 通知). */
   taskCompletionChime: "ASTROX_TASK_COMPLETION_CHIME",
+  /** Chime timbre (Settings → 通知); ids are the chime style table's keys. */
+  chimeStyle: "ASTROX_CHIME_STYLE",
   runHistoryLiveView: "ASTROX_RUN_HISTORY_LIVE_VIEW",
   theme: "ASTROX_THEME",
 } as const;

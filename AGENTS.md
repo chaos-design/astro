@@ -398,7 +398,12 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   `src/lib/task-completion-chime.ts` — no audio asset, so a deployed console under
   a project path needs no `assetUrl()` call. The tone is keyed by the recorded
   terminal status in that same module (`getChimeTone`): complete ascends, failed
-  descends, terminated is a neutral double tap; a batch plays one sound, chosen
+  descends, terminated is a neutral double tap. A style
+  (`appDefaults.chimeStyle`, options in `chimeStyleOptions` in the same config
+  file, `ASTROX_CHIME_STYLE`) picks the timbre — waveform, loudness and note
+  patterns in the chime module's style table — and the status contour rule holds
+  within every style; the settings dialog previews the current style with one
+  button per terminal status. A batch plays one sound, chosen
   by `resolveChimeStatus` (failed > terminated > complete) — a batch that also
   failed must not be announced with the success chime. The terminal transition
   itself is detected by `collectTerminalTransitions` from the **recorded** status
