@@ -95,6 +95,69 @@ export function isInteractionPanelSubmittable(
     .every((question) => (selections[question.question] || []).length > 0);
 }
 
+/**
+ * Keyboard answer flow for the floating card. Number keys pick the matching
+ * option of the first question, Enter submits once every required question has
+ * an answer, Escape cancels. All three are refused while the card is read-only
+ * (closed or answered on another device) — keyboard must never bypass the
+ * device lock the buttons respect.
+ *
+ * Only digit keys are bound: free text stays the input's job, so typing a
+ * number into "Other…" is never mistaken for picking an option.
+ */
+export type PanelKeyboardAction =
+  | { action: "option"; question: number; option: number }
+  | { action: "submit" }
+  | { action: "cancel" }
+  | { action: "none" };
+
+export function resolvePanelKey(input: {
+  key: string;
+  questions: readonly QuestionDescriptor[];
+  readOnly: boolean;
+}): PanelKeyboardAction {
+  if (input.readOnly) {
+    return { action: "none" };
+  }
+  if (/^[1-9]$/.test(input.key)) {
+    // One digit cannot identify both a question and an option. Bind it to the
+    // first question — the one the card's hint counts — so a key always means
+    // the same thing instead of jumping between questions as options vary.
+    const option = Number(input.key) - 1;
+    const first = input.questions[0];
+    return first && option < optionLabels(first).length
+      ? { action: "option", question: 0, option }
+      : { action: "none" };
+  }
+  if (input.key === "Enter") {
+    return { action: "submit" };
+  }
+  if (input.key === "Escape") {
+    return { action: "cancel" };
+  }
+  return { action: "none" };
+}
+
+/**
+ * How much of the interaction window is left, as a 0..1 ratio. A request past
+ * its deadline is fully drained but still rendered as `open` until the host's
+ * timeout frame arrives; the bar must not wrap back to full.
+ */
+export function interactionTimeLeft(
+  request: InteractionRequest,
+  now: number,
+): number {
+  const expires = Date.parse(request.expiresAt);
+  const created = Date.parse(request.createdAt);
+  if (!Number.isFinite(expires) || !Number.isFinite(created)) {
+    return 1;
+  }
+  const span = expires - created;
+  return span > 0
+    ? Math.min(1, Math.max(0, (expires - now) / span))
+    : 0;
+}
+
 /** Closed-state answer rows, one per question, in the request's order. */
 export function resultAnswerRows(
   request: InteractionRequest,

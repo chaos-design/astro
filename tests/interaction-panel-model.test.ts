@@ -8,11 +8,13 @@ import {
 } from "../src/lib/interaction-contract.ts";
 import {
   interactionPanelStatus,
+  interactionTimeLeft,
   isInteractionPanelReadOnly,
   isInteractionPanelSubmittable,
   optionDescription,
   optionLabels,
   resolveOptionClick,
+  resolvePanelKey,
   resolveTextAction,
   resultAnswerRows,
 } from "../src/lib/interaction-panel-model.ts";
@@ -138,6 +140,55 @@ test("submit needs every required question and ignores optional ones", () => {
       {},
     ),
     true,
+  );
+});
+
+test("number keys pick an option, Enter submits, Escape cancels", () => {
+  const questions = [
+    question,
+    { ...question, question: "Deploy target?", options: ["Edge", "Lambda"] },
+  ];
+  assert.deepEqual(resolvePanelKey({ key: "1", questions, readOnly: false }), {
+    action: "option",
+    question: 0,
+    option: 0,
+  });
+  assert.deepEqual(resolvePanelKey({ key: "2", questions, readOnly: false }), {
+    action: "option",
+    question: 0,
+    option: 1,
+  });
+  assert.deepEqual(resolvePanelKey({ key: "Enter", questions, readOnly: false }), {
+    action: "submit",
+  });
+  assert.deepEqual(resolvePanelKey({ key: "Escape", questions, readOnly: false }), {
+    action: "cancel",
+  });
+});
+
+test("read-only and out-of-range keys never answer a question", () => {
+  for (const key of ["1", "Enter", "Escape"]) {
+    assert.deepEqual(resolvePanelKey({ key, questions: [question], readOnly: true }), {
+      action: "none",
+    });
+  }
+  assert.deepEqual(resolvePanelKey({ key: "9", questions: [question], readOnly: false }), {
+    action: "none",
+  });
+  assert.deepEqual(resolvePanelKey({ key: "a", questions: [question], readOnly: false }), {
+    action: "none",
+  });
+});
+
+test("the countdown drains to zero without wrapping past the deadline", () => {
+  const req = request();
+  assert.equal(interactionTimeLeft(req, NOW), 1);
+  assert.equal(interactionTimeLeft(req, NOW + 2250), 0.5);
+  assert.equal(interactionTimeLeft(req, NOW + 5000), 0);
+  assert.equal(interactionTimeLeft(req, NOW + 9000), 0);
+  assert.equal(
+    interactionTimeLeft({ ...req, expiresAt: "not-a-date" }, NOW),
+    1,
   );
 });
 

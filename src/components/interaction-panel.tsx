@@ -1,5 +1,6 @@
 import { Check, ChevronDown, PencilLine, Send, SkipForward, X } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent } from "react";
 import { Button } from "./ui/button";
 import type {
   InteractionRequest,
@@ -13,6 +14,7 @@ import {
   optionDescription,
   optionLabels,
   resolveOptionClick,
+  resolvePanelKey,
   resolveTextAction,
   type InteractionPanelStatus,
   type TextAction,
@@ -38,6 +40,8 @@ export interface InteractionPanelProps {
   onSubmit?: () => void;
   onCancel?: () => void;
   className?: string;
+  /** Floating card only: bind number keys, Enter and Escape to the answers. */
+  keyboard?: boolean;
 }
 
 function statusLabel(status: InteractionPanelStatus): string {
@@ -88,6 +92,7 @@ export function InteractionPanel({
   onSubmit,
   onCancel,
   className,
+  keyboard = false,
 }: InteractionPanelProps) {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [editing, setEditing] = useState<string | null>(null);
@@ -103,10 +108,93 @@ export function InteractionPanel({
     collapsed && status === "open"
       ? request.questions[0]?.header || request.questions[0]?.question
       : null;
+  const panelRef = useRef<HTMLElement | null>(null);
+  const optionsRef = useRef<HTMLButtonElement | null>(null);
+  // Drive the countdown from the host's own timestamps with one CSS animation
+  // per request: a JS tick would stutter and a stale `now` state would show a
+  // bar that no longer matches the hook's real window.
+  const countdown = useMemo(() => {
+    const created = Date.parse(request.createdAt);
+    const age = Number.isFinite(created) ? Math.max(0, Date.now() - created) : 0;
+    return {
+      animationDelay: `-${Math.round(age)}ms`,
+      animationDuration: `${request.ttlMs}ms`,
+    } as CSSProperties;
+  }, [request.createdAt, request.requestId, request.ttlMs]);
+
+  const handleKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
+    if (!keyboard || collapsed || status !== "open") {
+      return;
+    }
+    // Modifier chords belong to the console (⌘K search); text fields own
+    // their own keystrokes so "Other…" can contain digits and Enter.
+    if (event.metaKey || event.ctrlKey || event.altKey) {
+      return;
+    }
+    const target = event.target;
+    if (
+      target instanceof HTMLElement &&
+      (target.isContentEditable ||
+        ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName))
+    ) {
+      return;
+    }
+    const action = resolvePanelKey({
+      key: event.key,
+      questions: request.questions,
+      readOnly,
+    });
+    if (action.action === "none") {
+      return;
+    }
+    if (action.action === "submit") {
+      if (submittable && !pending) {
+        event.preventDefault();
+        onSubmit?.();
+      }
+      return;
+    }
+    if (action.action === "cancel") {
+      event.preventDefault();
+      onCancel?.();
+      return;
+    }
+    const question = request.questions[action.question];
+    if (question) {
+      const label = optionLabels(question)[action.option];
+      const active = (selections[question.question] || []).includes(label);
+      const click = resolveOptionClick({
+        active,
+        multiSelect: question.multiSelect === true,
+        readOnly,
+      });
+      if (click === "select") {
+        event.preventDefault();
+        onSelect?.(question.question, label);
+      } else if (click === "deselect") {
+        event.preventDefault();
+        onDeselect?.(question.question, label);
+      }
+    }
+  };
+
+  // A new question must be answerable without a mouse: focus the first option
+  // on mount (the app keys the card by requestId, so this runs once per
+  // question). Keep the listener on the card instead of the document so an
+  // open settings dialog or history search never receives these shortcuts.
+  useEffect(() => {
+    if (!keyboard || collapsed || status !== "open") {
+      return;
+    }
+    (optionsRef.current || panelRef.current)?.focus({ preventScroll: true });
+  }, [keyboard, collapsed, status, request.requestId]);
 
   return (
     <section
       aria-label="User question"
+      ref={panelRef}
+      tabIndex={keyboard ? -1 : undefined}
+      onKeyDown={handleKeyDown}
       className={[
         "interaction-panel",
         collapsed ? "is-collapsed" : "",
@@ -116,6 +204,13 @@ export function InteractionPanel({
         .join(" ")}
       data-status={status}
     >
+      {status === "open" && keyboard ? (
+        <div
+          aria-hidden="true"
+          className="interaction-panel__countdown"
+          style={countdown}
+        />
+      ) : null}
       <header className="interaction-panel__header">
         <span className="interaction-panel__eyebrow">USER QUESTION</span>
         {summary ? (
@@ -160,11 +255,16 @@ export function InteractionPanel({
                       className="interaction-panel__options"
                       role="group"
                     >
-                      {optionLabels(question).map((label) => {
+                      {optionLabels(question).map((label, optionIndex) => {
                         const active = selected.includes(label);
                         const description = optionDescription(question, label);
                         return (
                           <button
+                            ref={
+                              question === request.questions[0] && optionIndex === 0
+                                ? optionsRef
+                                : undefined
+                            }
                             aria-pressed={active}
                             className="interaction-panel__option"
                             disabled={readOnly}
@@ -294,6 +394,11 @@ export function InteractionPanel({
                 <X aria-hidden="true" data-icon="inline-start" />
                 Cancel
               </Button>
+              {keyboard ? (
+                <span className="interaction-panel__keys">
+                  <kbd>1</kbd>–<kbd>{request.questions[0] ? optionLabels(request.questions[0]).length : 0}</kbd> 选择 · <kbd>Enter</kbd> 提交 · <kbd>Esc</kbd> 取消
+                </span>
+              ) : null}
               {pending ? (
                 <span className="interaction-panel__pending" role="status">
                   sending…

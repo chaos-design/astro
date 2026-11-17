@@ -731,7 +731,13 @@ Answers are never replayed outside the window.
 Panel behavior: a single-select click selects; multi-select joins labels in the
 declared option order with commas; "Other" accepts free text; Submit requires
 every required question; Esc/cancel ends the request and falls back; another
-device answering first turns the panel read-only. The card follows the question
+device answering first turns the panel read-only. The floating card also
+supports keyboard answering: it focuses the first option on open, digits `1`–`9`
+pick that option of the first question, `Enter` submits once every required
+question is answered, and `Esc` cancels. Shortcuts are scoped to the card —
+digits and Enter in the search box or "Other…" field stay text. A countdown rule
+on the card's top edge follows the hook's real window and never wraps after the
+deadline. The card follows the question
 lifecycle: it auto-expands with an entrance animation when a request opens, the
 header chevron collapses it to a one-line summary (handing the canvas back — a
 newly opened question re-expands it), the question list scrolls while

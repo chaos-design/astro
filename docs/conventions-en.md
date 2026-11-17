@@ -163,6 +163,12 @@
     bottom edge, and a closed request keeps the card readable ~2.4s
     (`--settling`) before it slides away — a stream reset that wiped the
     record dismisses it at once. Canvas selection still never controls it.
+    Keyboard answering (digits pick the first question's options, Enter
+    submits, Escape cancels) is decided only in `resolvePanelKey`, which refuses
+    every shortcut on a read-only card; the listener lives on the card, not
+    `document`, so digits and Enter in text fields remain text. The countdown
+    is one CSS animation from the request's own timestamps, with
+    `interactionTimeLeft` the only ratio source for a numeric display.
   New consumers reuse those helpers; do not grow a second failure or live list.
 - Sample (Demo) data lives only in `data/demo-events.json`: the service reads it
   through `server/demo-dataset.mjs` and serves `GET /api/demo-events`, and the

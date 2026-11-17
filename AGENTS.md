@@ -803,6 +803,14 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   keeps the card mounted (`--settling`, `INTERACTION_SETTLE_MS`) so the result
   stays readable ~2.4s before it slides away — a stream reset that wiped the
   record dismisses it at once instead of showing a stale question.
+  For faster answering the floating card focuses its first option and binds
+  digit keys to the first question's options, Enter to submit, Escape to
+  cancel; `resolvePanelKey` in `src/lib/interaction-panel-model.ts` is the one
+  decision source and refuses every shortcut while the card is read-only. The
+  listener lives on the card, never on `document`, so search and dialogs keep
+  their keys, and text fields are excluded so "Other…" still accepts digits.
+  The countdown bar is one CSS animation from the request's own timestamps;
+  `interactionTimeLeft` is the pure ratio for any numeric display of it.
 - `PreCompact` / `PostCompact` cover context compaction for every client that
   reports it; streaming compaction deltas are never recorded.
 

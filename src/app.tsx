@@ -7889,6 +7889,7 @@ export default function App() {
               className="interaction-panel--floating"
               deviceId={consoleDeviceId}
               key={activeInteraction.request.requestId}
+              keyboard
               lockedBy={activeInteraction.lockedBy}
               onCancel={() =>
                 handleInteractionCancel(activeInteraction.request.requestId)

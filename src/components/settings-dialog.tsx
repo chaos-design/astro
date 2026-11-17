@@ -3,6 +3,9 @@ import type { CSSProperties } from "react";
 import {
   Bell,
   Check,
+  CheckCircle2,
+  CircleStop,
+  CircleX,
   Gauge,
   History,
   Info,
@@ -43,6 +46,13 @@ import { playTaskCompletionChime } from "@/lib/task-completion-chime";
 import { cn } from "@/lib/utils";
 
 type ChoiceIcon = (typeof themeOptions)[number]["icon"];
+
+/** Terminal states the chime distinguishes, in the same order in every style. */
+const chimePreviewOptions = [
+  { status: "complete", label: "完成音", icon: CheckCircle2 },
+  { status: "failed", label: "失败音", icon: CircleX },
+  { status: "terminated", label: "终止音", icon: CircleStop },
+] as const;
 
 /**
  * Sections are the left rail of the dialog and the anchor of the right pane.
@@ -505,34 +515,22 @@ export function SettingsDialog({
                   className="settings-chime-preview"
                   role="group"
                 >
-                  <Button
-                    onClick={() =>
-                      playTaskCompletionChime("complete", chimeStyle)
-                    }
-                    size="sm"
-                    type="button"
-                    variant="outline"
-                  >
-                    完成音
-                  </Button>
-                  <Button
-                    onClick={() => playTaskCompletionChime("failed", chimeStyle)}
-                    size="sm"
-                    type="button"
-                    variant="outline"
-                  >
-                    失败音
-                  </Button>
-                  <Button
-                    onClick={() =>
-                      playTaskCompletionChime("terminated", chimeStyle)
-                    }
-                    size="sm"
-                    type="button"
-                    variant="outline"
-                  >
-                    终止音
-                  </Button>
+                  {chimePreviewOptions.map((option) => {
+                    const Icon = option.icon;
+                    return (
+                      <button
+                        className={`settings-option settings-chime-option settings-chime-option--${option.status}`}
+                        key={option.status}
+                        onClick={() =>
+                          playTaskCompletionChime(option.status, chimeStyle)
+                        }
+                        type="button"
+                      >
+                        <Icon aria-hidden="true" />
+                        <span>{option.label}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             </TabsContent>

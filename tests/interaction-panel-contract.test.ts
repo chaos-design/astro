@@ -81,3 +81,40 @@ test("the card collapses to its header and follows the question lifecycle", () =
     /\.interaction-panel--floating \.interaction-panel__questions \{/,
   );
 });
+
+test("keyboard flow stays on the card and cannot bypass the button guards", () => {
+  assert.match(panel, /keyboard\?: boolean/);
+  assert.match(panel, /onKeyDown=\{handleKeyDown\}/);
+  assert.match(panel, /resolvePanelKey\(\{/);
+  assert.match(panel, /readOnly,\s*\}\)/);
+  assert.match(panel, /submittable && !pending/);
+  assert.match(panel, /optionsRef\.current \|\| panelRef\.current/);
+  assert.match(panel, /interaction-panel__keys/);
+  assert.match(panel, /target\.isContentEditable/);
+  assert.match(panel, /\["INPUT", "TEXTAREA", "SELECT"\]/);
+});
+
+test("the countdown is a CSS animation driven by the host's timestamps", () => {
+  assert.match(panel, /interaction-panel__countdown/);
+  assert.match(panel, /animationDuration: `\$\{request\.ttlMs\}ms`/);
+  assert.match(panel, /Date\.now\(\) - created/);
+  assert.match(styles, /@keyframes interaction-panel-countdown/);
+  assert.match(
+    styles,
+    /prefers-reduced-motion: reduce[\s\S]*?interaction-panel__countdown/,
+  );
+});
+
+test("chime previews reuse the settings option cards with status colours", () => {
+  const settings = readFileSync(
+    new URL("../src/components/settings-dialog.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(settings, /chimePreviewOptions\.map/);
+  assert.match(settings, /settings-option settings-chime-option/);
+  assert.match(settings, /playTaskCompletionChime\(option\.status, chimeStyle\)/);
+  assert.match(styles, /\.settings-chime-preview \{[\s\S]*?grid-template-columns/);
+  assert.match(styles, /\.settings-chime-option--complete > svg:first-child/);
+  assert.match(styles, /\.settings-chime-option--failed > svg:first-child/);
+  assert.match(styles, /\.settings-chime-option--terminated > svg:first-child/);
+});
