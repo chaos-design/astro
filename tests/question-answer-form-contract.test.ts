@@ -39,6 +39,13 @@ test("a lone question keeps one-click quick answers, a batch fills the row", () 
   assert.match(form, /onDraftChange\(question\.question, label\)/);
 });
 
+test("multi-select questions toggle declared options in a stable order", () => {
+  assert.match(form, /const multi = question\.multiSelect === true/);
+  assert.match(form, /aria-pressed=\{multi \? selectedTokens\.includes\(label\) : undefined\}/);
+  assert.match(form, /if \(multi\) \{[\s\S]*toggleOption\(label\)/);
+  assert.match(form, /options\.filter\(\(option\) => next\.includes\(option\)\)\.join\(", "\)/);
+});
+
 test("busy and closed states disable every control", () => {
   assert.match(form, /const disabled = readOnly \|\| pending \|\| missingRequired/);
   assert.match(form, /disabled=\{readOnly \|\| pending\}/);
@@ -51,4 +58,8 @@ test("the styles separate multiple questions and reserve a footer for submit", (
   assert.match(styles, /\.question-answer__item \+ \.question-answer__item \{/);
   assert.match(styles, /\.question-answer__meta \{/);
   assert.match(styles, /\.question-answer__footer \{/);
+  assert.match(
+    styles,
+    /\.question-answer__option\[aria-pressed="true"\] \{/,
+  );
 });

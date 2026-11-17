@@ -741,7 +741,11 @@ question text in Overview. While the question still has an open interaction
 request, Overview and Input both offer an answer area: single-select questions
 (including a plan approval's Approve/Reject) render a wrapping row of one-click
 quick answers above the free-text row, and custom text still goes through the
-input + Send. When one `AskUserQuestion` carries several descriptors the
+input + Send; multi-select options can be toggled one by one and the draft is
+kept in the declared option order, with free text still available. If a submit
+is rejected (busy, closed, answered elsewhere) the draft is kept and a notice
+explains why — it is never silently cleared. When one `AskUserQuestion` carries
+several descriptors the
 inspector lists every question with its own options/input and one Submit sends
 the whole batch: the host closes the request on the first submit, so answering
 one at a time would strand the rest. In a batch a quick option fills its row

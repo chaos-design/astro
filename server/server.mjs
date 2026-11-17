@@ -90,6 +90,18 @@ const maxBodyBytes = Number(
 );
 const clients = new Set();
 /**
+ * The last console page leaving is a decision, not just bookkeeping: an open
+ * interaction can no longer be answered (frames are never replayed), so every
+ * in-flight request is cancelled here and the host's synchronous hook falls
+ * back to its native prompt instead of blocking for the full window.
+ */
+function removeStreamClient(response) {
+  clients.delete(response);
+  if (clients.size === 0) {
+    interactions.cancelOrphaned();
+  }
+}
+/**
  * Snapshot frames are written in small batches. One `JSON.stringify` of the
  * whole history (95k events / 456MB on a real install) blocked the event loop
  * for minutes: live events, `/api/health` and every other SSE client had to
@@ -914,7 +926,7 @@ async function handleRequest(request, response) {
     });
     response.write("retry: 1000\n\n");
     clients.add(response);
-    request.on("close", () => clients.delete(response));
+    request.on("close", () => removeStreamClient(response));
     // A console page attaching to the event stream is the one truthful signal
     // that the preview page was actually opened — a local tab connects here
     // right after booting, and a deployed console (which never fetches
@@ -969,7 +981,7 @@ async function handleRequest(request, response) {
     } else {
       const delivered = await streamSnapshot(response, events, meta);
       if (!delivered) {
-        clients.delete(response);
+        removeStreamClient(response);
         return;
       }
     }

@@ -213,10 +213,23 @@ export function interactionReducer(
     const selections =
       action.result.status === "answered"
         ? Object.fromEntries(
-            Object.entries(action.result.answers).map(([question, answer]) => [
-              question,
-              answer.split(",").map((value) => value.trim()).filter(Boolean),
-            ]),
+            Object.entries(action.result.answers).map(([question, answer]) => {
+              // Only multi-select descriptors store several options in one
+              // comma-joined answer. Splitting every string mangled free text
+              // such as "Paris, France" into two phantom selections.
+              const multi = draft.request.questions.some(
+                (item) => item.question === question && item.multiSelect === true,
+              );
+              return [
+                question,
+                multi
+                  ? answer
+                      .split(",")
+                      .map((value) => value.trim())
+                      .filter(Boolean)
+                  : [answer.trim()].filter(Boolean),
+              ];
+            }),
           )
         : draft.selections;
     return {

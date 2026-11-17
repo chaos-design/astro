@@ -12,7 +12,7 @@
  * console attached to the stream closes at once: nobody can ever answer it.
  */
 
-import { mkdirSync, renameSync, writeFileSync } from "node:fs";
+import { mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   INTERACTION_RESULT_STATUSES,
@@ -164,6 +164,11 @@ export function createInteractionStore(options = {}) {
         timer: null,
       };
       records.set(request.requestId, record);
+      // The request id is a deterministic hash of the host call. A retry after
+      // a restart (or a client without a tool id) can reuse it; leaving the
+      // previous result file in place would let the hook read the old answer
+      // before this call is even answered. A new record owns a fresh window.
+      rmSync(pathFor(request.requestId, ".json"), { force: true });
       writeJsonAtomic(pathFor(request.requestId, ".request.json"), request);
       scheduleTimeout(record);
       onOpen(record.request);
@@ -301,6 +306,22 @@ export function createInteractionStore(options = {}) {
         events: record.events.map((event) => ({ ...event })),
         result: record.result,
       };
+    },
+
+    /**
+     * No console page can answer a request once the last stream closes:
+     * interaction frames are never replayed on reconnect. Cancel every open
+     * request through the same `finish()` path so the host's synchronous hook
+     * breaks immediately instead of waiting out its whole window for nobody.
+     */
+    cancelOrphaned() {
+      const closed = [];
+      for (const record of records.values()) {
+        if (!record.result) {
+          closed.push(finish(record, "cancelled", {}, "service"));
+        }
+      }
+      return closed;
     },
 
     size() {

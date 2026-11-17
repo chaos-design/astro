@@ -125,7 +125,10 @@ takes the **fast path**:
    `/api/stream`, the service closes the request as `cancelled` at registration
    (interaction frames are never replayed on reconnect, so a request nobody saw
    can never be answered) and the hook fails open at once — a long window never
-   stalls an unattended agent.
+   stalls an unattended agent. Losing the last stream mid-request takes the same
+   path: `cancelOrphaned()` finishes every open request through the normal close.
+   Creating a new record also removes any stale result file for the same
+   deterministic id, so a host retry cannot replay an old answer.
 3. **Re-entry path (not implemented, kept as an alternative)**: return `deny`
    with `permissionDecisionReason`, letting the agent ask again next turn. Costs
    a model turn; cap retries at 1 per `requestId`.

@@ -5205,12 +5205,17 @@ export default function App() {
         { apiBase },
       ).then((result) => {
         reportInteractionResult(result);
-        if (result.ok || result.blocked) {
+        if (result.ok) {
           setQuestionAnswerDrafts({});
+        } else if (result.blocked) {
+          // A guard rejected the click (busy, closed, answered elsewhere).
+          // Keep what was typed and say why — silently dropping the draft
+          // makes a failed answer look like it was sent.
+          pushNotice("error", "回答未发送", result.error || "该提问已不可作答");
         }
       });
     },
-    [apiBase, reportInteractionResult],
+    [apiBase, pushNotice, reportInteractionResult],
   );
   const [connected, setConnected] = useState(false);
   /**
@@ -6317,7 +6322,16 @@ export default function App() {
     const currentSession = sessions.find(
       (session) => session.key === activeSessionKey,
     );
-    const nextSession = currentSession || deepLinkedSession || fallbackPool[0];
+    // A first paint (or a scope change after the open run vanished) uses the
+    // same live-first fallback as the agent picker and the footer Live button:
+    // an executing message outranks a newer finished one, so `N LIVE` does not
+    // show a run the canvas never opened. An explicit deep link still wins.
+    const nextSession =
+      currentSession ||
+      deepLinkedSession ||
+      selectScopeFallbackRun(fallbackPool, liveSessionKeys, (session) =>
+        promptRunsBySession.get(session.key)?.at(-1)?.start ?? session.start,
+      );
     if (!nextSession) {
       setInitialLocation(null);
       return;
@@ -6375,6 +6389,7 @@ export default function App() {
     eventsLoaded,
     filteredSessions,
     initialLocation,
+    liveSessionKeys,
     platformId,
     promptRunsBySession,
     sessions,

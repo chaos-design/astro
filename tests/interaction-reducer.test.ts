@@ -144,8 +144,25 @@ test("a stale or post-close update is ignored", () => {
   assert.equal(late, closed, "events after the result cannot rewrite the answer");
 });
 
-test("close re-derives the persisted answers and stays idempotent", () => {
+test("close keeps free text containing a comma as one answer", () => {
   const { request: req, draft } = opened();
+  const result = buildInteractionResult(
+    req,
+    "answered",
+    { "Which framework?": "Paris, France" },
+    { now: NOW + 500 },
+  );
+  const state = interactionReducer({ requests: { [req.requestId]: draft } }, {
+    type: "close",
+    result,
+  });
+  assert.deepEqual(state.requests[req.requestId].selections, {
+    "Which framework?": ["Paris, France"],
+  });
+});
+
+test("close re-derives the persisted answers and stays idempotent", () => {
+  const { request: req, draft } = opened(request([question({ multiSelect: true })]));
   const selected = apply(draft, select(req.requestId, 1, "React"));
   const first = buildInteractionResult(
     req,

@@ -82,12 +82,26 @@ export function QuestionAnswerForm({
       </div>
       {questions.map((question) => {
         const existing = selections?.[question.question]?.[0];
-        const options =
-          question.multiSelect === true
-            ? []
-            : normalizeQuestionOptions(question.options).map(
-                (option) => option.label,
-              );
+        const options = normalizeQuestionOptions(question.options).map(
+          (option) => option.label,
+        );
+        const multi = question.multiSelect === true;
+        const selectedTokens = (drafts[question.question] || "")
+          .split(",")
+          .map((token) => token.trim())
+          .filter(Boolean);
+        const toggleOption = (label: string) => {
+          const next = selectedTokens.includes(label)
+            ? selectedTokens.filter((token) => token !== label)
+            : [...selectedTokens, label];
+          // Keep declared order: the host validates multi-select answers in
+          // that order, and a comma-joined draft must stay stable no matter
+          // which button was pressed last.
+          onDraftChange(
+            question.question,
+            options.filter((option) => next.includes(option)).join(", "),
+          );
+        };
         return (
           <div className="question-answer__item" key={question.question}>
             <div className="question-answer__meta">
@@ -108,11 +122,14 @@ export function QuestionAnswerForm({
               >
                 {options.map((label) => (
                   <button
+                    aria-pressed={multi ? selectedTokens.includes(label) : undefined}
                     className="question-answer__option"
                     disabled={readOnly || pending}
                     key={label}
                     onClick={() => {
-                      if (onlyOne) {
+                      if (multi) {
+                        toggleOption(label);
+                      } else if (onlyOne) {
                         onSend({ [question.question]: label });
                       } else {
                         onDraftChange(question.question, label);

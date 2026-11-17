@@ -292,6 +292,53 @@ test("F4: WorkBuddy answers a real request through PreToolUse.modifiedInput", as
   }
 });
 
+test("F4: the last console leaving cancels an open request instead of blocking the host", async (t) => {
+  const { url, home } = await startServer(t);
+  const controller = new AbortController();
+  const stream = await fetch(`${url}/api/stream`, {
+    headers: { Accept: "text/event-stream" },
+    signal: controller.signal,
+  });
+  assert.equal(stream.status, 200);
+  const reader = stream.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  const hook = runHook(askPayload(), {
+    ASTRO_INTERACTION_SERVICE: url,
+    ASTRO_HOME: home,
+    ASTRO_INTERACTION_TIMEOUT_MS: "4000",
+  });
+  try {
+    for (;;) {
+      const chunk = await reader.read();
+      if (chunk.done) {
+        throw new Error("stream ended before interaction.open");
+      }
+      buffer += decoder.decode(chunk.value, { stream: true });
+      if (/event: interaction\.open/.test(buffer)) {
+        break;
+      }
+    }
+
+    // Closing the tab is the last thing the reader does; nobody can answer a
+    // request whose open frame will never be replayed on reconnect.
+    controller.abort();
+    const started = Date.now();
+    const result = await hook;
+    assert.equal(result.status, 0);
+    assert.equal(result.stdout, "", result.stderr);
+    assert.ok(Date.now() - started < 2000, "the hook breaks out of its long window");
+
+    const closed = await waitForResultFile(home);
+    assert.equal(closed.status, "cancelled");
+    assert.equal(closed.answeredBy, "service");
+    assert.deepEqual(closed.answers, {});
+  } finally {
+    controller.abort();
+  }
+});
+
 test("F4: a service that is down still fails open", async () => {
   const home = new URL("./__missing__", import.meta.url).pathname;
   const result = await runHook(askPayload(), {

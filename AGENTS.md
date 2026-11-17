@@ -240,9 +240,10 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   dark. The same helper drives the footer Live jump, so both entry points land
   on the message the pinned list and `N LIVE` name. Without a live run the
   fallback is the newest run of the scope (`filteredSessions[0]`), never
-  `sessions[0]`. A `?session=` deep link that
-  names another agent's run moves the dropdown to that agent instead of leaving
-  the canvas on a run the list cannot show.
+  `sessions[0]`. The first paint uses the same live-first fallback, so `N LIVE`
+  never names a run the canvas did not open; an explicit `?session=` deep link
+  still wins and moves the dropdown to that agent instead of leaving the canvas
+  on a run the list cannot show.
 - A live message is marked on the row (status accent plus a `RUNNING` /
   `WAITING` capsule) and in the panel header (`N LIVE` chip that scrolls the
   first live row into view), so the executing message is findable without
@@ -745,8 +746,13 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   submit, so a multi-descriptor AskUserQuestion must be answered in one batch,
   not one question at a time. Single-select descriptors render one-click quick
   answer buttons above the free-text row (a plan approval is an Approve/Reject
-  pair); with several questions a quick option fills its row and the single
-  Submit button sends the batch once all required questions are answered. The
+  pair); multi-select options are toggles whose draft is kept in declared option
+  order, with free text as a fallback. With several questions a quick option
+  fills its row and the single Submit button sends the batch once all required
+  questions are answered. A blocked/rejected submit keeps the draft and raises
+  a notice — clearing it would make a failed answer look sent. A close result
+  only splits comma-joined answers for multi-select descriptors; free text such
+  as "Paris, France" stays one answer. The
   inspector's question binding mirrors the display fallback: a plan-content
   tool row answers like the question atom.
   The floating interaction panel keeps its newest-request rule and is
@@ -879,7 +885,11 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   `GET /api/interactions/:id`; `/api/stream` adds `interaction.open` /
   `update` / `close` and clears them on `reset` / `reset-same`. Writing an
   answer back is the `close` route plus the result file — never
-  `POST /api/events`.
+  `POST /api/events`. When the **last** stream client leaves, `cancelOrphaned()`
+  finishes every open request as `cancelled/service` through the same `finish()`
+  path: the frames are never replayed, so a disconnected reader must not hold
+  the host for the rest of its window. Creating a new record removes any old
+  result file for the same deterministic id before the hook can poll it.
 - `Notification` hooks have no decision control; never wrap an answer as
   `UserPromptSubmit`. `additionalContext` / `systemMessage` /
   `permissionDecisionReason` are capped at 10,000 characters and only

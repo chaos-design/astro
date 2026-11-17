@@ -95,6 +95,88 @@ test("C1: requests and results are written atomically and parse as JSON", () => 
   }
 });
 
+test("C3: losing the last console cancels open requests so the host falls back at once", () => {
+  const closes = [];
+  const { home, store } = makeStore({ closes });
+  try {
+    const first = makeRequest({}, 10_000);
+    const second = makeRequest({ sessionId: "session-2", toolUseId: "call_002" }, 10_000);
+    store.create(first);
+    store.create(second);
+    const answered = makeRequest({ sessionId: "session-3", toolUseId: "call_003" }, 10_000);
+    store.create(answered);
+    store.append(answered.requestId, {
+      ...event(answered),
+      action: "submit",
+      final: true,
+      answers: { "Which framework?": "React" },
+    });
+
+    const cancelled = store.cancelOrphaned();
+    assert.equal(cancelled.length, 2);
+    assert.deepEqual(
+      cancelled.map((result) => result.status),
+      ["cancelled", "cancelled"],
+    );
+    assert.deepEqual(
+      cancelled.map((result) => result.answeredBy),
+      ["service", "service"],
+    );
+    assert.equal(store.get(first.requestId).result.status, "cancelled");
+    assert.equal(store.get(second.requestId).result.status, "cancelled");
+    assert.equal(store.get(answered.requestId).result.status, "answered");
+    assert.equal(closes.length, 3, "two cancellations use the normal close path once each");
+    assert.deepEqual(store.cancelOrphaned(), [], "a second disconnect is a no-op");
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("C1: a new record never inherits the previous result of the same request id", () => {
+  const { home, store } = makeStore();
+  try {
+    const request = makeRequest();
+    store.create(request);
+    store.append(request.requestId, {
+      ...event(request),
+      action: "submit",
+      final: true,
+      answers: { "Which framework?": "Vue" },
+    });
+    const resultFile = join(home, "interactions", `${request.requestId}.json`);
+    assert.equal(JSON.parse(readFileSync(resultFile, "utf8")).status, "answered");
+
+    // A host retry with the same deterministic id must start a fresh window;
+    // otherwise the polling hook would read Vue without anyone answering.
+    const retry = makeRequest();
+    assert.equal(retry.requestId, request.requestId);
+    // The in-memory record is still open, so emulate a fresh service process.
+    const retryStore = createInteractionStore({ astroHome: home });
+    retryStore.init();
+    const created = retryStore.create(retry);
+    assert.equal(created.created, true);
+    assert.equal(retryStore.get(retry.requestId).result, null);
+    assert.equal(
+      JSON.parse(readFileSync(join(home, "interactions", `${retry.requestId}.request.json`), "utf8")).requestId,
+      retry.requestId,
+    );
+    assert.equal(
+      (() => {
+        try {
+          JSON.parse(readFileSync(resultFile, "utf8"));
+          return true;
+        } catch {
+          return false;
+        }
+      })(),
+      false,
+      "the stale result file is removed before the hook can poll it",
+    );
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
 test("C1: a request opened with no console attached closes at once", () => {
   const closes = [];
   const { home, store } = makeStore(

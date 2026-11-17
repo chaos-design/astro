@@ -8247,6 +8247,11 @@ pre,
   background: color-mix(in srgb, var(--teal) 12%, var(--panel));
 }
 
+.question-answer__option[aria-pressed="true"] {
+  border-color: var(--teal);
+  background: color-mix(in srgb, var(--teal) 20%, var(--panel));
+}
+
 .question-answer__option:disabled {
   cursor: default;
   opacity: 0.55;
