@@ -861,6 +861,7 @@ Usage:
   astrox start [--port N] [--host H] [--open] [--no-global] [--bin-dir DIR]
   astrox stop
   astrox restart
+  astrox up                      Restart if running, start if down (same port)
   astrox status [--json] [--deepseek-profile web]
   astrox info [--json]
   astrox update [--no-deepseek]
@@ -893,6 +894,9 @@ const commands = {
   path: pathCommand,
   restart: restartCommand,
   start: startCommand,
+  // Start-or-restart on the configured port: stopCommand is a no-op when no
+  // dashboard is running, so the same path covers an offline service.
+  up: restartCommand,
   status: statusCommand,
   stop: stopCommand,
   update: updateCommand,

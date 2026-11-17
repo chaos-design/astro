@@ -554,7 +554,9 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   out-of-band control surface: `up` restarts a running service or starts a
   downed one on the same port (installed runtime wins, checkout server is the
   fallback), `status` / `start` / `stop` are the single actions; `restart` on a
-  downed service starts it rather than waiting for a dead health endpoint. A
+  downed service starts it rather than waiting for a dead health endpoint. The
+  global CLI has the same start-or-restart alias, `astrox up`, so installed
+  bundles do not need the repository scripts. A
   handover waits for a **new pid**, never reports the old process as ready.
   A static page cannot spawn a local process; pretending otherwise would leave
   the reader staring at an offline card with a dead button.

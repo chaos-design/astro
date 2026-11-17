@@ -1132,6 +1132,7 @@ underlying `astro-trace` shown above.
 astrox start [--port N] [--host H] [--open] [--no-global] [--bin-dir DIR]
 astrox stop
 astrox restart
+astrox up                     # restart if running, start if down, on the same port
 astrox status [--json] [--deepseek-profile web]
 astrox info [--json]
 astrox update [--no-deepseek]

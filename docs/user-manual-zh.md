@@ -955,6 +955,7 @@ printf '%s\n' \
 astrox start [--port N] [--host H] [--open] [--no-global] [--bin-dir DIR]
 astrox stop
 astrox restart
+astrox up                     # 在跑就重启、没跑就启动，端口与 --port/ASTRO_PORT 一致
 astrox status [--json] [--deepseek-profile web]
 astrox info [--json]
 astrox update [--no-deepseek]
