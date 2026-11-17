@@ -579,9 +579,16 @@ pnpm install:interaction -- --client=claude --apply
 ```
 
 `--client` 支持 `claude`、`codebuddy`、`zcode`；默认只挂 `PermissionRequest`，
-需要拦截工具执行前的提问时加 `--events=PreToolUse`。安装器与自动同意共用合并、
-校验与卸载逻辑：保留已有 hooks 和顶层键、重复执行幂等、写入前备份，`--remove
+CodeBuddy / WorkBuddy 因 `modifiedInput` 只用于工具执行前而默认挂 `PreToolUse`，
+其他宿主需要拦截工具执行前的提问时加 `--events=PreToolUse`。安装器与自动同意共用
+合并、校验与卸载逻辑：保留已有 hooks 和顶层键、重复执行幂等、写入前备份，`--remove
 --apply` 只移除自己的分组。
+
+WorkBuddy / CodeBuddy Code 当前版本会把 `tool_input.questions` 写进 Hook stdin，
+交互 Hook 用它注册与控制台同源的请求，答案经 `PreToolUse` 的 `modifiedInput`
+回传；因此带选项的 `AskUserQuestion` 也能直接从 Flow 检查器作答。权限提示通知本身
+仍不可作答，它的存在只是让画布停在提问原子上，等真正的提问到达后接管。新装的
+Hook 要在**新开一个 WorkBuddy 会话**后才生效。
 
 **时间窗**：Hook 是同步阻塞的，作答窗口 = 安装器写入的 Hook 注册超时
 （`--timeout`，默认 600 秒，`ttlMs = 超时 - 500ms`），控制台页面连着流的整段窗口
@@ -864,9 +871,9 @@ astro-<source>-<sessionId>-prompt-<number>.jsonl
 
 `agent` 与下拉选择保持一致（已配置的智能体 ID 或 `others`）。打开该 URL 时，
 页面会优先选择匹配的智能体、会话、包含该事件的 Prompt 子运行并定位事件。
-切换智能体时只保留必要的参数：`agent` 立即更新，`session` / `event` 一律清空，
-即使用的是新智能体自动打开的那条最新会话也不写回，直到你显式选中某条运行；
-否则旧会话的深链会在下次刷新时把下拉框拉回刚离开的智能体。`?api=` 等与服务连接
+切换智能体时旧的 `session` / `event` 立即丢弃；如果新智能体的筛选条件下有数据，
+画布自动定位到它的最新一条消息，地址栏同步写回这条新会话；没有数据时才只留下
+`agent`。这样下次刷新不会拿旧智能体的深链把下拉框拉回去。`?api=` 等与服务连接
 有关的参数保持不变。
 深链依赖目标环境中已存在对应 Trace 数据，旧的 `?source=` 链接仍然可用。
 

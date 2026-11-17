@@ -497,10 +497,11 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   entries of their own.
 - Query-parameter writes for the current position live only in
   `src/lib/console-location.ts`. Switching agent rewrites `agent` immediately
-  and clears `session` / `event` until the reader explicitly picks a run — the
-  implicit fallback selection of the new agent does not write them back: a
-  `?session=` of the agent just left would otherwise win over the dropdown on
-  the next reload (deep links outrank the filter). Connection parameters such
+  and replaces `session` / `event` with the new agent's newest run when its
+  filter has data (the canvas lands on the same message); only an empty filter
+  leaves the old deep link gone. That way a `?session=` of the agent just left
+  can never win over the dropdown on the next reload (deep links outrank the
+  filter). Connection parameters such
   as `?api=` are preserved, and the legacy `?source=` is replaced, never
   accumulated.
 
@@ -777,8 +778,13 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   and workspace when the (empty) payload omits them. Both `workbuddy-plugin/hooks/hooks.json`
   and the `workbuddy` client in `scripts/install-plugins.mjs` must keep the
   flag synchronized with their registered event lists.
-- Tool inputs, outputs, and prompts are not delivered for WorkBuddy, so
-  WorkBuddy traces carry named lifecycle events without tool payload detail.
+- Older WorkBuddy builds omitted the payload entirely, so the recorder falls
+  back to hook-environment session/workspace and those traces carry named
+  lifecycle events without tool detail. Current WorkBuddy builds **do** write
+  `tool_input` (including AskUserQuestion `questions`) to hook stdin: the
+  captured `PreToolUse` carries them, and the opt-in interaction hook parses the
+  same payload to register an answerable request. Do not assume the empty-payload
+  shape or drop the env fallback — both spellings must keep working.
 - WorkBuddy has no `PermissionRequest` hook. While the host asks permission to
   call `AskUserQuestion` the only signal is
   `Notification { notification_type: "permission_prompt", message: "needs your
@@ -786,7 +792,10 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   a later `PreToolUse`. That notification is a system authorization (see Event
   Labels): recognise only permission prompts naming a question tool, never let
   the parameterless shape block the run, and keep it on the User Question atom
-  so the later parameterized question is reachable from the same spot.
+  so the later parameterized question is reachable from the same spot. That
+  follow-up `PreToolUse` is answerable from the console when the interaction
+  hook is installed for `--client=codebuddy` (it registers on `PreToolUse` and
+  returns the answer in `modifiedInput`); the recorder still writes the event.
 
 ## Pi Capture
 

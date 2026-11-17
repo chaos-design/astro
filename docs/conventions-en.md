@@ -289,10 +289,10 @@
   `?session=` deep link names another agent's run, the dropdown follows it and
   the address bar's `agent` is rewritten — the open run must always be a row of
   the list beside it. URL writes live only in `src/lib/console-location.ts`:
-  `agent` is always kept, `session` / `event` are cleared the moment the agent
-  changes and stay out until the reader explicitly picks a run (the implicit
-  fallback selection does not write them), and connection parameters such as
-  `?api=` survive untouched.
+  switching drops the old `session` / `event`, writes the new agent's newest
+  session when its filter has data (the canvas lands on the same message), and
+  leaves only `agent` when it has none. Connection parameters such as `?api=`
+  survive untouched.
 
 ## 7. Settings and local preferences
 

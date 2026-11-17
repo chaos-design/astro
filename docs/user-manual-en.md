@@ -695,11 +695,21 @@ pnpm install:interaction -- --client=claude --apply
 ```
 
 `--client` accepts `claude`, `codebuddy` and `zcode`. The default event is
-`PermissionRequest`; add `--events=PreToolUse` to intercept pre-tool prompts
-too. The installer shares its merge, validation and removal logic with the
-auto-approve installer: existing hooks and top-level keys are preserved, a
+`PermissionRequest`, except CodeBuddy / WorkBuddy which register on `PreToolUse`
+because its `modifiedInput` override only applies there; other hosts add
+`--events=PreToolUse` to intercept pre-tool prompts too. The installer shares
+its merge, validation and removal logic with the auto-approve installer:
+existing hooks and top-level keys are preserved, a
 second run is idempotent, the file is backed up before writing, and
 `--remove --apply` strips only this hook's handlers.
+
+Current WorkBuddy / CodeBuddy Code writes `tool_input.questions` to hook stdin,
+so the interaction hook can register the same request the console sees and
+return the answer through `PreToolUse.modifiedInput`. A parameterized
+`AskUserQuestion` is therefore answerable from the Flow inspector; the
+permission notification itself is not — it only keeps the canvas on the
+question atom until the real question arrives. A newly installed hook takes
+effect in a **new WorkBuddy session**.
 
 Timing: the hook is synchronous and the answer window **is** the hook's
 registered timeout — the installer writes it (`--timeout`, default 600 seconds,
@@ -1026,11 +1036,12 @@ The page writes the current selection into:
 `agent` mirrors the dropdown filter (a configured agent id or `others`).
 Opening the URL selects the matching agent, session, containing prompt run,
 and event when that trace data exists in the target environment. Switching
-agents keeps only the necessary parameters: `agent` is rewritten at once and
-`session` / `event` are dropped — even when the new agent's newest run is opened
-implicitly — until the reader explicitly picks a run. Otherwise the stale deep
-link would pull the dropdown back on the next reload. Service parameters such
-as `?api=` are preserved. Legacy `?source=` links keep working.
+agents drops the old `session` / `event` at once. When the new agent's filter
+has data the canvas locates its newest message and the address bar writes that
+new session; when it has none, only `agent` remains. Either way a stale deep
+link of the agent just left can never pull the dropdown back on the next reload.
+Service parameters such as `?api=` are preserved. Legacy `?source=` links keep
+working.
 
 ## 11. Import ChatGPT History
 

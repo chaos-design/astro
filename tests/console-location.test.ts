@@ -38,22 +38,6 @@ test("an event outside the open run is not written", () => {
   assert.equal(search, "?agent=claude&session=new-1");
 });
 
-test("a suppressed switch keeps only the agent in the deep link", () => {
-  const search = buildConsoleLocationSearch({
-    search: "?agent=chatgpt&session=old-1&event=old-event&api=http%3A%2F%2F127.0.0.1%3A5678",
-    agentId: "claude",
-    sessionId: "new-agent-fallback",
-    eventId: "new-event",
-    eventIds: new Set(["new-event"]),
-    suppressSession: true,
-  });
-
-  assert.equal(
-    search,
-    "?agent=claude&api=http%3A%2F%2F127.0.0.1%3A5678",
-  );
-});
-
 test("the legacy source parameter is replaced, not accumulated", () => {
   const search = buildConsoleLocationSearch({
     search: "?source=chatgpt&session=old-1",

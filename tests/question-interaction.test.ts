@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { buildRequest as buildHostRequest } from "../scripts/interaction-hook.mjs";
 import { buildInteractionRequest } from "../src/lib/interaction-contract.ts";
 import {
   matchQuestionInteraction,
@@ -203,4 +204,53 @@ test("no selected question means no answer target", () => {
   const draft = openRequest();
   assert.equal(matchQuestionInteraction(stateWith(draft).requests, null), null);
   assert.equal(matchQuestionInteraction({}, questionEvent()), null);
+});
+
+test("a WorkBuddy PreToolUse can be answered from the console", () => {
+  // The host hook receives the inner payload on stdin, while the recorder
+  // normalizes the same fields onto the TraceEvent. Both must resolve to the
+  // same tool id so the inspector's answer box targets this exact question.
+  const hostPayload = {
+    hook_event_name: "PreToolUse",
+    session_id: "wb-session",
+    tool_name: "AskUserQuestion",
+    tool_use_id: "call_wb_1",
+    call_id: "call_wb_1",
+    cwd: "/workspace/demo",
+    tool_input: {
+      questions: [
+        {
+          header: "Language",
+          question: "Which language?",
+          options: [{ label: "Python" }, { label: "Go" }],
+        },
+      ],
+    },
+  };
+  const built = buildHostRequest(hostPayload, {
+    source: "workbuddy",
+    inputField: "modifiedInput",
+    events: ["PreToolUse"],
+  });
+  assert.ok(built);
+
+  const event = normalizeTraceEvent({
+    capturedAt: "2026-11-17T04:01:43.000Z",
+    eventName: "PreToolUse",
+    id: "wb-question",
+    payload: hostPayload,
+    sessionId: "wb-session",
+    source: "workbuddy",
+    toolName: "AskUserQuestion",
+    toolUseId: "call_wb_1",
+    workspaceId: "workspace",
+  });
+  const state = interactionReducer(initialInteractionState, {
+    type: "open",
+    request: built!.request,
+  });
+  const matched = matchQuestionInteraction(state.requests, event);
+  assert.equal(matched?.question.question, "Which language?");
+  assert.equal(matched?.draft.request.source, "workbuddy");
+  assert.equal(matched?.draft.request.toolUseId, "call_wb_1");
 });
