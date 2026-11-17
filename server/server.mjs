@@ -608,6 +608,10 @@ function recordInteractionNotification(request, result) {
 
 const interactions = createInteractionStore({
   astroHome: resolveAstroHome(environment),
+  // Only a console attached to the stream can ever answer: SSE frames are not
+  // replayed on reconnect, so a request opened with zero clients is closed at
+  // once instead of blocking the host's synchronous window for nobody.
+  hasStreamClients: () => clients.size > 0,
   onOpen: (request) => broadcast("interaction.open", request),
   onUpdate: (event) => broadcast("interaction.update", event),
   onClose: (result, request) => {

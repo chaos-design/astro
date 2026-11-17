@@ -701,10 +701,14 @@ auto-approve installer: existing hooks and top-level keys are preserved, a
 second run is idempotent, the file is backed up before writing, and
 `--remove --apply` strips only this hook's handlers.
 
-Timing: the hook is synchronous and the host gives it 5 seconds, so a panel
-answer has about 4.5 seconds (`ttlMs = timeout - 500`). A timeout, a cancel or
-an unreachable service means empty stdout and exit 0, and the native prompt
-takes over. Answers are never replayed outside the window.
+Timing: the hook is synchronous and the answer window **is** the hook's
+registered timeout — the installer writes it (`--timeout`, default 600 seconds,
+`ttlMs = timeout - 500`), so the whole window is answerable while a console page
+is attached to the stream. With no console connected the service closes the
+request as `cancelled` at once, the hook exits with empty stdout immediately,
+and the native prompt appears right away — an unattended agent never waits out
+the window. A timeout, a cancel or an unreachable service behaves the same.
+Answers are never replayed outside the window.
 
 Panel behavior: a single-select click selects; multi-select joins labels in the
 declared option order with commas; "Other" accepts free text; Submit requires
@@ -716,16 +720,19 @@ is echoed unchanged.
 Answering from a Flow atom: selecting the `User Question` atom binds the
 inspector to that question's start event (not to its answer) and shows the
 question text in Overview. While the question still has an open interaction
-request, Overview and Input both offer an answer box; typing text and choosing
-Send keys the answer to the displayed question, submits the request and closes
-the window. The box and the floating panel share the same interaction state and
-turn read-only once the request is closed or answered on another device. A
-historical question without a live request shows its content only. The atom
-binds the newest question start while its status still follows the last
-matching event, so an answered question remains complete.
+request, Overview and Input both offer an answer area: single-select questions
+(including a plan approval's Approve/Reject) render a wrapping row of one-click
+quick answers above the free-text row, and custom text still goes through the
+input + Send. Selecting the `ExitPlanMode` tool row (which previews the same
+plan) binds to the same request. The area and the floating panel share the same
+interaction state and turn read-only once the request is closed or answered on
+another device. A historical question without a live request shows its content
+only. The atom binds the newest question start while its status still follows
+the last matching event, so an answered question remains complete.
 
 Overrides, inherited from the host process: `ASTRO_INTERACTION_SERVICE`
-(default `http://127.0.0.1:5678`), `ASTRO_INTERACTION_TIMEOUT_MS` (5000),
+(default `http://127.0.0.1:5678`), `ASTRO_INTERACTION_TIMEOUT_MS` (defaults to
+the installer's `--timeout`; 5000 is the no-configuration fallback),
 `ASTRO_INTERACTION_POLL_MS` (100), `ASTRO_INTERACTION_SOURCE`,
 `ASTRO_INTERACTION_EVENTS` / `TOOLS` / `INPUT_FIELD`.
 

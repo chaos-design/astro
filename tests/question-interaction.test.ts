@@ -17,6 +17,7 @@ import type { TraceEvent } from "../src/types/trace.ts";
 
 const NOW = Date.UTC(2026, 10, 16, 10, 0, 0);
 const QUESTION = "Which framework should we use?";
+const PLAN_QUESTION = "Approve this plan?";
 
 function openRequest(
   overrides: Partial<Parameters<typeof buildInteractionRequest>[0]> = {},
@@ -33,6 +34,35 @@ function openRequest(
           question: QUESTION,
           header: "Framework",
           options: [{ label: "React" }, { label: "Vue" }],
+        },
+      ],
+      ...overrides,
+    },
+    { now: NOW, timeoutMs: 5000 },
+  );
+  const state = interactionReducer(initialInteractionState, {
+    type: "open",
+    request,
+  });
+  return state.requests[request.requestId];
+}
+
+function planRequest(
+  overrides: Partial<Parameters<typeof buildInteractionRequest>[0]> = {},
+): InteractionDraft {
+  const request = buildInteractionRequest(
+    {
+      hookEventName: "PermissionRequest",
+      toolName: "ExitPlanMode",
+      toolUseId: "call-plan",
+      sessionId: "sess-1",
+      source: "zcode",
+      questions: [
+        {
+          question: PLAN_QUESTION,
+          header: "Plan",
+          options: [{ label: "Approve" }, { label: "Reject" }],
+          required: true,
         },
       ],
       ...overrides,
@@ -112,6 +142,44 @@ test("a plan approval binds by tool id and answers the first descriptor", () => 
   const matched = matchQuestionInteraction(stateWith(draft).requests, event);
   assert.equal(matched?.draft.request.requestId, draft.request.requestId);
   assert.equal(matched?.question.question, QUESTION);
+});
+
+function planEvent(
+  overrides: Partial<Parameters<typeof normalizeTraceEvent>[0]> = {},
+): TraceEvent {
+  return questionEvent({
+    toolName: "ExitPlanMode",
+    payload: { tool_input: { plan: "# Plan\n\nRun the tests." } },
+    ...overrides,
+  });
+}
+
+test("a plan approval without ids binds to the session's open ExitPlanMode request", () => {
+  const draft = planRequest({ toolUseId: null });
+  const event = planEvent({ toolUseId: null });
+  assert.deepEqual(questionTextsFromEvent(event), []);
+  const matched = matchQuestionInteraction(stateWith(draft).requests, event);
+  assert.equal(matched?.draft.request.requestId, draft.request.requestId);
+  assert.equal(matched?.question.question, PLAN_QUESTION);
+});
+
+test("an unknown session on either side still binds the plan approval", () => {
+  const draft = planRequest({ sessionId: "unknown-session" });
+  const event = planEvent({ toolUseId: null, sessionId: "unknown-session" });
+  const matched = matchQuestionInteraction(stateWith(draft).requests, event);
+  assert.equal(matched?.question.question, PLAN_QUESTION);
+});
+
+test("another session's plan approval never binds", () => {
+  const draft = planRequest();
+  const event = planEvent({ toolUseId: null, sessionId: "sess-2" });
+  assert.equal(matchQuestionInteraction(stateWith(draft).requests, event), null);
+});
+
+test("a textless event never binds to an AskUserQuestion request", () => {
+  const draft = openRequest();
+  const event = planEvent({ toolUseId: null });
+  assert.equal(matchQuestionInteraction(stateWith(draft).requests, event), null);
 });
 
 test("a closed request cannot be answered from the inspector", () => {

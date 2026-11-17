@@ -12,7 +12,7 @@ import {
   createInteractionStore,
 } from "../server/interaction-store.mjs";
 
-function makeStore(events = {}) {
+function makeStore(events = {}, storeOptions = {}) {
   const home = mkdtempSync(join(tmpdir(), "astro-interaction-store-"));
   const store = createInteractionStore({
     astroHome: home,
@@ -22,6 +22,7 @@ function makeStore(events = {}) {
       events.closes?.push(result);
       events.closeRequests?.push(request);
     },
+    ...storeOptions,
   });
   store.init();
   return { home, store, events };
@@ -88,6 +89,46 @@ test("C1: requests and results are written atomically and parse as JSON", () => 
       readdirSync(join(home, "interactions")).some((name) => name.endsWith(".tmp")),
       false,
     );
+  } finally {
+    store.stop();
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("C1: a request opened with no console attached closes at once", () => {
+  const closes = [];
+  const { home, store } = makeStore(
+    { closes },
+    { hasStreamClients: () => false },
+  );
+  try {
+    const request = makeRequest();
+    const created = store.create(request);
+    assert.equal(created.created, true);
+    const record = store.get(request.requestId);
+    assert.equal(record.result.status, "cancelled");
+    assert.equal(record.result.answeredBy, "service");
+    assert.equal(closes.length, 1);
+    // `cancelled` is in the hook's poll break set, so the result file the hook
+    // reads is already on disk — the host's native prompt returns immediately.
+    const resultFile = join(home, "interactions", `${request.requestId}.json`);
+    assert.equal(JSON.parse(readFileSync(resultFile, "utf8")).status, "cancelled");
+    const notification = buildInteractionNotification(request, record.result);
+    assert.match(notification.summary, /No console page was attached/);
+  } finally {
+    store.stop();
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("C1: with a console attached the request stays open for the window", () => {
+  const closes = [];
+  const { home, store } = makeStore({ closes }, { hasStreamClients: () => true });
+  try {
+    const request = makeRequest();
+    store.create(request);
+    assert.equal(store.get(request.requestId).result, null);
+    assert.equal(closes.length, 0);
   } finally {
     store.stop();
     rmSync(home, { recursive: true, force: true });

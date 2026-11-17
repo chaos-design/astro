@@ -325,6 +325,7 @@ pnpm install:interaction -- --client=claude             # preview only
 pnpm install:interaction -- --client=claude --apply     # save
 pnpm install:interaction -- --client=zcode --apply
 pnpm install:interaction -- --client=codebuddy --apply
+pnpm install:interaction -- --client=zcode --timeout=120 --apply   # custom window
 pnpm install:interaction -- --client=claude --remove --apply   # uninstall
 ```
 
@@ -336,13 +337,18 @@ documented on `PreToolUse`. Override with `--events=PreToolUse` or
 stdout must keep exactly `decision.behavior` + `decision.updatedInput` for
 ZCode's strict schema.
 `ExitPlanMode` renders as an “Approve this plan?” card: only Approve returns a
-decision, and the plan text is echoed without `answers`.
+decision, and the plan text is echoed without `answers`. The console's
+inspector answers it with one click on Approve/Reject.
 
 Host notes:
 
-- The service must be running. The window is host-bound: a 5 s hook timeout
-  leaves about 4.5 s to answer (`ttlMs = timeout - 500`), then the native prompt
-  appears. Do not raise the host timeout just to answer questions.
+- The service must be running. The answer window **is** the hook's registered
+  timeout: the installer writes the same number of seconds (`--timeout`,
+  default 600) into the host's hook configuration and the hook's `--timeout`
+  argument (`ttlMs = timeout - 500`). While a console page is attached to the
+  stream the whole window is answerable; with no console connected the service
+  closes the request at once, so the native prompt appears immediately instead
+  of the agent waiting out the window unattended.
 - CodeBuddy answers arrive in `modifiedInput`; the installer registers the
   handler under `PreToolUse` and appends `--input-field=modifiedInput` and
   `--source=workbuddy` automatically.
@@ -361,7 +367,7 @@ Environment overrides inherited from the host process (all optional):
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `ASTRO_INTERACTION_SERVICE` | `http://127.0.0.1:5678` | Local service origin |
-| `ASTRO_INTERACTION_TIMEOUT_MS` | `5000` | Host hook timeout; `ttlMs = timeout - 500` |
+| `ASTRO_INTERACTION_TIMEOUT_MS` | installer `--timeout` × 1000 | Answer window; `ttlMs = timeout - 500` |
 | `ASTRO_INTERACTION_POLL_MS` | `100` | Result-file poll interval |
 | `ASTRO_INTERACTION_SOURCE` | derived from the client | Trace source id |
 | `ASTRO_INTERACTION_EVENTS` | `PermissionRequest` | Hook events the script answers |

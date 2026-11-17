@@ -352,6 +352,16 @@ test("A5: buildInteractionRequest is idempotent with ISO dates and a 4500 ms TTL
     buildInteractionRequest({ ...validInput, toolUseId: "call_002" }, { now }).requestId,
     first.requestId,
   );
+
+  // An installer-configured window (the 600 s default) validates against the
+  // contract ceiling, not against the 5 s no-flag default.
+  const longWindow = buildInteractionRequest(validInput, { now, timeoutMs: 600000 });
+  assert.equal(longWindow.ttlMs, 599500);
+  assert.equal(validateInteractionRequest(longWindow).valid, true);
+  assert.equal(
+    validateInteractionRequest({ ...longWindow, ttlMs: 3_600_000 }).valid,
+    false,
+  );
 });
 
 test("A5: results and notifications are built from the same contract", () => {

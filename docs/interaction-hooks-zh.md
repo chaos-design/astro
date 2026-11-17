@@ -66,10 +66,14 @@ flowchart TB
 
 ### 3.1 同步决策窗口（已实现）
 
-宿主触发 `PreToolUse` / `PermissionRequest` → 所有匹配 Hook 并行执行（仓库配置 5 秒，
-ZCode `timeoutMs: 5000`）→ Hook 读 stdin、写 stdout、exit 0 → 宿主按
-`deny > ask > allow` 聚合 → 允许则工具继续执行，`PostToolUse` 再由 recorder 落盘。
-`Notification` 事件**没有决策控制**，只能做转发或提示。
+宿主触发 `PreToolUse` / `PermissionRequest` → 所有匹配 Hook 并行执行 → Hook 读 stdin、
+写 stdout、exit 0 → 宿主按 `deny > ask > allow` 聚合 → 允许则工具继续执行，`PostToolUse`
+再由 recorder 落盘。`Notification` 事件**没有决策控制**，只能做转发或提示。
+
+交互 Hook 的窗口 = 宿主给这个 Hook 的同步等待时长：安装器把同一个秒数写进宿主的
+Hook 超时配置与 Hook 的 `--timeout` 参数（`--timeout`，默认 600 秒，上限 1 小时），
+请求的 TTL 因此永远不会超过宿主的真实等待。控制台页面连着 `/api/stream` 的整段窗口
+都可以作答。
 
 ### 3.2 人工交互时序（已实现）
 
@@ -95,14 +99,18 @@ sequenceDiagram
 
 ### 3.3 超时与回退（关键约束）
 
-Hook 是**同步阻塞**的：人工等待时间通常远大于 5 秒，因此不允许让 Hook 长时间等待
-界面输入。实现取**快速路径**：
+Hook 是**同步阻塞**的：窗口内宿主不会弹原生界面，因此窗口时长必须与「有人看控制台」
+的预期一致，并且永远不能无人等待。实现取**快速路径**：
 
-1. **快速路径（已实现）**：Hook 以 `ASTRO_INTERACTION_TIMEOUT_MS`（默认 5000 ms）
-   推导 `ttlMs = timeout - 500`，在 TTL 内轮询结果文件；命中 `answered` 则
+1. **快速路径（已实现）**：Hook 以安装器写入的窗口（`--timeout`，秒；env
+   `ASTRO_INTERACTION_TIMEOUT_MS` 可覆盖，缺省 5000 ms）推导
+   `ttlMs = timeout - 500`，在 TTL 内轮询结果文件；命中 `answered` 则
    `allow + updatedInput.answers`，命中 `cancelled` 或超时则**空 stdout + exit 0**
    回退到宿主原生弹窗。随后通过 `PostToolUse` 把用户的真实选择记录进 trace。
-2. **拒绝重入路径（未实现，保留为备选）**：Hook 返回 `deny` 并附
+2. **无控制台立即放行（已实现）**：`/api/stream` 没有任何客户端时，服务在注册时就把
+   请求关闭为 `cancelled`（交互帧不补播，没有客户端的请求永远无人能答），Hook 立即
+   放空，原生弹窗马上出现——长窗口不会让无人值守的 Agent 挂起。
+3. **拒绝重入路径（未实现，保留为备选）**：Hook 返回 `deny` 并附
    `permissionDecisionReason`，让 Agent 在下一轮重新提问；代价是多一轮模型请求，
    且需防止无限循环（同一 `requestId` 最多 1 次）。
 
@@ -180,7 +188,9 @@ Hook 是**同步阻塞**的：人工等待时间通常远大于 5 秒，因此�
 
 约束：`requestId` 为幂等键（UUID/ULID）；`schemaVersion` 当前设计值 `1`；
 `hookEventName` 仅 `PreToolUse` / `PermissionRequest`；`toolName` 仅
-`AskUserQuestion` / `ExitPlanMode`；`ttlMs ≤ hookTimeoutMs - 500`；
+`AskUserQuestion` / `ExitPlanMode`；`ttlMs ≤ timeout - 500`（校验上限
+`maxHookTimeoutMs - 500`，即安装器可配置的 1 小时天花板；`hookTimeoutMs: 5000`
+只是未传 `--timeout` 时的缺省）；
 `expiresAt` 为 ISO 8601；`questions` 1..4 项（与宿主工具 schema 一致）；
 不得携带 token / 凭据 / 源码全文。
 
@@ -234,8 +244,10 @@ Hook 是**同步阻塞**的：人工等待时间通常远大于 5 秒，因此�
 
 ### 6.1 宿主 → Hook（stdin，已实现）
 
-一行 JSON + 换行。Claude / CodeBuddy 用 `tool_name` / `tool_input` / `tool_use_id`，
-ZCode 同时提供 camelCase 与 snake_case 别名。
+一行 JSON + 换行。Claude / CodeBuddy 用 `tool_name` / `tool_input` / `tool_use_id`；
+ZCode 的载荷是 camelCase（`hookEventName` / `sessionId` / `toolCallId` / `toolInput`）。
+交互 Hook 同时接受两种拼法（`toolCallId` 归一为请求的 `toolUseId`），Plan 批准的
+`toolInput.plan` 也照常识别。
 
 ```json
 {
@@ -419,7 +431,7 @@ ZCode 额外约束：用户级 `hooks.enabled:true`、项目级配置被忽略�
 | 失败语义 | 空 stdout + exit 0；stderr 仅诊断；不写部分 JSON |
 | 幂等 | `requestId` + `seq` + `final`；重复提交忽略；`interaction.close` 只发一次 |
 | 长度 | 单事件 ≤ 8 KiB；`answers` ≤ 4000 字符；通知字符串 ≤ 10,000 字符 |
-| 时间 | `ttlMs ≤ hookTimeoutMs - 500`；`expiresAt` ISO 8601；单定时器，不补播 |
+| 时间 | `ttlMs ≤ timeout - 500`（校验上限 `maxHookTimeoutMs`）；`expiresAt` ISO 8601；单定时器，不补播；无控制台连接的请求注册即关闭 |
 | 数据 | 原始 `TraceEvent` 不可变；`answers` 只做展示解析；递归脱敏后才落盘 |
 | 客户端 | ChatGPT / OpenCode / Pi / DeepSeek Harness 无命令 Hook 决策通道，走宿主原生权限模式 |
 

@@ -298,6 +298,69 @@ test("F2: --source and --input-field override the environment", async () => {
   assert.equal(request.body.source, "workbuddy");
 });
 
+test("F2: --timeout seconds widen the answer window on the registered request", async () => {
+  assert.deepEqual(optionsFromArgv(["--timeout=600"]), { timeoutMs: 600000 });
+  assert.deepEqual(optionsFromArgv(["--timeout=bogus"]), {});
+  assert.deepEqual(optionsFromArgv(["--timeout=0"]), {});
+  const posts = [];
+  let clock = 0;
+  await runInteractionHook(JSON.stringify(questionPayload()), {
+    env: {},
+    settings: optionsFromArgv(["--timeout=30"]),
+    now: () => clock,
+    sleep: async () => {
+      clock += 1000;
+    },
+    fetchImpl: async (url, init) => {
+      posts.push({ url, body: JSON.parse(init.body) });
+      return { ok: true, status: 201 };
+    },
+    readResult: () => null,
+  });
+  const request = posts.find((post) => post.url.endsWith("/api/interactions"));
+  assert.equal(request.body.ttlMs, 29500, "30 s minus the 500 ms margin");
+});
+
+function zcodePlanPayload(overrides = {}) {
+  // ZCode payloads are Claude-compatible camelCase JSON on stdin.
+  return {
+    hookEventName: "PermissionRequest",
+    sessionId: "session-zcode",
+    toolName: "ExitPlanMode",
+    toolCallId: "call_zcode_plan",
+    toolInput: {
+      plan: "# Plan\n\nShip the console.",
+    },
+    ...overrides,
+  };
+}
+
+test("B2: ZCode's camelCase toolCallId reaches the request as toolUseId", () => {
+  const built = buildRequest(zcodePlanPayload(), optionsFromEnvironment({}));
+  assert.ok(built, "a ZCode plan approval parses");
+  assert.equal(built.host.toolUseId, "call_zcode_plan");
+  assert.equal(built.request.toolUseId, "call_zcode_plan");
+  assert.equal(built.request.questions[0].question, "Approve this plan?");
+
+  const question = buildRequest(
+    zcodePlanPayload({
+      toolName: "AskUserQuestion",
+      toolInput: {
+        questions: [
+          {
+            question: "Which framework?",
+            header: "Framework",
+            options: [{ label: "React" }, { label: "Vue" }],
+          },
+        ],
+      },
+    }),
+    optionsFromEnvironment({}),
+  );
+  assert.equal(question.request.toolUseId, "call_zcode_plan");
+  assert.equal(question.request.questions[0].question, "Which framework?");
+});
+
 async function runHookCli(payload, env = {}) {
   const child = spawn(process.execPath, [hookPath], {
     env: { ...process.env, ASTRO_INTERACTION_SERVICE: "http://127.0.0.1:1", ...env },

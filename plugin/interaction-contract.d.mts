@@ -142,6 +142,8 @@ export declare const INTERACTION_LIMITS: Readonly<{
   summaryLength: number;
   notificationString: number;
   hookTimeoutMs: number;
+  /** Validation ceiling for an installer-configured window (default 600 s). */
+  maxHookTimeoutMs: number;
   ttlMarginMs: number;
 }>;
 

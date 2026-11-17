@@ -75,10 +75,16 @@ flowchart TB
 
 ### 3.1 Synchronous decision window (implemented)
 
-Host fires `PreToolUse` / `PermissionRequest` → matching hooks run in parallel
-(5 s in this repo, ZCode `timeoutMs: 5000`) → each reads stdin, writes stdout,
-exits 0 → host aggregates `deny > ask > allow` → the tool runs and the recorder
-captures `PostToolUse`. `Notification` has **no decision control**.
+Host fires `PreToolUse` / `PermissionRequest` → matching hooks run in parallel →
+each reads stdin, writes stdout, exits 0 → host aggregates `deny > ask > allow` →
+the tool runs and the recorder captures `PostToolUse`. `Notification` has **no
+decision control**.
+
+The interaction hook's window **is** the host's synchronous wait for that hook:
+the installer writes one number of seconds into both the host's hook timeout and
+the hook's `--timeout` argument (`--timeout`, default 600 s, ceiling 1 h), so
+the request's TTL can never exceed what the host actually waits. The whole
+window is answerable while a console page is attached to `/api/stream`.
 
 ### 3.2 Human interaction (implemented)
 
@@ -104,16 +110,23 @@ sequenceDiagram
 
 ### 3.3 Timeout and fallback (critical)
 
-Hooks are **synchronous and blocking**. Human response time usually exceeds the
-5-second window, so a hook must never wait indefinitely. The implementation
+Hooks are **synchronous and blocking**: inside the window the host shows no
+native prompt, so the window must match the expectation that someone is
+watching the console, and it must never block for nobody. The implementation
 takes the **fast path**:
 
-1. **Fast path (implemented)**: derive `ttlMs = timeout - 500` from
-   `ASTRO_INTERACTION_TIMEOUT_MS` (default 5000 ms) and poll the result file
-   inside that window. `answered` → `allow + updatedInput.answers`; `cancelled`
-   or a miss → **empty stdout + exit 0** so the native prompt appears. The real
-   choice is recorded later through `PostToolUse`.
-2. **Re-entry path (not implemented, kept as an alternative)**: return `deny`
+1. **Fast path (implemented)**: derive `ttlMs = timeout - 500` from the window
+   the installer wrote (`--timeout`, seconds; the `ASTRO_INTERACTION_TIMEOUT_MS`
+   env overrides, default 5000 ms) and poll the result file inside that window.
+   `answered` → `allow + updatedInput.answers`; `cancelled` or a miss →
+   **empty stdout + exit 0** so the native prompt appears. The real choice is
+   recorded later through `PostToolUse`.
+2. **No console, immediate fallback (implemented)**: with zero clients on
+   `/api/stream`, the service closes the request as `cancelled` at registration
+   (interaction frames are never replayed on reconnect, so a request nobody saw
+   can never be answered) and the hook fails open at once — a long window never
+   stalls an unattended agent.
+3. **Re-entry path (not implemented, kept as an alternative)**: return `deny`
    with `permissionDecisionReason`, letting the agent ask again next turn. Costs
    a model turn; cap retries at 1 per `requestId`.
 
@@ -189,7 +202,9 @@ labels in `options` order. `required`: default `true`; only `false` allows `skip
 
 `requestId` is an idempotency key (UUID/ULID). `hookEventName` ∈
 {`PreToolUse`, `PermissionRequest`}; `toolName` ∈
-{`AskUserQuestion`, `ExitPlanMode`}; `ttlMs ≤ hookTimeoutMs - 500`;
+{`AskUserQuestion`, `ExitPlanMode`}; `ttlMs ≤ timeout - 500` (validated against
+`maxHookTimeoutMs - 500`, the installer's 1 h ceiling; `hookTimeoutMs: 5000` is
+only the default when no `--timeout` was configured);
 `expiresAt` is ISO 8601; `questions` has 1..4 entries. No tokens, credentials or
 full source text.
 
@@ -244,7 +259,10 @@ See §8.2.
 ### 6.1 Host → hook (stdin, implemented)
 
 One line of JSON + newline. Claude / CodeBuddy use `tool_name`, `tool_input`,
-`tool_use_id`; ZCode supplies both camelCase and snake_case aliases.
+`tool_use_id`; ZCode's payload is camelCase (`hookEventName` / `sessionId` /
+`toolCallId` / `toolInput`). The interaction hook accepts both spellings —
+`toolCallId` normalizes onto the request's `toolUseId` — and reads a plan
+approval's `toolInput.plan` the same way.
 
 ```json
 {
@@ -441,7 +459,7 @@ permission outcome.
 | Failure | Empty stdout + exit 0; stderr diagnostics only; never partial JSON |
 | Idempotency | `requestId` + `seq` + `final`; duplicate submits ignored; one `interaction.close` |
 | Sizes | ≤ 8 KiB per event; `answers` ≤ 4000 chars; notification strings ≤ 10,000 chars |
-| Time | `ttlMs ≤ hookTimeoutMs - 500`; ISO 8601 `expiresAt`; single timer, no replay |
+| Time | `ttlMs ≤ timeout - 500` (validated against `maxHookTimeoutMs`); ISO 8601 `expiresAt`; single timer, no replay; a request opened with no console connected closes at once |
 | Data | Raw `TraceEvent` immutable; `answers` display-only; redact before write |
 | Clients | ChatGPT / OpenCode / Pi / DeepSeek Harness have no command-hook decision channel |
 

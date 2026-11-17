@@ -109,67 +109,96 @@ test("C2: creating an interaction returns 201 and invalid payloads return 400", 
 
 test("C3: events are accepted once, replays are idempotent, backward seq is refused", async (t) => {
   const { url } = await startServer(t);
-  const request = makeRequest();
-  await postJson(`${url}/api/interactions`, request);
+  // A console page must be attached, or the service closes every request at
+  // once (no client could ever answer it).
+  const stream = await openStream(`${url}/api/stream`);
+  try {
+    await stream.waitFor(/event: ready/);
+    const request = makeRequest();
+    await postJson(`${url}/api/interactions`, request);
 
-  const first = await postJson(
-    `${url}/api/interactions/${request.requestId}/events`,
-    interactionEvent(request, { seq: 1 }),
-  );
-  assert.equal(first.status, 202);
-  assert.equal(first.body.duplicate, false);
+    const first = await postJson(
+      `${url}/api/interactions/${request.requestId}/events`,
+      interactionEvent(request, { seq: 1 }),
+    );
+    assert.equal(first.status, 202);
+    assert.equal(first.body.duplicate, false);
 
-  const replay = await postJson(
-    `${url}/api/interactions/${request.requestId}/events`,
-    interactionEvent(request, { seq: 1 }),
-  );
-  assert.equal(replay.status, 202);
-  assert.equal(replay.body.duplicate, true);
+    const replay = await postJson(
+      `${url}/api/interactions/${request.requestId}/events`,
+      interactionEvent(request, { seq: 1 }),
+    );
+    assert.equal(replay.status, 202);
+    assert.equal(replay.body.duplicate, true);
 
-  const backward = await postJson(
-    `${url}/api/interactions/${request.requestId}/events`,
-    interactionEvent(request, { seq: 1, eventId: "iev-other" }),
-  );
-  assert.equal(backward.status, 400);
-  assert.match(backward.body.error, /seq must increase/);
+    const backward = await postJson(
+      `${url}/api/interactions/${request.requestId}/events`,
+      interactionEvent(request, { seq: 1, eventId: "iev-other" }),
+    );
+    assert.equal(backward.status, 400);
+    assert.match(backward.body.error, /seq must increase/);
 
-  const unknown = await postJson(
-    `${url}/api/interactions/irq-doesnotexist/events`,
-    interactionEvent(request, { seq: 2, eventId: "iev-2" }),
-  );
-  assert.equal(unknown.status, 404);
+    const unknown = await postJson(
+      `${url}/api/interactions/irq-doesnotexist/events`,
+      interactionEvent(request, { seq: 2, eventId: "iev-2" }),
+    );
+    assert.equal(unknown.status, 404);
+  } finally {
+    stream.close();
+  }
 });
 
 test("C4: submit closes with a result and repeated closes cannot change it", async (t) => {
   const { url } = await startServer(t);
+  const stream = await openStream(`${url}/api/stream`);
+  try {
+    await stream.waitFor(/event: ready/);
+    const request = makeRequest();
+    await postJson(`${url}/api/interactions`, request);
+
+    const submitted = await postJson(
+      `${url}/api/interactions/${request.requestId}/events`,
+      {
+        ...interactionEvent(request, { seq: 1 }),
+        action: "submit",
+        final: true,
+        answers: { "Which framework?": "Vue" },
+      },
+    );
+    assert.equal(submitted.status, 202);
+    assert.equal(submitted.body.result.status, "answered");
+    assert.deepEqual(submitted.body.result.answers, { "Which framework?": "Vue" });
+
+    const closed = await postJson(`${url}/api/interactions/${request.requestId}/close`, {
+      status: "cancelled",
+    });
+    assert.equal(closed.status, 200);
+    assert.equal(closed.body.duplicate, true);
+    assert.equal(closed.body.result.status, "answered");
+
+    const late = await postJson(
+      `${url}/api/interactions/${request.requestId}/events`,
+      interactionEvent(request, { seq: 2, eventId: "iev-2" }),
+    );
+    assert.equal(late.status, 409);
+  } finally {
+    stream.close();
+  }
+});
+
+test("C2: a request opened with no console attached closes at once", async (t) => {
+  const { url, home } = await startServer(t);
   const request = makeRequest();
-  await postJson(`${url}/api/interactions`, request);
-
-  const submitted = await postJson(
-    `${url}/api/interactions/${request.requestId}/events`,
-    {
-      ...interactionEvent(request, { seq: 1 }),
-      action: "submit",
-      final: true,
-      answers: { "Which framework?": "Vue" },
-    },
-  );
-  assert.equal(submitted.status, 202);
-  assert.equal(submitted.body.result.status, "answered");
-  assert.deepEqual(submitted.body.result.answers, { "Which framework?": "Vue" });
-
-  const closed = await postJson(`${url}/api/interactions/${request.requestId}/close`, {
-    status: "cancelled",
-  });
-  assert.equal(closed.status, 200);
-  assert.equal(closed.body.duplicate, true);
-  assert.equal(closed.body.result.status, "answered");
-
-  const late = await postJson(
-    `${url}/api/interactions/${request.requestId}/events`,
-    interactionEvent(request, { seq: 2, eventId: "iev-2" }),
-  );
-  assert.equal(late.status, 409);
+  const created = await postJson(`${url}/api/interactions`, request);
+  assert.equal(created.status, 201);
+  // Interaction frames are never replayed on reconnect, so with zero stream
+  // clients nobody could ever answer: the service closes the request as
+  // `cancelled` immediately and the hook's poll sees the result file.
+  const record = await (await fetch(`${url}/api/interactions/${request.requestId}`)).json();
+  assert.equal(record.result.status, "cancelled");
+  assert.equal(record.result.answeredBy, "service");
+  const resultFile = join(home, "interactions", `${request.requestId}.json`);
+  assert.equal(JSON.parse(readFileSync(resultFile, "utf8")).status, "cancelled");
 });
 
 test("C4: a close without a submit produces a cancelled result", async (t) => {
@@ -244,41 +273,49 @@ function findEventsFile(root) {
 
 test("E3: closing writes one Notification TraceEvent and redacts the device", async (t) => {
   const { url, home } = await startServer(t);
-  const request = makeRequest({ sessionId: "session-notify" });
-  await postJson(`${url}/api/interactions`, request);
-  const closed = await postJson(
-    `${url}/api/interactions/${request.requestId}/close`,
-    { status: "cancelled", answeredBy: "sk-abcdefghijklmnop" },
-  );
-  assert.equal(closed.body.result.status, "cancelled");
+  // Attached console: the close below is a human cancellation, not the
+  // no-console fast fail.
+  const stream = await openStream(`${url}/api/stream`);
+  try {
+    await stream.waitFor(/event: ready/);
+    const request = makeRequest({ sessionId: "session-notify" });
+    await postJson(`${url}/api/interactions`, request);
+    const closed = await postJson(
+      `${url}/api/interactions/${request.requestId}/close`,
+      { status: "cancelled", answeredBy: "sk-abcdefghijklmnop" },
+    );
+    assert.equal(closed.body.result.status, "cancelled");
 
-  // The notification is appended after the close frame; poll the JSONL file
-  // instead of the SSE stream so this test does not depend on client timing.
-  let lines = [];
-  for (let attempt = 0; attempt < 60 && !lines.length; attempt += 1) {
-    const file = findEventsFile(home);
-    if (file) {
-      lines = readFileSync(file, "utf8").trim().split("\n").filter(Boolean);
+    // The notification is appended after the close frame; poll the JSONL file
+    // instead of the SSE stream so this test does not depend on client timing.
+    let lines = [];
+    for (let attempt = 0; attempt < 60 && !lines.length; attempt += 1) {
+      const file = findEventsFile(home);
+      if (file) {
+        lines = readFileSync(file, "utf8").trim().split("\n").filter(Boolean);
+      }
+      if (!lines.length) {
+        await sleep(50);
+      }
     }
-    if (!lines.length) {
-      await sleep(50);
-    }
+    const events = lines.map((line) => JSON.parse(line));
+    const notification = events.find((event) => event.eventName === "Notification");
+    assert.ok(notification, `notification row written: ${lines.join("\n")}`);
+    assert.equal(
+      events.filter((event) => event.eventName === "Notification").length,
+      1,
+      "one close writes exactly one notification",
+    );
+    assert.equal(notification.payload.notification_type, "answer_cancelled");
+    assert.equal(notification.sessionId, request.sessionId);
+    assert.match(notification.payload.message, /cancelled the question/);
+    assert.doesNotMatch(
+      JSON.stringify(notification.payload),
+      /sk-abcdefghijklmnop/,
+      "event-protocol §10 redaction applies before the row is written",
+    );
+    assert.match(notification.payload.message, /sk-\[redacted\]/);
+  } finally {
+    stream.close();
   }
-  const events = lines.map((line) => JSON.parse(line));
-  const notification = events.find((event) => event.eventName === "Notification");
-  assert.ok(notification, `notification row written: ${lines.join("\n")}`);
-  assert.equal(
-    events.filter((event) => event.eventName === "Notification").length,
-    1,
-    "one close writes exactly one notification",
-  );
-  assert.equal(notification.payload.notification_type, "answer_cancelled");
-  assert.equal(notification.sessionId, request.sessionId);
-  assert.match(notification.payload.message, /cancelled the question/);
-  assert.doesNotMatch(
-    JSON.stringify(notification.payload),
-    /sk-abcdefghijklmnop/,
-    "event-protocol §10 redaction applies before the row is written",
-  );
-  assert.match(notification.payload.message, /sk-\[redacted\]/);
 });

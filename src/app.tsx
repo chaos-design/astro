@@ -312,6 +312,7 @@ import {
   isUserQuestionStartEvent,
 } from "./lib/trace-event-kind";
 import { hasPlanContent, userQuestionSummary } from "./lib/user-question-content";
+import { optionLabels } from "./lib/interaction-panel-model";
 import type {
   HarnessNode,
   HarnessNodeData,
@@ -3401,6 +3402,15 @@ function TraceInspector({
   const answerForm = matchedQuestion ? (
     <QuestionAnswerForm
       question={matchedQuestion.question.question}
+      // Single-select descriptors answer in one click — a plan approval is an
+      // Approve/Reject pair, and the synchronous window has no click to spare.
+      // Multi-select keeps the typed-answer row; the floating panel is the
+      // full multi-select surface.
+      options={
+        matchedQuestion.question.multiSelect === true
+          ? undefined
+          : optionLabels(matchedQuestion.question)
+      }
       selection={
         matchedQuestion.draft.selections[matchedQuestion.question.question]?.[0]
       }
@@ -6605,12 +6615,16 @@ export default function App() {
   const selectedEventIndex =
     activeEvents.findIndex((event) => event.id === selectedEventId);
   // The question the inspector shows is also the question an answer must be
-  // keyed to. Prefer the selected event (a LOG row may be the question itself)
-  // and fall back to the Flow atom's bound start event. Both come from the
-  // same event the reader sees; the floating panel's "newest request" rule is
-  // deliberately not used here.
+  // keyed to. Prefer the selected event (a LOG row may be the question itself,
+  // and a plan approval tool row previews the same plan) and fall back to the
+  // Flow atom's bound start event. Both come from the same event the reader
+  // sees; the floating panel's "newest request" rule is deliberately not used
+  // here. The plan-content branch mirrors the inspector's display fallback and
+  // stays display-only: it does not touch the user-question classifier.
   const inspectedQuestionEvent =
-    selectedEvent && getTraceEventKey(selectedEvent) === "user.question"
+    selectedEvent &&
+    (getTraceEventKey(selectedEvent) === "user.question" ||
+      hasPlanContent(selectedEvent.payload))
       ? selectedEvent
       : selectedAtom?.key === "user.question"
         ? selectedAtom.event

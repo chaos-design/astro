@@ -1,13 +1,15 @@
 /**
  * In-memory interaction records plus the one file the synchronous hook can
  * read: `<ASTRO_HOME>/interactions/<requestId>.json`, written when a request
- * closes. Requests live for seconds, so they are not persisted as a store of
- * record — only the request and result snapshots are written, each through a
- * temp file and a rename so a polling hook never reads half a document.
+ * closes. Requests live for the hook's configured window (the installer's
+ * `--timeout`, seconds), so they are not persisted as a store of record —
+ * only the request and result snapshots are written, each through a temp file
+ * and a rename so a polling hook never reads half a document.
  *
  * One `setTimeout` per request is the only timer. Closing a request clears it;
  * the timeout path calls the same `finish()` as an explicit close, which is
- * what makes `interaction.close` exactly-once.
+ * what makes `interaction.close` exactly-once. A request opened with no
+ * console attached to the stream closes at once: nobody can ever answer it.
  */
 
 import { mkdirSync, renameSync, writeFileSync } from "node:fs";
@@ -62,11 +64,13 @@ export function buildInteractionNotification(request, result, options = {}) {
   const summary =
     result.status === "answered"
       ? `User answered ${count} via ${device}; the answers were injected by the host hook.`
-      : result.status === "cancelled"
-        ? `The user cancelled the question via ${device}; the host's native prompt is in charge.`
-        : result.status === "timeout"
-          ? "The question expired without an answer; the host's native prompt is in charge."
-          : "The session ended before an answer; the host's native prompt is in charge.";
+      : result.status === "cancelled" && device === "service"
+        ? "No console page was attached, so the question was closed at once; the host's native prompt is in charge."
+        : result.status === "cancelled"
+          ? `The user cancelled the question via ${device}; the host's native prompt is in charge.`
+          : result.status === "timeout"
+            ? "The question expired without an answer; the host's native prompt is in charge."
+            : "The session ended before an answer; the host's native prompt is in charge.";
   return buildAgentNotification(
     {
       requestId: request.requestId,
@@ -94,6 +98,7 @@ export function createInteractionStore(options = {}) {
   const onOpen = options.onOpen || (() => {});
   const onUpdate = options.onUpdate || (() => {});
   const onClose = options.onClose || (() => {});
+  const hasStreamClients = options.hasStreamClients || (() => true);
   const records = new Map();
 
   function pathFor(requestId, suffix) {
@@ -162,6 +167,14 @@ export function createInteractionStore(options = {}) {
       writeJsonAtomic(pathFor(request.requestId, ".request.json"), request);
       scheduleTimeout(record);
       onOpen(record.request);
+      // Interaction frames are never replayed on reconnect, so a request
+      // opened with no console attached to the stream can never be answered.
+      // Close it at once — `cancelled` is in the hook's break set, so the
+      // host's native prompt returns immediately instead of the synchronous
+      // window blocking for nobody.
+      if (!hasStreamClients()) {
+        finish(record, "cancelled", {}, "service");
+      }
       return { request: record.request, created: true };
     },
 

@@ -8188,8 +8188,38 @@ pre,
   white-space: nowrap;
 }
 
+/* Quick answers for a single-select descriptor (a plan approval is an
+   Approve/Reject pair). The row wraps so the buttons keep their full click
+   area on a narrow inspector instead of overflowing it. */
+.question-answer__options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.question-answer__option {
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel);
+  color: inherit;
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.question-answer__option:hover:not(:disabled) {
+  border-color: var(--teal);
+  background: color-mix(in srgb, var(--teal) 12%, var(--panel));
+}
+
+.question-answer__option:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
 .question-answer__row {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
 }
 

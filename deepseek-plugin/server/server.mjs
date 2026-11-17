@@ -27,6 +27,11 @@ import storagePaths from "../plugin/storage-paths.cjs";
 import { createDemoDatasetReader } from "./demo-dataset.mjs";
 import { TraceRepository } from "./trace-repository.mjs";
 import { writeTraceDirectory } from "./runtime-settings.mjs";
+import {
+  InteractionStoreError,
+  buildInteractionNotification,
+  createInteractionStore,
+} from "./interaction-store.mjs";
 
 const serverDir = dirname(fileURLToPath(import.meta.url));
 const serverFile = fileURLToPath(import.meta.url);
@@ -165,6 +170,14 @@ function sendJson(response, status, value, headers = {}) {
     ...headers,
   });
   response.end(JSON.stringify(value));
+}
+
+function sendInteractionError(response, error) {
+  if (error instanceof InteractionStoreError) {
+    sendJson(response, error.status, { error: error.message });
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -556,6 +569,58 @@ store.on("error", (error) => {
   console.error(`[trace-store] ${error.message}`);
 });
 
+// Interaction requests are ephemeral (a 4.5 s hook window), so they live in
+// memory and write exactly one file the synchronous hook can poll. The three
+// callbacks become SSE frames on the same stream the console already reads.
+//
+// Closing also records one `Notification` TraceEvent — an existing event name,
+// so the log and the Answers preview need no new projection. It carries counts
+// and the device, never the answers, and `createTraceEvent` applies the
+// protocol's recursive redaction before the row is written.
+function recordInteractionNotification(request, result) {
+  try {
+    const notification = buildInteractionNotification(request, result);
+    const event = createTraceEvent(
+      {
+        eventName: "Notification",
+        source: request.source,
+        sessionId: request.sessionId,
+        toolUseId: request.toolUseId,
+        payload: {
+          message: notification.summary,
+          notification_type: notification.kind,
+          notification_id: notification.notificationId,
+          interaction_request_id: notification.requestId,
+          answered: notification.detail.answered,
+        },
+      },
+      { source: request.source },
+    );
+    void Promise.resolve(store.append([event])).catch((error) => {
+      console.error(`[interaction] notification write failed: ${error.message}`);
+    });
+  } catch (error) {
+    // A failed notification must never turn a closed interaction into a 500:
+    // the answer already reached the host through the result file.
+    console.error(`[interaction] notification skipped: ${error.message}`);
+  }
+}
+
+const interactions = createInteractionStore({
+  astroHome: resolveAstroHome(environment),
+  // Only a console attached to the stream can ever answer: SSE frames are not
+  // replayed on reconnect, so a request opened with zero clients is closed at
+  // once instead of blocking the host's synchronous window for nobody.
+  hasStreamClients: () => clients.size > 0,
+  onOpen: (request) => broadcast("interaction.open", request),
+  onUpdate: (event) => broadcast("interaction.update", event),
+  onClose: (result, request) => {
+    broadcast("interaction.close", result);
+    recordInteractionNotification(request, result);
+  },
+});
+interactions.init();
+
 /**
  * Spawn the successor on the same port, answer, then hand the socket over.
  * Shared by the restart button and the data-directory setting so both paths
@@ -725,6 +790,66 @@ async function handleRequest(request, response) {
       query,
       matches: searchEvents(events, query),
     });
+    return;
+  }
+
+  // Interaction bridge: the synchronous hook registers a request here and
+  // polls a result file; the console appends events and closes the request.
+  // `GET` exposes the same record for a late console tab or a reconnect.
+  if (requestUrl.pathname === "/api/interactions") {
+    if (request.method !== "POST") {
+      sendJson(response, 405, { error: "Method not allowed" });
+      return;
+    }
+    try {
+      const body = await readJsonBody(request);
+      const result = interactions.create(body);
+      sendJson(response, result.created ? 201 : 200, {
+        requestId: result.request.requestId,
+        expiresAt: result.request.expiresAt,
+        ttlMs: result.request.ttlMs,
+        created: result.created,
+      });
+    } catch (error) {
+      if (!sendInteractionError(response, error)) {
+        sendJson(response, 400, { error: error.message });
+      }
+    }
+    return;
+  }
+
+  const interactionRoute =
+    /^\/api\/interactions\/([^/]+)(?:\/(events|close))?$/.exec(requestUrl.pathname);
+  if (interactionRoute) {
+    const requestId = decodeURIComponent(interactionRoute[1]);
+    const action = interactionRoute[2] || "";
+    if (request.method === "GET" && !action) {
+      const record = interactions.get(requestId);
+      sendJson(
+        response,
+        record ? 200 : 404,
+        record || { error: "Interaction not found" },
+      );
+      return;
+    }
+    if (request.method === "POST" && (action === "events" || action === "close")) {
+      try {
+        const body = await readJsonBody(request);
+        const result = action === "events"
+          ? interactions.append(requestId, body)
+          : interactions.close(requestId, body);
+        sendJson(response, action === "events" ? 202 : 200, {
+          requestId,
+          ...result,
+        });
+      } catch (error) {
+        if (!sendInteractionError(response, error)) {
+          sendJson(response, 400, { error: error.message });
+        }
+      }
+      return;
+    }
+    sendJson(response, 405, { error: "Method not allowed" });
     return;
   }
 
@@ -1005,6 +1130,7 @@ function removePidFile() {
 
 function shutdown() {
   store.stop();
+  interactions.stop();
   for (const response of clients) {
     response.end();
   }

@@ -33,6 +33,14 @@ import {
 const HOOK_SCRIPT = resolve(import.meta.dirname, "interaction-hook.mjs");
 const HOOK_MARKER = "interaction-hook.mjs";
 const MATCHER = "AskUserQuestion|ExitPlanMode";
+// The console's answer window is the hook's synchronous window: the installer
+// writes the same number of seconds into the host's hook timeout and the
+// hook's `--timeout` argument, so the request's TTL can never outlive the
+// host's wait. Ten minutes covers walking to the console and answering; with
+// no console attached the service closes the request at once and the host's
+// native prompt appears immediately.
+const DEFAULT_TIMEOUT_SECONDS = 600;
+const MAX_TIMEOUT_SECONDS = 3600;
 // CodeBuddy only documents `modifiedInput` on PreToolUse; PermissionRequest
 // hosts use `decision.updatedInput`. Register the event each host actually
 // understands instead of forcing one event on all three.
@@ -54,13 +62,25 @@ const clientLabels = {
   zcode: "ZCode",
 };
 
-/** A source id and, for CodeBuddy, the PreToolUse input field it reads. */
-export function hookArgsFor(client) {
-  const args = [`--source=${SOURCE_BY_CLIENT[client]}`];
+/** A source id, the hook window, and for CodeBuddy the PreToolUse input field. */
+export function hookArgsFor(client, timeoutSeconds = DEFAULT_TIMEOUT_SECONDS) {
+  const args = [
+    `--source=${SOURCE_BY_CLIENT[client]}`,
+    `--timeout=${timeoutSeconds}`,
+  ];
   if (client === "codebuddy") {
     args.push("--input-field=modifiedInput");
   }
   return args;
+}
+
+/** Clamp the window to what the contract's validation accepts. */
+export function parseTimeoutSeconds(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return DEFAULT_TIMEOUT_SECONDS;
+  }
+  return Math.min(Math.floor(parsed), MAX_TIMEOUT_SECONDS);
 }
 
 export function parseArgs(argv) {
@@ -69,6 +89,7 @@ export function parseArgs(argv) {
     apply: false,
     remove: false,
     events: null,
+    timeoutSeconds: DEFAULT_TIMEOUT_SECONDS,
   };
   for (const arg of argv) {
     if (arg === "--apply") {
@@ -91,6 +112,8 @@ export function parseArgs(argv) {
         } else {
           options[key === "hook-path" ? "hookPath" : key] = value;
         }
+      } else if (key === "timeout") {
+        options.timeoutSeconds = parseTimeoutSeconds(value);
       }
     }
   }
@@ -114,17 +137,22 @@ export function runInstaller(options, io = {}) {
   if (!CLIENTS.has(client)) {
     throw new Error(`unsupported client: ${client}`);
   }
+  const timeoutSeconds = options.timeoutSeconds ?? DEFAULT_TIMEOUT_SECONDS;
   const target = options.settings || getConfigPath(client, options.home);
   const current = existsSync(target)
     ? JSON.parse(readFileSync(target, "utf8") || "{}")
     : {};
   const shared = {
     events: options.events?.length ? options.events : DEFAULT_EVENTS[client],
-    hookArgs: hookArgsFor(client),
+    hookArgs: hookArgsFor(client, timeoutSeconds),
     hookMarker: HOOK_MARKER,
     hookPath: options.hookPath || HOOK_SCRIPT,
     label: "interaction-hook",
     matcher: MATCHER,
+    // The merge helpers read `timeoutMs` (ZCode, milliseconds) and `timeout`
+    // (Claude/CodeBuddy, seconds) from this same object.
+    timeout: timeoutSeconds,
+    timeoutMs: timeoutSeconds * 1000,
   };
   const result = options.remove
     ? removeHookConfig(current, client, shared)
@@ -166,6 +194,7 @@ export function runInstaller(options, io = {}) {
   // cheaper than explaining a hook that silently did nothing in the session
   // the reader already had open.
   log(`# open a new ${clientLabels[client]} session; hooks are read at session start`);
+  log(`# answer window: ${timeoutSeconds}s while a console page is attached; with no console connected the host's native prompt returns at once`);
   if (client === "codebuddy") {
     log("# CodeBuddy PreToolUse answers arrive in modifiedInput.");
   }

@@ -138,7 +138,7 @@ test("F4: a Notification hook returns no decision and exits 0", async (t) => {
   assert.deepEqual(readdirSync(join(home, "interactions")), []);
 });
 
-test("F4: no answer within the window falls back to the host prompt", async (t) => {
+test("F4: no console attached closes the request at once and falls back", async (t) => {
   const { url, home } = await startServer(t);
   const started = Date.now();
   const result = await runHook(askPayload(), {
@@ -153,8 +153,49 @@ test("F4: no answer within the window falls back to the host prompt", async (t) 
 
   const closed = await waitForResultFile(home);
   assert.ok(closed, "the service closed the request");
-  assert.equal(closed.status, "timeout");
+  // Nobody was attached to the stream, so the service closed the request as
+  // `cancelled` at registration instead of waiting out the TTL.
+  assert.equal(closed.status, "cancelled");
+  assert.equal(closed.answeredBy, "service");
   assert.deepEqual(closed.answers, {});
+});
+
+test("F4: an attached console sees the request live until the TTL expires", async (t) => {
+  const { url, home } = await startServer(t);
+  const controller = new AbortController();
+  const stream = await fetch(`${url}/api/stream`, {
+    headers: { Accept: "text/event-stream" },
+    signal: controller.signal,
+  });
+  assert.equal(stream.status, 200);
+  // Wait for the ready frame so the client is registered before the hook
+  // registers its request — otherwise this test would race the snapshot.
+  const reader = stream.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  for (;;) {
+    const chunk = await reader.read();
+    buffer += decoder.decode(chunk.value, { stream: true });
+    if (/event: ready/.test(buffer) || chunk.done) {
+      break;
+    }
+  }
+  assert.match(buffer, /event: ready/);
+  try {
+    const result = await runHook(askPayload(), {
+      ASTRO_INTERACTION_SERVICE: url,
+      ASTRO_HOME: home,
+      ASTRO_INTERACTION_TIMEOUT_MS: "700",
+    });
+    assert.equal(result.status, 0);
+    assert.equal(result.stdout, "");
+    const closed = await waitForResultFile(home);
+    assert.ok(closed, "the service closed the request");
+    assert.equal(closed.status, "timeout", "the TTL path still times out");
+    assert.deepEqual(closed.answers, {});
+  } finally {
+    controller.abort();
+  }
 });
 
 test("F4: a service that is down still fails open", async () => {

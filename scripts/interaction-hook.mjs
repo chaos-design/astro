@@ -3,8 +3,12 @@
  * Opt-in interaction hook: let the ASTRO console answer a user question inside
  * the host's synchronous decision window.
  *
- * The host runs hooks with a short timeout (5 s here, `timeoutMs: 5000` on
- * ZCode), so this hook never waits for a human longer than that. It registers
+ * The window is the hook's registered timeout — the installer writes it from
+ * `--timeout` (seconds, default 600) into both the host's hook configuration
+ * and this script's `--timeout` argument, so the request's TTL always stays
+ * inside what the host actually waits. While the console is attached to the
+ * stream the whole window is answerable; with no console connected the service
+ * closes the request at once and this hook fails open immediately. It registers
  * the request with the local service, polls the result file the service writes
  * when the console answers, and returns the host's allow decision if an answer
  * arrived. Every other outcome — no service, no answer, a slow console, bad
@@ -86,6 +90,14 @@ export function optionsFromArgv(argv = process.argv.slice(2)) {
       if (value === "modifiedInput" || value === "updatedInput") {
         options.inputField = value;
       }
+    } else if (arg.startsWith("--timeout=")) {
+      // Seconds, matching the `timeout` field the installer writes into the
+      // host's hook configuration. The window must never exceed what the host
+      // actually waits, or a killed hook leaves an unanswerable request open.
+      const seconds = positiveInteger(arg.slice("--timeout=".length).trim(), 0);
+      if (seconds > 0) {
+        options.timeoutMs = seconds * 1000;
+      }
     }
   }
   return options;
@@ -149,7 +161,9 @@ export function parseHostPayload(payload, options = {}) {
     questions,
     plan,
     sessionId: field(payload, ["session_id", "sessionId"]) || "unknown-session",
-    toolUseId: field(payload, ["tool_use_id", "toolUseId", "call_id"]),
+    // ZCode reports tool identity as camelCase toolCallId (the adapter maps it
+    // onto toolUseId for capture); accept every host spelling here too.
+    toolUseId: field(payload, ["tool_use_id", "toolUseId", "toolCallId", "call_id"]),
     cwd: field(payload, ["cwd", "working_directory", "project_dir"]),
     source:
       options.source ||

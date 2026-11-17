@@ -24,7 +24,8 @@ export interface MatchedQuestionInteraction {
 /**
  * Question texts carried by one start event, in capture order. Structured
  * prompts win over the free-form message; a plan approval has no answerable
- * question text and is matched by tool id instead.
+ * question text and is matched by tool id, falling back to the session's open
+ * ExitPlanMode request.
  */
 export function questionTextsFromEvent(event: TraceEvent | null): string[] {
   if (!event) {
@@ -66,6 +67,10 @@ function eventToolUseId(event: TraceEvent): string {
  * is the fallback for clients that report only one of the two ids. When the
  * tool id matches but the event carries no readable text, the request's first
  * descriptor is used — the host still receives a fully keyed answer map.
+ * Plan approvals carry no readable text at all, so when the tool id is
+ * missing on either side the last resort is the session's newest open
+ * ExitPlanMode request (the host is synchronous, so two plan approvals of
+ * one session cannot compete).
  */
 export function matchQuestionInteraction(
   drafts: Record<string, InteractionDraft>,
@@ -103,6 +108,21 @@ export function matchQuestionInteraction(
   if (byText) {
     const question = pick(byText);
     return question ? { draft: byText, question } : null;
+  }
+  if (!texts.length) {
+    const byPlan = [...open]
+      .reverse()
+      .find((draft) =>
+        draft.request.toolName === "ExitPlanMode" &&
+        (!event.sessionId ||
+          event.sessionId === "unknown-session" ||
+          draft.request.sessionId === "unknown-session" ||
+          draft.request.sessionId === event.sessionId),
+      );
+    if (byPlan) {
+      const question = pick(byPlan);
+      return question ? { draft: byPlan, question } : null;
+    }
   }
   return null;
 }

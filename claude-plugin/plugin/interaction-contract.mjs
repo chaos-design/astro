@@ -64,7 +64,12 @@ export const INTERACTION_LIMITS = Object.freeze({
   answersChars: 4000,
   summaryLength: 500,
   notificationString: 10000,
+  // Default synchronous window when the installer passes no `--timeout`.
   hookTimeoutMs: 5000,
+  // Validation ceiling for a configured window: the installer may register a
+  // longer hook timeout (default 600 s) so the console can answer for as long
+  // as the host actually waits. `hookTimeoutMs` stays the no-flag default.
+  maxHookTimeoutMs: 3_600_000,
   ttlMarginMs: 500,
 });
 
@@ -140,7 +145,7 @@ export function normalizeQuestionOptions(options) {
     .filter((option) => option.label);
 }
 
-/** `ttlMs ≤ hookTimeoutMs - 500`, floored at zero. */
+/** `ttlMs ≤ timeoutMs - 500`, floored at zero; the default is the 5 s window. */
 export function resolveInteractionTtl(timeoutMs = INTERACTION_LIMITS.hookTimeoutMs) {
   const timeout = Number.isFinite(timeoutMs) && timeoutMs > 0
     ? timeoutMs
@@ -246,9 +251,14 @@ export function validateInteractionRequest(value) {
   if (
     !Number.isInteger(value.ttlMs) ||
     value.ttlMs < 0 ||
-    value.ttlMs > INTERACTION_LIMITS.hookTimeoutMs - INTERACTION_LIMITS.ttlMarginMs
+    value.ttlMs >
+      INTERACTION_LIMITS.maxHookTimeoutMs - INTERACTION_LIMITS.ttlMarginMs
   ) {
-    errors.push(`ttlMs must be an integer within 0..${resolveInteractionTtl()}`);
+    errors.push(
+      `ttlMs must be an integer within 0..${
+        resolveInteractionTtl(INTERACTION_LIMITS.maxHookTimeoutMs)
+      }`,
+    );
   }
   if (!Number.isInteger(value.revision) || value.revision < 1) {
     errors.push("revision must be a positive integer");

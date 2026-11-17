@@ -58,7 +58,7 @@ test("F1: dry run is the default and --apply writes a backup", () => {
     assert.equal(saved.hooks.PermissionRequest.length, 1);
     assert.equal(
       saved.hooks.PermissionRequest[0].hooks[0].command,
-      `node "${hookPath}" --source=claude`,
+      `node "${hookPath}" --source=claude --timeout=600`,
     );
     assert.deepEqual(saved.hooks.PostToolUse, [
       { hooks: [{ type: "command", command: "echo format" }] },
@@ -127,7 +127,7 @@ test("F1: installing twice is idempotent and remove keeps ASTRO recorder groups"
   }
 });
 
-test("F2: ZCode gets hooks.enabled, its own events map and a 5000 ms timeout", () => {
+test("F2: ZCode gets hooks.enabled, its own events map and the 600 s window", () => {
   const { home, target } = tempSettings({ hooks: { timeoutMs: 60000 } });
   try {
     const events = ["PreToolUse", "PermissionRequest"];
@@ -147,8 +147,10 @@ test("F2: ZCode gets hooks.enabled, its own events map and a 5000 ms timeout", (
       const handler = saved.hooks.events[event][0].hooks[0];
       assert.equal(handler.type, "process");
       assert.equal(handler.command, "node");
-      assert.deepEqual(handler.args, [hookPath, "--source=zcode"]);
-      assert.equal(handler.timeoutMs, 5000);
+      // The hook's `--timeout` mirrors the registered window, so the request's
+      // TTL can never outlive the host's synchronous wait.
+      assert.deepEqual(handler.args, [hookPath, "--source=zcode", "--timeout=600"]);
+      assert.equal(handler.timeoutMs, 600000);
     }
   } finally {
     rmSync(home, { recursive: true, force: true });
@@ -158,6 +160,7 @@ test("F2: ZCode gets hooks.enabled, its own events map and a 5000 ms timeout", (
 test("F2: CodeBuddy uses modifiedInput and ZCode validation needs every event", () => {
   assert.deepEqual(hookArgsFor("codebuddy"), [
     "--source=workbuddy",
+    "--timeout=600",
     "--input-field=modifiedInput",
   ]);
   const { home, target } = tempSettings();

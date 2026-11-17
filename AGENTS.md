@@ -701,11 +701,16 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   it; a question row must never fall back to the tool name.
 - When the displayed question has a live `InteractionRequest`, the expanded
   atom inspector mounts an answer box. `src/lib/question-interaction.ts` owns
-  the one match rule (tool id first, then session + verbatim question text),
-  and `answerInteractionQuestion()` sends `text` + `submit` as one seq chain.
-  The answer key is always the descriptor's verbatim question text. The
-  floating interaction panel keeps its newest-request rule and is untouched
-  by canvas selection.
+  the one match rule (tool id first, then session + verbatim question text,
+  then — for the textless plan approval — the session's newest open
+  ExitPlanMode request), and `answerInteractionQuestion()` sends `text` +
+  `submit` as one seq chain. The answer key is always the descriptor's
+  verbatim question text. Single-select descriptors render one-click quick
+  answer buttons above the free-text row (a plan approval is an
+  Approve/Reject pair), and the inspector's question binding mirrors the
+  display fallback: a plan-content tool row answers like the question atom.
+  The floating interaction panel keeps its newest-request rule and is
+  untouched by canvas selection.
 - `PreCompact` / `PostCompact` cover context compaction for every client that
   reports it; streaming compaction deltas are never recorded.
 
@@ -803,7 +808,10 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   is a separate opt-in hook: it registers at `POST /api/interactions`, polls
   `<ASTRO_HOME>/interactions/<id>.json` inside `ttlMs = timeout - 500`, and
   returns `allow` with `updatedInput.answers` only for an `answered` result.
-  Cancelled, timed out or unreachable service → empty stdout + exit 0.
+  Cancelled, timed out or unreachable service → empty stdout + exit 0. The
+  hook parses every host payload spelling — ZCode's camelCase `toolCallId`
+  included — so a plan approval's request always carries the tool id the
+  console matches on.
 - It does **not** write a `PermissionRequest` TraceEvent: the recorder already
   captures the same host event, and a second write produced two identical
   question rows in the LOG. Records of the outcome are the recorder's
@@ -821,8 +829,17 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   `permissionDecisionReason` are capped at 10,000 characters and only
   `PreToolUse` can carry the first two (ZCode's strict stdout schema rejects
   extra keys on `PermissionRequest`).
-- A hook is synchronous and bounded by the 5 s / ZCode 5000 ms timeout; never
-  block past it, `exit 2` or emit `continue: false`.
+- A hook is synchronous: the answer window **is** the hook's registered
+  timeout, written by the installer (`--timeout`, seconds, default 600) into
+  both the host's hook configuration and the hook's `--timeout` argument, so
+  the request's TTL can never outlive the host's wait — never block past it,
+  `exit 2` or emit `continue: false`. While a console page is attached to
+  `/api/stream` the whole window is answerable; with no console connected the
+  service closes the request as `cancelled` at once (interaction frames are
+  never replayed on reconnect, so nobody could answer it) and the host's
+  native prompt returns immediately. The contract validates a configured
+  window against `maxHookTimeoutMs` (1 h), with `hookTimeoutMs` (5 s) staying
+  the no-flag default.
 - `scripts/install-interaction-hook.mjs` reuses the merge / validate / remove
   helpers of `install-auto-approve-hook.mjs` (parameterized by `hookMarker`,
   `events`, `hookArgs`). Dry-run by default, backup on `--apply`, `--remove`

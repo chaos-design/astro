@@ -129,9 +129,11 @@
     newest question *start*), while status follows the last matching event;
   - the binding between a question and an interaction request lives only in
     `src/lib/question-interaction.ts`: tool id first, then session plus
-    verbatim question text, with the answer key always the request's exact
-    question text. The inspector answer box and the floating panel share one
-    interaction state and never infer "the current question" separately.
+    verbatim question text, then — for the textless plan approval — the
+    session's newest open ExitPlanMode request, with the answer key always the
+    request's exact question text. The inspector answer box and the floating
+    panel share one interaction state and never infer "the current question"
+    separately.
   New consumers reuse those helpers; do not grow a second failure or live list.
 - Sample (Demo) data lives only in `data/demo-events.json`: the service reads it
   through `server/demo-dataset.mjs` and serves `GET /api/demo-events`, and the
