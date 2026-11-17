@@ -90,6 +90,35 @@ const maxBodyBytes = Number(
 );
 const clients = new Set();
 /**
+ * The last console page leaving is a decision, not just bookkeeping: an open
+ * interaction can no longer be answered (frames are never replayed), so every
+ * in-flight request is cancelled here and the host's synchronous hook falls
+ * back to its native prompt instead of blocking for the full window.
+ * EventSource reconnects after a brief blip, so a one-second grace lets the
+ * page come back before a live question is thrown away — a second is nothing
+ * against a 600-second host window.
+ */
+let orphanGraceTimer = null;
+function clearOrphanGrace() {
+  if (orphanGraceTimer) {
+    clearTimeout(orphanGraceTimer);
+    orphanGraceTimer = null;
+  }
+}
+function removeStreamClient(response) {
+  clients.delete(response);
+  if (clients.size > 0 || orphanGraceTimer) {
+    return;
+  }
+  orphanGraceTimer = setTimeout(() => {
+    orphanGraceTimer = null;
+    if (clients.size === 0) {
+      interactions.cancelOrphaned();
+    }
+  }, 1000);
+  orphanGraceTimer.unref?.();
+}
+/**
  * Snapshot frames are written in small batches. One `JSON.stringify` of the
  * whole history (95k events / 456MB on a real install) blocked the event loop
  * for minutes: live events, `/api/health` and every other SSE client had to
@@ -913,8 +942,9 @@ async function handleRequest(request, response) {
       "Content-Type": "text/event-stream",
     });
     response.write("retry: 1000\n\n");
+    clearOrphanGrace();
     clients.add(response);
-    request.on("close", () => clients.delete(response));
+    request.on("close", () => removeStreamClient(response));
     // A console page attaching to the event stream is the one truthful signal
     // that the preview page was actually opened — a local tab connects here
     // right after booting, and a deployed console (which never fetches
@@ -969,7 +999,7 @@ async function handleRequest(request, response) {
     } else {
       const delivered = await streamSnapshot(response, events, meta);
       if (!delivered) {
-        clients.delete(response);
+        removeStreamClient(response);
         return;
       }
     }
