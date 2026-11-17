@@ -455,6 +455,7 @@ Before and after upgrade, confirm the data root is unchanged, native recorder co
 | `ASTROX_HISTORY_OPEN` | boolean string | Left History panel. |
 | `ASTROX_CONSOLE_OPEN` | boolean string | Right Events/Inspector panel. |
 | `ASTROX_PERF_HUD` | boolean string | Performance panel on, off by default. |
+| `ASTROX_TASK_COMPLETION_CHIME` | boolean string | Task-completion chime, on by default. |
 
 Legacy `astro-theme` and `astro-platform` values are read and removed after
 writing the new key; `astro:perf-hud` (the on-flag the retired `?perf=1`

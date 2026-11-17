@@ -7,8 +7,8 @@ import { isLiveRunStatus } from "./run-history-state.ts";
  * The sound is generated with the Web Audio API instead of shipping an audio
  * asset: the console is a static page that may be served under a project path
  * on a cloud origin, and a two-note beep needs no bundled file or `assetUrl()`.
- * Playback is strictly opt-in through Settings → Notifications; this module
- * only ever makes a sound when the caller has checked the stored preference.
+ * Playback is gated by the Settings → 通知 preference (on by default); this
+ * module only ever makes a sound when the caller has checked the stored value.
  */
 
 type AudioContextCtor = new () => AudioContext;

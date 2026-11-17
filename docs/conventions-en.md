@@ -331,7 +331,8 @@
   dialog, the §15.1 table in `docs/user-manual-*.md`, and
   `tests/app-config.test.ts`.
 - **The task-completion chime** is a local preference in Settings → Notifications
-  (`ASTROX_TASK_COMPLETION_CHIME`, off by default). The sound is generated locally
+  (`ASTROX_TASK_COMPLETION_CHIME`, on by default so it works without hunting for a
+  switch; that switch is the only off control). The sound is generated locally
   with a Web Audio oscillator in `src/lib/task-completion-chime.ts` — no audio
   asset, so a deployed console under a project path needs no `assetUrl()` call.
   Terminal transitions are detected by `collectTerminalTransitions` from the

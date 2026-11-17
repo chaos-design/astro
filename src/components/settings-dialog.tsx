@@ -462,7 +462,7 @@ export function SettingsDialog({
             <TabsContent className="settings-section" value="notifications">
               <SwitchField
                 label="任务完成提示音"
-                description="某条运行进入完成、失败或终止状态时播放一段简短提示音；示例数据不会触发。默认关闭，浏览器在首次交互后才允许播放声音。"
+                description="某条运行进入完成、失败或终止状态时播放一段简短提示音；示例数据不会触发。默认开启，可在设置里关闭；浏览器在首次交互后才允许播放声音。"
                 value={taskCompletionChime}
                 onChange={onTaskCompletionChimeChange}
               />

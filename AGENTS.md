@@ -392,7 +392,8 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   retired `?perf=1` legacy flag (`astro:perf-hud` = `"1"`) once — the first
   write of `ASTROX_PERF_HUD` removes the legacy key.
 - `appDefaults.taskCompletionChime` is the single default of the task-completion
-  chime (Settings → 通知, off by default). The preference is the only opt-in: the
+  chime (Settings → 通知, **on by default** so the notification works without
+  hunting for a switch). That switch is its only off control: the
   sound is generated locally with the Web Audio API in
   `src/lib/task-completion-chime.ts` — no audio asset, so a deployed console under
   a project path needs no `assetUrl()` call. The terminal transition itself is

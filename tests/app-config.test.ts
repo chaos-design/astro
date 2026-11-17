@@ -107,10 +107,11 @@ test("resolves the performance HUD's initial state, migrating the legacy opt-in"
   assert.equal(resolvePerfHudInitial(createMemoryStorage()), false);
 });
 
-test("keeps the task-completion chime off until the reader opts in", () => {
-  // Sound is intrusive and browser autoplay is gated on user interaction, so
-  // Settings → 通知 is the single opt-in rather than a surprising default.
-  assert.equal(appDefaults.taskCompletionChime, false);
+test("arms the task-completion chime by default, with a switch to turn it off", () => {
+  // The notification should work without the reader hunting for a switch;
+  // Settings → 通知 is the single off switch. Browser autoplay still needs a
+  // first interaction before a sound can actually play, as the dialog says.
+  assert.equal(appDefaults.taskCompletionChime, true);
   assert.equal(storageKeys.taskCompletionChime, "ASTROX_TASK_COMPLETION_CHIME");
 });
 

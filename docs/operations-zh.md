@@ -437,6 +437,7 @@ astrox restart         # 重启守护进程，加载新 server 与 dist
 | `ASTROX_HISTORY_OPEN` | boolean string | 左侧 History 展开状态。 |
 | `ASTROX_CONSOLE_OPEN` | boolean string | 右侧 Events/Inspector 展开状态。 |
 | `ASTROX_PERF_HUD` | boolean string | 性能面板开关，默认关。 |
+| `ASTROX_TASK_COMPLETION_CHIME` | boolean string | 任务完成提示音开关，默认开。 |
 
 旧 `astro-theme`、`astro-platform` 与 `astro:perf-hud`（早版 `?perf=1` 遗留的开启标记）
 会在对应新键写入时删除；前两者自动迁移，`astro:perf-hud` 首读保留一次。localStorage

@@ -53,9 +53,9 @@ type AppDefaults = {
    */
   perfHud: boolean;
   /**
-   * Whether a short chime plays when a run reaches a terminal state. Off by
-   * default: sound is intrusive, so the reader opts in through Settings →
-   * Notifications rather than being startled by a browser audio context.
+   * Whether a short chime plays when a run reaches a terminal state. On by
+   * default so the notification works without hunting for a switch; Settings →
+   * Notifications is the single off switch for readers who prefer quiet.
    */
   taskCompletionChime: boolean;
   /**
@@ -85,7 +85,7 @@ export const appDefaults: AppDefaults = {
   maxSync: "8h",
   menuOpen: false,
   perfHud: false,
-  taskCompletionChime: false,
+  taskCompletionChime: true,
   platform: "claude",
   replayCursor: 0,
   replayMode: false,

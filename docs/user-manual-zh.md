@@ -736,8 +736,8 @@ console」。
 **通知**
 
 - **任务完成提示音**：某条运行进入完成、失败或终止状态时，播放一段简短提示音，
-  默认关闭（`ASTROX_TASK_COMPLETION_CHIME`）。声音在浏览器本地用 Web Audio 生成，
-  不加载任何音频文件。只有在这台控制台打开期间“看着它结束”的运行才会响：页面加载时
+  默认开启（`ASTROX_TASK_COMPLETION_CHIME`），想安静可在设置里关闭。声音在浏览器本地
+  用 Web Audio 生成，不加载任何音频文件。只有在这台控制台打开期间“看着它结束”的运行才会响：页面加载时
   就已经结束的历史保持安静；会话收到新消息重新运行后，再次完成会重新提示。示例数据
   永远不会响。浏览器通常在首次与页面交互后才允许播放声音。
 
@@ -751,7 +751,7 @@ console」。
 `ASTROX_MAX_SYNC`、`ASTROX_PERF_HUD` 与 `ASTROX_TASK_COMPLETION_CHIME` 等键；
 「恢复默认」把这些分区的值一起还原
 （3 小时、Live 关闭、最长同步 8 小时、深色、拓扑、仅运行时原子、按窗口宽度决定
-左右面板是否展开、性能面板关闭、任务完成提示音关闭）。
+左右面板是否展开、性能面板关闭、任务完成提示音开启）。
 
 ## 6. 执行拓扑操作
 
@@ -1180,7 +1180,7 @@ astro-trace doctor
 | `ASTROX_ACTIVE_VIEW` | `topology` / `trajectory` | 上次使用的画布视图 |
 | `ASTROX_DEEP_VIEW` | `true` / `false` | 拓扑是否只显示运行时原子 |
 | `ASTROX_PERF_HUD` | `true` / `false` | 性能面板是否开启，默认 `false` |
-| `ASTROX_TASK_COMPLETION_CHIME` | `true` / `false` | 任务完成提示音是否开启，默认 `false` |
+| `ASTROX_TASK_COMPLETION_CHIME` | `true` / `false` | 任务完成提示音是否开启，默认 `true` |
 
 旧 `astro-theme`、`astro-platform` 与 `astro:perf-hud` 会在对应新键写入后删除：
 前两者自动迁移，`astro:perf-hud` 是早版 `?perf=1` 参数留下的开启标记（值为 `1`），

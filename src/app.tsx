@@ -5310,9 +5310,9 @@ export default function App() {
   const [perfHud, setPerfHud] = useState<boolean>(() =>
     resolvePerfHudInitial(window.localStorage),
   );
-  // Task-completion chime: a switch in Settings → 通知, off by default so a
-  // console never starts making noise on its own. One preference drives both
-  // the persisted value and the terminal-transition effect below.
+  // Task-completion chime: a switch in Settings → 通知, on by default so the
+  // notification works without hunting for a switch. One preference drives
+  // both the persisted value and the terminal-transition effect below.
   const [taskCompletionChime, setTaskCompletionChime] = useState<boolean>(() =>
     readStorageBoolean(
       window.localStorage,
