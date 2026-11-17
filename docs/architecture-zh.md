@@ -173,10 +173,12 @@ sequenceDiagram
 `PostToolUseFailure`、`PermissionRequest`、`Elicitation`、
 `ElicitationResult`、`Notification`、`SubagentStart`、`SubagentStop`、
 `Stop`、`StopFailure`。事件日志把 `Notification` 标记为 `user.question`
-（`AskUserQuestion`），但不会改写持久化事件；其中
-`notification_type=permission_prompt` 且点名提问工具的那一条同时是提问开始事件，
-驱动投影、等待态与 Flow 定位（WorkBuddy 在宿主弹题时只有这条通知，对应的
-`PreToolUse` 要等用户答完才落盘）。其余 `Notification` 只影响显示。
+（`AskUserQuestion`），但不会改写持久化事件。命名事件是否阻塞取决于载荷里有没有
+可作答参数（`questions` / `plan`）：带参数的提问进入 `user.question`、等待态与
+Flow 作答；没有参数的 `PermissionRequest` 与 `permission_prompt` 通知只是系统
+授权，显示为 `permission.request`、落在 Action Gate，不阻塞也不提供作答入口。
+（WorkBuddy 弹题时只有一条点名 `AskUserQuestion` 的权限通知，真正的 `questions`
+随后续 `PreToolUse` 落盘。）其余 `Notification` 只影响显示。
 
 未识别事件不会被丢弃，前端会按 `Unknown` 类型保留和展示。
 

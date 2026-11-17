@@ -136,11 +136,15 @@ dimming. Reduced-motion mode keeps static emphasis.
 `ElicitationResult`, and `Notification` display as `user.question`. Generic
 tool events named `AskUserQuestion`, `request_user_input`, or `UserQuestion`
 also map to that atom. A start waits for user input; its completion closes the
-same instance. A `Notification` is display-only by default; when its
-`notification_type` is `permission_prompt` and its text or tool fields name a
-question tool it becomes a question start — WorkBuddy emits only that
-notification while the host asks (its `PreToolUse` lands after the answer), so
-missing it leaves the run waiting while the Flow sits on `trace-append`.
+same instance. **Only a start with answerable parameters blocks**:
+`isBlockingUserQuestionStartEvent` is the one predicate. A `PermissionRequest`
+or a `notification_type=permission_prompt` `Notification` needs a non-empty
+`questions` / `plan` to be a question start. WorkBuddy emits only a permission
+notification naming `AskUserQuestion` while the host asks; its real `questions`
+arrive with a later `PreToolUse`, so that notification is a system authorization
+— it neither blocks nor offers an answer. The same goes for ZCode's `Bash` /
+`Edit` permission requests: they display as `permission.request` and project
+onto Action Gate.
 
 Recognizing `AskUserQuestion` rests on one test — "is this a question tool"
 (`isUserQuestionToolEvent` in `src/lib/trace-event-kind.ts`). Its input types
@@ -151,7 +155,8 @@ is decided by the last event):
 | Dimension | Values |
 | --- | --- |
 | Event name | `PreToolUse` / `PostToolUse` (recognized by tool name); `PermissionRequest` (recognized by event name, waiting state) |
-| Notification | `Notification` with `notification_type=permission_prompt` whose `message` / tool fields name a question tool; WorkBuddy's only pre-answer signal while the host asks |
+| Notification | `Notification` with `notification_type=permission_prompt` whose `message` / tool fields name a question tool; WorkBuddy's only pre-answer signal while the host asks, but non-blocking without parameters |
+| Blocking parameters | a non-empty `questions` or `plan` turns a question/permission event into a waiting run with a Flow answer box; without it the event is a system authorization |
 | Tool-name field | top-level `toolName`, or snake `payload.tool_name`, or camel `payload.toolName`, or nested in the tool input (`payload.tool_input.name` / `.tool_name` / `payload.toolInput.name` / `.toolName`) |
 | Question location | `payload.tool_input.questions` and its camel mirror `payload.toolInput.questions`; top-level `payload.questions` is also accepted |
 | Options / answers | options are `{ label, description? }` objects or plain strings; `multiSelect` may be boolean; `tool_input.answers` / `tool_response.answers` injected by the auto-approve hook are preview-only and never change event classification |

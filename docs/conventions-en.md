@@ -131,8 +131,12 @@
     hook — a `notification_type=permission_prompt` `Notification` whose text
     names the question tool (WorkBuddy offers only that while blocked; its
     `PreToolUse` lands after the answer). `idle_prompt`, `auth_success` and
-    permission prompts for other tools stay runtime signals. The
-    `user-question` atom's bound event is chosen only in
+    permission prompts for other tools stay runtime signals. Whether it
+    **blocks** is decided only by `isBlockingUserQuestionStartEvent`: a
+    permission request / notification needs non-empty `questions` / `plan` to
+    enter the waiting state and the Flow answer box; without them it is a
+    system authorization, displayed as `permission.request` and projected onto
+    Action Gate. The `user-question` atom's bound event is chosen only in
     `src/lib/execution-topology.ts` (the newest question *start*), while status
     follows the last matching event;
   - the binding between a question and an interaction request lives only in
@@ -281,7 +285,10 @@
   the log and the list all land on the new agent's newest message. When a
   `?session=` deep link names another agent's run, the dropdown follows it and
   the address bar's `agent` is rewritten — the open run must always be a row of
-  the list beside it.
+  the list beside it. URL writes live only in `src/lib/console-location.ts`:
+  `agent` is always kept, `session` / `event` are written only while that run is
+  open and are cleared the moment the agent changes, and connection parameters
+  such as `?api=` survive untouched.
 
 ## 7. Settings and local preferences
 

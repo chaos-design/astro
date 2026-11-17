@@ -105,6 +105,9 @@
     `notification_type=permission_prompt` 且正文点名提问工具的 `Notification`
     也算提问开始（WorkBuddy 弹题时只有它，`PreToolUse` 要等作答后才落盘）；
     `idle_prompt`、`auth_success` 与其他工具的权限提示不算，仍只是运行信号；
+    是否**阻塞**另由 `isBlockingUserQuestionStartEvent` 判定：权限请求与权限提示
+    通知必须带非空 `questions` / `plan` 才进入等待态与 Flow 作答，没有参数的
+    是系统授权，显示键 `permission.request`、投影到 Action Gate；
     `user-question` 原子绑定的事件只在 `src/lib/execution-topology.ts` 取
     最后一条提问开始事件，状态另由最后一条匹配事件决定；
   - 提问与交互请求的关联只在 `src/lib/question-interaction.ts`：先按
@@ -210,7 +213,9 @@
 - 打开运行后再切智能体，会清空当前选中（`activeSessionKey` / `activePromptRunKey` /
   `selectedEventId`），画布、日志、列表一起落到新智能体的最新消息；深链
   `?session=` 指向别的智能体时，下拉框跟着跳到该智能体，地址栏的 `agent` 同步重写，
-  保证“打开的运行一定在列表里”。
+  保证“打开的运行一定在列表里”。地址栏的参数写入只在 `src/lib/console-location.ts`
+  一处完成：`agent` 永远保留，`session` / `event` 只在对应运行真正打开时写入，
+  切换智能体立即清掉旧参数；`?api=` 等连接参数原样保留。
 
 ## 7. 设置与本地偏好
 

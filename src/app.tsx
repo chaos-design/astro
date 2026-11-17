@@ -313,6 +313,7 @@ import {
 } from "./lib/trace-event-kind";
 import { hasPlanContent, userQuestionSummary } from "./lib/user-question-content";
 import { optionLabels } from "./lib/interaction-panel-model";
+import { buildConsoleLocationSearch } from "./lib/console-location";
 import type {
   HarnessNode,
   HarnessNodeData,
@@ -6523,28 +6524,25 @@ export default function App() {
   }, [activeEvents, replayCursor, replayMode]);
 
   useEffect(() => {
-    if (!activeSession || initialLocation !== null) {
+    if (initialLocation !== null) {
       return;
     }
-    const params = new URLSearchParams(window.location.search);
-    // `agent` mirrors the dropdown filter, not the open run: a shared link may
-    // name a run of another agent (and still lands on it), so the two
-    // parameters are written independently.
-    params.set("agent", agentId);
-    // The renamed parameter replaces the legacy one instead of accumulating.
-    params.delete("source");
-    params.set("session", activeSession.id);
-    if (selectedEventId) {
-      params.set("event", selectedEventId);
-    } else {
-      params.delete("event");
+    // `agent` is always written; session/event describe only an open run. On
+    // an agent switch the selection is cleared first, so the stale deep link
+    // is removed instead of surviving until a new run happens to be picked —
+    // a `?session=` of another agent would drag the dropdown back on reload.
+    const search = buildConsoleLocationSearch({
+      search: window.location.search,
+      agentId,
+      sessionId: activeSession?.id,
+      eventId: selectedEventId,
+      eventIds: new Set(activeEvents.map((event) => event.id)),
+    });
+    if (search === window.location.search) {
+      return;
     }
-    window.history.replaceState(
-      null,
-      "",
-      `${window.location.pathname}?${params}`,
-    );
-  }, [activeSession, agentId, initialLocation, selectedEventId]);
+    window.history.replaceState(null, "", `${window.location.pathname}${search}`);
+  }, [activeEvents, activeSession, agentId, initialLocation, selectedEventId]);
 
   const displayedEvents = replayMode
     ? activeEvents.slice(0, replayCursor + 1)

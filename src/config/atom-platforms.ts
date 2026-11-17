@@ -7,7 +7,11 @@ import type {
   PlatformId,
   TraceEvent,
 } from "@/types/trace";
-import { isUserQuestionEvent } from "../lib/trace-event-kind.ts";
+import {
+  isBlockingUserQuestionStartEvent,
+  isUserQuestionEvent,
+  isUserQuestionStartEvent,
+} from "../lib/trace-event-kind.ts";
 
 export const topologyGeometry = {
   nodeWidth: 180,
@@ -535,7 +539,10 @@ const defaultEventAtomMap: Record<string, string> = {
   PreToolUse: "tool-call",
   PostToolUse: "tool-result",
   PostToolUseFailure: "tool-result",
-  PermissionRequest: "user-question",
+  // A permission gate without question parameters routes through Action Gate.
+  // Answerable requests are redirected to the question atom by
+  // `getAtomIdForEvent` and `userQuestionProjection`.
+  PermissionRequest: "action-gate",
   PermissionDenied: "user-question",
   Elicitation: "user-question",
   ElicitationResult: "user-question",
@@ -735,7 +742,13 @@ export function getAtomIdForEvent(
 ) {
   if (!event) return "";
   if (isUserQuestionEvent(event)) {
-    return "harness-user-question";
+    // Only an answerable question owns the question atom. A bare permission
+    // gate (no `questions` / `plan`) is a system decision: route it to Action
+    // Gate so the canvas never claims a question the reader cannot answer.
+    return !isUserQuestionStartEvent(event) ||
+      isBlockingUserQuestionStartEvent(event)
+      ? "harness-user-question"
+      : "harness-action-gate";
   }
   const platform = resolvePlatform(platformId);
   const atomId = platform.eventAtomMap[event.eventName] || "trace-append";

@@ -5,6 +5,9 @@ import { projectTraceEvents } from "../src/lib/atomic-projection.ts";
 import { buildExecutionTopology } from "../src/lib/execution-topology.ts";
 import {
   getTraceEventKey,
+  hasQuestionParameters,
+  isBlockingUserQuestionStartEvent,
+  isSystemAuthorizationEvent,
   isUserQuestionEvent,
   isUserQuestionStartEvent,
   isUserQuestionToolEvent,
@@ -72,11 +75,12 @@ test("labels Notification events as AskUserQuestion activity", () => {
   assert.equal(getTraceEventKey(notification), "user.question");
 });
 
-test("a WorkBuddy permission prompt locates the pending user question", () => {
-  // WorkBuddy fires no PermissionRequest hook: the only pre-answer signal is
-  // this Notification, and AskUserQuestion's PreToolUse only arrives after the
-  // user has answered. It must be the question start, or the Flow keeps
-  // pulsing trace-append while the host is actually blocked on the user.
+test("a WorkBuddy permission prompt is system authorization, not a blocking question", () => {
+  // WorkBuddy fires no PermissionRequest hook. While the host asks permission
+  // to call AskUserQuestion it only writes this Notification; the tool's real
+  // questions arrive later. With no answerable parameters there is nothing to
+  // type into the console, so the run must not turn `waiting` and the Flow
+  // must not claim a pending question.
   const prompt = normalizeTraceEvent({
     capturedAt: "2026-09-10T10:00:00.000Z",
     eventName: "Notification",
@@ -90,30 +94,81 @@ test("a WorkBuddy permission prompt locates the pending user question", () => {
     workspaceId: "workspace",
   });
 
+  assert.equal(isSystemAuthorizationEvent(prompt), true);
   assert.equal(isUserQuestionEvent(prompt), true);
   assert.equal(isUserQuestionStartEvent(prompt), true);
-  assert.equal(isWaitingTraceEvent(prompt), true);
-  assert.equal(getTraceEventKey(prompt), "user.question");
+  assert.equal(isBlockingUserQuestionStartEvent(prompt), false);
+  assert.equal(isWaitingTraceEvent(prompt), false);
+  assert.equal(getTraceEventKey(prompt), "permission.request");
   assert.equal(
     getAtomIdForEvent(prompt, "workbuddy"),
-    "harness-user-question",
+    "harness-action-gate",
   );
   assert.match(getEventSummary(prompt), /AskUserQuestion/);
 
-  const projected = projectTraceEvents([prompt], "workbuddy").events.filter(
-    (event) => event.atom.key === "user.question",
-  );
-  assert.deepEqual(
-    projected.map((event) => event.phase),
-    ["waiting"],
+  const projected = projectTraceEvents([prompt], "workbuddy").events;
+  assert.equal(
+    projected.some((event) => event.atom.key === "user.question"),
+    false,
   );
 
   const topology = buildExecutionTopology([prompt], "workbuddy");
   const question = topology.nodes.find(
     (node) => node.id === "harness-user-question",
   );
-  assert.equal(question?.data.count, 1);
-  assert.equal(question?.data.status, "waiting");
+  assert.equal(question?.data.count, 0);
+});
+
+test("only permission requests carrying question parameters block the run", () => {
+  const gate = (
+    id: string,
+    toolName: string,
+    toolInput: Record<string, unknown>,
+  ) =>
+    normalizeTraceEvent({
+      capturedAt: "2026-09-10T10:00:00.000Z",
+      eventName: "PermissionRequest",
+      id,
+      payload: { tool_name: toolName, tool_input: toolInput },
+      sessionId: "zcode-session",
+      source: "zcode",
+      toolName,
+      workspaceId: "workspace",
+    });
+  // The real ZCode log has dozens of these: the host wants authorization for
+  // an ordinary tool and there is no question for the reader to answer.
+  const bash = gate("bash", "Bash", { command: "ls" });
+  const question = gate("ask", "AskUserQuestion", {
+    questions: [{ question: "Which one?", options: [{ label: "A" }] }],
+  });
+  const plan = gate("plan", "ExitPlanMode", { plan: "# Plan\n\nStep 1" });
+
+  for (const event of [bash]) {
+    assert.equal(isSystemAuthorizationEvent(event), true);
+    assert.equal(isBlockingUserQuestionStartEvent(event), false);
+    assert.equal(isWaitingTraceEvent(event), false);
+    assert.equal(isWaitingTraceEvent(event, ["PermissionRequest"]), false);
+    assert.equal(getTraceEventKey(event), "permission.request");
+    assert.equal(getAtomIdForEvent(event, "zcode"), "harness-action-gate");
+  }
+  for (const event of [question, plan]) {
+    assert.equal(isBlockingUserQuestionStartEvent(event), true);
+    assert.equal(isWaitingTraceEvent(event), true);
+    assert.equal(isWaitingTraceEvent(event, ["PermissionRequest"]), true);
+    assert.equal(getTraceEventKey(event), "user.question");
+    assert.equal(getAtomIdForEvent(event, "zcode"), "harness-user-question");
+  }
+
+  const projected = projectTraceEvents([bash], "zcode").events;
+  assert.equal(
+    projected.some((event) => event.atom.key === "user.question"),
+    false,
+  );
+  const topology = buildExecutionTopology([bash, question], "zcode");
+  assert.equal(
+    topology.nodes.find((node) => node.id === "harness-user-question")?.data.count,
+    1,
+  );
 });
 
 test("generic and non-question permission notifications stay signals", () => {
@@ -305,9 +360,10 @@ test("treats a denied question as failed unless it is retryable", () => {
  * recognisable. The name can sit under several spellings — the canonical
  * recorder's snake `tool_name`, ZCode's camel `toolName` twin, or nested inside
  * the tool-input object (`tool_input.name` / `toolInput.name`) — and any of the
- * three question event names. Every row must light the same atom; a row that
- * falls through to a generic `tool.call` is a regression that leaves the
- * question's node dark in the Flow.
+ * three question event names. Tool lifecycle rows light the question atom; a
+ * PermissionRequest with only an empty `questions` array is a host
+ * authorization gate and belongs on Action Gate instead. A row that falls
+ * through to a generic `tool.call` would leave the question's node dark.
  */
 function questionRaw(
   eventName: "PreToolUse" | "PostToolUse" | "PermissionRequest",
@@ -364,7 +420,7 @@ const questionNameSpells: Array<
   ],
 ];
 
-test("every AskUserQuestion tool-name spelling routes to the user.question atom", () => {
+test("every AskUserQuestion tool-name spelling is classified; only answerable ones get the question atom", () => {
   for (const [label, payload, eventName] of questionNameSpells) {
     const event = questionRaw(eventName, payload);
     // Tool-lifecycle rows (Pre/PostToolUse) are recognised by their tool name;
@@ -384,7 +440,9 @@ test("every AskUserQuestion tool-name spelling routes to the user.question atom"
     );
     assert.equal(
       getAtomIdForEvent(event, "zcode"),
-      "harness-user-question",
+      isSystemAuthorizationEvent(event) && !hasQuestionParameters(event)
+        ? "harness-action-gate"
+        : "harness-user-question",
       `spelling "${label}" should match the dedicated atom`,
     );
   }

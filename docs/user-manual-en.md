@@ -728,14 +728,18 @@ plan) binds to the same request. The area and the floating panel share the same
 interaction state and turn read-only once the request is closed or answered on
 another device. A historical question without a live request shows its content
 only. The atom binds the newest question start while its status still follows
-the last matching event, so an answered question remains complete. When a host
-has no `PermissionRequest` hook (WorkBuddy writes only a
-`notification_type: "permission_prompt"` `Notification` whose text names
-`AskUserQuestion`), that notification is the question start: the canvas lights
-and locates the `User Question` atom the moment the host blocks on the prompt,
-before the answer and the later `PreToolUse` are written. Generic
-`idle_prompt` / `auth_success` notifications and permission prompts for other
-tools stay runtime signals and never steal the question locate.
+the last matching event, so an answered question remains complete.
+
+**Only a question with parameters blocks.** A `PermissionRequest` or permission
+notification must carry a non-empty `questions` (or a plan approval's `plan`)
+before the run turns waiting and the `User Question` atom offers an answer box
+where you type the values in Flow. Without parameters it is a host **system
+authorization** — ZCode's `Bash` / `Edit` permission requests, or WorkBuddy's
+`notification_type: "permission_prompt"` notification naming `AskUserQuestion`.
+Those display as `permission.request`, project onto Action Gate, and neither
+block nor offer an answer; WorkBuddy's real `questions` arrive with a later
+`PreToolUse`. Plain `idle_prompt` / `auth_success` notifications stay runtime
+signals.
 
 Overrides, inherited from the host process: `ASTRO_INTERACTION_SERVICE`
 (default `http://127.0.0.1:5678`), `ASTRO_INTERACTION_TIMEOUT_MS` (defaults to
@@ -1019,8 +1023,12 @@ The page writes the current selection into:
 
 `agent` mirrors the dropdown filter (a configured agent id or `others`).
 Opening the URL selects the matching agent, session, containing prompt run,
-and event when that trace data exists in the target environment. Legacy
-`?source=` links keep working.
+and event when that trace data exists in the target environment. Switching
+agents keeps only the necessary parameters: `agent` is rewritten at once while
+`session` / `event` are dropped until a run of the new agent is actually open —
+otherwise the stale deep link would pull the dropdown back on the next reload.
+Service parameters such as `?api=` are preserved. Legacy `?source=` links keep
+working.
 
 ## 11. Import ChatGPT History
 

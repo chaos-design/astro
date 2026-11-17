@@ -602,12 +602,16 @@ Approve/Reject）在输入框上方渲染一排可换行的快速作答按钮，
 也能绑到同一条请求。作答区与浮层面板共享同一份交互状态，已关闭或已被其他设备
 回答时自动转为只读；没有活跃请求的历史提问只展示问题内容，不会出现作答入口。
 Flow 原子只绑定最后一条提问开始事件，状态仍由最后一条匹配事件决定，因此已回答
-的问题依旧显示为完成。宿主没有 `PermissionRequest` Hook 时（如 WorkBuddy 只写
-`notification_type: "permission_prompt"` 且正文点名 `AskUserQuestion` 的
-`Notification`），这条通知就是提问开始事件：宿主一弹出选项，画布立即高亮并定位
-`User Question` 原子，不必等用户答完、`PreToolUse` 落盘后才看到提问。普通
-`idle_prompt` / `auth_success` 通知与其他工具的权限提示仍只是运行信号，不会抢走
-提问定位。
+的问题依旧显示为完成。
+
+**只有带参数的提问才阻塞**：`PermissionRequest` 或权限提示通知必须带着非空的
+`questions`（或计划批准的 `plan`），运行才进入等待态、`User Question` 原子才出现
+作答区，你才能在 Flow 中键入参数值。没有参数的是宿主的**系统授权**——例如
+ZCode 的 `Bash` / `Edit` 权限请求，或 WorkBuddy 那条
+`notification_type: "permission_prompt"`、正文点名 `AskUserQuestion` 的通知。
+它们显示为 `permission.request`、落在 Action Gate，不阻塞运行也没有作答入口；
+WorkBuddy 真正的 `questions` 会随后续 `PreToolUse` 落盘，那时才作为提问处理。
+普通 `idle_prompt` / `auth_success` 通知仍只是运行信号。
 
 **参数**：`ASTRO_INTERACTION_SERVICE`（默认 `http://127.0.0.1:5678`）、
 `ASTRO_INTERACTION_TIMEOUT_MS`（默认取安装器 `--timeout`，5000 为无配置缺省）、
@@ -858,6 +862,9 @@ astro-<source>-<sessionId>-prompt-<number>.jsonl
 
 `agent` 与下拉选择保持一致（已配置的智能体 ID 或 `others`）。打开该 URL 时，
 页面会优先选择匹配的智能体、会话、包含该事件的 Prompt 子运行并定位事件。
+切换智能体时只保留必要的参数：`agent` 立即更新，`session` / `event` 会被清空，
+等新智能体的会话真正打开后再写回；否则旧会话的深链会在下次刷新时把下拉框拉回
+刚离开的智能体。`?api=` 等与服务连接有关的参数保持不变。
 深链依赖目标环境中已存在对应 Trace 数据，旧的 `?source=` 链接仍然可用。
 
 ## 11. 导入 ChatGPT 历史

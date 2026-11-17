@@ -114,10 +114,13 @@ Prompt、状态、来源、时间、事件标签、摘要和规范化可搜索�
 `PermissionRequest`、`PermissionDenied`、`Elicitation`、
 `ElicitationResult` 和 `Notification` 显示为 `user.question`。通用工具事件中的
 `AskUserQuestion`、`request_user_input` 和 `UserQuestion` 也映射到同一原子；
-开始事件进入等待态，结束事件关闭对应实例。`Notification` 默认只是显示键；
-`notification_type=permission_prompt` 且文本或工具字段点名提问工具时才升级为
-提问开始事件——WorkBuddy 在宿主弹题时只发这条通知（`PreToolUse` 要等答完才
-落盘），漏掉它会让运行等待、Flow 却停在 `trace-append`。
+开始事件进入等待态，结束事件关闭对应实例。**只有带可作答参数的开始事件才阻塞**：
+`PermissionRequest` 与 `notification_type=permission_prompt` 的 `Notification`
+必须有非空 `questions` 或 `plan`，才算提问开始（`isBlockingUserQuestionStartEvent`
+是唯一判定）。WorkBuddy 在宿主弹题时只有一条点名 `AskUserQuestion` 的权限通知，
+真正的 `questions` 随之后的 `PreToolUse` 落盘；这条通知只是系统授权，不阻塞、不
+提供作答入口。其他权限请求（ZCode 的 `Bash` / `Edit` 等）同理，显示键为
+`permission.request`，投影到 Action Gate。
 
 `AskUserQuestion` 的识别只依据「这是提问工具」这一判定
 （`src/lib/trace-event-kind.ts` 的 `isUserQuestionToolEvent`），输入类型可归纳为
@@ -127,7 +130,8 @@ Prompt、状态、来源、时间、事件标签、摘要和规范化可搜索�
 | 维度 | 取值 |
 | --- | --- |
 | 事件名 | `PreToolUse` / `PostToolUse`（按工具名识别）；`PermissionRequest`（按事件名识别，等待态） |
-| 通知事件 | `Notification`（`notification_type=permission_prompt` 且 `message` / 工具字段点名提问工具；WorkBuddy 在宿主弹题时的唯一前置信号） |
+| 通知事件 | `Notification`（`notification_type=permission_prompt` 且 `message` / 工具字段点名提问工具；WorkBuddy 在宿主弹题时的唯一前置信号，但无参数时不阻塞） |
+| 阻塞参数 | 非空 `questions` 或 `plan`：只有它把提问/权限事件变成等待态与 Flow 作答入口；没有参数则是系统授权 |
 | 工具名字段 | 顶层 `toolName`，或 snake `payload.tool_name`，或 camel `payload.toolName`，或嵌套在工具输入里（`payload.tool_input.name` / `.tool_name` / `payload.toolInput.name` / `.toolName`） |
 | 问题位置 | `payload.tool_input.questions` 与 camel 镜像 `payload.toolInput.questions`；顶层 `payload.questions` 也接受 |
 | 选项/答案 | 选项为 `{ label, description? }` 对象或纯字符串；`multiSelect` 可为布尔；自动同意 Hook 注入的 `tool_input.answers` / `tool_response.answers` 仅作预览展示，不改变事件分类 |

@@ -30,7 +30,10 @@ const traceEventKeys: Readonly<Record<string, string>> = {
   PreToolUse: "tool.call",
   PostToolUse: "tool.result",
   PostToolUseFailure: "tool.failure",
-  PermissionRequest: "user.question",
+  // A permission gate without answerable parameters is a system authorization,
+  // not something the reader can answer. `getTraceEventKey` decides which of
+  // the two labels a PermissionRequest gets; this is only the fallback.
+  PermissionRequest: "permission.request",
   Notification: "user.question",
   SubagentStart: "subagent.start",
   SubagentStop: "subagent.finish",
@@ -118,13 +121,14 @@ export function isUserQuestionToolEvent(event: TraceEvent) {
 /**
  * Whether a permission-prompt Notification names a question tool.
  *
- * WorkBuddy (CodeBuddy Code) has no PermissionRequest hook: while the host is
- * blocked on an AskUserQuestion its only signal is
+ * WorkBuddy (CodeBuddy Code) has no PermissionRequest hook: while the host asks
+ * for permission to call AskUserQuestion it writes
  * `Notification { notification_type: "permission_prompt", message: "needs your
- * permission to use AskUserQuestion" }`. The tool's own PreToolUse lands only
- * after the user has answered, so without this shape the run turns `waiting`
- * but the newest event still projects onto `trace-append` — the Flow never
- * lights or locates the `user.question` atom while the question is on screen.
+ * permission to use AskUserQuestion" }`. That is a system authorization gate,
+ * not the question itself — it carries no `questions`, and the tool's real
+ * `PreToolUse` lands later. Recognising it here keeps it in the question family
+ * for display, but `isBlockingUserQuestionStartEvent` deliberately refuses to
+ * block on it: only a start with answerable parameters pauses the console run.
  *
  * The type must be an explicit permission prompt and the payload must name a
  * question tool. Generic idle/auth notifications and permission prompts for
@@ -188,7 +192,79 @@ export function isUserQuestionStartEvent(event: TraceEvent) {
   return !userQuestionAnswerEvents.has(event.eventName);
 }
 
+/**
+ * A host event that asks for system authorization rather than asking the user
+ * a question. It may mention a question tool in prose, but without the tool's
+ * `questions` / `plan` there is nothing for the reader to answer, so it must
+ * not put the run into `waiting` or mount an answer box.
+ */
+export function isSystemAuthorizationEvent(event: TraceEvent) {
+  if (event.eventName === "PermissionRequest") {
+    return true;
+  }
+  if (event.eventName !== "Notification") {
+    return false;
+  }
+  return (
+    normalizeIdentifier(
+      event.payload.notification_type ?? event.payload.notificationType,
+    ) === "permissionprompt"
+  );
+}
+
+/**
+ * The answerable parameters a host captured for a question: structured
+ * prompts or a Markdown approval plan. The permission sentence in a
+ * notification ("needs your permission to use AskUserQuestion") is not a
+ * question — the real `questions` arrive with the tool event later.
+ */
+export function hasQuestionParameters(event: TraceEvent) {
+  const payload = event.payload;
+  const nested =
+    payload.payload && typeof payload.payload === "object" && !Array.isArray(payload.payload)
+      ? (payload.payload as Record<string, unknown>)
+      : undefined;
+  for (const source of [payload, toolInputRecord(payload), nested]) {
+    if (!source) {
+      continue;
+    }
+    if (Array.isArray(source.questions) && source.questions.length > 0) {
+      return true;
+    }
+    if (
+      (typeof source.plan === "string" && source.plan.trim()) ||
+      (typeof source.planText === "string" && source.planText.trim())
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * The one predicate for "this question start actually blocks the run".
+ *
+ * An explicit question event (Elicitation, a question-named event, or a
+ * Pre/PostToolUse naming the question tool) is answerable by definition. A
+ * PermissionRequest or permission-prompt Notification is only answerable when
+ * it carries the question parameters (`tool_input.questions` / `plan`);
+ * otherwise it is the host's own authorization gate, which the console must
+ * not present as a pending user question.
+ */
+export function isBlockingUserQuestionStartEvent(event: TraceEvent) {
+  if (!isUserQuestionStartEvent(event)) {
+    return false;
+  }
+  if (isSystemAuthorizationEvent(event)) {
+    return hasQuestionParameters(event);
+  }
+  return true;
+}
+
 export function getTraceEventKey(event?: TraceEvent | null) {
+  if (event && isSystemAuthorizationEvent(event) && !hasQuestionParameters(event)) {
+    return "permission.request";
+  }
   if (event && isUserQuestionEvent(event)) {
     return isUserQuestionStartEvent(event)
       ? "user.question"

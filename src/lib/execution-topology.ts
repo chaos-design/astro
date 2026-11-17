@@ -3,6 +3,7 @@ import {
   topologyGeometry,
 } from "../config/atom-platforms.ts";
 import {
+  isBlockingUserQuestionStartEvent,
   isUserQuestionEvent,
   isUserQuestionStartEvent,
   isUserQuestionToolEvent,
@@ -178,7 +179,12 @@ function createBaseNodes(
   }));
 
   for (const event of events) {
-    const question = isUserQuestionEvent(event);
+    // A permission gate without answerable parameters belongs to Action Gate,
+    // not to the question atom: the reader cannot answer a system prompt, and
+    // lighting User Question would make the canvas claim otherwise.
+    const question =
+      isUserQuestionEvent(event) &&
+      (!isUserQuestionStartEvent(event) || isBlockingUserQuestionStartEvent(event));
     const excluded = isUserQuestionToolEvent(event);
     for (const state of accumulators) {
       // Precedence mirrors `atomMatchesEvent`: a positive user-question match
@@ -225,7 +231,8 @@ function createBaseNodes(
     const questionStart =
       atom.id === "user-question"
         ? (matchingEvents.findLast((candidate) =>
-            isUserQuestionStartEvent(candidate),
+            isUserQuestionStartEvent(candidate) &&
+            isBlockingUserQuestionStartEvent(candidate),
           ) ?? null)
         : null;
     const event = questionStart ?? latestEvent;

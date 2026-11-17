@@ -119,12 +119,21 @@ ASTRO 事件协议把不同编码智能体的生命周期、消息、工具和�
 投影层将 `PermissionRequest`、`PermissionDenied`、`Elicitation`、
 `ElicitationResult` 和 `Notification` 映射为 `user.question` 显示键。通用工具
 生命周期中的 `AskUserQuestion`、`request_user_input` 或 `UserQuestion` 也映射到
-同一原子；开始与完成事件分别打开和关闭一次等待交互。`Notification` 默认只改变
-显示键（`idle_prompt`、`auth_success` 等仍是运行信号）；只有
-`notification_type` 为 `permission_prompt` 且文本（或结构化工具字段）点名提问
-工具的 `Notification` 才算提问开始。WorkBuddy 在宿主弹出 `AskUserQuestion` 时
-只发这条通知，对应的 `PreToolUse` 要等用户答完才落盘；没有它时运行虽进入等待态，
-Flow 却仍停在 `trace-append`，因此这条通知必须驱动投影、等待态与拓扑定位。
+同一原子；开始与完成事件分别打开和关闭一次等待交互。
+
+**是否阻塞由载荷里有没有可作答参数决定**（唯一判定在
+`src/lib/trace-event-kind.ts` 的 `isBlockingUserQuestionStartEvent`）：
+
+- `PermissionRequest` 或 `notification_type=permission_prompt` 的 `Notification`
+  只有带着非空的 `questions` / `plan` 才是提问开始，才进入 `user.question`、让运行
+  进入 `waiting`、并在 Flow 的检查器作答区键入答案；
+- 没有参数的同类事件是宿主的**系统授权**（ZCode 日志里大量
+  `PermissionRequest(Bash/Edit)`，WorkBuddy 的 `needs your permission to use
+  AskUserQuestion` 通知），显示键为 `permission.request`、投影到 Action Gate，
+  不阻塞运行，也不提供作答入口。WorkBuddy 通知正文里出现工具名只是识别形状，
+  真正的 `questions` 随之后的 `PreToolUse` 落盘。
+- `idle_prompt`、`auth_success` 等普通 `Notification` 仍只是运行信号，显示键不变。
+
 持久化的 `eventName` 与 `nativeEventName` 保持不变，仍可在详情中检查。
 
 计划批准是 `user.question` 的另一种载荷形状：ZCode 与 Claude Code 以

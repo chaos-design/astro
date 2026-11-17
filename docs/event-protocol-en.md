@@ -122,15 +122,25 @@ The projection layer maps `PermissionRequest`, `PermissionDenied`,
 `user.question` display key. Generic tool lifecycles named
 `AskUserQuestion`, `request_user_input`, or `UserQuestion` map to the same
 atom. Their start and completion events open and close one waiting interaction.
-A `Notification` normally changes only the display key (`idle_prompt`,
-`auth_success` and friends remain runtime signals); only a `Notification` whose
-`notification_type` is `permission_prompt` and whose text (or structured tool
-field) names a question tool counts as a question start. WorkBuddy emits just
-that notification when the host pops `AskUserQuestion`, and its `PreToolUse`
-lands only after the user answers; without it the run turns waiting while the
-Flow still sits on `trace-append`, so the notification has to drive projection,
-waiting state and topology location. Persisted `eventName` and
-`nativeEventName` values remain unchanged for inspection.
+
+**Whether it blocks is decided by answerable parameters**, by the one
+predicate `isBlockingUserQuestionStartEvent` in `src/lib/trace-event-kind.ts`:
+
+- A `PermissionRequest` or a `notification_type=permission_prompt`
+  `Notification` is a question start only when it carries a non-empty
+  `questions` / `plan`. Only then does it enter `user.question`, turn the run
+  `waiting`, and offer an answer box in the Flow inspector.
+- Without parameters it is a host **system authorization** (the many
+  `PermissionRequest(Bash/Edit)` rows in ZCode logs, WorkBuddy's "needs your
+  permission to use AskUserQuestion" notification). It displays as
+  `permission.request`, projects onto Action Gate, and never blocks or offers
+  an answer. Naming a tool in the notification prose only recognises the
+  shape; the real `questions` arrive with a later `PreToolUse`.
+- Plain `idle_prompt` / `auth_success` notifications stay runtime signals with
+  their existing display key.
+
+Persisted `eventName` and `nativeEventName` values remain unchanged for
+inspection.
 
 Plan approval is another `user.question` payload shape: ZCode and Claude Code
 report it as `PermissionRequest` with `toolName: ExitPlanMode`, and the question

@@ -26,18 +26,30 @@ test("WorkBuddy keeps default waiting signals (no override)", () => {
   assert.deepEqual(getWaitingEventsForSource("zcode"), ["PermissionRequest"]);
 });
 
-test("WorkBuddy PermissionRequest run stays waiting", () => {
+test("a system authorization does not block, but a question does", () => {
   const sessions = buildSessions([
     ev("wb-a", "UserPromptSubmit", { prompt: "hi" }, 0),
     ev("wb-a", "PermissionRequest", { tool_name: "Bash" }, 1),
     ev("wb-b", "UserPromptSubmit", { prompt: "later" }, 2),
     ev("wb-b", "Stop", { responseText: "done" }, 3),
+    ev("wb-c", "UserPromptSubmit", { prompt: "pick one" }, 4),
+    ev(
+      "wb-c",
+      "PermissionRequest",
+      {
+        tool_name: "AskUserQuestion",
+        tool_input: { questions: [{ question: "A or B?" }] },
+      },
+      5,
+    ),
   ]);
-  assert.equal(sessions.length, 2);
+  assert.equal(sessions.length, 3);
   const a = sessions.find((s) => s.key.includes("wb-a"))!;
-  assert.equal(a.status, "waiting");
+  assert.equal(a.status, "active");
   const b = sessions.find((s) => s.key.includes("wb-b"))!;
   assert.equal(b.status, "complete");
+  const c = sessions.find((s) => s.key.includes("wb-c"))!;
+  assert.equal(c.status, "waiting");
 });
 
 test("codebuddy source maps to the workbuddy platform", () => {

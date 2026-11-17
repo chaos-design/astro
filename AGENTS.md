@@ -495,6 +495,13 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   source that is not a configured agent". Sources without an agent definition
   (browser, generic, custom HTTP collectors) must not become pseudo-agent
   entries of their own.
+- Query-parameter writes for the current position live only in
+  `src/lib/console-location.ts`. Switching agent rewrites `agent` immediately
+  and clears `session` / `event` until a run of the new agent is actually open:
+  a `?session=` of the agent just left would otherwise win over the dropdown on
+  the next reload (deep links outrank the filter). Connection parameters such
+  as `?api=` are preserved, and the legacy `?source=` is replaced, never
+  accumulated.
 
 ## Header Chrome
 
@@ -685,20 +692,26 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   `tool_input.plan` (no `questions` array and no `message`), which the preview
   renders as a `Plan` section. Do not synthesize a `message` for that shape in
   an adapter or the recorder. The preview decision must not use
-  `isUserQuestionStartEvent`: that predicate drives run state (question
-  **starts** — including a pending-question permission notification — not
-  answers), while the preview follows the display key, so an answer row still
-  previews its payload.
+  `isUserQuestionStartEvent`: that predicate drives run state (question starts,
+  not answers), while the preview follows the display key, so an answer row
+  still previews its payload.
 - "What counts as a user question" lives only in `src/lib/trace-event-kind.ts`
-  (`isUserQuestionEvent` / `isUserQuestionStartEvent`): question-named events
-  and a `Pre/PostToolUse` naming the question tool, plus a
+  (`isUserQuestionEvent` / `isUserQuestionStartEvent`): question-named events,
+  a `Pre/PostToolUse` naming the question tool, plus a
   `notification_type=permission_prompt` `Notification` whose text or tool field
-  names `AskUserQuestion`. A host without a `PermissionRequest` hook (WorkBuddy)
-  emits only that notification while the host is blocked; its `PreToolUse`
-  lands after the answer, so without this shape the Flow kept pulsing
-  `trace-append` and never lit or located `harness-user-question`. Generic
-  `idle_prompt` / `auth_success` notifications and permission prompts for other
-  tools (Bash, DeferExecuteTool) stay runtime signals.
+  names `AskUserQuestion`. Generic `idle_prompt` / `auth_success` notifications
+  and permission prompts for other tools (Bash, DeferExecuteTool) stay runtime
+  signals. **Whether it blocks is a separate decision** in the same module:
+  `isBlockingUserQuestionStartEvent` requires answerable parameters (a non-empty
+  `questions` or `plan`). A parameterless `PermissionRequest` / permission
+  notification is host **system authorization**: it displays as
+  `permission.request`, projects onto `harness-action-gate` (not the question
+  atom), and never puts the run in `waiting` or mounts an answer box. ZCode's
+  `Bash`/`Edit` grants and WorkBuddy's "needs your permission to use
+  AskUserQuestion" notification are the common shapes; WorkBuddy's real
+  `questions` arrive with a later `PreToolUse`. An explicit question event
+  (Elicitation, a question-named event, a question-tool lifecycle row) blocks
+  without the parameter check.
 - `PreToolUse` / `PostToolUse` of `ExitPlanMode` keep their `tool.call` /
   `tool.result` display keys. `hasPlanContent()` in the same extractor lets the
   inspector preview their plan without adding `exitplanmode` to the
@@ -764,14 +777,13 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   flag synchronized with their registered event lists.
 - Tool inputs, outputs, and prompts are not delivered for WorkBuddy, so
   WorkBuddy traces carry named lifecycle events without tool payload detail.
-- WorkBuddy has no `PermissionRequest` hook. While the host blocks on
-  `AskUserQuestion` the only signal is
+- WorkBuddy has no `PermissionRequest` hook. While the host asks permission to
+  call `AskUserQuestion` the only signal is
   `Notification { notification_type: "permission_prompt", message: "needs your
-  permission to use AskUserQuestion" }`; the tool's `PreToolUse` is written only
-  after the answer. That notification is therefore a question **start** (see
-  Event Labels), so Flow locates the `User Question` atom while the host waits.
-  Do not treat every `permission_prompt` as a question: only the ones naming a
-  question tool.
+  permission to use AskUserQuestion" }`; the tool's real `questions` arrive with
+  a later `PreToolUse`. That notification is a system authorization (see Event
+  Labels): recognise only permission prompts naming a question tool, and never
+  let the parameterless shape block the run or claim a pending question.
 
 ## Pi Capture
 

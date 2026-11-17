@@ -67,7 +67,7 @@ test("only marks explicitly ended or interrupted sessions as terminated", () => 
   assert.equal(sessions.find((session) => session.id === "new")?.status, "terminated");
 });
 
-test("classifies permission and rate-limit hooks as waiting", () => {
+test("classifies question and rate-limit hooks as waiting, authorization as active", () => {
   const base = {
     source: "claude",
     workspaceId: "workspace",
@@ -93,7 +93,14 @@ test("classifies permission and rate-limit hooks as waiting", () => {
   const sessions = buildSessions([
     ...session("permission", {
       eventName: "PermissionRequest",
-      payload: { tool_name: "Bash" },
+      payload: {
+        tool_name: "AskUserQuestion",
+        tool_input: { questions: [{ question: "A or B?" }] },
+      },
+    }),
+    ...session("authorization", {
+      eventName: "PermissionRequest",
+      payload: { tool_name: "Bash", tool_input: { command: "ls" } },
     }),
     ...session("rate-limit", {
       eventName: "StopFailure",
@@ -110,6 +117,10 @@ test("classifies permission and rate-limit hooks as waiting", () => {
   assert.equal(
     sessions.find((item) => item.id === "permission")?.status,
     "waiting",
+  );
+  assert.equal(
+    sessions.find((item) => item.id === "authorization")?.status,
+    "active",
   );
   assert.equal(
     sessions.find((item) => item.id === "rate-limit")?.status,

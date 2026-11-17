@@ -86,7 +86,12 @@ function searchFixtureSources() {
       "session-b",
       "PermissionRequest",
       "2026-09-08T08:01:00.000Z",
-      { message: "Approve the filesystem change" },
+      {
+        tool_name: "AskUserQuestion",
+        tool_input: {
+          questions: [{ question: "Approve the filesystem change?" }],
+        },
+      },
     ),
   ];
   const sessions = buildSessions(events);
