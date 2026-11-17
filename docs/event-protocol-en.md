@@ -122,8 +122,15 @@ The projection layer maps `PermissionRequest`, `PermissionDenied`,
 `user.question` display key. Generic tool lifecycles named
 `AskUserQuestion`, `request_user_input`, or `UserQuestion` map to the same
 atom. Their start and completion events open and close one waiting interaction.
-Persisted `eventName` and `nativeEventName` values remain unchanged for
-inspection.
+A `Notification` normally changes only the display key (`idle_prompt`,
+`auth_success` and friends remain runtime signals); only a `Notification` whose
+`notification_type` is `permission_prompt` and whose text (or structured tool
+field) names a question tool counts as a question start. WorkBuddy emits just
+that notification when the host pops `AskUserQuestion`, and its `PreToolUse`
+lands only after the user answers; without it the run turns waiting while the
+Flow still sits on `trace-append`, so the notification has to drive projection,
+waiting state and topology location. Persisted `eventName` and
+`nativeEventName` values remain unchanged for inspection.
 
 Plan approval is another `user.question` payload shape: ZCode and Claude Code
 report it as `PermissionRequest` with `toolName: ExitPlanMode`, and the question

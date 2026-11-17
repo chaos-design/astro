@@ -602,7 +602,12 @@ Approve/Reject）在输入框上方渲染一排可换行的快速作答按钮，
 也能绑到同一条请求。作答区与浮层面板共享同一份交互状态，已关闭或已被其他设备
 回答时自动转为只读；没有活跃请求的历史提问只展示问题内容，不会出现作答入口。
 Flow 原子只绑定最后一条提问开始事件，状态仍由最后一条匹配事件决定，因此已回答
-的问题依旧显示为完成。
+的问题依旧显示为完成。宿主没有 `PermissionRequest` Hook 时（如 WorkBuddy 只写
+`notification_type: "permission_prompt"` 且正文点名 `AskUserQuestion` 的
+`Notification`），这条通知就是提问开始事件：宿主一弹出选项，画布立即高亮并定位
+`User Question` 原子，不必等用户答完、`PreToolUse` 落盘后才看到提问。普通
+`idle_prompt` / `auth_success` 通知与其他工具的权限提示仍只是运行信号，不会抢走
+提问定位。
 
 **参数**：`ASTRO_INTERACTION_SERVICE`（默认 `http://127.0.0.1:5678`）、
 `ASTRO_INTERACTION_TIMEOUT_MS`（默认取安装器 `--timeout`，5000 为无配置缺省）、

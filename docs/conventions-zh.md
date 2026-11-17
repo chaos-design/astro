@@ -99,6 +99,12 @@
   - 用户问题的展示文本只在 `src/lib/user-question-content.ts`
     （`userQuestionSummary`）：结构化提问、自由文本与计划批准都从这一处抽，
     LOG 摘要、原子投影与检查器 Overview 都读它，提问行不得回退到工具名；
+    「什么算用户问题」只在 `src/lib/trace-event-kind.ts`（`isUserQuestionEvent`
+    / `isUserQuestionStartEvent`）：命名事件、点名提问工具的
+    `Pre/PostToolUse` 之外，宿主没有 `PermissionRequest` Hook 时那条
+    `notification_type=permission_prompt` 且正文点名提问工具的 `Notification`
+    也算提问开始（WorkBuddy 弹题时只有它，`PreToolUse` 要等作答后才落盘）；
+    `idle_prompt`、`auth_success` 与其他工具的权限提示不算，仍只是运行信号；
     `user-question` 原子绑定的事件只在 `src/lib/execution-topology.ts` 取
     最后一条提问开始事件，状态另由最后一条匹配事件决定；
   - 提问与交互请求的关联只在 `src/lib/question-interaction.ts`：先按

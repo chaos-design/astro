@@ -115,10 +115,69 @@ export function isUserQuestionToolEvent(event: TraceEvent) {
   return false;
 }
 
+/**
+ * Whether a permission-prompt Notification names a question tool.
+ *
+ * WorkBuddy (CodeBuddy Code) has no PermissionRequest hook: while the host is
+ * blocked on an AskUserQuestion its only signal is
+ * `Notification { notification_type: "permission_prompt", message: "needs your
+ * permission to use AskUserQuestion" }`. The tool's own PreToolUse lands only
+ * after the user has answered, so without this shape the run turns `waiting`
+ * but the newest event still projects onto `trace-append` — the Flow never
+ * lights or locates the `user.question` atom while the question is on screen.
+ *
+ * The type must be an explicit permission prompt and the payload must name a
+ * question tool. Generic idle/auth notifications and permission prompts for
+ * ordinary tools (Bash, DeferExecuteTool) stay runtime signals.
+ */
+function isPendingQuestionNotification(event: TraceEvent) {
+  if (event.eventName !== "Notification") {
+    return false;
+  }
+  const payload = event.payload;
+  const notificationType = normalizeIdentifier(
+    payload.notification_type ?? payload.notificationType,
+  );
+  if (notificationType !== "permissionprompt") {
+    return false;
+  }
+  return (
+    mentionsUserQuestionTool(event.toolName) ||
+    mentionsUserQuestionTool(payload.tool_name) ||
+    mentionsUserQuestionTool(payload.toolName) ||
+    mentionsUserQuestionTool(payload.llm_tool_name) ||
+    mentionsUserQuestionTool(payload.message) ||
+    mentionsUserQuestionTool(payload.payload?.message) ||
+    mentionsUserQuestionTool(payload.payload?.tool_name)
+  );
+}
+
+/**
+ * Whether any spelling of a question tool name appears in a prose field. The
+ * host writes the name inside a sentence ("… to use AskUserQuestion"), so the
+ * normalized text is searched for the tool names instead of compared to them.
+ */
+function mentionsUserQuestionTool(value: unknown) {
+  if (typeof value !== "string" || !value) {
+    return false;
+  }
+  const normalized = normalizeIdentifier(value);
+  if (!normalized) {
+    return false;
+  }
+  for (const toolName of userQuestionToolNames) {
+    if (normalized.includes(toolName)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export function isUserQuestionEvent(event: TraceEvent) {
   return (
     userQuestionEventNames.has(event.eventName) ||
-    isUserQuestionToolEvent(event)
+    isUserQuestionToolEvent(event) ||
+    isPendingQuestionNotification(event)
   );
 }
 

@@ -728,7 +728,14 @@ plan) binds to the same request. The area and the floating panel share the same
 interaction state and turn read-only once the request is closed or answered on
 another device. A historical question without a live request shows its content
 only. The atom binds the newest question start while its status still follows
-the last matching event, so an answered question remains complete.
+the last matching event, so an answered question remains complete. When a host
+has no `PermissionRequest` hook (WorkBuddy writes only a
+`notification_type: "permission_prompt"` `Notification` whose text names
+`AskUserQuestion`), that notification is the question start: the canvas lights
+and locates the `User Question` atom the moment the host blocks on the prompt,
+before the answer and the later `PreToolUse` are written. Generic
+`idle_prompt` / `auth_success` notifications and permission prompts for other
+tools stay runtime signals and never steal the question locate.
 
 Overrides, inherited from the host process: `ASTRO_INTERACTION_SERVICE`
 (default `http://127.0.0.1:5678`), `ASTRO_INTERACTION_TIMEOUT_MS` (defaults to

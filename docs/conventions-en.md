@@ -124,9 +124,17 @@
     `src/lib/user-question-content.ts` (`userQuestionSummary`): structured
     prompts, free-form text and plan approvals are extracted there, and LOG
     summaries, the atomic projection and the inspector Overview all read it —
-    a question row never falls back to the tool name. The `user-question`
-    atom's bound event is chosen only in `src/lib/execution-topology.ts` (the
-    newest question *start*), while status follows the last matching event;
+    a question row never falls back to the tool name. What counts as a user
+    question lives only in `src/lib/trace-event-kind.ts` (`isUserQuestionEvent`
+    / `isUserQuestionStartEvent`): named events and a `Pre/PostToolUse` that
+    names the question tool, plus — for a host with no `PermissionRequest`
+    hook — a `notification_type=permission_prompt` `Notification` whose text
+    names the question tool (WorkBuddy offers only that while blocked; its
+    `PreToolUse` lands after the answer). `idle_prompt`, `auth_success` and
+    permission prompts for other tools stay runtime signals. The
+    `user-question` atom's bound event is chosen only in
+    `src/lib/execution-topology.ts` (the newest question *start*), while status
+    follows the last matching event;
   - the binding between a question and an interaction request lives only in
     `src/lib/question-interaction.ts`: tool id first, then session plus
     verbatim question text, then — for the textless plan approval — the

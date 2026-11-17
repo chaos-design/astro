@@ -173,7 +173,10 @@ sequenceDiagram
 `PostToolUseFailure`、`PermissionRequest`、`Elicitation`、
 `ElicitationResult`、`Notification`、`SubagentStart`、`SubagentStop`、
 `Stop`、`StopFailure`。事件日志把 `Notification` 标记为 `user.question`
-（`AskUserQuestion`），但不会改写持久化事件。
+（`AskUserQuestion`），但不会改写持久化事件；其中
+`notification_type=permission_prompt` 且点名提问工具的那一条同时是提问开始事件，
+驱动投影、等待态与 Flow 定位（WorkBuddy 在宿主弹题时只有这条通知，对应的
+`PreToolUse` 要等用户答完才落盘）。其余 `Notification` 只影响显示。
 
 未识别事件不会被丢弃，前端会按 `Unknown` 类型保留和展示。
 

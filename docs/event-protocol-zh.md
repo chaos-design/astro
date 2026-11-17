@@ -119,8 +119,13 @@ ASTRO 事件协议把不同编码智能体的生命周期、消息、工具和�
 投影层将 `PermissionRequest`、`PermissionDenied`、`Elicitation`、
 `ElicitationResult` 和 `Notification` 映射为 `user.question` 显示键。通用工具
 生命周期中的 `AskUserQuestion`、`request_user_input` 或 `UserQuestion` 也映射到
-同一原子；开始与完成事件分别打开和关闭一次等待交互。持久化的 `eventName` 与
-`nativeEventName` 保持不变，仍可在详情中检查。
+同一原子；开始与完成事件分别打开和关闭一次等待交互。`Notification` 默认只改变
+显示键（`idle_prompt`、`auth_success` 等仍是运行信号）；只有
+`notification_type` 为 `permission_prompt` 且文本（或结构化工具字段）点名提问
+工具的 `Notification` 才算提问开始。WorkBuddy 在宿主弹出 `AskUserQuestion` 时
+只发这条通知，对应的 `PreToolUse` 要等用户答完才落盘；没有它时运行虽进入等待态，
+Flow 却仍停在 `trace-append`，因此这条通知必须驱动投影、等待态与拓扑定位。
+持久化的 `eventName` 与 `nativeEventName` 保持不变，仍可在详情中检查。
 
 计划批准是 `user.question` 的另一种载荷形状：ZCode 与 Claude Code 以
 `PermissionRequest` + `toolName: ExitPlanMode` 上报，问题正文是

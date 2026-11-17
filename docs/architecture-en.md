@@ -173,7 +173,11 @@ The model recognizes 17 canonical types:
 `PermissionRequest`, `Elicitation`, `ElicitationResult`, `Notification`,
 `SubagentStart`, `SubagentStop`, `Stop`, and `StopFailure`. The event log labels
 `Notification` as `user.question` (`AskUserQuestion`) without rewriting the
-persisted event.
+persisted event. The one `Notification` whose `notification_type` is
+`permission_prompt` and whose text names a question tool is also a question
+start: it drives projection, waiting state and Flow location (WorkBuddy emits
+only this notification when the host pops the question; its `PreToolUse` lands
+after the answer). Every other `Notification` stays a display-only signal.
 
 Unknown event names are retained and presented as `Unknown`.
 

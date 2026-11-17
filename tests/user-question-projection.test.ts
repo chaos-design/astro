@@ -72,6 +72,95 @@ test("labels Notification events as AskUserQuestion activity", () => {
   assert.equal(getTraceEventKey(notification), "user.question");
 });
 
+test("a WorkBuddy permission prompt locates the pending user question", () => {
+  // WorkBuddy fires no PermissionRequest hook: the only pre-answer signal is
+  // this Notification, and AskUserQuestion's PreToolUse only arrives after the
+  // user has answered. It must be the question start, or the Flow keeps
+  // pulsing trace-append while the host is actually blocked on the user.
+  const prompt = normalizeTraceEvent({
+    capturedAt: "2026-09-10T10:00:00.000Z",
+    eventName: "Notification",
+    id: "permission-prompt",
+    payload: {
+      message: "needs your permission to use AskUserQuestion",
+      notification_type: "permission_prompt",
+    },
+    sessionId: "workbuddy-session",
+    source: "workbuddy",
+    workspaceId: "workspace",
+  });
+
+  assert.equal(isUserQuestionEvent(prompt), true);
+  assert.equal(isUserQuestionStartEvent(prompt), true);
+  assert.equal(isWaitingTraceEvent(prompt), true);
+  assert.equal(getTraceEventKey(prompt), "user.question");
+  assert.equal(
+    getAtomIdForEvent(prompt, "workbuddy"),
+    "harness-user-question",
+  );
+  assert.match(getEventSummary(prompt), /AskUserQuestion/);
+
+  const projected = projectTraceEvents([prompt], "workbuddy").events.filter(
+    (event) => event.atom.key === "user.question",
+  );
+  assert.deepEqual(
+    projected.map((event) => event.phase),
+    ["waiting"],
+  );
+
+  const topology = buildExecutionTopology([prompt], "workbuddy");
+  const question = topology.nodes.find(
+    (node) => node.id === "harness-user-question",
+  );
+  assert.equal(question?.data.count, 1);
+  assert.equal(question?.data.status, "waiting");
+});
+
+test("generic and non-question permission notifications stay signals", () => {
+  const notification = (payload: Record<string, unknown>) =>
+    normalizeTraceEvent({
+      eventName: "Notification",
+      id: `notification-${String(payload.message)}`,
+      payload,
+      sessionId: "workbuddy-session",
+      source: "workbuddy",
+      workspaceId: "workspace",
+    });
+  const signals = [
+    notification({
+      message: "CodeBuddy is waiting for your input",
+      notification_type: "idle_prompt",
+    }),
+    notification({
+      message: "auth_success: 175****2604",
+      notification_type: "auth_success",
+    }),
+    notification({
+      message: "needs your permission to use DeferExecuteTool",
+      notification_type: "permission_prompt",
+    }),
+    notification({
+      message: "needs your permission to use Bash",
+      notification_type: "permission_prompt",
+    }),
+  ];
+
+  for (const event of signals) {
+    assert.equal(isUserQuestionEvent(event), false);
+    assert.notEqual(
+      getAtomIdForEvent(event, "workbuddy"),
+      "harness-user-question",
+    );
+  }
+
+  // A host that reports the tool in a structured field is accepted as well.
+  const structured = notification({
+    notification_type: "permission_prompt",
+    tool_name: "AskUserQuestion",
+  });
+  assert.equal(isUserQuestionEvent(structured), true);
+});
+
 test("projects a question tool lifecycle to one user question instance", () => {
   const start = questionToolEvent("PreToolUse");
   const end = questionToolEvent("PostToolUse");
