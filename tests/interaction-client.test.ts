@@ -7,6 +7,7 @@ import {
 } from "../src/lib/interaction-contract.ts";
 import {
   answerInteractionQuestion,
+  answerInteractionQuestions,
   buildInteractionEvent,
   cancelInteraction,
   sendInteractionEvent,
@@ -255,6 +256,118 @@ test("inspector answer sends text and submit as one keyed chain", async () => {
     "update",
     "update",
   ]);
+});
+
+test("a multi-question answer sends one text event per question and one submit", async () => {
+  const request = buildInteractionRequest(
+    {
+      hookEventName: "PermissionRequest",
+      toolName: "AskUserQuestion",
+      toolUseId: "call-multi",
+      sessionId: "sess-multi",
+      source: "claude",
+      questions: [
+        {
+          question: "Which framework?",
+          header: "Framework",
+          options: [{ label: "React" }, { label: "Vue" }],
+          required: true,
+        },
+        {
+          question: "Deploy tonight?",
+          header: "Deploy",
+          options: [{ label: "Yes" }, { label: "No" }],
+          required: true,
+        },
+      ],
+    },
+    { now: NOW, timeoutMs: 5000 },
+  );
+  const state = interactionReducer(initialInteractionState, {
+    type: "open",
+    request,
+  });
+  const base = state.requests[request.requestId]!;
+  const dispatches: InteractionAction[] = [];
+  const { transport: wire, calls } = transport([
+    { ok: true, status: 202 },
+    { ok: true, status: 202 },
+    {
+      ok: true,
+      status: 202,
+      payload: { status: "answered", requestId: request.requestId },
+    },
+  ]);
+
+  const result = await answerInteractionQuestions(
+    base,
+    { "Which framework?": "React", "Deploy tonight?": "No" },
+    (action) => dispatches.push(action),
+    wire,
+  );
+
+  assert.equal(result.ok, true);
+  assert.equal(result.result?.status, "answered");
+  assert.equal(calls.length, 3, "two text events then one submit");
+  const events = calls.map((call) => call.body as InteractionEvent);
+  assert.deepEqual(
+    events.map((event) => [event.action, event.seq, event.question]),
+    [
+      ["text", 1, "Which framework?"],
+      ["text", 2, "Deploy tonight?"],
+      ["submit", 3, undefined],
+    ],
+  );
+  assert.deepEqual(events[2].answers, {
+    "Which framework?": "React",
+    "Deploy tonight?": "No",
+  });
+  assert.deepEqual(dispatches.map((action) => action.type), [
+    "pending",
+    "update",
+    "update",
+    "update",
+  ]);
+});
+
+test("a multi-question batch refuses to send with a missing required answer", async () => {
+  const request = buildInteractionRequest(
+    {
+      hookEventName: "PermissionRequest",
+      toolName: "AskUserQuestion",
+      toolUseId: "call-multi-2",
+      sessionId: "sess-multi-2",
+      source: "claude",
+      questions: [
+        {
+          question: "First?",
+          options: [{ label: "A" }, { label: "B" }],
+          required: true,
+        },
+        {
+          question: "Second?",
+          options: [{ label: "C" }, { label: "D" }],
+          required: true,
+        },
+      ],
+    },
+    { now: NOW, timeoutMs: 5000 },
+  );
+  const state = interactionReducer(initialInteractionState, {
+    type: "open",
+    request,
+  });
+  const base = state.requests[request.requestId]!;
+  const { transport: wire, calls } = transport([]);
+  const result = await answerInteractionQuestions(
+    base,
+    { "First?": "A" },
+    () => {},
+    wire,
+  );
+  assert.equal(result.ok, false);
+  assert.equal(result.blocked, true);
+  assert.equal(calls.length, 0, "nothing is sent for a half-filled batch");
 });
 
 test("inspector answer refuses a question outside the request", async () => {

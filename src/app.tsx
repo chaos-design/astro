@@ -262,7 +262,7 @@ import {
 } from "./lib/atom-selection";
 import { isSameEventSequence } from "./lib/event-snapshot";
 import {
-  answerInteractionQuestion,
+  answerInteractionQuestions,
   cancelInteraction,
   consoleDeviceId,
   sendInteractionEvent,
@@ -313,7 +313,6 @@ import {
   isUserQuestionStartEvent,
 } from "./lib/trace-event-kind";
 import { hasPlanContent, userQuestionSummary } from "./lib/user-question-content";
-import { optionLabels } from "./lib/interaction-panel-model";
 import { buildConsoleLocationSearch } from "./lib/console-location";
 import type {
   HarnessNode,
@@ -3293,7 +3292,7 @@ function TraceInspector({
   node,
   onActiveTabChange,
   matchedQuestion,
-  answerDraft,
+  answerDrafts,
   onAnswerDraftChange,
   onAnswerQuestion,
 }: {
@@ -3304,9 +3303,12 @@ function TraceInspector({
   node: TraceNodeType | null;
   onActiveTabChange: (tab: string) => void;
   matchedQuestion: MatchedQuestionInteraction | null;
-  answerDraft: string;
-  onAnswerDraftChange: (text: string) => void;
-  onAnswerQuestion: (matched: MatchedQuestionInteraction, text: string) => void;
+  answerDrafts: Readonly<Record<string, string>>;
+  onAnswerDraftChange: (question: string, text: string) => void;
+  onAnswerQuestion: (
+    matched: MatchedQuestionInteraction,
+    answers: Record<string, string>,
+  ) => void;
 }) {
   if ((!node || !event) && !atom) {
     return (
@@ -3403,22 +3405,11 @@ function TraceInspector({
   // floating panel stays the read-only record in those cases.
   const answerForm = matchedQuestion ? (
     <QuestionAnswerForm
-      question={matchedQuestion.question.question}
-      // Single-select descriptors answer in one click — a plan approval is an
-      // Approve/Reject pair, and the synchronous window has no click to spare.
-      // Multi-select keeps the typed-answer row; the floating panel is the
-      // full multi-select surface.
-      options={
-        matchedQuestion.question.multiSelect === true
-          ? undefined
-          : optionLabels(matchedQuestion.question)
-      }
-      selection={
-        matchedQuestion.draft.selections[matchedQuestion.question.question]?.[0]
-      }
-      draft={answerDraft}
+      questions={matchedQuestion.draft.request.questions}
+      selections={matchedQuestion.draft.selections}
+      drafts={answerDrafts}
       onDraftChange={onAnswerDraftChange}
-      onSend={(text) => onAnswerQuestion(matchedQuestion, text)}
+      onSend={(answers) => onAnswerQuestion(matchedQuestion, answers)}
       readOnly={Boolean(
         matchedQuestion.draft.result ||
           (matchedQuestion.draft.lockedBy &&
@@ -5136,10 +5127,12 @@ export default function App() {
   // refs keeps an interaction frame from re-subscribing the whole stream.
   const activeSessionRef = useRef<{ id: string; source: string } | null>(null);
   const followingLiveRef = useRef(false);
-  // The Flow atom inspector's answer box keeps its own draft. It is shared by
-  // the Overview and Input tabs so switching tabs while typing does not lose
-  // the text, and reset when the selected question changes.
-  const [questionAnswerDraft, setQuestionAnswerDraft] = useState("");
+  // The Flow atom inspector keeps one draft per question of the matched
+  // request. AskUserQuestion can carry several descriptors, all answered with
+  // a single submit; drafts survive tab switches and reset with the question.
+  const [questionAnswerDrafts, setQuestionAnswerDrafts] = useState<
+    Record<string, string>
+  >({});
   // The newest unanswered request owns the card. Older ones cannot still be
   // inside their window, and two cards would compete for the same click.
   const activeInteraction = useMemo<InteractionDraft | null>(() => {
@@ -5203,17 +5196,16 @@ export default function App() {
   // against the snapshot matched to the atom's question, never against a
   // possibly stale React render of the floating panel.
   const handleQuestionAnswer = useCallback(
-    (matched: MatchedQuestionInteraction, text: string) => {
-      void answerInteractionQuestion(
+    (matched: MatchedQuestionInteraction, answers: Record<string, string>) => {
+      void answerInteractionQuestions(
         matched.draft,
-        matched.question.question,
-        text,
+        answers,
         dispatchInteraction,
         { apiBase },
       ).then((result) => {
         reportInteractionResult(result);
         if (result.ok || result.blocked) {
-          setQuestionAnswerDraft("");
+          setQuestionAnswerDrafts({});
         }
       });
     },
@@ -6655,7 +6647,7 @@ export default function App() {
     : "";
 
   useEffect(() => {
-    setQuestionAnswerDraft("");
+    setQuestionAnswerDrafts({});
   }, [matchedQuestionKey]);
 
   useEffect(() => {
@@ -7849,8 +7841,13 @@ export default function App() {
                 index={selectedEventIndex}
                 onActiveTabChange={setInspectorTab}
                 matchedQuestion={matchedQuestionInteraction}
-                answerDraft={questionAnswerDraft}
-                onAnswerDraftChange={setQuestionAnswerDraft}
+                answerDrafts={questionAnswerDrafts}
+                onAnswerDraftChange={(question, text) =>
+                  setQuestionAnswerDrafts((current) => ({
+                    ...current,
+                    [question]: text,
+                  }))
+                }
                 onAnswerQuestion={handleQuestionAnswer}
               />
             </>

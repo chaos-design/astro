@@ -214,22 +214,25 @@ export async function submitInteraction(
 }
 
 /**
- * Answer one question from the inspector and submit the request in a single
- * action. The floating panel splits `text` and `submit` across two clicks; the
- * inspector offers one "send" button, so the two events must be built against
- * the same seq chain here. Deriving the answered draft locally (instead of
- * waiting for React to re-render) is what keeps the answer keyed to the exact
- * question the reader selected even when they click immediately after typing.
+ * Answer one or more questions from the inspector and submit the request in a
+ * single action. The floating panel splits `text` and `submit` across two
+ * clicks; the inspector offers one "send" button, so every text event and the
+ * final submit must be built against the same seq chain here. Deriving the
+ * answered draft locally (instead of waiting for React to re-render) is what
+ * keeps each answer keyed to the exact verbatim question text, even when the
+ * reader clicks immediately after typing and even when the host carries
+ * several descriptors in one AskUserQuestion call.
  */
-export async function answerInteractionQuestion(
+export async function answerInteractionQuestions(
   draft: InteractionDraft,
-  question: string,
-  text: string,
+  answers: Readonly<Record<string, string>>,
   dispatch: (action: InteractionStateAction) => void,
   transport: InteractionTransport,
 ): Promise<InteractionSendResult> {
-  const answer = text.trim();
-  if (!answer) {
+  const entries = Object.entries(answers)
+    .map(([question, value]) => [question, String(value ?? "").trim()] as const)
+    .filter(([, answer]) => answer.length > 0);
+  if (!entries.length) {
     return { ok: false, blocked: true, error: "answer is empty" };
   }
   if (draft.pending) {
@@ -242,16 +245,36 @@ export async function answerInteractionQuestion(
   if (draft.lockedBy && draft.lockedBy !== deviceId) {
     return { ok: false, blocked: true, error: "answered on another device" };
   }
-  if (!draft.request.questions.some((item) => item.question === question)) {
-    return { ok: false, blocked: true, error: "question is not part of this request" };
+  for (const [question] of entries) {
+    if (!draft.request.questions.some((item) => item.question === question)) {
+      return {
+        ok: false,
+        blocked: true,
+        error: "question is not part of this request",
+      };
+    }
   }
-  const textEvent = buildInteractionEvent(draft, "text", { question, text: answer }, transport);
-  const answered: InteractionDraft = {
-    ...draft,
-    events: [...draft.events, textEvent],
-    seq: textEvent.seq,
-    selections: { ...draft.selections, [question]: [answer] },
-  };
+
+  // One `text` event per question with strictly increasing seq, then a single
+  // submit carrying the whole answer map. The host validates the map against
+  // the verbatim question texts, so a half-filled batch is never sent.
+  let answered: InteractionDraft = { ...draft, events: [...draft.events] };
+  const textEvents: InteractionEvent[] = [];
+  for (const [question, answer] of entries) {
+    const event = buildInteractionEvent(
+      answered,
+      "text",
+      { question, text: answer },
+      transport,
+    );
+    textEvents.push(event);
+    answered = {
+      ...answered,
+      events: [...answered.events, event],
+      seq: event.seq,
+      selections: { ...answered.selections, [question]: [answer] },
+    };
+  }
   if (!isInteractionSubmittable(answered)) {
     return { ok: false, blocked: true, error: "required answers missing" };
   }
@@ -267,35 +290,47 @@ export async function answerInteractionQuestion(
     requestId: draft.request.requestId,
     eventId: submitEvent.eventId,
   });
-  dispatch({ type: "update", event: textEvent });
+  for (const event of textEvents) {
+    dispatch({ type: "update", event });
+  }
   dispatch({ type: "update", event: submitEvent });
 
   const url = eventUrl(transport, draft.request.requestId);
-  const textResponse = await postJson(transport, url, textEvent);
-  if (!textResponse.ok) {
-    dispatch({
-      type: "revert",
-      requestId: draft.request.requestId,
-      seq: draft.seq,
-    });
-    return {
-      ok: false,
-      error: errorText(textResponse.payload, `event rejected (${textResponse.status})`),
-    };
+  let submitted: { payload?: unknown } = {};
+  for (const event of [...textEvents, submitEvent]) {
+    const response = await postJson(transport, url, event);
+    submitted = response;
+    if (!response.ok) {
+      dispatch({
+        type: "revert",
+        requestId: draft.request.requestId,
+        seq: draft.seq,
+      });
+      return {
+        ok: false,
+        error: errorText(
+          response.payload,
+          `${event.action} rejected (${response.status})`,
+        ),
+      };
+    }
   }
-  const submitResponse = await postJson(transport, url, submitEvent);
-  if (!submitResponse.ok) {
-    dispatch({
-      type: "revert",
-      requestId: draft.request.requestId,
-      seq: draft.seq,
-    });
-    return {
-      ok: false,
-      error: errorText(submitResponse.payload, `submit rejected (${submitResponse.status})`),
-    };
-  }
-  return { ok: true, result: resultOf(submitResponse.payload) };
+  return { ok: true, result: resultOf(submitted.payload) };
+}
+
+export async function answerInteractionQuestion(
+  draft: InteractionDraft,
+  question: string,
+  text: string,
+  dispatch: (action: InteractionStateAction) => void,
+  transport: InteractionTransport,
+): Promise<InteractionSendResult> {
+  return answerInteractionQuestions(
+    draft,
+    { [question]: text },
+    dispatch,
+    transport,
+  );
 }
 
 /** Cancel is closed through the service, which broadcasts the one close frame. */

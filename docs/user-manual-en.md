@@ -737,7 +737,12 @@ question text in Overview. While the question still has an open interaction
 request, Overview and Input both offer an answer area: single-select questions
 (including a plan approval's Approve/Reject) render a wrapping row of one-click
 quick answers above the free-text row, and custom text still goes through the
-input + Send. Selecting the `ExitPlanMode` tool row (which previews the same
+input + Send. When one `AskUserQuestion` carries several descriptors the
+inspector lists every question with its own options/input and one Submit sends
+the whole batch: the host closes the request on the first submit, so answering
+one at a time would strand the rest. In a batch a quick option fills its row
+and Submit goes once all required questions are answered; a lone question keeps
+one-click sending. Selecting the `ExitPlanMode` tool row (which previews the same
 plan) binds to the same request. The area and the floating panel share the same
 interaction state and turn read-only once the request is closed or answered on
 another device. A historical question without a live request shows its content

@@ -8170,12 +8170,47 @@ pre,
   gap: 8px;
 }
 
-.question-answer__existing {
+.question-answer__existing,
+.question-answer__count {
   overflow: hidden;
   color: var(--muted-soft, var(--muted));
   font-size: 0.6875rem;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.question-answer__count {
+  flex: 0 0 auto;
+}
+
+.question-answer__item {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.question-answer__item + .question-answer__item {
+  padding-top: 7px;
+  border-top: 1px solid var(--border);
+}
+
+.question-answer__meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.question-answer__meta .question-answer__prompt {
+  flex: 1 1 auto;
+}
+
+.question-answer__footer {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 2px;
 }
 
 .question-answer__prompt {

@@ -731,12 +731,19 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   atom inspector mounts an answer box. `src/lib/question-interaction.ts` owns
   the one match rule (tool id first, then session + verbatim question text,
   then — for the textless plan approval — the session's newest open
-  ExitPlanMode request), and `answerInteractionQuestion()` sends `text` +
-  `submit` as one seq chain. The answer key is always the descriptor's
-  verbatim question text. Single-select descriptors render one-click quick
-  answer buttons above the free-text row (a plan approval is an
-  Approve/Reject pair), and the inspector's question binding mirrors the
-  display fallback: a plan-content tool row answers like the question atom.
+  ExitPlanMode request). `answerInteractionQuestions()` in
+  `src/lib/interaction-client.ts` is the one batch sender: every question gets a
+  `text` event with increasing seq, then a single `submit` carrying the full
+  answer map; `answerInteractionQuestion()` is only its one-element wrapper.
+  The answer key is always the descriptor's verbatim question text — never a
+  row index or the selected log event. The host closes a request on the first
+  submit, so a multi-descriptor AskUserQuestion must be answered in one batch,
+  not one question at a time. Single-select descriptors render one-click quick
+  answer buttons above the free-text row (a plan approval is an Approve/Reject
+  pair); with several questions a quick option fills its row and the single
+  Submit button sends the batch once all required questions are answered. The
+  inspector's question binding mirrors the display fallback: a plan-content
+  tool row answers like the question atom.
   The floating interaction panel keeps its newest-request rule and is
   untouched by canvas selection.
 - `PreCompact` / `PostCompact` cover context compaction for every client that

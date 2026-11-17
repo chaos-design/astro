@@ -148,7 +148,11 @@
     session's newest open ExitPlanMode request, with the answer key always the
     request's exact question text. The inspector answer box and the floating
     panel share one interaction state and never infer "the current question"
-    separately. `shouldLocateInteractionRequest` in the same module decides
+    separately. The inspector's batch answer builds its seq chain only in
+    `answerInteractionQuestions` (`src/lib/interaction-client.ts`): one `text`
+    event per question then one `submit` with the full answer map, with the
+    single-question entry point a one-element wrapper. `shouldLocateInteractionRequest`
+    in `question-interaction.ts` decides
     whether `interaction.open` flashes the question atom: only the same session
     and source as the run being followed, and only a locate pulse — never a
     selection change that would switch Live off mid-question.
