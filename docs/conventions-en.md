@@ -155,7 +155,14 @@
     in `question-interaction.ts` decides
     whether `interaction.open` flashes the question atom: only the same session
     and source as the run being followed, and only a locate pulse — never a
-    selection change that would switch Live off mid-question.
+    selection change that would switch Live off mid-question. The floating
+    question card follows the request lifecycle instead: it enters with an
+    animation when a request opens, the header chevron folds it to a one-line
+    summary (a new request remounts it by its `requestId` key and re-expands),
+    the question list scrolls while the footer stays pinned to the card's
+    bottom edge, and a closed request keeps the card readable ~2.4s
+    (`--settling`) before it slides away — a stream reset that wiped the
+    record dismisses it at once. Canvas selection still never controls it.
   New consumers reuse those helpers; do not grow a second failure or live list.
 - Sample (Demo) data lives only in `data/demo-events.json`: the service reads it
   through `server/demo-dataset.mjs` and serves `GET /api/demo-events`, and the

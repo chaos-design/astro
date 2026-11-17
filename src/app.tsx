@@ -409,6 +409,15 @@ function scrollRowWithinContainer(
  */
 const headerNavMenuId = "studio-header-nav-menu";
 
+/**
+ * How long the floating interaction card stays readable after its request
+ * closes (ANSWERED / CANCELLED / TIMED OUT) before it slides away. Aligned
+ * with `.interaction-panel--settling` in styles.css: the CSS leave animation
+ * starts at 2100ms and runs 260ms, so this unmounts just after the card has
+ * gone invisible.
+ */
+const INTERACTION_SETTLE_MS = 2400;
+
 // Reused Intl formatters: constructing one per call is expensive, and these
 // run for every log/trajectory row on every render.
 const clockFormatter = new Intl.DateTimeFormat(undefined, {
@@ -5155,6 +5164,37 @@ export default function App() {
     );
     return open.at(-1) ?? null;
   }, [interactions]);
+  // Follow the question lifecycle: when the open request closes, keep the card
+  // mounted (--settling) so the result stays readable before it slides away. A
+  // new request arriving during that window takes the card back immediately.
+  const lastOpenInteractionRef = useRef<InteractionDraft | null>(null);
+  if (activeInteraction) {
+    lastOpenInteractionRef.current = activeInteraction;
+  }
+  const [settlingInteraction, setSettlingInteraction] =
+    useState<InteractionDraft | null>(null);
+  useEffect(() => {
+    if (activeInteraction) {
+      setSettlingInteraction(null);
+      return;
+    }
+    const previous = lastOpenInteractionRef.current;
+    lastOpenInteractionRef.current = null;
+    if (!previous) {
+      return;
+    }
+    // A stream reset wipes the request records; with the record gone there is
+    // nothing truthful to show, so the card just disappears.
+    const closed = interactionsRef.current.requests[previous.request.requestId];
+    if (!closed?.result) {
+      return;
+    }
+    setSettlingInteraction(closed);
+    const timer = window.setTimeout(() => {
+      setSettlingInteraction(null);
+    }, INTERACTION_SETTLE_MS);
+    return () => window.clearTimeout(timer);
+  }, [activeInteraction]);
   const reportInteractionResult = useCallback(
     (result: InteractionSendResult) => {
       if (result.ok || result.blocked) {
@@ -7823,6 +7863,7 @@ export default function App() {
             <InteractionPanel
               className="interaction-panel--floating"
               deviceId={consoleDeviceId}
+              key={activeInteraction.request.requestId}
               lockedBy={activeInteraction.lockedBy}
               onCancel={() =>
                 handleInteractionCancel(activeInteraction.request.requestId)
@@ -7869,6 +7910,18 @@ export default function App() {
               request={activeInteraction.request}
               result={activeInteraction.result}
               selections={activeInteraction.selections}
+            />
+          ) : settlingInteraction ? (
+            // The request just closed: same key and position as the open card,
+            // so the collapsed/expanded state carries over without a remount
+            // flicker while the result is shown and the card slides away.
+            <InteractionPanel
+              className="interaction-panel--floating interaction-panel--settling"
+              deviceId={consoleDeviceId}
+              key={settlingInteraction.request.requestId}
+              lockedBy={settlingInteraction.lockedBy}
+              request={settlingInteraction.request}
+              result={settlingInteraction.result}
             />
           ) : null}
 

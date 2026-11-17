@@ -731,7 +731,13 @@ Answers are never replayed outside the window.
 Panel behavior: a single-select click selects; multi-select joins labels in the
 declared option order with commas; "Other" accepts free text; Submit requires
 every required question; Esc/cancel ends the request and falls back; another
-device answering first turns the panel read-only. `ExitPlanMode` renders as an
+device answering first turns the panel read-only. The card follows the question
+lifecycle: it auto-expands with an entrance animation when a request opens, the
+header chevron collapses it to a one-line summary (handing the canvas back — a
+newly opened question re-expands it), the question list scrolls while
+Submit/Cancel stay pinned to the card's bottom edge, and once the request is
+answered, cancelled or timed out the card shows the result (ANSWERED /
+CANCELLED / …) for about two seconds and then slides away. `ExitPlanMode` renders as an
 "Approve this plan?" choice — only Approve returns a decision and the plan text
 is echoed unchanged. When a request opens in the run currently on screen the
 canvas flashes its question atom; a request from another session or agent never

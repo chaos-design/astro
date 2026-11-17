@@ -121,7 +121,10 @@
     `answerInteractionQuestion` 只是它的单元素包装。同一个模块里的
     `shouldLocateInteractionRequest` 决定 `interaction.open` 是否闪一下提问原子：
     只认正在跟随运行的同会话同来源请求，且只加定位脉冲、不改选中，避免把 Live
-    跟随关掉。
+    跟随关掉。浮层问题卡片改为跟随请求生命周期：请求打开时带动画入场，头部按钮可
+    折叠成单行摘要（新请求按 `requestId` key 重挂载并重新展开），问题列表滚动而
+    提交栏吸附卡片底部；请求关闭后卡片以 `--settling` 状态保留结果约 2.4 秒再滑出，
+    流重置清掉记录时立即消失。画布选中依旧不控制它。
   新增消费方必须复用这些函数，不得再写一份“失败事件名单”或“live 名单”。
 - 示例（Demo）数据只在 `data/demo-events.json`：服务通过 `server/demo-dataset.mjs`
   读取并由 `GET /api/demo-events` 提供，控制台只在 `src/lib/demo-events.ts` 解析。

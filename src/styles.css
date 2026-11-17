@@ -8031,8 +8031,59 @@ pre,
   width: min(420px, calc(100% - 24px));
   max-height: calc(100% - 130px);
   margin-top: 0;
-  overflow: auto;
+  overflow: hidden;
   box-shadow: 0 18px 48px rgb(0 0 0 / 35%);
+  animation: interaction-panel-enter 200ms ease-out both;
+}
+
+/* The card follows the question lifecycle: it enters when a request opens, and
+   once the request closes the app keeps it mounted (--settling) so the result
+   stays readable before the card slides away. */
+.interaction-panel--settling {
+  animation: interaction-panel-leave 260ms ease 2100ms forwards;
+}
+
+@keyframes interaction-panel-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+
+@keyframes interaction-panel-leave {
+  to {
+    opacity: 0;
+    transform: translateY(-8px);
+    visibility: hidden;
+  }
+}
+
+/* Collapsible body: the header stays visible as a one-line summary and the
+   grid track animates between 1fr and 0fr, so the collapse height follows the
+   content instead of a guessed max-height (same reasoning as the measured
+   run-history prompt thread — a fixed clip height would truncate it). */
+.interaction-panel__body {
+  display: grid;
+  flex: 1 1 auto;
+  min-height: 0;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 200ms ease;
+}
+
+.interaction-panel.is-collapsed {
+  gap: 0;
+}
+
+.interaction-panel.is-collapsed .interaction-panel__body {
+  grid-template-rows: 0fr;
+}
+
+.interaction-panel__body-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  overflow: hidden;
 }
 
 @media (max-width: 620px) {
@@ -8045,12 +8096,57 @@ pre,
 
 .interaction-panel__header {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   gap: 8px;
   font-family: var(--font-mono, monospace);
   font-size: var(--text-caption);
   letter-spacing: 0.08em;
   color: var(--muted-soft, var(--muted));
+}
+
+/* Shown only while collapsed: the first question stands in for the hidden
+   body so the folded card still names what is being asked. */
+.interaction-panel__summary {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text, inherit);
+  letter-spacing: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.interaction-panel__toggle {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted-soft, var(--muted));
+  cursor: pointer;
+  transition:
+    color 140ms ease,
+    background 140ms ease;
+}
+
+.interaction-panel__toggle:hover {
+  color: var(--text, inherit);
+  background: var(--panel-hover);
+}
+
+.interaction-panel__toggle svg {
+  transition: transform 160ms ease;
+}
+
+/* Expanded points up (click to fold away); collapsed points down (click to
+   unfold). */
+.interaction-panel__toggle[aria-expanded="false"] svg {
+  transform: rotate(180deg);
 }
 
 .interaction-panel__status {
@@ -8073,14 +8169,26 @@ pre,
   gap: 14px;
 }
 
+/* 提交吸底: the floating card scrolls its question list and keeps the footer
+   pinned below it — a tall batch must never scroll Submit out of reach. */
+.interaction-panel--floating .interaction-panel__questions {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding-right: 2px;
+  overflow-y: auto;
+}
+
 .interaction-panel__question h3 {
   margin: 0 0 4px;
-  font-size: 0.75rem;
-  font-weight: 600;
+  color: var(--text-strong, inherit);
+  font-size: 0.8125rem;
+  font-weight: var(--weight-strong, 700);
+  line-height: 1.4;
 }
 
 .interaction-panel__prompt {
-  margin: 0 0 8px;
+  margin: 0 0 10px;
+  color: var(--muted-soft, var(--muted));
   font-size: 0.8125rem;
   line-height: 1.5;
   white-space: pre-wrap;
@@ -8094,10 +8202,11 @@ pre,
 
 .interaction-panel__option {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 4px 8px;
   width: 100%;
-  padding: 7px 10px;
+  padding: 8px 11px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--panel);
@@ -8105,20 +8214,40 @@ pre,
   font-size: 0.8125rem;
   text-align: left;
   cursor: pointer;
+  transition:
+    border-color 140ms ease,
+    background 140ms ease,
+    box-shadow 140ms ease;
 }
 
 .interaction-panel__option:hover:not(:disabled) {
+  border-color: var(--line-bright);
   background: var(--panel-hover);
+}
+
+.interaction-panel__option:active:not(:disabled) {
+  transform: translateY(0.5px);
 }
 
 .interaction-panel__option[aria-pressed="true"] {
   border-color: var(--teal);
   background: color-mix(in srgb, var(--teal) 12%, var(--panel));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--teal) 30%, transparent);
+}
+
+.interaction-panel__option[aria-pressed="true"] svg {
+  color: var(--teal);
+}
+
+.interaction-panel__option > span {
+  font-weight: var(--weight-medium, 600);
 }
 
 .interaction-panel__option small {
+  flex-basis: 100%;
   color: var(--muted-soft, var(--muted));
   font-size: 0.6875rem;
+  line-height: 1.45;
 }
 
 .interaction-panel__text {
@@ -8130,12 +8259,28 @@ pre,
 .interaction-panel__text input {
   flex: 1;
   min-width: 0;
-  padding: 5px 8px;
+  padding: 6px 9px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--panel);
   color: inherit;
   font-size: 0.8125rem;
+  transition:
+    border-color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+/* Teal focus treatment instead of the generic cyan outline: the ring is the
+   visible keyboard indicator for this input. */
+.interaction-panel__text input:focus {
+  border-color: var(--teal);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--teal) 16%, transparent);
+  outline: none;
+}
+
+.interaction-panel__text input:disabled {
+  cursor: default;
+  opacity: 0.55;
 }
 
 /* Question answer inside the expanded Flow atom inspector. The preview keeps
@@ -8280,8 +8425,11 @@ pre,
 
 .interaction-panel__footer {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   gap: 8px;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
 }
 
 .interaction-panel__pending {

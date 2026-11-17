@@ -790,7 +790,14 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   inspector's question binding mirrors the display fallback: a plan-content
   tool row answers like the question atom.
   The floating interaction panel keeps its newest-request rule and is
-  untouched by canvas selection.
+  untouched by canvas selection. It follows the question lifecycle instead:
+  the card enters with an animation when a request opens, the header chevron
+  collapses it to a one-line summary (a new request remounts the card via its
+  `requestId` key and re-expands), the question list scrolls while the footer
+  stays pinned to the card's bottom edge, and when the request closes the app
+  keeps the card mounted (`--settling`, `INTERACTION_SETTLE_MS`) so the result
+  stays readable ~2.4s before it slides away — a stream reset that wiped the
+  record dismisses it at once instead of showing a stale question.
 - `PreCompact` / `PostCompact` cover context compaction for every client that
   reports it; streaming compaction deltas are never recorded.
 

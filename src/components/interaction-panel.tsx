@@ -1,4 +1,4 @@
-import { Check, PencilLine, Send, SkipForward, X } from "lucide-react";
+import { Check, ChevronDown, PencilLine, Send, SkipForward, X } from "lucide-react";
 import { useState } from "react";
 import { Button } from "./ui/button";
 import type {
@@ -91,186 +91,218 @@ export function InteractionPanel({
 }: InteractionPanelProps) {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [editing, setEditing] = useState<string | null>(null);
+  // Collapsing only hides the body: the header stays as a one-line summary so
+  // the card can get out of the canvas's way without losing the question. A
+  // new request remounts the card (the app keys it by requestId) and expands.
+  const [collapsed, setCollapsed] = useState(false);
   const status = interactionPanelStatus(result);
   const readOnly = isInteractionPanelReadOnly(status, lockedBy, deviceId);
   const answers = result?.answers ?? {};
   const submittable = isInteractionPanelSubmittable(request.questions, selections);
+  const summary =
+    collapsed && status === "open"
+      ? request.questions[0]?.header || request.questions[0]?.question
+      : null;
 
   return (
     <section
       aria-label="User question"
-      className={className ? `interaction-panel ${className}` : "interaction-panel"}
+      className={[
+        "interaction-panel",
+        collapsed ? "is-collapsed" : "",
+        className || "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
       data-status={status}
     >
       <header className="interaction-panel__header">
         <span className="interaction-panel__eyebrow">USER QUESTION</span>
+        {summary ? (
+          <span className="interaction-panel__summary">{summary}</span>
+        ) : null}
         <span className="interaction-panel__status">{statusLabel(status)}</span>
         {lockedBy && lockedBy !== deviceId ? (
           <span className="interaction-panel__locked">answered on {lockedBy}</span>
         ) : null}
+        <button
+          aria-expanded={!collapsed}
+          aria-label={
+            collapsed ? "Expand question panel" : "Collapse question panel"
+          }
+          className="interaction-panel__toggle"
+          onClick={() => setCollapsed((current) => !current)}
+          type="button"
+        >
+          <ChevronDown aria-hidden="true" />
+        </button>
       </header>
 
-      {status === "open" ? (
-        <div className="interaction-panel__questions">
-          {request.questions.map((question) => {
-            const selected = selections[question.question] || [];
-            const draft = drafts[question.question] || "";
-            const freeText = selected.find(
-              (value) => !optionLabels(question).includes(value),
-            );
-            return (
-              <article
-                className="interaction-panel__question"
-                key={question.question}
-              >
-                <h3>{question.header || question.question}</h3>
-                <p className="interaction-panel__prompt">{question.question}</p>
-                <div
-                  aria-label={question.question}
-                  className="interaction-panel__options"
-                  role="group"
-                >
-                  {optionLabels(question).map((label) => {
-                    const active = selected.includes(label);
-                    const description = optionDescription(question, label);
-                    return (
-                      <button
-                        aria-pressed={active}
-                        className="interaction-panel__option"
-                        disabled={readOnly}
-                        key={label}
-                        onClick={() => {
-                          const click = resolveOptionClick({
-                            active,
-                            multiSelect: question.multiSelect === true,
-                            readOnly,
-                          });
-                          if (click === "select") {
-                            onSelect?.(question.question, label);
-                          } else if (click === "deselect") {
-                            onDeselect?.(question.question, label);
-                          }
-                        }}
-                        type="button"
-                      >
-                        {active ? <Check aria-hidden="true" /> : null}
-                        <span>{label}</span>
-                        {description ? <small>{description}</small> : null}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {editing === question.question || !freeText ? (
-                  <div className="interaction-panel__text">
-                    <input
-                      aria-label={`Other answer for ${question.question}`}
-                      disabled={readOnly}
-                      onChange={(event) =>
-                        setDrafts((current) => ({
-                          ...current,
-                          [question.question]: event.target.value,
-                        }))
-                      }
-                      placeholder="Other…"
-                      value={draft}
-                    />
-                    <Button
-                      disabled={readOnly || !draft.trim()}
-                      onClick={() => {
-                        dispatchTextAction(
-                          resolveTextAction(freeText, draft),
-                          question.question,
-                          { onText, onEdit },
-                        );
-                        setEditing(null);
-                      }}
-                      size="sm"
-                      type="button"
-                      variant="outline"
+      <div className="interaction-panel__body">
+        <div className="interaction-panel__body-inner">
+          {status === "open" ? (
+            <div className="interaction-panel__questions">
+              {request.questions.map((question) => {
+                const selected = selections[question.question] || [];
+                const draft = drafts[question.question] || "";
+                const freeText = selected.find(
+                  (value) => !optionLabels(question).includes(value),
+                );
+                return (
+                  <article
+                    className="interaction-panel__question"
+                    key={question.question}
+                  >
+                    <h3>{question.header || question.question}</h3>
+                    <p className="interaction-panel__prompt">{question.question}</p>
+                    <div
+                      aria-label={question.question}
+                      className="interaction-panel__options"
+                      role="group"
                     >
-                      Set
-                    </Button>
-                  </div>
-                ) : (
-                  <Button
-                    disabled={readOnly}
-                    onClick={() => setEditing(question.question)}
-                    size="xs"
-                    type="button"
-                    variant="ghost"
-                  >
-                    <PencilLine aria-hidden="true" data-icon="inline-start" />
-                    Edit answer
-                  </Button>
-                )}
+                      {optionLabels(question).map((label) => {
+                        const active = selected.includes(label);
+                        const description = optionDescription(question, label);
+                        return (
+                          <button
+                            aria-pressed={active}
+                            className="interaction-panel__option"
+                            disabled={readOnly}
+                            key={label}
+                            onClick={() => {
+                              const click = resolveOptionClick({
+                                active,
+                                multiSelect: question.multiSelect === true,
+                                readOnly,
+                              });
+                              if (click === "select") {
+                                onSelect?.(question.question, label);
+                              } else if (click === "deselect") {
+                                onDeselect?.(question.question, label);
+                              }
+                            }}
+                            type="button"
+                          >
+                            {active ? <Check aria-hidden="true" /> : null}
+                            <span>{label}</span>
+                            {description ? <small>{description}</small> : null}
+                          </button>
+                        );
+                      })}
+                    </div>
 
-                {question.required === false ? (
-                  <Button
-                    disabled={readOnly}
-                    onClick={() => onSkip?.(question.question)}
-                    size="xs"
-                    type="button"
-                    variant="ghost"
-                  >
-                    <SkipForward aria-hidden="true" data-icon="inline-start" />
-                    Skip
-                  </Button>
-                ) : null}
-              </article>
-            );
-          })}
-        </div>
-      ) : (
-        <div className="interaction-panel__result">
-          {Object.keys(answers).length ? (
-            <ul>
-              {Object.entries(answers).map(([question, answer]) => (
-                <li key={question}>
-                  <span>{question}</span>
-                  <strong>{answer}</strong>
-                </li>
-              ))}
-            </ul>
+                    {editing === question.question || !freeText ? (
+                      <div className="interaction-panel__text">
+                        <input
+                          aria-label={`Other answer for ${question.question}`}
+                          disabled={readOnly}
+                          onChange={(event) =>
+                            setDrafts((current) => ({
+                              ...current,
+                              [question.question]: event.target.value,
+                            }))
+                          }
+                          placeholder="Other…"
+                          value={draft}
+                        />
+                        <Button
+                          disabled={readOnly || !draft.trim()}
+                          onClick={() => {
+                            dispatchTextAction(
+                              resolveTextAction(freeText, draft),
+                              question.question,
+                              { onText, onEdit },
+                            );
+                            setEditing(null);
+                          }}
+                          size="sm"
+                          type="button"
+                          variant="outline"
+                        >
+                          Set
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button
+                        disabled={readOnly}
+                        onClick={() => setEditing(question.question)}
+                        size="xs"
+                        type="button"
+                        variant="ghost"
+                      >
+                        <PencilLine aria-hidden="true" data-icon="inline-start" />
+                        Edit answer
+                      </Button>
+                    )}
+
+                    {question.required === false ? (
+                      <Button
+                        disabled={readOnly}
+                        onClick={() => onSkip?.(question.question)}
+                        size="xs"
+                        type="button"
+                        variant="ghost"
+                      >
+                        <SkipForward aria-hidden="true" data-icon="inline-start" />
+                        Skip
+                      </Button>
+                    ) : null}
+                  </article>
+                );
+              })}
+            </div>
           ) : (
-            <p>
-              {status === "cancelled"
-                ? "Cancelled; the host's native prompt is still in charge."
-                : "No answer arrived before the host's window closed."}
-            </p>
+            <div className="interaction-panel__result">
+              {Object.keys(answers).length ? (
+                <ul>
+                  {Object.entries(answers).map(([question, answer]) => (
+                    <li key={question}>
+                      <span>{question}</span>
+                      <strong>{answer}</strong>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p>
+                  {status === "cancelled"
+                    ? "Cancelled; the host's native prompt is still in charge."
+                    : "No answer arrived before the host's window closed."}
+                </p>
+              )}
+            </div>
           )}
-        </div>
-      )}
 
-      {status === "open" ? (
-        <footer className="interaction-panel__footer">
-          <Button
-            disabled={readOnly || pending || !submittable}
-            onClick={onSubmit}
-            size="sm"
-            type="button"
-            variant="default"
-          >
-            <Send aria-hidden="true" data-icon="inline-start" />
-            Submit
-          </Button>
-          <Button
-            disabled={readOnly || pending}
-            onClick={onCancel}
-            size="sm"
-            type="button"
-            variant="ghost"
-          >
-            <X aria-hidden="true" data-icon="inline-start" />
-            Cancel
-          </Button>
-          {pending ? (
-            <span className="interaction-panel__pending" role="status">
-              sending…
-            </span>
+          {status === "open" ? (
+            <footer className="interaction-panel__footer">
+              <Button
+                disabled={readOnly || pending || !submittable}
+                onClick={onSubmit}
+                size="sm"
+                type="button"
+                variant="default"
+              >
+                <Send aria-hidden="true" data-icon="inline-start" />
+                Submit
+              </Button>
+              <Button
+                disabled={readOnly || pending}
+                onClick={onCancel}
+                size="sm"
+                type="button"
+                variant="ghost"
+              >
+                <X aria-hidden="true" data-icon="inline-start" />
+                Cancel
+              </Button>
+              {pending ? (
+                <span className="interaction-panel__pending" role="status">
+                  sending…
+                </span>
+              ) : null}
+            </footer>
           ) : null}
-        </footer>
-      ) : null}
+        </div>
+      </div>
     </section>
   );
 }

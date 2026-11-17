@@ -67,3 +67,17 @@ test("the panel styles cover the pressed option and the pending state", () => {
     /\.interaction-panel\[data-status="timeout"\] \.interaction-panel__status/,
   );
 });
+
+test("the card collapses to its header and follows the question lifecycle", () => {
+  assert.match(panel, /interaction-panel__toggle/);
+  assert.match(panel, /aria-expanded=\{!collapsed\}/);
+  assert.match(panel, /interaction-panel__summary/);
+  assert.match(panel, /interaction-panel__body/);
+  assert.match(styles, /\.interaction-panel\.is-collapsed \.interaction-panel__body \{/);
+  assert.match(styles, /@keyframes interaction-panel-enter/);
+  assert.match(styles, /\.interaction-panel--settling \{/);
+  assert.match(
+    styles,
+    /\.interaction-panel--floating \.interaction-panel__questions \{/,
+  );
+});
