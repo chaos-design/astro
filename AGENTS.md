@@ -872,7 +872,14 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   `UserPromptSubmit`. `additionalContext` / `systemMessage` /
   `permissionDecisionReason` are capped at 10,000 characters and only
   `PreToolUse` can carry the first two (ZCode's strict stdout schema rejects
-  extra keys on `PermissionRequest`).
+  extra keys on `PermissionRequest`). The CodeBuddy / WorkBuddy `modifiedInput`
+  channel is stricter still: `preToolUseOutput` drops `additionalContext` and
+  `systemMessage` whenever `inputField === "modifiedInput"`, leaving only the
+  decision, reason and modified input — exactly the shape the auto-approve hook
+  emits. The console may flash the question atom on `interaction.open`, but only
+  through `shouldLocateInteractionRequest` (same session and source, reader
+  following live), and only as a locate pulse: never change the selection, or
+  Live following dies mid-question.
 - A hook is synchronous: the answer window **is** the hook's registered
   timeout, written by the installer (`--timeout`, seconds, default 600) into
   both the host's hook configuration and the hook's `--timeout` argument, so

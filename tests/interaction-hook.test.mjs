@@ -194,6 +194,26 @@ test("B4: CodeBuddy's modifiedInput is used for PreToolUse", () => {
   ).hookSpecificOutput;
   assert.equal(out.modifiedInput.answers["Which framework?"], "React");
   assert.equal(out.updatedInput, undefined);
+  // CodeBuddy's strict PreToolUse schema rejects unknown keys; the answer must
+  // travel in modifiedInput alone, without the notification extras.
+  assert.equal(out.additionalContext, undefined);
+  const withNotification = buildHookOutput(
+    built.host,
+    built.request,
+    answeredResult(built.request, { "Which framework?": "React" }),
+    {
+      inputField: "modifiedInput",
+      notification: { summary: "answered", systemMessage: "answered" },
+    },
+  ).hookSpecificOutput;
+  assert.equal(withNotification.additionalContext, undefined);
+  assert.equal(withNotification.systemMessage, undefined);
+  assert.deepEqual(Object.keys(withNotification).sort(), [
+    "hookEventName",
+    "modifiedInput",
+    "permissionDecision",
+    "permissionDecisionReason",
+  ]);
 });
 
 test("B5: ExitPlanMode echoes the plan and never injects answers", () => {

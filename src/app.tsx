@@ -272,6 +272,7 @@ import {
 } from "./lib/interaction-client";
 import {
   matchQuestionInteraction,
+  shouldLocateInteractionRequest,
   type MatchedQuestionInteraction,
 } from "./lib/question-interaction";
 import {
@@ -5131,6 +5132,10 @@ export default function App() {
   );
   const interactionsRef = useRef(interactions);
   interactionsRef.current = interactions;
+  // The stream effect registers once per connection; reading these through
+  // refs keeps an interaction frame from re-subscribing the whole stream.
+  const activeSessionRef = useRef<{ id: string; source: string } | null>(null);
+  const followingLiveRef = useRef(false);
   // The Flow atom inspector's answer box keeps its own draft. It is shared by
   // the Overview and Input tabs so switching tabs while typing does not lose
   // the text, and reset when the selected question changes.
@@ -5958,10 +5963,20 @@ export default function App() {
     // never replays them, so a reconnect resets the set instead of pretending
     // an old request is still answerable.
     source.addEventListener("interaction.open", (message: MessageEvent<string>) => {
-      dispatchInteraction({
-        type: "open",
-        request: JSON.parse(message.data) as InteractionRequest,
-      });
+      const request = JSON.parse(message.data) as InteractionRequest;
+      dispatchInteraction({ type: "open", request });
+      // A question that just opened in the run the reader is watching is easy
+      // to miss while the canvas is wide. Flash the question atom without
+      // changing the selection: Live must keep following the executing run.
+      if (
+        shouldLocateInteractionRequest(
+          request,
+          activeSessionRef.current,
+          followingLiveRef.current,
+        )
+      ) {
+        setLocateRequest((current) => current + 1);
+      }
     });
     source.addEventListener("interaction.update", (message: MessageEvent<string>) => {
       dispatchInteraction({
@@ -6414,6 +6429,10 @@ export default function App() {
     promptExecuting,
   );
   const followingLive = followingSessionLive;
+  activeSessionRef.current = activeSession
+    ? { id: activeSession.id, source: activeSession.source }
+    : null;
+  followingLiveRef.current = followingLive;
   const executingLive = promptExecuting && !replayMode;
   // Live rides the newest executed atom: the pulse and the Live button stay
   // active only while the selection has not fallen behind the newest event.

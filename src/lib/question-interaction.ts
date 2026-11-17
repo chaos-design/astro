@@ -72,6 +72,29 @@ function eventToolUseId(event: TraceEvent): string {
  * ExitPlanMode request (the host is synchronous, so two plan approvals of
  * one session cannot compete).
  */
+/**
+ * Whether an incoming interaction request should flash the question atom.
+ *
+ * Only the open run the reader is already following is pulled into view: a
+ * request from another session or agent must not hijack the canvas, and an
+ * explicit atom selection outranks the live follow. The caller keeps the
+ * selection untouched — a locate pulse is enough, and turning it into a
+ * selection would switch Live off mid-question.
+ */
+export function shouldLocateInteractionRequest(
+  request: { sessionId?: string; source?: string } | null,
+  active: { sessionId?: string; source?: string } | null,
+  followingLive: boolean,
+) {
+  if (!followingLive || !request || !active || !request.sessionId) {
+    return false;
+  }
+  return (
+    request.sessionId === active.sessionId &&
+    (!request.source || request.source === active.source)
+  );
+}
+
 export function matchQuestionInteraction(
   drafts: Record<string, InteractionDraft>,
   event: TraceEvent | null,

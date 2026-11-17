@@ -725,7 +725,11 @@ declared option order with commas; "Other" accepts free text; Submit requires
 every required question; Esc/cancel ends the request and falls back; another
 device answering first turns the panel read-only. `ExitPlanMode` renders as an
 "Approve this plan?" choice — only Approve returns a decision and the plan text
-is echoed unchanged.
+is echoed unchanged. When a request opens in the run currently on screen the
+canvas flashes its question atom; a request from another session or agent never
+steals focus, and an explicit atom selection is left alone. CodeBuddy / WorkBuddy
+`PreToolUse.modifiedInput` carries only the decision and answers — no notification
+extras that a strict host schema could reject.
 
 Answering from a Flow atom: selecting the `User Question` atom binds the
 inspector to that question's start event (not to its answer) and shows the

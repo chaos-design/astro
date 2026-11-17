@@ -115,7 +115,10 @@
   - 提问与交互请求的关联只在 `src/lib/question-interaction.ts`：先按
     `toolUseId`、再按会话与问题原文匹配，最后——对没有可读文本的 Plan 批准——
     兜底到同会话最新的 open ExitPlanMode 请求；答案键永远是请求里问题的原文；
-    检查器作答与浮层面板共用同一份交互状态，不各自推断当前问题。
+    检查器作答与浮层面板共用同一份交互状态，不各自推断当前问题。同一个模块里的
+    `shouldLocateInteractionRequest` 决定 `interaction.open` 是否闪一下提问原子：
+    只认正在跟随运行的同会话同来源请求，且只加定位脉冲、不改选中，避免把 Live
+    跟随关掉。
   新增消费方必须复用这些函数，不得再写一份“失败事件名单”或“live 名单”。
 - 示例（Demo）数据只在 `data/demo-events.json`：服务通过 `server/demo-dataset.mjs`
   读取并由 `GET /api/demo-events` 提供，控制台只在 `src/lib/demo-events.ts` 解析。

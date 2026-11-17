@@ -198,6 +198,100 @@ test("F4: an attached console sees the request live until the TTL expires", asyn
   }
 });
 
+test("F4: WorkBuddy answers a real request through PreToolUse.modifiedInput", async (t) => {
+  const { url, home } = await startServer(t);
+  const controller = new AbortController();
+  const stream = await fetch(`${url}/api/stream`, {
+    headers: { Accept: "text/event-stream" },
+    signal: controller.signal,
+  });
+  assert.equal(stream.status, 200);
+  const reader = stream.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  const payload = {
+    hook_event_name: "PreToolUse",
+    session_id: "wb-e2e",
+    tool_name: "AskUserQuestion",
+    tool_use_id: "call_wb_e2e",
+    cwd: "/workspace/demo",
+    tool_input: {
+      questions: [
+        {
+          header: "Language",
+          question: "Which language?",
+          options: [{ label: "Python" }, { label: "Go" }],
+        },
+      ],
+    },
+  };
+  const hook = runHook(payload, {
+    ASTRO_INTERACTION_SERVICE: url,
+    ASTRO_HOME: home,
+    ASTRO_INTERACTION_TIMEOUT_MS: "3000",
+    ASTRO_INTERACTION_INPUT_FIELD: "modifiedInput",
+    ASTRO_INTERACTION_SOURCE: "workbuddy",
+    ASTRO_INTERACTION_EVENTS: "PreToolUse",
+    ASTRO_INTERACTION_TOOLS: "AskUserQuestion",
+  });
+
+  try {
+    // The hook registers on the same stream the console is attached to; wait
+    // for its open frame before answering, or the service would fast-fail it.
+    for (;;) {
+      const chunk = await reader.read();
+      if (chunk.done) {
+        throw new Error("stream ended before interaction.open");
+      }
+      buffer += decoder.decode(chunk.value, { stream: true });
+      if (/event: interaction\.open/.test(buffer)) {
+        break;
+      }
+    }
+    const dataLine = buffer
+      .split("\n")
+      .find((line) => line.startsWith("data: ") && line.includes("requestId"));
+    assert.ok(dataLine, "interaction.open carries the request");
+    const request = JSON.parse(dataLine.slice("data: ".length));
+
+    const answer = await fetch(
+      `${url}/api/interactions/${request.requestId}/events`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          requestId: request.requestId,
+          eventId: "iev-wb-1",
+          seq: 1,
+          action: "submit",
+          final: true,
+          deviceId: "console",
+          at: new Date().toISOString(),
+          question: "Which language?",
+          optionLabel: "Python",
+          answers: { "Which language?": "Python" },
+        }),
+      },
+    );
+    assert.equal(answer.status, 202);
+    assert.equal((await answer.json()).result.status, "answered");
+
+    const result = await hook;
+    assert.equal(result.status, 0, result.stderr);
+    const output = JSON.parse(result.stdout);
+    assert.equal(output.hookSpecificOutput.permissionDecision, "allow");
+    assert.deepEqual(
+      output.hookSpecificOutput.modifiedInput.answers,
+      { "Which language?": "Python" },
+    );
+    assert.equal(output.hookSpecificOutput.updatedInput, undefined);
+    assert.equal(output.hookSpecificOutput.additionalContext, undefined);
+  } finally {
+    controller.abort();
+  }
+});
+
 test("F4: a service that is down still fails open", async () => {
   const home = new URL("./__missing__", import.meta.url).pathname;
   const result = await runHook(askPayload(), {

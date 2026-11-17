@@ -270,7 +270,21 @@ export function buildHookOutput(host, request, result, options = {}) {
   }
   const updatedInput = { ...host.toolInput, answers: validated.answers };
   if (host.hookEventName === "PreToolUse") {
-    return preToolUseOutput("allow", updatedInput, inputField, options.reason, options.notification);
+    // CodeBuddy validates PreToolUse stdout strictly: a decision carries only
+    // hookEventName / permissionDecision / reason / modifiedInput. Adding the
+    // notification extras would make the host reject the whole answer, so they
+    // are dropped exactly for the `modifiedInput` channel (the same shape the
+    // auto-approve hook uses). PermissionRequest hosts keep the updatedInput
+    // frame and likewise receive no extras.
+    const notification =
+      inputField === "modifiedInput" ? undefined : options.notification;
+    return preToolUseOutput(
+      "allow",
+      updatedInput,
+      inputField,
+      options.reason,
+      notification,
+    );
   }
   // PermissionRequest hosts read the decision from `decision.behavior` and do
   // not take `additionalContext`; keep the frame to the documented keys so

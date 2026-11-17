@@ -6,6 +6,7 @@ import { buildInteractionRequest } from "../src/lib/interaction-contract.ts";
 import {
   matchQuestionInteraction,
   questionTextsFromEvent,
+  shouldLocateInteractionRequest,
 } from "../src/lib/question-interaction.ts";
 import {
   initialInteractionState,
@@ -204,6 +205,54 @@ test("no selected question means no answer target", () => {
   const draft = openRequest();
   assert.equal(matchQuestionInteraction(stateWith(draft).requests, null), null);
   assert.equal(matchQuestionInteraction({}, questionEvent()), null);
+});
+
+test("only the open run's live interaction pulls the canvas to the question", () => {
+  const active = { sessionId: "wb-session", source: "workbuddy" };
+  assert.equal(
+    shouldLocateInteractionRequest(
+      { sessionId: "wb-session", source: "workbuddy" },
+      active,
+      true,
+    ),
+    true,
+  );
+  assert.equal(
+    shouldLocateInteractionRequest(
+      { sessionId: "wb-session" },
+      active,
+      true,
+    ),
+    true,
+  );
+  assert.equal(
+    shouldLocateInteractionRequest(
+      { sessionId: "other-session", source: "workbuddy" },
+      active,
+      true,
+    ),
+    false,
+  );
+  assert.equal(
+    shouldLocateInteractionRequest(
+      { sessionId: "wb-session", source: "zcode" },
+      active,
+      true,
+    ),
+    false,
+  );
+  assert.equal(
+    shouldLocateInteractionRequest(
+      { sessionId: "wb-session", source: "workbuddy" },
+      active,
+      false,
+    ),
+    false,
+  );
+  assert.equal(
+    shouldLocateInteractionRequest(null, active, true),
+    false,
+  );
 });
 
 test("a WorkBuddy PreToolUse can be answered from the console", () => {
