@@ -47,6 +47,7 @@ const runtimeFiles = [
   "runtime-config.cjs",
   "storage-paths.cjs",
   "trace-recorder.cjs",
+  "interaction-contract.mjs",
 ];
 const templateFiles = ["config.example.yaml", ".env.example"];
 const runtimeDependencies = ["dotenv", "yaml"];

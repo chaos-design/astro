@@ -239,6 +239,7 @@ test("native plugin recorders stay synchronized with the shared runtime", () => 
       "runtime-config.cjs",
       "storage-paths.cjs",
       "trace-recorder.cjs",
+      "interaction-contract.mjs",
     ]) {
       assert.equal(
         readFileSync(join(projectDir, directory, "plugin", file), "utf8"),

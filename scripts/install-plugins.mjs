@@ -34,6 +34,7 @@ const require = createRequire(import.meta.url);
 const recorderFile = join(packageDir, "plugin", "trace-recorder.cjs");
 const runtimeConfigFile = join(packageDir, "plugin", "runtime-config.cjs");
 const storagePathsFile = join(packageDir, "plugin", "storage-paths.cjs");
+const interactionContractFile = join(packageDir, "plugin", "interaction-contract.mjs");
 const deepseekPluginSource = join(packageDir, "deepseek-plugin");
 const packageMetadata = JSON.parse(
   readFileSync(join(packageDir, "package.json"), "utf8"),
@@ -333,6 +334,7 @@ export function installPluginRuntime(astroHome) {
   copyFileSync(recorderFile, runtime.recorderFile);
   copyFileSync(runtimeConfigFile, join(runtimePluginDir, "runtime-config.cjs"));
   copyFileSync(storagePathsFile, join(runtimePluginDir, "storage-paths.cjs"));
+  copyFileSync(interactionContractFile, join(runtimePluginDir, "interaction-contract.mjs"));
   copyRuntimeDependencies(runtimePluginDir);
   for (const directory of ["dist", "server"]) {
     const source = join(packageDir, directory);
@@ -402,6 +404,7 @@ export function updateInstalledPlugins({
   copyFileSync(recorderFile, runtime.recorderFile);
   copyFileSync(runtimeConfigFile, join(runtimePluginDir, "runtime-config.cjs"));
   copyFileSync(storagePathsFile, join(runtimePluginDir, "storage-paths.cjs"));
+  copyFileSync(interactionContractFile, join(runtimePluginDir, "interaction-contract.mjs"));
   copyRuntimeDependencies(runtimePluginDir);
   for (const directory of ["dist", "server"]) {
     const source = join(packageDir, directory);
