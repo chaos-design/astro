@@ -758,9 +758,11 @@ request, Overview and Input both offer an answer area: single-select questions
 (including a plan approval's Approve/Reject) render a wrapping row of one-click
 quick answers above the free-text row, and custom text still goes through the
 input + Send; multi-select options can be toggled one by one and the draft is
-kept in the declared option order, with free text still available. If a submit
-is rejected (busy, closed, answered elsewhere) the draft is kept and a notice
-explains why — it is never silently cleared. When one `AskUserQuestion` carries
+kept in the declared option order, with free text still available. Long question
+text wraps inside the inspector width; when the answer box runs out of room it
+scrolls there with Submit pinned at the bottom instead of widening the log
+column. If a submit is rejected (busy, closed, answered elsewhere) the draft is
+kept and a notice explains why — it is never silently cleared. When one `AskUserQuestion` carries
 several descriptors the
 inspector lists every question with its own options/input and one Submit sends
 the whole batch: the host closes the request on the first submit, so answering

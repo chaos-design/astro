@@ -115,7 +115,8 @@
   - 提问与交互请求的关联只在 `src/lib/question-interaction.ts`：先按
     `toolUseId`、再按会话与问题原文匹配，最后——对没有可读文本的 Plan 批准——
     兜底到同会话最新的 open ExitPlanMode 请求；答案键永远是请求里问题的原文；
-    检查器作答与浮层面板共用同一份交互状态，不各自推断当前问题。检查器的批量作答
+    检查器作答与浮层面板共用同一份交互状态，不各自推断当前问题；检查器作答区在窄面板内
+    换行、区域内滚动并让提交栏保持可见，不撑宽日志列。检查器的批量作答
     只在 `src/lib/interaction-client.ts` 的 `answerInteractionQuestions` 一处构建
     seq 链：每个问题一条 `text`，再一条带完整答案映射的 `submit`；单问题入口
     `answerInteractionQuestion` 只是它的单元素包装。同一个模块里的

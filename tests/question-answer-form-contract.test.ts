@@ -63,3 +63,17 @@ test("the styles separate multiple questions and reserve a footer for submit", (
     /\.question-answer__option\[aria-pressed="true"\] \{/,
   );
 });
+
+test("inspector width is bounded and long questions wrap inside a scrolling answer box", () => {
+  const rule = (selector: string) => {
+    const match = styles.match(new RegExp(`^\\${selector} \\{([^}]*)\\}`, "m"));
+    assert.ok(match, `missing ${selector} rule`);
+    return match![1];
+  };
+  assert.match(rule(".message-inspector"), /min-width:\s*0/);
+  assert.match(rule(".question-answer"), /max-height:/);
+  assert.match(rule(".question-answer"), /overflow-y:\s*auto/);
+  const prompt = rule(".question-answer__prompt");
+  assert.match(prompt, /white-space:\s*normal/);
+  assert.match(prompt, /overflow-wrap:\s*anywhere/);
+});

@@ -788,7 +788,10 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   pair); multi-select options are toggles whose draft is kept in declared option
   order, with free text as a fallback. With several questions a quick option
   fills its row and the single Submit button sends the batch once all required
-  questions are answered. A blocked/rejected submit keeps the draft and raises
+  questions are answered. The inspector grid item must keep `min-width: 0`: the
+  answer box wraps long question text inside the panel width, caps its height
+  and scrolls itself with the Submit footer pinned, so an AskUserQuestion can
+  never widen the 320px log column. A blocked/rejected submit keeps the draft and raises
   a notice — clearing it would make a failed answer look sent. A close result
   only splits comma-joined answers for multi-select descriptors; free text such
   as "Paris, France" stays one answer. The

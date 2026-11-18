@@ -148,7 +148,9 @@
     session's newest open ExitPlanMode request, with the answer key always the
     request's exact question text. The inspector answer box and the floating
     panel share one interaction state and never infer "the current question"
-    separately. The inspector's batch answer builds its seq chain only in
+    separately. The inspector answer box wraps long text inside the narrow
+    panel, scrolls within its own height and keeps Submit visible instead of
+    widening the log column. The inspector's batch answer builds its seq chain only in
     `answerInteractionQuestions` (`src/lib/interaction-client.ts`): one `text`
     event per question then one `submit` with the full answer map, with the
     single-question entry point a one-element wrapper. `shouldLocateInteractionRequest`

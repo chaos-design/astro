@@ -6293,6 +6293,10 @@ pre,
 }
 
 .message-inspector {
+  /* The inspector is a grid item of the log column. Without an explicit zero
+   * minimum its auto width follows a nowrap descendant (notably the answer
+   * form's question text) and drags the whole 320px track past the viewport. */
+  min-width: 0;
   border-top: 1px solid var(--line);
   background: color-mix(in srgb, var(--panel) 88%, var(--bg));
 }
@@ -8374,9 +8378,16 @@ pre,
 
 .question-answer {
   display: flex;
-  flex: 0 0 auto;
+  flex: 0 1 auto;
   flex-direction: column;
   gap: 6px;
+  min-width: 0;
+  min-height: 0;
+  /* A long question must stay inside the answer box: the inspector stack owns
+   * the remaining height, so cap this region and scroll it rather than
+   * pushing the preview out of view or widening the panel. */
+  max-height: 46%;
+  overflow-y: auto;
   padding: 10px 12px;
   border-top: 1px solid var(--border);
   background: var(--panel);
@@ -8427,19 +8438,26 @@ pre,
 }
 
 .question-answer__footer {
+  position: sticky;
+  bottom: -10px;
   display: flex;
   justify-content: flex-end;
-  padding-top: 2px;
+  margin: 0 -12px -10px;
+  padding: 6px 12px 10px;
+  border-top: 1px solid var(--border);
+  background: var(--panel);
 }
 
 .question-answer__prompt {
   margin: 0;
-  overflow: hidden;
+  min-width: 0;
   color: var(--muted, inherit);
   font-size: 0.75rem;
   line-height: 1.45;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  /* Inspector questions are prose, not labels: wrap at the panel width even
+   * when a descriptor carries a URL or a long unbroken identifier. */
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 /* Quick answers for a single-select descriptor (a plan approval is an
@@ -8452,12 +8470,14 @@ pre,
 }
 
 .question-answer__option {
+  max-width: 100%;
   padding: 6px 14px;
   border: 1px solid var(--border);
   border-radius: 999px;
   background: var(--panel);
   color: inherit;
   font-size: 0.8125rem;
+  overflow-wrap: anywhere;
   cursor: pointer;
 }
 
