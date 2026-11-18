@@ -301,13 +301,17 @@ button[aria-disabled="true"],
  * their borders and read as plain text. */
 button:not([data-variant="console"]):not([data-variant="playback"]):not([data-slot="select-trigger"]):not(
     [data-slot="tabs-trigger"]
-  ):not(.run-history__live-jump):not(.service-card__restart):not(.settings-footer__button):not(.pair-link-marker) {
+  ):not(.run-history__live-jump):not(.service-card__restart):not(.settings-footer__button):not(.pair-link-marker):not(
+    .question-options__option
+  ) {
   border: 0;
 }
 
 button:not([data-variant="console"]):not([data-variant="playback"]):not([data-slot="select-trigger"]):not(
     [data-slot="tabs-trigger"]
-  ):not(.run-history__live-jump):not(.service-card__restart):not(.settings-footer__button):not(.pair-link-marker):focus-visible,
+  ):not(.run-history__live-jump):not(.service-card__restart):not(.settings-footer__button):not(.pair-link-marker):not(
+    .question-options__option
+  ):focus-visible,
 input:not([data-slot="input-group-control"]):focus-visible {
   outline: 1px solid var(--selection-border);
   outline-offset: 2px;
@@ -8359,8 +8363,7 @@ pre,
 }
 
 .interaction-panel__section-toggle,
-.prompt-input__collapse,
-.question-answer__collapse {
+.prompt-input__collapse {
   display: grid;
   flex: 0 0 auto;
   width: 20px;
@@ -8375,16 +8378,14 @@ pre,
 }
 
 .interaction-panel__section-toggle:hover,
-.prompt-input__collapse:hover,
-.question-answer__collapse:hover {
+.prompt-input__collapse:hover {
   border-color: var(--line-bright);
   color: var(--text, inherit);
   background: var(--panel-hover);
 }
 
 .interaction-panel__section-toggle[aria-expanded="false"] svg,
-.prompt-input__collapse[aria-expanded="false"] svg,
-.question-answer__collapse[aria-expanded="false"] svg {
+.prompt-input__collapse[aria-expanded="false"] svg {
   transform: rotate(180deg);
 }
 
@@ -8552,127 +8553,131 @@ pre,
    submit bar out of reach. The preview keeps its toolbar, grows with short
    questions and is capped on long ones; the answer box scrolls itself. */
 .inspector-question-dock > .prompt-input {
-  flex: 0 1 auto;
-  max-height: 45%;
+  flex: 1 1 auto;
   height: auto;
   min-height: 0;
 }
 
 .inspector-question-dock > .prompt-input.is-collapsed {
   flex: 0 0 36px;
-  max-height: 36px;
 }
 
-.inspector-question-dock > .question-answer {
-  flex: 1 1 auto;
-  max-height: none;
-}
-
-.inspector-question-dock > .question-answer.is-collapsed {
-  flex: 0 0 auto;
-}
-
-.question-answer {
+/* The question surface itself. The body scrolls; the submit bar is a sibling
+   of the scroll area, so it stays pinned to the bottom of whichever container
+   holds the surface (the dock or the Input tab) instead of riding the scroll. */
+.question-surface {
   display: flex;
-  flex: 0 1 auto;
   flex-direction: column;
-  gap: 6px;
-  min-width: 0;
   min-height: 0;
-  /* A long question must stay inside the answer box: the inspector stack owns
-   * the remaining height, so cap this region and scroll it rather than
-   * pushing the preview out of view or widening the panel. */
-  max-height: 46%;
-  overflow-y: auto;
-  padding: 10px 12px;
-  border-top: 1px solid var(--border);
-  background: var(--panel);
 }
 
-.question-answer__header {
+.question-surface__body {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  min-width: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px 12px 18px;
 }
 
-.question-answer.is-collapsed {
-  flex: 0 0 auto;
-  max-height: none;
-  overflow: visible;
-}
-
-.question-answer__existing,
-.question-answer__count {
-  overflow: hidden;
-  color: var(--muted-soft, var(--muted));
-  font-size: 0.6875rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.question-answer__count {
-  flex: 0 0 auto;
-}
-
-.question-answer__item {
+.question-surface__item {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 10px;
   min-width: 0;
 }
 
-.question-answer__item + .question-answer__item {
-  padding-top: 7px;
-  border-top: 1px solid var(--border);
+.question-surface__item + .question-surface__item {
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
 }
 
-.question-answer__meta {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-  min-width: 0;
-}
-
-.question-answer__meta .question-answer__prompt {
-  flex: 1 1 auto;
-}
-
-.question-answer__footer {
-  position: sticky;
-  bottom: -10px;
-  display: flex;
-  justify-content: flex-end;
-  margin: 0 -12px -10px;
-  padding: 6px 12px 10px;
-  border-top: 1px solid var(--border);
-  background: var(--panel);
-}
-
-.question-answer__prompt {
+.question-surface__item h3 {
   margin: 0;
-  min-width: 0;
-  color: var(--muted, inherit);
-  font-size: 0.75rem;
-  line-height: 1.45;
-  /* Inspector questions are prose, not labels: wrap at the panel width even
-   * when a descriptor carries a URL or a long unbroken identifier. */
+  color: var(--text-strong, inherit);
+  font-size: var(--text-label, 0.75rem);
+  font-weight: var(--weight-medium, 600);
+}
+
+.question-surface__prompt {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  /* Questions are prose, not labels: wrap at the panel width even when a
+   * descriptor carries a URL or a long unbroken identifier. */
   overflow-wrap: anywhere;
   white-space: normal;
 }
 
-/* Quick answers for a single-select descriptor (a plan approval is an
-   Approve/Reject pair). The row wraps so the buttons keep their full click
-   area on a narrow inspector instead of overflowing it. */
-.question-answer__options {
+.question-surface__input {
+  width: 100%;
+  min-width: 0;
+  padding: 6px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface, var(--panel));
+  color: inherit;
+  font-size: 0.8125rem;
+}
+
+.question-surface__input:focus-visible {
+  border-color: var(--line-bright);
+  outline: 1px solid var(--selection-border);
+}
+
+.question-surface__input:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.question-surface__footer {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px 12px;
+  border-top: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.question-surface__meta {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted-soft, var(--muted));
+  font-family: var(--font-mono, monospace);
+  font-size: 0.6875rem;
+  letter-spacing: 0.02em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.question-surface__actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.question-surface__pending {
+  color: var(--muted-soft, var(--muted));
+  font-family: var(--font-mono, monospace);
+  font-size: var(--text-caption);
+}
+
+/* One chip row for both states: an open request's options are buttons, a
+   captured one keeps the same chips as static spans so nothing looks
+   clickable when there is no request left to answer. */
+.question-options {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
 }
 
-.question-answer__option {
+.question-options__option {
   max-width: 100%;
   padding: 6px 14px;
   border: 1px solid var(--border);
@@ -8684,40 +8689,25 @@ pre,
   cursor: pointer;
 }
 
-.question-answer__option:hover:not(:disabled) {
+.question-options__option:hover:not(:disabled):not(.is-static) {
   border-color: var(--teal);
   background: color-mix(in srgb, var(--teal) 12%, var(--panel));
 }
 
-.question-answer__option[aria-pressed="true"] {
+.question-options__option[aria-pressed="true"] {
   border-color: var(--teal);
   background: color-mix(in srgb, var(--teal) 20%, var(--panel));
 }
 
-.question-answer__option:disabled {
+.question-options__option:disabled {
   cursor: default;
   opacity: 0.55;
 }
 
-.question-answer__row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.question-answer__input {
-  flex: 1;
-  min-width: 0;
-  padding: 5px 8px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--surface, var(--panel));
-  color: inherit;
-  font-size: 0.8125rem;
-}
-
-.question-answer__hint {
-  color: var(--muted-soft, var(--muted));
+.question-options__option.is-static {
+  border-style: dashed;
+  color: var(--muted, inherit);
+  cursor: default;
 }
 
 .interaction-panel__footer {
@@ -8762,7 +8752,7 @@ pre,
   font-size: var(--text-caption);
 }
 
-.interaction-panel__result ul {
+.question-result ul {
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -8772,13 +8762,13 @@ pre,
   font-size: 0.8125rem;
 }
 
-.interaction-panel__result li {
+.question-result li {
   display: flex;
   justify-content: space-between;
   gap: 12px;
 }
 
-.interaction-panel__result p {
+.question-result p {
   margin: 0;
   color: var(--muted-soft, var(--muted));
   font-size: 0.8125rem;

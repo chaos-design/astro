@@ -8,6 +8,7 @@ import type {
   InteractionRequest,
   InteractionResult,
 } from "../lib/interaction-contract";
+import { QuestionResultList } from "./question-result";
 import {
   buildQuestionAnswers,
   questionPanelSubmittable,
@@ -74,40 +75,6 @@ function cloneSelections(
       question,
       [...labels],
     ]),
-  );
-}
-
-/**
- * The closed request, in one place: the floating card shows it while the card
- * settles and the docked answer box shows it right after a submit, so the
- * reader sees the same ANSWERED / CANCELLED record on both surfaces.
- */
-export function QuestionResultList({
-  result,
-}: {
-  result: InteractionResult | null;
-}) {
-  const status = interactionPanelStatus(result);
-  const answers = result?.answers ?? {};
-  return (
-    <div className="interaction-panel__result">
-      {Object.keys(answers).length ? (
-        <ul>
-          {Object.entries(answers).map(([question, answer]) => (
-            <li key={question}>
-              <span>{question}</span>
-              <strong>{answer}</strong>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p>
-          {status === "cancelled"
-            ? "Cancelled; the host's native prompt is still in charge."
-            : "No answer arrived before the host's window closed."}
-        </p>
-      )}
-    </div>
   );
 }
 

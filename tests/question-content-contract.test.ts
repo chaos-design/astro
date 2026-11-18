@@ -1,0 +1,71 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import test from "node:test";
+
+const surface = readFileSync(
+  new URL("../src/components/question-content.tsx", import.meta.url),
+  "utf8",
+);
+const styles = readFileSync(
+  new URL("../src/styles.css", import.meta.url),
+  "utf8",
+);
+const app = readFileSync(new URL("../src/app.tsx", import.meta.url), "utf8");
+
+/**
+ * The preview / code pair is one surface with one toolbar. These checks keep
+ * the merged layout from drifting back into a preview plus a second answer box
+ * with its own header, mode switch and fold button.
+ */
+test("one toolbar drives view, placement and fold", () => {
+  assert.equal(
+    surface.match(/<QuestionPanelModeControl/g)?.length,
+    1,
+    "the surface must mount the placement control once",
+  );
+  assert.match(surface, /aria-label="User question view"/);
+  assert.match(surface, /aria-label=\{collapsed \? "展开问题内容" : "收起问题内容"\}/);
+  // The old answer box carried its own header; the surface owns both halves now.
+  assert.doesNotMatch(surface, /QUESTION · 作答/);
+  assert.doesNotMatch(app, /QuestionAnswerForm/);
+});
+
+test("code shows the payload only — no options, no answer bar", () => {
+  const codeBranch = surface.slice(
+    surface.indexOf('viewMode === "code"'),
+    surface.indexOf('<div className="question-surface">'),
+  );
+  assert.match(codeBranch, /JsonViewer/);
+  assert.doesNotMatch(codeBranch, /question-options/);
+  assert.doesNotMatch(codeBranch, /question-surface__footer/);
+});
+
+test("options and the pinned submit bar belong to the preview only", () => {
+  assert.match(surface, /question-surface__footer/);
+  assert.match(surface, /disabled=\{disabled \|\| !submittable\}/);
+  assert.match(surface, /onClick=\{answer\.onCancel\}/);
+  assert.match(surface, /onClick=\{\(\) => answer\.onSend\(answers\)\}/);
+  assert.match(surface, /\{live && answer \? \(/);
+});
+
+test("a closed question keeps the same chips without controls", () => {
+  assert.match(surface, /question-options__option is-static/);
+  assert.match(surface, /disabled=\{disabled\}/);
+  assert.match(styles, /\.question-options__option\.is-static \{/);
+  assert.match(styles, /\.question-options__option:disabled \{/);
+});
+
+test("the submit bar is a sibling of the scroll area, not part of it", () => {
+  const body = styles.match(/\.question-surface__body \{([^}]*)\}/)?.[1] ?? "";
+  const footer = styles.match(/\.question-surface__footer \{([^}]*)\}/)?.[1] ?? "";
+  assert.match(body, /overflow-y:\s*auto/);
+  assert.match(footer, /flex:\s*0 0 auto/);
+  assert.match(footer, /border-top:/);
+});
+
+test("the dock hands its whole height to the merged surface", () => {
+  const dock = styles.match(/\.inspector-question-dock > \.prompt-input \{([^}]*)\}/)?.[1] ?? "";
+  assert.match(dock, /flex:\s*1 1 auto/);
+  assert.doesNotMatch(dock, /max-height:\s*45%/);
+  assert.doesNotMatch(styles, /\.question-answer \{/);
+});

@@ -117,9 +117,14 @@
     兜底到同会话最新的 open ExitPlanMode 请求；答案键永远是请求里问题的原文；
     给出视图范围时，`questionMatchesCurrentView` 还要求问题事件属于当前消息、
     事件解析出的原子正是当前原子、会话与来源一致；检查器和浮层共用这个严格判定，
-    切换 Agent 或消息后不再显示旧提问。检查器作答与浮层面板共用同一份交互状态，
-    不各自推断当前问题；检查器作答区在窄面板内换行、区域内滚动并让提交栏保持可见，
-    不撑宽日志列。两种作答区都用 `src/lib/question-panel-model.ts` 构建答案：
+    切换 Agent 或消息后不再显示旧提问。检查器与浮层面板共用同一份交互状态，
+    不各自推断当前问题；检查器只有一个问答面（`src/components/question-content.tsx`，
+    停靠区与 Input 页复用同一组件，Overview 不再另挂作答框），顶部一行工具条同时
+    负责 Preview / Code、落位与折叠：Preview 展示问题与选项，Code 只展示原始 payload、
+    不出现选项和提交栏。实时请求下选项可点、提交/Cancel 是滚动区之外的兄弟节点因而
+    始终吸底；请求关闭后同一排选项退化为不可点的静态 chip，历史提问永远不假装可作答。
+    问答面在窄面板内换行、正文区域内滚动，不撑宽日志列。
+    两种作答面都用 `src/lib/question-panel-model.ts` 构建答案：
     选项点击只高亮并填入草稿，输入框内容覆盖选项值，没有 Set；只有一个 Submit，
     一次提交全部问题。`dock-half` / `dock-full` / `float` 是两者共享并持久化的落位
     （`src/lib/question-panel-model.ts` 负责把升级前的 `half` / `bottom` / `side`

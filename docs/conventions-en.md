@@ -150,14 +150,22 @@
     `questionMatchesCurrentView` additionally requires the event inside the
     selected prompt run, an atom resolved from that event, and a matching
     session/source; the inspector and floating card share that strict rule, so
-    switching agent or message hides a stale request. The inspector answer box
-    and the floating panel share one interaction state and never infer "the
-    current question" separately. The inspector answer box wraps long text
-    inside the narrow panel, scrolls within its own height and keeps Submit
-    visible instead of widening the log column. Both answer surfaces build maps
-    only in `src/lib/question-panel-model.ts`: option clicks highlight and fill
-    drafts, typed text overrides an option without a Set step, and one Submit
-    sends every question. `dock-half` / `dock-full` / `float` is one shared
+    switching agent or message hides a stale request. The inspector and the
+    floating panel share one interaction state and never infer "the current
+    question" separately. The inspector has exactly one question surface
+    (`src/components/question-content.tsx`, reused by the dock and the Input
+    tab; Overview mounts no second answer box). One toolbar row owns the
+    Preview / Code switch, the placement switch and the fold: Preview shows the
+    questions and their option chips, Code shows the raw payload only — no
+    options, no submit bar. While a request is open the chips are buttons and
+    the Submit / Cancel bar is a sibling of the scrolling body, so it stays
+    pinned to the bottom; once it closes the same chips become static spans, so
+    a captured question never looks answerable. The surface wraps long text
+    inside the narrow panel and scrolls its body instead of widening the log
+    column. Both answer surfaces build maps only in
+    `src/lib/question-panel-model.ts`: option clicks highlight and fill drafts,
+    typed text overrides an option without a Set step, and one Submit sends
+    every question. `dock-half` / `dock-full` / `float` is one shared
     persisted placement (`src/lib/question-panel-model.ts` normalizes the
     pre-dock `half` / `bottom` / `side` values): the first two render the same
     question surface under the inspector tabs, at half of the detail area or

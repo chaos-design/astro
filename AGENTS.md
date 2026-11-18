@@ -778,8 +778,17 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   in `src/lib/user-question-content.ts` is the one display text for a question
   — LOG summaries, the atomic projection and the inspector overview all read
   it; a question row must never fall back to the tool name.
-- When the displayed question has a live `InteractionRequest`, the expanded
-  atom inspector mounts an answer box. `src/lib/question-interaction.ts` owns
+- When the displayed question has a live `InteractionRequest`, the question
+  surface (`src/components/question-content.tsx`) becomes answerable — the dock
+  below the inspector tabs and the Input tab render that one component, and
+  Overview no longer mounts a second answer box. One toolbar row owns the view
+  switch (Preview / Code), the placement switch and the fold; Preview shows the
+  question list with option chips, Code shows the raw payload only — no options
+  and no answer bar. While a request is open the options are buttons and the
+  Submit / Cancel bar is a sibling of the scrolling body, pinned to the bottom
+  of whichever container holds the surface; once it closes (or for a captured
+  question with no request) the same chips render as static `spans`, so nothing
+  looks answerable when there is nothing to answer. `src/lib/question-interaction.ts` owns
   the one match rule (tool id first, then session + verbatim question text,
   then — for the textless plan approval — the session's newest open
   ExitPlanMode request). When a view scope is supplied, `questionMatchesCurrentView()`
@@ -802,9 +811,9 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   the choice; the single Submit button sends the batch once all required
   questions are answered. `src/lib/question-panel-model.ts` is the one builder
   for those answer maps. The inspector grid item must keep `min-width: 0`: the
-  answer box wraps long question text inside the panel width, caps its height
-  and scrolls itself with the Submit footer pinned, so an AskUserQuestion can
-  never widen the 320px log column. A blocked/rejected submit keeps the draft and raises
+  surface wraps long question text inside the panel width and scrolls its body
+  under a pinned submit bar, so an AskUserQuestion can never widen the 320px
+  log column. A blocked/rejected submit keeps the draft and raises
   a notice — clearing it would make a failed answer look sent. A close result
   only splits comma-joined answers for multi-select descriptors; free text such
   as "Paris, France" stays one answer. The

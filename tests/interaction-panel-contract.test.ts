@@ -6,6 +6,10 @@ const panel = readFileSync(
   new URL("../src/components/interaction-panel.tsx", import.meta.url),
   "utf8",
 );
+const resultList = readFileSync(
+  new URL("../src/components/question-result.tsx", import.meta.url),
+  "utf8",
+);
 const styles = readFileSync(
   new URL("../src/styles.css", import.meta.url),
   "utf8",
@@ -47,8 +51,9 @@ test("a closed panel renders only the result and marks the device that answered"
   assert.match(panel, /isInteractionPanelReadOnly\(status, lockedBy, deviceId\)/);
   assert.match(panel, /data-status=\{status\}/);
   assert.match(panel, /answered on \{lockedBy\}/);
-  assert.match(panel, /result\?\.answers \?\? \{\}/);
-  assert.match(panel, /Object\.entries\(answers\)\.map/);
+  // The result block is shared with the docked surface.
+  assert.match(resultList, /result\?\.answers \?\? \{\}/);
+  assert.match(resultList, /Object\.entries\(answers\)\.map/);
 });
 
 test("the panel styles cover the pressed option and the pending state", () => {
@@ -56,7 +61,7 @@ test("the panel styles cover the pressed option and the pending state", () => {
   assert.match(styles, /\.interaction-panel__option\[aria-pressed="true"\] \{/);
   assert.match(styles, /\.interaction-panel__option:hover:not\(:disabled\) \{/);
   assert.match(styles, /\.interaction-panel__pending \{/);
-  assert.match(styles, /\.interaction-panel__result li \{/);
+  assert.match(styles, /\.question-result li \{/);
   assert.match(
     styles,
     /\.interaction-panel\[data-status="timeout"\] \.interaction-panel__status/,

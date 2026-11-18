@@ -761,20 +761,28 @@ such a request opens, the canvas flashes its question atom. CodeBuddy / WorkBudd
 extras that a strict host schema could reject.
 
 Answering from a Flow atom: selecting the `User Question` atom binds the
-inspector to that question's start event (not to its answer) and shows the
-question text in Overview. While the question still has an open interaction
-request, Overview and Input both offer an answer area: single-select questions
-(including a plan approval's Approve/Reject) render a wrapping row of quick
-answers above the free-text row; an option click only highlights and fills the
-draft. The input value is what Submit sends, with no Set step; multi-select
-options can be toggled one by one and the draft is kept in the declared option
-order. Long question text wraps inside the inspector width; when the answer box
-runs out of room it scrolls there with Submit pinned at the bottom instead of
-widening the log column. Both the question preview and the answer area fold
-independently, and the region-half / region-full / floating layouts are one
-shared preference with the floating card (only `Floating` puts a card on the
-canvas). A historical question has no open request, so no answer area appears —
-switching to a region layout still expands its full Q&A inside the inspector.
+inspector to that question's start event (not to its answer); Overview shows
+the question text and the event details. The question surface exists exactly
+once — the dock below the inspector tabs in a region layout, the Input tab in
+`Floating` — and one toolbar row owns the Preview / Code switch, the placement
+switch and the fold:
+
+- **Preview** shows the questions and their option chips. While the request is
+  open the chips are buttons (single-select and a plan approval's Approve/Reject
+  highlight on click; multi-select toggles one by one and the draft keeps the
+  declared option order), the input value is what Submit sends (no Set step),
+  and the Submit / Cancel bar is a sibling of the scrolling body, so it stays
+  pinned to the bottom of the panel however long the question is.
+- **Code** shows the raw payload only — no options, no answer box, no submit bar.
+- **A closed or historical question** keeps the same chips as static, unclickable
+  spans: you can still read what was asked and which options existed, but
+  nothing pretends to be answerable. Switching to a region layout expands the
+  full Q&A inside the inspector.
+
+Long question text wraps inside the inspector width and the body scrolls instead
+of widening the log column. The region-half / region-full / floating layouts are
+one shared preference with the floating card (only `Floating` puts a card on the
+canvas).
 If a submit is rejected (busy, closed, answered elsewhere)
 the draft is kept and a notice explains why — it is never silently cleared. When one `AskUserQuestion` carries
 several descriptors the

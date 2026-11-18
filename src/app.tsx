@@ -68,12 +68,11 @@ import {
   type NoticeTone,
 } from "./components/console-notices";
 import { PromptContent } from "./components/prompt-content";
-import { QuestionContent } from "./components/question-content";
-import { QuestionAnswerForm } from "./components/question-answer-form";
 import {
-  InteractionPanel,
-  QuestionResultList,
-} from "./components/interaction-panel";
+  QuestionContent,
+  type QuestionAnswerBinding,
+} from "./components/question-content";
+import { InteractionPanel } from "./components/interaction-panel";
 import { RepositoryLink } from "./components/repo-link";
 import { RuntimeCanvas } from "./components/runtime-canvas";
 import { SettingsDialog } from "./components/settings-dialog";
@@ -3229,12 +3228,10 @@ function InspectorOverview({
   node,
   atom,
   event,
-  answerForm,
 }: {
   node: TraceNodeType | null;
   atom: HarnessNodeData | null;
   event: TraceEvent | null;
-  answerForm?: ReactNode;
 }) {
   const data = node?.data;
   const tone = atom?.tone || data?.meta?.tone || "unknown";
@@ -3302,7 +3299,6 @@ function InspectorOverview({
           atom?.description ||
           (event ? getEventSummary(event) : "No event is bound to this atom yet.")}
       </p>
-      {answerForm}
       <dl className="detail-list">
         {details.map(([label, value]) => (
           <div key={label}>
@@ -3326,6 +3322,7 @@ function TraceInspector({
   answerDrafts,
   onAnswerDraftChange,
   onAnswerQuestion,
+  onCancelQuestion,
   questionPanelMode,
   onQuestionPanelModeChange,
   questionDocked,
@@ -3344,6 +3341,7 @@ function TraceInspector({
     matched: MatchedQuestionInteraction,
     answers: Record<string, string>,
   ) => void;
+  onCancelQuestion: (requestId: string) => void;
   questionPanelMode: QuestionPanelMode;
   onQuestionPanelModeChange: (mode: QuestionPanelMode) => void;
   /**
@@ -3444,28 +3442,29 @@ function TraceInspector({
   const executionInstruction = event
     ? getExecutionInstruction(event, node?.data.startEvent)
     : atom?.label || inspectorTitle;
-  // The answer box is only mounted when the displayed question has a live
-  // interaction request whose descriptor matches it verbatim. No request (a
-  // historical question) or a closed/taken-over one renders nothing here; the
-  // docked panel or the floating card stays the read-only record in those
-  // cases.
-  const answerForm = matchedQuestion ? (
-    <QuestionAnswerForm
-      questions={matchedQuestion.draft.request.questions}
-      selections={matchedQuestion.draft.selections}
-      drafts={answerDrafts}
-      onDraftChange={onAnswerDraftChange}
-      onSend={(answers) => onAnswerQuestion(matchedQuestion, answers)}
-      readOnly={Boolean(
-        matchedQuestion.draft.result ||
-          (matchedQuestion.draft.lockedBy &&
-            matchedQuestion.draft.lockedBy !== consoleDeviceId),
-      )}
-      pending={Boolean(matchedQuestion.draft.pending)}
-      panelMode={questionPanelMode}
-      onPanelModeChange={onQuestionPanelModeChange}
-    />
-  ) : null;
+  // The question surface answers the open request, and keeps the just-closed
+  // one for the settle window so a submit does not make the form vanish.
+  const questionDraft = matchedQuestion?.draft ?? settledQuestion;
+  const questionBinding: QuestionAnswerBinding | null = questionDraft
+    ? {
+        questions: questionDraft.request.questions,
+        drafts: answerDrafts,
+        onDraftChange: onAnswerDraftChange,
+        onSend: (answers) => {
+          if (matchedQuestion) {
+            onAnswerQuestion(matchedQuestion, answers);
+          }
+        },
+        onCancel: () => onCancelQuestion(questionDraft.request.requestId),
+        pending: Boolean(questionDraft.pending),
+        readOnly:
+          Boolean(questionDraft.result) ||
+          Boolean(
+            questionDraft.lockedBy && questionDraft.lockedBy !== consoleDeviceId,
+          ),
+        result: questionDraft.result,
+      }
+    : null;
   // Docked layouts move the question surface out of the Input tab and give it
   // the bottom of the detail area — half of it, or all of it. The tab then
   // shows the raw payload, so one question is never rendered twice.
@@ -3519,12 +3518,7 @@ function TraceInspector({
               value="overview"
               className="inspector-tabs__content m-0 min-h-0 overflow-auto"
             >
-              <InspectorOverview
-                node={node}
-                atom={atom}
-                event={event}
-                answerForm={dockedQuestion ? null : answerForm}
-              />
+              <InspectorOverview atom={atom} event={event} node={node} />
             </TabsContent>
             {(["input", "output", "raw"] as InspectorTab[]).map((tab) => (
               <TabsContent
@@ -3548,12 +3542,12 @@ function TraceInspector({
                     data-mode={questionPanelMode}
                   >
                     <QuestionContent
+                      answer={questionBinding}
                       key={questionEvent.id}
                       panelMode={questionPanelMode}
                       onPanelModeChange={onQuestionPanelModeChange}
                       payload={questionEvent.payload}
                     />
-                    {answerForm}
                   </div>
                 ) : (
                   <JsonViewer value={payloadByTab[tab]} />
@@ -3570,15 +3564,12 @@ function TraceInspector({
               data-mode={questionPanelMode}
             >
               <QuestionContent
+                answer={questionBinding}
                 key={dockedQuestion.id}
                 panelMode={questionPanelMode}
                 onPanelModeChange={onQuestionPanelModeChange}
                 payload={dockedQuestion.payload}
               />
-              {answerForm ??
-                (settledQuestion?.result ? (
-                  <QuestionResultList result={settledQuestion.result} />
-                ) : null)}
             </div>
           ) : null}
         </div>
@@ -8131,11 +8122,12 @@ export default function App() {
                   }))
                 }
                 onAnswerQuestion={handleQuestionAnswer}
+                onCancelQuestion={handleInteractionCancel}
                 questionPanelMode={questionPanelMode}
                 onQuestionPanelModeChange={setQuestionPanelMode}
                 questionDocked={questionDocked}
                 settledQuestion={
-                  questionDocked && settlingMatchesView ? settlingInteraction : null
+                  settlingMatchesView ? settlingInteraction : null
                 }
               />
             </>
