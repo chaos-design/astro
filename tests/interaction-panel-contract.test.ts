@@ -12,38 +12,33 @@ const styles = readFileSync(
 );
 
 /**
- * The panel is presentational: every decision (which click means select or
- * deselect, whether a draft is an edit, whether submit is allowed) comes from
- * `interaction-panel-model.ts`, which the unit tests cover. Pinning the JSX
- * wiring keeps the rendering from drifting away from those tests — a panel
- * that ignores `readOnly` or renders a free-text answer without an edit path
- * would pass the model tests and still be wrong on screen.
+ * The panel collects every answer locally and sends one batch. These source
+ * checks keep the rendered card from drifting back to per-click events or a
+ * free-text Set button, which would make a multi-question AskUserQuestion look
+ * like several independent submissions.
  */
-test("option cards announce their selected state and route both clicks", () => {
-  assert.match(panel, /aria-pressed=\{active\}/);
-  assert.match(panel, /disabled=\{readOnly\}/);
+test("option cards announce their selected state and toggle local drafts", () => {
+  assert.match(panel, /aria-pressed=\{pressed\}/);
+  assert.match(panel, /disabled=\{readOnly \|\| pending\}/);
   assert.match(panel, /resolveOptionClick\(\{/);
-  assert.match(panel, /onSelect\?\.\(question\.question, label\)/);
-  assert.match(panel, /onDeselect\?\.\(question\.question, label\)/);
+  assert.match(panel, /setDraftSelections\(\(previous\) =>/);
   assert.match(panel, /optionLabels\(question\)\.map/);
 });
 
-test("free text, edit, skip and cancel are all reachable", () => {
-  assert.match(panel, /resolveTextAction\(freeText, draft\)/);
-  assert.match(panel, /dispatchTextAction\(/);
-  assert.match(panel, /onText\?\.\(question, action\.text\)/);
-  assert.match(panel, /onEdit\?\.\(question, action\.previous, action\.next\)/);
-  assert.match(panel, /editing === question\.question \|\| !freeText/);
-  assert.match(panel, /question\.required === false/);
-  assert.match(panel, /onSkip\?\.\(question\.question\)/);
-  assert.match(panel, /onClick=\{onCancel\}/);
+test("typed answers are part of the one Submit with no Set step", () => {
+  assert.match(panel, /buildQuestionAnswers\(\{/);
+  assert.match(panel, /onSend\?\.\(answerMap\)/);
+  assert.match(panel, /Answer for \$\{question\.question\}/);
+  assert.doesNotMatch(panel, /resolveTextAction/);
+  assert.doesNotMatch(panel, />Set</);
+  assert.match(panel, /onCancel\?\.\(\)/);
 });
 
 test("submit is blocked while a POST is in flight and while required answers are missing", () => {
+  assert.match(panel, /questionPanelSubmittable\(request\.questions, answerMap\)/);
   assert.match(panel, /disabled=\{readOnly \|\| pending \|\| !submittable\}/);
   assert.match(panel, /interaction-panel__pending/);
   assert.match(panel, /role="status"/);
-  assert.match(panel, /disabled=\{readOnly \|\| pending\}/);
 });
 
 test("a closed panel renders only the result and marks the device that answered", () => {
@@ -68,11 +63,13 @@ test("the panel styles cover the pressed option and the pending state", () => {
   );
 });
 
-test("the card collapses to its header and follows the question lifecycle", () => {
+test("the card collapses and both question and footer sections fold", () => {
   assert.match(panel, /interaction-panel__toggle/);
   assert.match(panel, /aria-expanded=\{!collapsed\}/);
   assert.match(panel, /interaction-panel__summary/);
   assert.match(panel, /interaction-panel__body/);
+  assert.match(panel, /questionsFolded \? null :/);
+  assert.match(panel, /keyboard && !footerFolded/);
   assert.match(styles, /\.interaction-panel\.is-collapsed \.interaction-panel__body \{/);
   assert.match(styles, /@keyframes interaction-panel-enter/);
   assert.match(styles, /\.interaction-panel--settling \{/);
@@ -82,16 +79,28 @@ test("the card collapses to its header and follows the question lifecycle", () =
   );
 });
 
+test("three modes size the floating card and cap its scroll range", () => {
+  assert.match(panel, /QuestionPanelModeControl/);
+  assert.match(panel, /data-mode=\{mode\}/);
+  assert.match(styles, /\.interaction-panel--floating\[data-mode="bottom"\] \{/);
+  assert.match(styles, /\.interaction-panel--floating\[data-mode="side"\] \{/);
+  assert.match(
+    styles,
+    /\.interaction-panel--floating \.interaction-panel__questions \{[\s\S]*?max-height: var\(--question-scroll-max/,
+  );
+  assert.match(styles, /\.question-mode-control__button\[aria-pressed="true"\] \{/);
+});
+
 test("keyboard flow stays on the card and cannot bypass the button guards", () => {
   assert.match(panel, /keyboard\?: boolean/);
   assert.match(panel, /onKeyDown=\{handleKeyDown\}/);
   assert.match(panel, /resolvePanelKey\(\{/);
-  assert.match(panel, /readOnly,\s*\}\)/);
+  assert.match(panel, /readOnly,\s*\}/);
   assert.match(panel, /submittable && !pending/);
   assert.match(panel, /optionsRef\.current \|\| panelRef\.current/);
   assert.match(panel, /interaction-panel__keys/);
   assert.match(panel, /target\.isContentEditable/);
-  assert.match(panel, /\["INPUT", "TEXTAREA", "SELECT"\]/);
+  assert.match(panel, /\["TEXTAREA", "SELECT"\]/);
 });
 
 test("the countdown is a CSS animation driven by the host's timestamps", () => {

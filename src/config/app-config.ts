@@ -12,6 +12,7 @@ export type HistoryRangeId =
   | "5d"
   | "7d";
 export type Theme = "dark" | "light" | "system";
+export type QuestionPanelMode = "half" | "bottom" | "side";
 
 /**
  * How long the console keeps its event stream open before it stops syncing.
@@ -68,6 +69,7 @@ type AppDefaults = {
    * of the agent dropdown so the default selection is the top of the list.
    */
   platform: PlatformId;
+  questionPanelMode: QuestionPanelMode;
   replayCursor: number;
   replayMode: boolean;
   replayPlaying: boolean;
@@ -93,6 +95,7 @@ export const appDefaults: AppDefaults = {
   taskCompletionChime: true,
   chimeStyle: "bright",
   platform: "claude",
+  questionPanelMode: "half",
   replayCursor: 0,
   replayMode: false,
   replayPlaying: false,
@@ -300,6 +303,8 @@ export const storageKeys = {
   inspectorTab: "ASTROX_INSPECTOR_TAB",
   maxSync: "ASTROX_MAX_SYNC",
   platform: "ASTROX_PLATFORM",
+  /** Question panel layout: half / bottom / side. */
+  questionPanelMode: "ASTROX_QUESTION_PANEL_MODE",
   /** The performance HUD toggle (Settings → 性能). */
   perfHud: "ASTROX_PERF_HUD",
   /** Task-completion chime (Settings → 通知). */

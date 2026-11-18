@@ -5,6 +5,7 @@ import { buildRequest as buildHostRequest } from "../scripts/interaction-hook.mj
 import { buildInteractionRequest } from "../src/lib/interaction-contract.ts";
 import {
   matchQuestionInteraction,
+  questionMatchesCurrentView,
   questionTextsFromEvent,
   shouldLocateInteractionRequest,
 } from "../src/lib/question-interaction.ts";
@@ -15,6 +16,7 @@ import {
   type InteractionState,
 } from "../src/lib/interaction-reducer.ts";
 import { normalizeTraceEvent } from "../src/lib/trace-model.ts";
+import { getAtomIdForEvent } from "../src/config/atom-platforms.ts";
 import type { TraceEvent } from "../src/types/trace.ts";
 
 const NOW = Date.UTC(2026, 10, 16, 10, 0, 0);
@@ -205,6 +207,67 @@ test("no selected question means no answer target", () => {
   const draft = openRequest();
   assert.equal(matchQuestionInteraction(stateWith(draft).requests, null), null);
   assert.equal(matchQuestionInteraction({}, questionEvent()), null);
+});
+
+test("a question from another message never binds even with the same tool id", () => {
+  const draft = openRequest();
+  const event = questionEvent();
+  const otherMessageEvent = normalizeTraceEvent({
+    ...event,
+    id: "event-other-message",
+    sequence: event.sequence + 1,
+  });
+  assert.equal(
+    matchQuestionInteraction(stateWith(draft).requests, event, {
+      promptRunEvents: [otherMessageEvent],
+      atomId: "agent-step:0:0",
+      platformId: "zcode",
+    }),
+    null,
+  );
+});
+
+test("a request only shows while the event resolves to the selected atom", () => {
+  const draft = openRequest();
+  const event = questionEvent();
+  const atomId = getAtomIdForEvent(event, "zcode");
+  assert.match(atomId, /.+/);
+  assert.equal(
+    questionMatchesCurrentView({
+      draft,
+      event,
+      promptRunEvents: [event],
+      atomId,
+      platformId: "zcode",
+    }),
+    true,
+  );
+  assert.equal(
+    questionMatchesCurrentView({
+      draft,
+      event,
+      promptRunEvents: [event],
+      atomId,
+      selectedAtomId: "another-atom",
+      platformId: "zcode",
+    }),
+    false,
+  );
+});
+
+test("switching agent source hides the request on the new message", () => {
+  const draft = openRequest();
+  const event = questionEvent({ source: "claude" });
+  assert.equal(
+    questionMatchesCurrentView({
+      draft,
+      event,
+      promptRunEvents: [event],
+      atomId: getAtomIdForEvent(event, "claude"),
+      platformId: "claude",
+    }),
+    false,
+  );
 });
 
 test("only the open run's live interaction pulls the canvas to the question", () => {

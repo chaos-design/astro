@@ -146,11 +146,20 @@
     `src/lib/question-interaction.ts`: tool id first, then session plus
     verbatim question text, then — for the textless plan approval — the
     session's newest open ExitPlanMode request, with the answer key always the
-    request's exact question text. The inspector answer box and the floating
-    panel share one interaction state and never infer "the current question"
-    separately. The inspector answer box wraps long text inside the narrow
-    panel, scrolls within its own height and keeps Submit visible instead of
-    widening the log column. The inspector's batch answer builds its seq chain only in
+    request's exact question text. Given a view scope,
+    `questionMatchesCurrentView` additionally requires the event inside the
+    selected prompt run, an atom resolved from that event, and a matching
+    session/source; the inspector and floating card share that strict rule, so
+    switching agent or message hides a stale request. The inspector answer box
+    and the floating panel share one interaction state and never infer "the
+    current question" separately. The inspector answer box wraps long text
+    inside the narrow panel, scrolls within its own height and keeps Submit
+    visible instead of widening the log column. Both answer surfaces build maps
+    only in `src/lib/question-panel-model.ts`: option clicks highlight and fill
+    drafts, typed text overrides an option without a Set step, and one Submit
+    sends every question. `half` / `bottom` / `side` is one shared persisted
+    layout mode, with each surface's upper and lower sections foldable. The
+    inspector's batch answer builds its seq chain only in
     `answerInteractionQuestions` (`src/lib/interaction-client.ts`): one `text`
     event per question then one `submit` with the full answer map, with the
     single-question entry point a one-element wrapper. `shouldLocateInteractionRequest`
@@ -164,11 +173,14 @@
     the question list scrolls while the footer stays pinned to the card's
     bottom edge, and a closed request keeps the card readable ~2.4s
     (`--settling`) before it slides away — a stream reset that wiped the
-    record dismisses it at once. Canvas selection still never controls it.
-    Keyboard answering (digits pick the first question's options, Enter
-    submits, Escape cancels) is decided only in `resolvePanelKey`, which refuses
-    every shortcut on a read-only card; the listener lives on the card, not
-    `document`, so digits and Enter in text fields remain text. The countdown
+    record dismisses it at once. The floating card uses the same strict
+    current-message/current-atom binding as the inspector. Its question list
+    has a mode-dependent maximum scroll height. Keyboard answering (digits
+    highlight the first question's options, Enter submits the batch, Escape
+    cancels) is decided only in `resolvePanelKey`, which refuses every
+    shortcut on a read-only card; the listener lives on the card, not
+    `document`, so digits in text fields remain text and Enter submits the
+    batch. The countdown
     is one CSS animation from the request's own timestamps, with
     `interactionTimeLeft` the only ratio source for a numeric display.
   New consumers reuse those helpers; do not grow a second failure or live list.

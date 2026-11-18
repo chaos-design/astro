@@ -14,6 +14,7 @@
 import type { QuestionDescriptor } from "./interaction-contract.ts";
 import type { InteractionDraft } from "./interaction-reducer.ts";
 import type { TraceEvent } from "../types/trace.ts";
+import { getAtomIdForEvent } from "../config/atom-platforms.ts";
 import { parseUserQuestionContent } from "./user-question-content.ts";
 
 export interface MatchedQuestionInteraction {
@@ -95,14 +96,75 @@ export function shouldLocateInteractionRequest(
   );
 }
 
+/**
+ * The strict View binding shared by the floating card and the inspector. A
+ * request is visible only while all three identities agree:
+ *  - the question event is part of the selected prompt run (message),
+ *  - that event resolves to the selected atom, and
+ *  - its session and source match the captured event.
+ *
+ * Switching agent or message changes one of those inputs, so a request from
+ * the previous scope disappears instead of answering in the wrong context.
+ */
+export function questionMatchesCurrentView(input: {
+  draft: InteractionDraft;
+  event: TraceEvent | null;
+  promptRunEvents: readonly TraceEvent[];
+  /** Atom resolved from the message's selected question event. */
+  atomId: string;
+  /** An explicit atom selection, when the reader has made one. */
+  selectedAtomId?: string;
+  platformId: string;
+}): boolean {
+  const { draft, event, promptRunEvents, atomId, platformId } = input;
+  if (!event || !atomId) {
+    return false;
+  }
+  if (!promptRunEvents.some((candidate) => candidate.id === event.id)) {
+    return false;
+  }
+  if (input.selectedAtomId && input.selectedAtomId !== atomId) {
+    return false;
+  }
+  if (
+    event.sessionId &&
+    event.sessionId !== "unknown-session" &&
+    draft.request.sessionId !== event.sessionId
+  ) {
+    return false;
+  }
+  return !event.source || draft.request.source === event.source;
+}
+
 export function matchQuestionInteraction(
   drafts: Record<string, InteractionDraft>,
   event: TraceEvent | null,
+  scope?: {
+    promptRunEvents?: readonly TraceEvent[];
+    atomId?: string;
+    selectedAtomId?: string;
+    platformId?: string;
+  },
 ): MatchedQuestionInteraction | null {
   if (!event) {
     return null;
   }
-  const open = Object.values(drafts).filter((draft) => !draft.result);
+  const open = Object.values(drafts).filter(
+    (draft) =>
+      !draft.result &&
+      (!scope ||
+        !scope.promptRunEvents ||
+        !scope.atomId ||
+        !scope.platformId ||
+        questionMatchesCurrentView({
+          draft,
+          event,
+          promptRunEvents: scope.promptRunEvents,
+          atomId: scope.atomId,
+          selectedAtomId: scope.selectedAtomId,
+          platformId: scope.platformId,
+        })),
+  );
   if (!open.length) {
     return null;
   }
@@ -119,18 +181,17 @@ export function matchQuestionInteraction(
       return question ? { draft: byTool, question } : null;
     }
   }
+  // The cross-session text fallback is gone on purpose: a matching question
+  // string in another run must never answer the selected atom's request.
   const bySessionText = open.find(
     (draft) =>
-      (!event.sessionId || draft.request.sessionId === event.sessionId) &&
+      Boolean(event.sessionId) &&
+      draft.request.sessionId === event.sessionId &&
       draft.request.questions.some((question) => texts.includes(question.question)),
   );
-  const byText = bySessionText ??
-    open.find((draft) =>
-      draft.request.questions.some((question) => texts.includes(question.question)),
-    );
-  if (byText) {
-    const question = pick(byText);
-    return question ? { draft: byText, question } : null;
+  if (bySessionText) {
+    const question = pick(bySessionText);
+    return question ? { draft: bySessionText, question } : null;
   }
   if (!texts.length) {
     const byPlan = [...open]
@@ -139,7 +200,6 @@ export function matchQuestionInteraction(
         draft.request.toolName === "ExitPlanMode" &&
         (!event.sessionId ||
           event.sessionId === "unknown-session" ||
-          draft.request.sessionId === "unknown-session" ||
           draft.request.sessionId === event.sessionId),
       );
     if (byPlan) {

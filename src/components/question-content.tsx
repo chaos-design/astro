@@ -1,5 +1,7 @@
-import { Code2, Eye } from "lucide-react";
+import { ChevronDown, Code2, Eye } from "lucide-react";
 import { useMemo, useState } from "react";
+import type { QuestionPanelMode } from "@/config/app-config";
+import { QuestionPanelModeControl } from "./question-panel-mode-control";
 import { JsonViewer } from "./json-viewer";
 import {
   ToggleGroup,
@@ -21,12 +23,21 @@ type QuestionViewMode = "preview" | "code";
  * toolbar, layout and fallbacks mirror PromptContent so the two inspector
  * previews read as one surface.
  */
-export function QuestionContent({ payload }: { payload: TracePayload }) {
+export function QuestionContent({
+  payload,
+  panelMode,
+  onPanelModeChange,
+}: {
+  payload: TracePayload;
+  panelMode?: QuestionPanelMode;
+  onPanelModeChange?: (mode: QuestionPanelMode) => void;
+}) {
   const content = useMemo(() => parseUserQuestionContent(payload), [payload]);
   const [viewMode, setViewMode] = useState<QuestionViewMode>("preview");
+  const [collapsed, setCollapsed] = useState(false);
 
   return (
-    <div className="prompt-input">
+    <div className={collapsed ? "prompt-input is-collapsed" : "prompt-input"}>
       <div className="prompt-input__toolbar">
         <ToggleGroup
           aria-label="User question view"
@@ -50,8 +61,24 @@ export function QuestionContent({ payload }: { payload: TracePayload }) {
             Code
           </ToggleGroupItem>
         </ToggleGroup>
+        {onPanelModeChange ? (
+          <QuestionPanelModeControl
+            className="prompt-input__layout"
+            mode={panelMode ?? "half"}
+            onChange={onPanelModeChange}
+          />
+        ) : null}
+        <button
+          aria-expanded={!collapsed}
+          aria-label={collapsed ? "展开问题内容" : "收起问题内容"}
+          className="prompt-input__collapse"
+          onClick={() => setCollapsed((current) => !current)}
+          type="button"
+        >
+          <ChevronDown aria-hidden="true" />
+        </button>
       </div>
-      {viewMode === "preview" ? (
+      {collapsed ? null : viewMode === "preview" ? (
         <div className="prompt-content">
           {content.prompts.length ? (
             content.prompts.map((prompt, index) => (

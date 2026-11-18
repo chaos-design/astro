@@ -155,6 +155,7 @@ import {
   type ChimeStyleId,
   type HistoryRangeId,
   type MaxSyncId,
+  type QuestionPanelMode,
   type Theme,
 } from "./config/app-config";
 import {
@@ -268,13 +269,12 @@ import {
   answerInteractionQuestions,
   cancelInteraction,
   consoleDeviceId,
-  sendInteractionEvent,
-  submitInteraction,
-  type InteractionEventFields,
   type InteractionSendResult,
 } from "./lib/interaction-client";
+import { normalizeQuestionPanelMode } from "./lib/question-panel-model";
 import {
   matchQuestionInteraction,
+  questionMatchesCurrentView,
   shouldLocateInteractionRequest,
   type MatchedQuestionInteraction,
 } from "./lib/question-interaction";
@@ -3320,6 +3320,8 @@ function TraceInspector({
   answerDrafts,
   onAnswerDraftChange,
   onAnswerQuestion,
+  questionPanelMode,
+  onQuestionPanelModeChange,
 }: {
   activeTab: string;
   atom: HarnessNodeData | null;
@@ -3334,6 +3336,8 @@ function TraceInspector({
     matched: MatchedQuestionInteraction,
     answers: Record<string, string>,
   ) => void;
+  questionPanelMode: QuestionPanelMode;
+  onQuestionPanelModeChange: (mode: QuestionPanelMode) => void;
 }) {
   if ((!node || !event) && !atom) {
     return (
@@ -3441,6 +3445,8 @@ function TraceInspector({
             matchedQuestion.draft.lockedBy !== consoleDeviceId),
       )}
       pending={Boolean(matchedQuestion.draft.pending)}
+      panelMode={questionPanelMode}
+      onPanelModeChange={onQuestionPanelModeChange}
     />
   ) : null;
 
@@ -3508,9 +3514,14 @@ function TraceInspector({
             {tab === "input" && promptEvent ? (
               <PromptContent key={promptEvent.id} payload={promptEvent.payload} />
             ) : tab === "input" && questionEvent ? (
-              <div className="inspector-question-stack">
+              <div
+                className="inspector-question-stack"
+                data-mode={questionPanelMode}
+              >
                 <QuestionContent
                   key={questionEvent.id}
+                  panelMode={questionPanelMode}
+                  onPanelModeChange={onQuestionPanelModeChange}
                   payload={questionEvent.payload}
                 />
                 {answerForm}
@@ -5158,45 +5169,6 @@ export default function App() {
   const [questionAnswerDrafts, setQuestionAnswerDrafts] = useState<
     Record<string, string>
   >({});
-  // The newest unanswered request owns the card. Older ones cannot still be
-  // inside their window, and two cards would compete for the same click.
-  const activeInteraction = useMemo<InteractionDraft | null>(() => {
-    const open = Object.values(interactions.requests).filter(
-      (draft) => !draft.result,
-    );
-    return open.at(-1) ?? null;
-  }, [interactions]);
-  // Follow the question lifecycle: when the open request closes, keep the card
-  // mounted (--settling) so the result stays readable before it slides away. A
-  // new request arriving during that window takes the card back immediately.
-  const lastOpenInteractionRef = useRef<InteractionDraft | null>(null);
-  if (activeInteraction) {
-    lastOpenInteractionRef.current = activeInteraction;
-  }
-  const [settlingInteraction, setSettlingInteraction] =
-    useState<InteractionDraft | null>(null);
-  useEffect(() => {
-    if (activeInteraction) {
-      setSettlingInteraction(null);
-      return;
-    }
-    const previous = lastOpenInteractionRef.current;
-    lastOpenInteractionRef.current = null;
-    if (!previous) {
-      return;
-    }
-    // A stream reset wipes the request records; with the record gone there is
-    // nothing truthful to show, so the card just disappears.
-    const closed = interactionsRef.current.requests[previous.request.requestId];
-    if (!closed?.result) {
-      return;
-    }
-    setSettlingInteraction(closed);
-    const timer = window.setTimeout(() => {
-      setSettlingInteraction(null);
-    }, INTERACTION_SETTLE_MS);
-    return () => window.clearTimeout(timer);
-  }, [activeInteraction]);
   const reportInteractionResult = useCallback(
     (result: InteractionSendResult) => {
       if (result.ok || result.blocked) {
@@ -5206,35 +5178,18 @@ export default function App() {
     },
     [pushNotice],
   );
-  const handleInteractionEvent = useCallback(
-    (
-      action: "select" | "deselect" | "text" | "edit" | "skip",
-      requestId: string,
-      fields: InteractionEventFields,
-    ) => {
+  const handleInteractionAnswers = useCallback(
+    (requestId: string, answers: Record<string, string>) => {
       const draft = interactionsRef.current.requests[requestId];
       if (!draft) {
         return;
       }
-      void sendInteractionEvent(
+      void answerInteractionQuestions(
         draft,
-        action,
-        fields,
+        answers,
         dispatchInteraction,
         { apiBase },
       ).then(reportInteractionResult);
-    },
-    [apiBase, reportInteractionResult],
-  );
-  const handleInteractionSubmit = useCallback(
-    (requestId: string) => {
-      const draft = interactionsRef.current.requests[requestId];
-      if (!draft) {
-        return;
-      }
-      void submitInteraction(draft, dispatchInteraction, { apiBase }).then(
-        reportInteractionResult,
-      );
     },
     [apiBase, reportInteractionResult],
   );
@@ -5511,6 +5466,19 @@ export default function App() {
       "overview",
     ),
   );
+  // The floating card and the inspector share one layout: a half-height card,
+  // a bottom-wide card, or a side-expanded card. Stored as a preference so a
+  // reload does not collapse the answer surface the reader relies on.
+  const [questionPanelMode, setQuestionPanelMode] =
+    useState<QuestionPanelMode>(() =>
+      normalizeQuestionPanelMode(
+        readStorageValue(
+          window.localStorage,
+          storageKeys.questionPanelMode,
+          appDefaults.questionPanelMode,
+        ),
+      ),
+    );
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const preserveAtomSelectionRef = useRef(false);
   const previousAtomRef = useRef("");
@@ -5571,6 +5539,14 @@ export default function App() {
   useEffect(() => {
     writeStorageValue(window.localStorage, storageKeys.inspectorTab, inspectorTab);
   }, [inspectorTab]);
+
+  useEffect(() => {
+    writeStorageValue(
+      window.localStorage,
+      storageKeys.questionPanelMode,
+      questionPanelMode,
+    );
+  }, [questionPanelMode]);
 
   useEffect(() => {
     writeStorageValue(window.localStorage, storageKeys.activeView, activeView);
@@ -6786,9 +6762,30 @@ export default function App() {
       : selectedAtom?.key === "user.question"
         ? selectedAtom.event
         : null;
+  const questionEventAtomId = getAtomIdForEvent(
+    inspectedQuestionEvent,
+    platformId,
+  );
   const matchedQuestionInteraction = useMemo(
-    () => matchQuestionInteraction(interactions.requests, inspectedQuestionEvent),
-    [interactions.requests, inspectedQuestionEvent],
+    () =>
+      matchQuestionInteraction(
+        interactions.requests,
+        inspectedQuestionEvent,
+        {
+          promptRunEvents: activeEvents,
+          atomId: questionEventAtomId,
+          selectedAtomId: currentAtomId,
+          platformId,
+        },
+      ),
+    [
+      interactions.requests,
+      inspectedQuestionEvent,
+      activeEvents,
+      currentAtomId,
+      questionEventAtomId,
+      platformId,
+    ],
   );
   const matchedQuestionKey = matchedQuestionInteraction
     ? `${matchedQuestionInteraction.draft.request.requestId}:${matchedQuestionInteraction.question.question}`
@@ -6797,6 +6794,54 @@ export default function App() {
   useEffect(() => {
     setQuestionAnswerDrafts({});
   }, [matchedQuestionKey]);
+
+  // The floating card is no longer a global newest-request overlay: it is the
+  // same strict binding as the inspector, so changing agent or message leaves
+  // no question card behind. Keep the closed draft briefly for the result.
+  const activeInteraction = useMemo(
+    () =>
+      matchedQuestionInteraction && !matchedQuestionInteraction.draft.result
+        ? matchedQuestionInteraction.draft
+        : null,
+    [matchedQuestionInteraction],
+  );
+  const lastOpenInteractionRef = useRef<InteractionDraft | null>(null);
+  if (activeInteraction) {
+    lastOpenInteractionRef.current = activeInteraction;
+  }
+  const [settlingInteraction, setSettlingInteraction] =
+    useState<InteractionDraft | null>(null);
+  const settlingMatchesView = Boolean(
+    settlingInteraction &&
+      questionMatchesCurrentView({
+        draft: settlingInteraction,
+        event: inspectedQuestionEvent,
+        promptRunEvents: activeEvents,
+        atomId: questionEventAtomId,
+        selectedAtomId: currentAtomId,
+        platformId,
+      }),
+  );
+  useEffect(() => {
+    if (activeInteraction) {
+      setSettlingInteraction(null);
+      return;
+    }
+    const previous = lastOpenInteractionRef.current;
+    lastOpenInteractionRef.current = null;
+    if (!previous) {
+      return;
+    }
+    const closed = interactionsRef.current.requests[previous.request.requestId];
+    if (!closed?.result) {
+      return;
+    }
+    setSettlingInteraction(closed);
+    const timer = window.setTimeout(() => {
+      setSettlingInteraction(null);
+    }, INTERACTION_SETTLE_MS);
+    return () => window.clearTimeout(timer);
+  }, [activeInteraction, interactions]);
 
   useEffect(() => {
     if (!animatingFlow || !activeExecutionAtomId) {
@@ -7891,53 +7936,24 @@ export default function App() {
               key={activeInteraction.request.requestId}
               keyboard
               lockedBy={activeInteraction.lockedBy}
+              mode={questionPanelMode}
               onCancel={() =>
                 handleInteractionCancel(activeInteraction.request.requestId)
               }
-              onDeselect={(question, label) =>
-                handleInteractionEvent(
-                  "deselect",
+              onModeChange={setQuestionPanelMode}
+              onSend={(answers) =>
+                handleInteractionAnswers(
                   activeInteraction.request.requestId,
-                  { question, optionLabel: label },
-                )
-              }
-              onEdit={(question, previous, next) =>
-                handleInteractionEvent(
-                  "edit",
-                  activeInteraction.request.requestId,
-                  { question, previous, next },
-                )
-              }
-              onSelect={(question, label) =>
-                handleInteractionEvent(
-                  "select",
-                  activeInteraction.request.requestId,
-                  { question, optionLabel: label },
-                )
-              }
-              onSkip={(question) =>
-                handleInteractionEvent(
-                  "skip",
-                  activeInteraction.request.requestId,
-                  { question },
-                )
-              }
-              onSubmit={() =>
-                handleInteractionSubmit(activeInteraction.request.requestId)
-              }
-              onText={(question, text) =>
-                handleInteractionEvent(
-                  "text",
-                  activeInteraction.request.requestId,
-                  { question, text },
+                  answers,
                 )
               }
               pending={Boolean(activeInteraction.pending)}
               request={activeInteraction.request}
               result={activeInteraction.result}
               selections={activeInteraction.selections}
+              showSectionToggles
             />
-          ) : settlingInteraction ? (
+          ) : settlingInteraction && settlingMatchesView ? (
             // The request just closed: same key and position as the open card,
             // so the collapsed/expanded state carries over without a remount
             // flicker while the result is shown and the card slides away.
@@ -7946,8 +7962,11 @@ export default function App() {
               deviceId={consoleDeviceId}
               key={settlingInteraction.request.requestId}
               lockedBy={settlingInteraction.lockedBy}
+              mode={questionPanelMode}
+              onModeChange={setQuestionPanelMode}
               request={settlingInteraction.request}
               result={settlingInteraction.result}
+              showSectionToggles
             />
           ) : null}
 
@@ -8052,6 +8071,8 @@ export default function App() {
                   }))
                 }
                 onAnswerQuestion={handleQuestionAnswer}
+                questionPanelMode={questionPanelMode}
+                onQuestionPanelModeChange={setQuestionPanelMode}
               />
             </>
           ) : (

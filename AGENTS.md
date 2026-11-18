@@ -776,7 +776,12 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   atom inspector mounts an answer box. `src/lib/question-interaction.ts` owns
   the one match rule (tool id first, then session + verbatim question text,
   then — for the textless plan approval — the session's newest open
-  ExitPlanMode request). `answerInteractionQuestions()` in
+  ExitPlanMode request). When a view scope is supplied, `questionMatchesCurrentView()`
+  first requires the question event inside the selected prompt run, an atom id
+  that resolves from that same event, and a matching session/source; the
+  floating card and the inspector both use it. Switching agent or message
+  therefore removes the answer surface instead of answering a stale request.
+  `answerInteractionQuestions()` in
   `src/lib/interaction-client.ts` is the one batch sender: every question gets a
   `text` event with increasing seq, then a single `submit` carrying the full
   answer map; `answerInteractionQuestion()` is only its one-element wrapper.
@@ -786,9 +791,11 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   not one question at a time. Single-select descriptors render one-click quick
   answer buttons above the free-text row (a plan approval is an Approve/Reject
   pair); multi-select options are toggles whose draft is kept in declared option
-  order, with free text as a fallback. With several questions a quick option
-  fills its row and the single Submit button sends the batch once all required
-  questions are answered. The inspector grid item must keep `min-width: 0`: the
+  order, with typed text as the submitted value (no separate Set action).
+  Every option click — single or multi — only fills its draft and highlights
+  the choice; the single Submit button sends the batch once all required
+  questions are answered. `src/lib/question-panel-model.ts` is the one builder
+  for those answer maps. The inspector grid item must keep `min-width: 0`: the
   answer box wraps long question text inside the panel width, caps its height
   and scrolls itself with the Submit footer pinned, so an AskUserQuestion can
   never widen the 320px log column. A blocked/rejected submit keeps the draft and raises
@@ -797,21 +804,25 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   as "Paris, France" stays one answer. The
   inspector's question binding mirrors the display fallback: a plan-content
   tool row answers like the question atom.
-  The floating interaction panel keeps its newest-request rule and is
-  untouched by canvas selection. It follows the question lifecycle instead:
-  the card enters with an animation when a request opens, the header chevron
-  collapses it to a one-line summary (a new request remounts the card via its
-  `requestId` key and re-expands), the question list scrolls while the footer
-  stays pinned to the card's bottom edge, and when the request closes the app
-  keeps the card mounted (`--settling`, `INTERACTION_SETTLE_MS`) so the result
-  stays readable ~2.4s before it slides away — a stream reset that wiped the
-  record dismisses it at once instead of showing a stale question.
+  The floating interaction panel uses the same strict current-message/current-atom
+  binding as the inspector, never a global newest request. It follows the
+  question lifecycle: the card enters with an animation when its bound request
+  opens, the header chevron collapses it to a one-line summary (a new request
+  remounts the card via its `requestId` key and re-expands), the question list
+  has a mode-dependent maximum scroll height while the footer stays pinned to
+  the card's bottom edge, and when the request closes the app keeps the card
+  mounted (`--settling`, `INTERACTION_SETTLE_MS`) so the result stays readable
+  ~2.4s before it slides away. A stream reset that wiped the record dismisses
+  it at once instead of showing a stale question. `half` / `bottom` / `side`
+  are the one shared, persisted layout mode of both surfaces; each surface can
+  also fold its upper question section and lower answer section independently.
   For faster answering the floating card focuses its first option and binds
   digit keys to the first question's options, Enter to submit, Escape to
   cancel; `resolvePanelKey` in `src/lib/interaction-panel-model.ts` is the one
   decision source and refuses every shortcut while the card is read-only. The
   listener lives on the card, never on `document`, so search and dialogs keep
-  their keys, and text fields are excluded so "Other…" still accepts digits.
+  their keys; text fields handle Enter as a one-batch submit and otherwise own
+  their keystrokes.
   The countdown bar is one CSS animation from the request's own timestamps;
   `interactionTimeLeft` is the pure ratio for any numeric display of it.
 - `PreCompact` / `PostCompact` cover context compaction for every client that

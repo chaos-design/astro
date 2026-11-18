@@ -33,17 +33,28 @@ test("one submit carries all answers keyed by verbatim question text", () => {
   assert.match(form, /question\.required !== false/);
 });
 
-test("a lone question keeps one-click quick answers, a batch fills the row", () => {
-  assert.match(form, /const onlyOne = questions\.length === 1/);
-  assert.match(form, /if \(onlyOne\) \{[\s\S]*onSend\(\{ \[question\.question\]: label \}\)/);
-  assert.match(form, /onDraftChange\(question\.question, label\)/);
+test("every option only fills the draft; one Submit sends the whole batch", () => {
+  assert.doesNotMatch(form, /const onlyOne/);
+  assert.match(form, /onClick=\{\(\) => toggleOption\(label\)\}/);
+  assert.match(form, /const answers: Record<string, string> = \{\}/);
+  assert.match(form, /onSend\(answers\)/);
+  assert.match(form, /const value = drafts\[question\.question\]\?\.trim\(\) \|\| existing/);
 });
 
-test("multi-select questions toggle declared options in a stable order", () => {
+test("both single and multi-select options stay highlighted from the draft", () => {
   assert.match(form, /const multi = question\.multiSelect === true/);
-  assert.match(form, /aria-pressed=\{multi \? selectedTokens\.includes\(label\) : undefined\}/);
-  assert.match(form, /if \(multi\) \{[\s\S]*toggleOption\(label\)/);
+  assert.match(form, /aria-pressed=\{selectedTokens\.includes\(label\)\}/);
+  assert.match(form, /const next = multi/);
   assert.match(form, /options\.filter\(\(option\) => next\.includes\(option\)\)\.join\(", "\)/);
+});
+
+test("the answer region folds and shares the three mode preference", () => {
+  assert.match(form, /const \[collapsed, setCollapsed\] = useState\(false\)/);
+  assert.match(form, /question-answer__collapse/);
+  assert.match(form, /QuestionPanelModeControl/);
+  assert.match(styles, /\.question-answer\.is-collapsed \{/);
+  assert.match(styles, /\.inspector-question-stack\[data-mode="bottom"\]/);
+  assert.match(styles, /\.inspector-question-stack\[data-mode="side"\]/);
 });
 
 test("busy and closed states disable every control", () => {

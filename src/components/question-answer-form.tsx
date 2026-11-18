@@ -1,8 +1,11 @@
-import { Send } from "lucide-react";
+import { ChevronDown, Send } from "lucide-react";
+import { useState } from "react";
+import type { QuestionPanelMode } from "@/config/app-config";
 import {
   normalizeQuestionOptions,
   type QuestionDescriptor,
 } from "../lib/interaction-contract";
+import { QuestionPanelModeControl } from "./question-panel-mode-control";
 import { Button } from "./ui/button";
 
 /**
@@ -31,6 +34,8 @@ export interface QuestionAnswerFormProps {
   readOnly?: boolean;
   pending?: boolean;
   className?: string;
+  panelMode?: QuestionPanelMode;
+  onPanelModeChange?: (mode: QuestionPanelMode) => void;
 }
 
 export function QuestionAnswerForm({
@@ -42,7 +47,10 @@ export function QuestionAnswerForm({
   readOnly = false,
   pending = false,
   className,
+  panelMode,
+  onPanelModeChange,
 }: QuestionAnswerFormProps) {
+  const [collapsed, setCollapsed] = useState(false);
   const answered = (question: QuestionDescriptor) =>
     Boolean(selections?.[question.question]?.length) ||
     Boolean(drafts[question.question]?.trim());
@@ -50,7 +58,6 @@ export function QuestionAnswerForm({
     (question) => question.required !== false && !answered(question),
   );
   const disabled = readOnly || pending || missingRequired;
-  const onlyOne = questions.length === 1;
 
   const submit = () => {
     if (disabled) {
@@ -70,7 +77,15 @@ export function QuestionAnswerForm({
   return (
     <section
       aria-label="Answer this question"
-      className={className ? `question-answer ${className}` : "question-answer"}
+      className={
+        [
+          "question-answer",
+          collapsed ? "is-collapsed" : "",
+          className || "",
+        ]
+          .filter(Boolean)
+          .join(" ")
+      }
     >
       <div className="question-answer__header">
         <span className="eyebrow">QUESTION · 作答</span>
@@ -79,8 +94,24 @@ export function QuestionAnswerForm({
             {questions.length} 个问题 · 一次提交
           </span>
         ) : null}
+        {onPanelModeChange ? (
+          <QuestionPanelModeControl
+            className="question-answer__layout"
+            mode={panelMode ?? "half"}
+            onChange={onPanelModeChange}
+          />
+        ) : null}
+        <button
+          aria-expanded={!collapsed}
+          aria-label={collapsed ? "展开作答区" : "收起作答区"}
+          className="question-answer__collapse"
+          onClick={() => setCollapsed((current) => !current)}
+          type="button"
+        >
+          <ChevronDown aria-hidden="true" />
+        </button>
       </div>
-      {questions.map((question) => {
+      {collapsed ? null : questions.map((question) => {
         const existing = selections?.[question.question]?.[0];
         const options = normalizeQuestionOptions(question.options).map(
           (option) => option.label,
@@ -91,12 +122,13 @@ export function QuestionAnswerForm({
           .map((token) => token.trim())
           .filter(Boolean);
         const toggleOption = (label: string) => {
-          const next = selectedTokens.includes(label)
-            ? selectedTokens.filter((token) => token !== label)
-            : [...selectedTokens, label];
-          // Keep declared order: the host validates multi-select answers in
-          // that order, and a comma-joined draft must stay stable no matter
-          // which button was pressed last.
+          const next = multi
+            ? selectedTokens.includes(label)
+              ? selectedTokens.filter((token) => token !== label)
+              : [...selectedTokens, label]
+            : [label];
+          // Keep declared order, and never send on the click: every option and
+          // every typed answer is collected until the one Submit below.
           onDraftChange(
             question.question,
             options.filter((option) => next.includes(option)).join(", "),
@@ -122,19 +154,11 @@ export function QuestionAnswerForm({
               >
                 {options.map((label) => (
                   <button
-                    aria-pressed={multi ? selectedTokens.includes(label) : undefined}
+                    aria-pressed={selectedTokens.includes(label)}
                     className="question-answer__option"
                     disabled={readOnly || pending}
                     key={label}
-                    onClick={() => {
-                      if (multi) {
-                        toggleOption(label);
-                      } else if (onlyOne) {
-                        onSend({ [question.question]: label });
-                      } else {
-                        onDraftChange(question.question, label);
-                      }
-                    }}
+                    onClick={() => toggleOption(label)}
                     type="button"
                   >
                     {label}

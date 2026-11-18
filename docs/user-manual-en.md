@@ -728,26 +728,31 @@ and the native prompt appears right away — an unattended agent never waits out
 the window. A timeout, a cancel or an unreachable service behaves the same.
 Answers are never replayed outside the window.
 
-Panel behavior: a single-select click selects; multi-select joins labels in the
-declared option order with commas; "Other" accepts free text; Submit requires
-every required question; Esc/cancel ends the request and falls back; another
-device answering first turns the panel read-only. The floating card also
-supports keyboard answering: it focuses the first option on open, digits `1`–`9`
-pick that option of the first question, `Enter` submits once every required
-question is answered, and `Esc` cancels. Shortcuts are scoped to the card —
-digits and Enter in the search box or "Other…" field stay text. A countdown rule
-on the card's top edge follows the hook's real window and never wraps after the
-deadline. The card follows the question
+Panel behavior: an option click only highlights the choice; multi-select joins
+labels in the declared option order with commas; the input field is the answer
+submitted at the end of the batch, so there is no Set step. Submit requires
+every required question and sends all answers once; Esc/cancel ends the request
+and falls back; another device answering first turns the panel read-only. The
+floating card also supports keyboard answering: it focuses the first option on
+open, digits `1`–`9` highlight that option of the first question, `Enter`
+submits the batch once every required question is answered, and `Esc` cancels.
+Shortcuts are scoped to the card — digits in the input stay text and Enter
+submits. A countdown rule on the card's top edge follows the hook's real window
+and never wraps after the deadline. The card follows the question
 lifecycle: it auto-expands with an entrance animation when a request opens, the
 header chevron collapses it to a one-line summary (handing the canvas back — a
-newly opened question re-expands it), the question list scrolls while
-Submit/Cancel stay pinned to the card's bottom edge, and once the request is
-answered, cancelled or timed out the card shows the result (ANSWERED /
-CANCELLED / …) for about two seconds and then slides away. `ExitPlanMode` renders as an
-"Approve this plan?" choice — only Approve returns a decision and the plan text
-is echoed unchanged. When a request opens in the run currently on screen the
-canvas flashes its question atom; a request from another session or agent never
-steals focus, and an explicit atom selection is left alone. CodeBuddy / WorkBuddy
+newly opened question re-expands it), the question list and footer fold
+independently, and the list respects a mode-dependent maximum scroll height
+while Submit/Cancel stay pinned to the card's bottom edge. The mode switch
+offers half / bottom-full / side-expanded and is shared with the inspector.
+Once the request is answered, cancelled or timed out the card shows the result
+(ANSWERED / CANCELLED / …) for about two seconds and then slides away.
+`ExitPlanMode` renders as an "Approve this plan?" choice — only Approve returns
+a decision and the plan text is echoed unchanged. The floating card is bound to
+the current message and atom: the event must belong to the selected prompt run,
+resolve to the selected atom, and agree on session and source. Switching agent
+or message hides the old card instead of answering in the wrong context. When
+such a request opens, the canvas flashes its question atom. CodeBuddy / WorkBuddy
 `PreToolUse.modifiedInput` carries only the decision and answers — no notification
 extras that a strict host schema could reject.
 
@@ -755,21 +760,23 @@ Answering from a Flow atom: selecting the `User Question` atom binds the
 inspector to that question's start event (not to its answer) and shows the
 question text in Overview. While the question still has an open interaction
 request, Overview and Input both offer an answer area: single-select questions
-(including a plan approval's Approve/Reject) render a wrapping row of one-click
-quick answers above the free-text row, and custom text still goes through the
-input + Send; multi-select options can be toggled one by one and the draft is
-kept in the declared option order, with free text still available. Long question
-text wraps inside the inspector width; when the answer box runs out of room it
-scrolls there with Submit pinned at the bottom instead of widening the log
-column. If a submit is rejected (busy, closed, answered elsewhere) the draft is
-kept and a notice explains why — it is never silently cleared. When one `AskUserQuestion` carries
+(including a plan approval's Approve/Reject) render a wrapping row of quick
+answers above the free-text row; an option click only highlights and fills the
+draft. The input value is what Submit sends, with no Set step; multi-select
+options can be toggled one by one and the draft is kept in the declared option
+order. Long question text wraps inside the inspector width; when the answer box
+runs out of room it scrolls there with Submit pinned at the bottom instead of
+widening the log column. Both the question preview and the answer area fold
+independently, and the half / bottom-full / side-expanded mode is shared with
+the floating card. If a submit is rejected (busy, closed, answered elsewhere)
+the draft is kept and a notice explains why — it is never silently cleared. When one `AskUserQuestion` carries
 several descriptors the
 inspector lists every question with its own options/input and one Submit sends
 the whole batch: the host closes the request on the first submit, so answering
-one at a time would strand the rest. In a batch a quick option fills its row
-and Submit goes once all required questions are answered; a lone question keeps
-one-click sending. Selecting the `ExitPlanMode` tool row (which previews the same
-plan) binds to the same request. The area and the floating panel share the same
+one at a time would strand the rest. Even a lone question only fills the draft
+on click. Selecting the `ExitPlanMode` tool row (which previews the same
+plan) can bind to the same request, but only when the current message, atom,
+session and source all match. The area and the floating panel share the same
 interaction state and turn read-only once the request is closed or answered on
 another device. A historical question without a live request shows its content
 only. The atom binds the newest question start while its status still follows

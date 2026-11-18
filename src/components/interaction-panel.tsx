@@ -1,23 +1,25 @@
-import { Check, ChevronDown, PencilLine, Send, SkipForward, X } from "lucide-react";
+import { Check, ChevronDown, Send, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent } from "react";
+import type { QuestionPanelMode } from "@/config/app-config";
 import { Button } from "./ui/button";
+import { QuestionPanelModeControl } from "./question-panel-mode-control";
 import type {
   InteractionRequest,
   InteractionResult,
-  QuestionDescriptor,
 } from "../lib/interaction-contract";
+import {
+  buildQuestionAnswers,
+  questionPanelSubmittable,
+} from "../lib/question-panel-model";
 import {
   interactionPanelStatus,
   isInteractionPanelReadOnly,
-  isInteractionPanelSubmittable,
   optionDescription,
   optionLabels,
   resolveOptionClick,
   resolvePanelKey,
-  resolveTextAction,
   type InteractionPanelStatus,
-  type TextAction,
 } from "../lib/interaction-panel-model";
 
 export type { InteractionPanelStatus };
@@ -32,16 +34,21 @@ export interface InteractionPanelProps {
   deviceId?: string;
   /** A POST is in flight; controls stay enabled but Submit is blocked. */
   pending?: boolean;
-  onSelect?: (question: string, label: string) => void;
-  onDeselect?: (question: string, label: string) => void;
-  onText?: (question: string, text: string) => void;
-  onEdit?: (question: string, previous: string, next: string) => void;
-  onSkip?: (question: string) => void;
-  onSubmit?: () => void;
+  /** One batch send of every question's answer, never one POST per option. */
+  onSend?: (answers: Record<string, string>) => void;
   onCancel?: () => void;
   className?: string;
   /** Floating card only: bind number keys, Enter and Escape to the answers. */
   keyboard?: boolean;
+  /** Shared layout preference of the floating card and the inspector. */
+  mode?: QuestionPanelMode;
+  onModeChange?: (mode: QuestionPanelMode) => void;
+  /** Upper/lower sections can be folded independently on both surfaces. */
+  questionsCollapsed?: boolean;
+  onToggleQuestions?: () => void;
+  footerCollapsed?: boolean;
+  onToggleFooter?: () => void;
+  showSectionToggles?: boolean;
 }
 
 function statusLabel(status: InteractionPanelStatus): string {
@@ -59,16 +66,15 @@ function statusLabel(status: InteractionPanelStatus): string {
   }
 }
 
-function dispatchTextAction(
-  action: TextAction,
-  question: string,
-  handlers: Pick<InteractionPanelProps, "onText" | "onEdit">,
-) {
-  if (action.action === "text") {
-    handlers.onText?.(question, action.text);
-  } else if (action.action === "edit") {
-    handlers.onEdit?.(question, action.previous, action.next);
-  }
+function cloneSelections(
+  selections: Record<string, string[]> | undefined,
+): Record<string, string[]> {
+  return Object.fromEntries(
+    Object.entries(selections ?? {}).map(([question, labels]) => [
+      question,
+      [...labels],
+    ]),
+  );
 }
 
 /**
@@ -76,6 +82,11 @@ function dispatchTextAction(
  * collect a selection per question, and submit a full answer map. It is a
  * presentational component — the reducer owns state and the app posts events —
  * so it can also render the closed result in the run log.
+ *
+ * Every option and free-text edit stays in local drafts until Submit. Earlier
+ * versions posted a `select` / `text` event per click; a multi-question card
+ * then looked like several independent answers and typed text needed a Set
+ * button. The single Submit now sends the same one batch the inspector sends.
  */
 export function InteractionPanel({
   request,
@@ -84,18 +95,26 @@ export function InteractionPanel({
   lockedBy = null,
   deviceId = "console",
   pending = false,
-  onSelect,
-  onDeselect,
-  onText,
-  onEdit,
-  onSkip,
-  onSubmit,
+  onSend,
   onCancel,
   className,
   keyboard = false,
+  mode = "half",
+  onModeChange,
+  questionsCollapsed,
+  onToggleQuestions,
+  footerCollapsed,
+  onToggleFooter,
+  showSectionToggles = false,
 }: InteractionPanelProps) {
+  const [localQuestionsCollapsed, setLocalQuestionsCollapsed] = useState(false);
+  const [localFooterCollapsed, setLocalFooterCollapsed] = useState(false);
+  const questionsFolded = questionsCollapsed ?? localQuestionsCollapsed;
+  const footerFolded = footerCollapsed ?? localFooterCollapsed;
+  const [draftSelections, setDraftSelections] = useState(() =>
+    cloneSelections(selections),
+  );
   const [drafts, setDrafts] = useState<Record<string, string>>({});
-  const [editing, setEditing] = useState<string | null>(null);
   // Collapsing only hides the body: the header stays as a one-line summary so
   // the card can get out of the canvas's way without losing the question. A
   // new request remounts the card (the app keys it by requestId) and expands.
@@ -103,7 +122,16 @@ export function InteractionPanel({
   const status = interactionPanelStatus(result);
   const readOnly = isInteractionPanelReadOnly(status, lockedBy, deviceId);
   const answers = result?.answers ?? {};
-  const submittable = isInteractionPanelSubmittable(request.questions, selections);
+  const answerMap = useMemo(
+    () =>
+      buildQuestionAnswers({
+        questions: request.questions,
+        selections: draftSelections,
+        drafts,
+      }),
+    [drafts, draftSelections, request.questions],
+  );
+  const submittable = questionPanelSubmittable(request.questions, answerMap);
   const summary =
     collapsed && status === "open"
       ? request.questions[0]?.header || request.questions[0]?.question
@@ -122,12 +150,49 @@ export function InteractionPanel({
     } as CSSProperties;
   }, [request.createdAt, request.requestId, request.ttlMs]);
 
+  // A newer snapshot from the service (another device, a settled answer)
+  // replaces the local draft; until then the reader's clicks stay highlighted.
+  useEffect(() => {
+    setDraftSelections(cloneSelections(selections));
+  }, [request.requestId, selections]);
+
+  const submit = () => {
+    if (readOnly || pending || !submittable) {
+      return;
+    }
+    onSend?.(answerMap);
+  };
+
+  const toggleOption = (question: string, label: string) => {
+    const descriptor = request.questions.find(
+      (candidate) => candidate.question === question,
+    );
+    const multi = descriptor?.multiSelect === true;
+    const labels = optionLabels(descriptor ?? { question, options: [] });
+    const current = draftSelections[question] ?? [];
+    const active = current.includes(label);
+    const click = resolveOptionClick({ active, multiSelect: multi, readOnly });
+    if (click === "none") {
+      return;
+    }
+    const next = click === "deselect"
+      ? current.filter((item) => item !== label)
+      : multi
+        ? [...current, label]
+        : [label];
+    setDraftSelections((previous) => ({
+      ...previous,
+      [question]: labels.filter((item) => next.includes(item)),
+    }));
+  };
+
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
     if (!keyboard || collapsed || status !== "open") {
       return;
     }
     // Modifier chords belong to the console (⌘K search); text fields own
-    // their own keystrokes so "Other…" can contain digits and Enter.
+    // their own keystrokes so "Other…" can contain digits and Enter submits
+    // the batch from inside the field too.
     if (event.metaKey || event.ctrlKey || event.altKey) {
       return;
     }
@@ -135,7 +200,7 @@ export function InteractionPanel({
     if (
       target instanceof HTMLElement &&
       (target.isContentEditable ||
-        ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName))
+        ["TEXTAREA", "SELECT"].includes(target.tagName))
     ) {
       return;
     }
@@ -150,7 +215,7 @@ export function InteractionPanel({
     if (action.action === "submit") {
       if (submittable && !pending) {
         event.preventDefault();
-        onSubmit?.();
+        submit();
       }
       return;
     }
@@ -160,21 +225,10 @@ export function InteractionPanel({
       return;
     }
     const question = request.questions[action.question];
-    if (question) {
-      const label = optionLabels(question)[action.option];
-      const active = (selections[question.question] || []).includes(label);
-      const click = resolveOptionClick({
-        active,
-        multiSelect: question.multiSelect === true,
-        readOnly,
-      });
-      if (click === "select") {
-        event.preventDefault();
-        onSelect?.(question.question, label);
-      } else if (click === "deselect") {
-        event.preventDefault();
-        onDeselect?.(question.question, label);
-      }
+    const label = question ? optionLabels(question)[action.option] : undefined;
+    if (question && label) {
+      event.preventDefault();
+      toggleOption(question.question, label);
     }
   };
 
@@ -203,6 +257,7 @@ export function InteractionPanel({
         .filter(Boolean)
         .join(" ")}
       data-status={status}
+      data-mode={mode}
     >
       {status === "open" && keyboard ? (
         <div
@@ -220,6 +275,9 @@ export function InteractionPanel({
         {lockedBy && lockedBy !== deviceId ? (
           <span className="interaction-panel__locked">answered on {lockedBy}</span>
         ) : null}
+        {onModeChange ? (
+          <QuestionPanelModeControl mode={mode} onChange={onModeChange} />
+        ) : null}
         <button
           aria-expanded={!collapsed}
           aria-label={
@@ -236,117 +294,96 @@ export function InteractionPanel({
       <div className="interaction-panel__body">
         <div className="interaction-panel__body-inner">
           {status === "open" ? (
-            <div className="interaction-panel__questions">
+            <div
+              aria-label="Question content"
+              className="interaction-panel__questions"
+            >
               {request.questions.map((question) => {
-                const selected = selections[question.question] || [];
-                const draft = drafts[question.question] || "";
-                const freeText = selected.find(
-                  (value) => !optionLabels(question).includes(value),
-                );
+                const selected = draftSelections[question.question] ?? [];
                 return (
                   <article
                     className="interaction-panel__question"
                     key={question.question}
                   >
-                    <h3>{question.header || question.question}</h3>
-                    <p className="interaction-panel__prompt">{question.question}</p>
-                    <div
-                      aria-label={question.question}
-                      className="interaction-panel__options"
-                      role="group"
-                    >
-                      {optionLabels(question).map((label, optionIndex) => {
-                        const active = selected.includes(label);
-                        const description = optionDescription(question, label);
-                        return (
-                          <button
-                            ref={
-                              question === request.questions[0] && optionIndex === 0
-                                ? optionsRef
-                                : undefined
-                            }
-                            aria-pressed={active}
-                            className="interaction-panel__option"
-                            disabled={readOnly}
-                            key={label}
-                            onClick={() => {
-                              const click = resolveOptionClick({
-                                active,
-                                multiSelect: question.multiSelect === true,
-                                readOnly,
-                              });
-                              if (click === "select") {
-                                onSelect?.(question.question, label);
-                              } else if (click === "deselect") {
-                                onDeselect?.(question.question, label);
-                              }
-                            }}
-                            type="button"
-                          >
-                            {active ? <Check aria-hidden="true" /> : null}
-                            <span>{label}</span>
-                            {description ? <small>{description}</small> : null}
-                          </button>
-                        );
-                      })}
-                    </div>
-
-                    {editing === question.question || !freeText ? (
-                      <div className="interaction-panel__text">
-                        <input
-                          aria-label={`Other answer for ${question.question}`}
-                          disabled={readOnly}
-                          onChange={(event) =>
-                            setDrafts((current) => ({
-                              ...current,
-                              [question.question]: event.target.value,
-                            }))
+                    <div className="interaction-panel__question-heading">
+                      <h3>{question.header || question.question}</h3>
+                      {showSectionToggles ? (
+                        <button
+                          aria-expanded={!questionsFolded}
+                          aria-label={
+                            questionsFolded
+                              ? "展开问题内容"
+                              : "收起问题内容"
                           }
-                          placeholder="Other…"
-                          value={draft}
-                        />
-                        <Button
-                          disabled={readOnly || !draft.trim()}
+                          className="interaction-panel__section-toggle"
                           onClick={() => {
-                            dispatchTextAction(
-                              resolveTextAction(freeText, draft),
-                              question.question,
-                              { onText, onEdit },
-                            );
-                            setEditing(null);
+                            if (onToggleQuestions) {
+                              onToggleQuestions();
+                            } else {
+                              setLocalQuestionsCollapsed((current) => !current);
+                            }
                           }}
-                          size="sm"
                           type="button"
-                          variant="outline"
                         >
-                          Set
-                        </Button>
-                      </div>
-                    ) : (
-                      <Button
-                        disabled={readOnly}
-                        onClick={() => setEditing(question.question)}
-                        size="xs"
-                        type="button"
-                        variant="ghost"
-                      >
-                        <PencilLine aria-hidden="true" data-icon="inline-start" />
-                        Edit answer
-                      </Button>
-                    )}
+                          <ChevronDown aria-hidden="true" />
+                        </button>
+                      ) : null}
+                    </div>
+                    {questionsFolded ? null : (
+                      <>
+                        <p className="interaction-panel__prompt">
+                          {question.question}
+                        </p>
+                        <div
+                          aria-label={question.question}
+                          className="interaction-panel__options"
+                          role="group"
+                        >
+                          {optionLabels(question).map((label, optionIndex) => {
+                            const pressed = selected.includes(label);
+                            const description = optionDescription(question, label);
+                            return (
+                              <button
+                                ref={
+                                  question === request.questions[0] &&
+                                  optionIndex === 0
+                                    ? optionsRef
+                                    : undefined
+                                }
+                                aria-pressed={pressed}
+                                className="interaction-panel__option"
+                                disabled={readOnly || pending}
+                                key={label}
+                                onClick={() =>
+                                  toggleOption(question.question, label)
+                                }
+                                type="button"
+                              >
+                                {pressed ? <Check aria-hidden="true" /> : null}
+                                <span>{label}</span>
+                                {description ? <small>{description}</small> : null}
+                              </button>
+                            );
+                          })}
+                        </div>
 
-                    {question.required === false ? (
-                      <Button
-                        disabled={readOnly}
-                        onClick={() => onSkip?.(question.question)}
-                        size="xs"
-                        type="button"
-                        variant="ghost"
-                      >
-                        <SkipForward aria-hidden="true" data-icon="inline-start" />
-                        Skip
-                      </Button>
-                    ) : null}
+                        <div className="interaction-panel__text">
+                          <input
+                            aria-label={`Answer for ${question.question}`}
+                            disabled={readOnly || pending}
+                            onChange={(event) =>
+                              setDrafts((current) => ({
+                                ...current,
+                                [question.question]: event.target.value,
+                              }))
+                            }
+                            placeholder="选一项或直接输入；提交时发送输入框内容"
+                            type="text"
+                            value={drafts[question.question] ?? ""}
+                          />
+                        </div>
+                      </>
+                    )}
                   </article>
                 );
               })}
@@ -374,34 +411,53 @@ export function InteractionPanel({
 
           {status === "open" ? (
             <footer className="interaction-panel__footer">
-              <Button
-                disabled={readOnly || pending || !submittable}
-                onClick={onSubmit}
-                size="sm"
-                type="button"
-                variant="default"
-              >
-                <Send aria-hidden="true" data-icon="inline-start" />
-                Submit
-              </Button>
-              <Button
-                disabled={readOnly || pending}
-                onClick={onCancel}
-                size="sm"
-                type="button"
-                variant="ghost"
-              >
-                <X aria-hidden="true" data-icon="inline-start" />
-                Cancel
-              </Button>
-              {keyboard ? (
+              <div className="interaction-panel__footer-actions">
+                <Button
+                  disabled={readOnly || pending || !submittable}
+                  onClick={submit}
+                  size="sm"
+                  type="button"
+                  variant="default"
+                >
+                  <Send aria-hidden="true" data-icon="inline-start" />
+                  一次性提交
+                </Button>
+                <Button
+                  disabled={readOnly || pending}
+                  onClick={onCancel}
+                  size="sm"
+                  type="button"
+                  variant="ghost"
+                >
+                  <X aria-hidden="true" data-icon="inline-start" />
+                  Cancel
+                </Button>
+                {showSectionToggles ? (
+                  <button
+                    aria-expanded={!footerFolded}
+                    aria-label={footerFolded ? "展开快捷说明" : "收起快捷说明"}
+                    className="interaction-panel__section-toggle"
+                    onClick={() => {
+                      if (onToggleFooter) {
+                        onToggleFooter();
+                      } else {
+                        setLocalFooterCollapsed((current) => !current);
+                      }
+                    }}
+                    type="button"
+                  >
+                    <ChevronDown aria-hidden="true" />
+                  </button>
+                ) : null}
+                {pending ? (
+                  <span className="interaction-panel__pending" role="status">
+                    sending…
+                  </span>
+                ) : null}
+              </div>
+              {keyboard && !footerFolded ? (
                 <span className="interaction-panel__keys">
-                  <kbd>1</kbd>–<kbd>{request.questions[0] ? optionLabels(request.questions[0]).length : 0}</kbd> 选择 · <kbd>Enter</kbd> 提交 · <kbd>Esc</kbd> 取消
-                </span>
-              ) : null}
-              {pending ? (
-                <span className="interaction-panel__pending" role="status">
-                  sending…
+                  <kbd>1</kbd>–<kbd>{request.questions[0] ? optionLabels(request.questions[0]).length : 0}</kbd> 高亮 · <kbd>Enter</kbd> 提交 · <kbd>Esc</kbd> 取消
                 </span>
               ) : null}
             </footer>
