@@ -23,21 +23,20 @@ const questions: QuestionDescriptor[] = [
   },
 ];
 
-test("the three question panel modes normalize to a known value", () => {
-  assert.deepEqual(questionPanelModes, ["dock-half", "dock-full", "float"]);
-  assert.equal(normalizeQuestionPanelMode("dock-full"), "dock-full");
+test("the two question panel placements normalize to a known value", () => {
+  assert.deepEqual(questionPanelModes, ["dock-full", "float"]);
   assert.equal(normalizeQuestionPanelMode("float"), "float");
-  assert.equal(normalizeQuestionPanelMode(""), "dock-half");
-  assert.equal(normalizeQuestionPanelMode("nonsense"), "dock-half");
+  assert.equal(normalizeQuestionPanelMode(""), "dock-full");
+  assert.equal(normalizeQuestionPanelMode("nonsense"), "dock-full");
 });
 
-test("a layout stored before the dock existed keeps its intent", () => {
-  // `half` was the floating card, `bottom` the wide card and `side` the tall
-  // one; the dock replaced both of the latter, so they map onto its two sizes.
+test("a layout stored before the two-placement switch keeps its intent", () => {
+  // `half` was the floating card; `dock-half`, `bottom` and `side` all meant
+  // "inside the inspector", which now has a single full-height dock.
   assert.equal(normalizeQuestionPanelMode("half"), "float");
-  assert.equal(normalizeQuestionPanelMode("bottom"), "dock-half");
+  assert.equal(normalizeQuestionPanelMode("dock-half"), "dock-full");
+  assert.equal(normalizeQuestionPanelMode("bottom"), "dock-full");
   assert.equal(normalizeQuestionPanelMode("side"), "dock-full");
-  assert.equal(isDockedQuestionPanelMode("dock-half"), true);
   assert.equal(isDockedQuestionPanelMode("dock-full"), true);
   assert.equal(isDockedQuestionPanelMode("float"), false);
 });

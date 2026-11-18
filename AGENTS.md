@@ -828,19 +828,22 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   the card's bottom edge, and when the request closes the app keeps the card
   mounted (`--settling`, `INTERACTION_SETTLE_MS`) so the result stays readable
   ~2.4s before it slides away. A stream reset that wiped the record dismisses
-  it at once instead of showing a stale question. `dock-half` / `dock-full` / `float`
-  (`src/lib/question-panel-model.ts`, which also normalizes the pre-dock
-  `half` / `bottom` / `side` values) are the one shared, persisted placement of
-  both surfaces: the two dock layouts render that same question surface under
-  the inspector tabs — half of the detail area, or all of it — and only `float`
-  puts the card over the canvas, so the card still requires the highlighted
-  atom to be the question. A docked layout also expands a historical question
-  the reader selected, which is how a closed request is re-opened for reading.
-  A collapsed EVENTS column has no region to dock into, so `questionDocked` in
-  `app.tsx` falls back to the card for the synchronous window. Each surface can
-  also fold its upper question section and lower answer section independently,
-  and the dock keeps the closed result (`QuestionResultList`) where the answer
-  box was, mirroring the card's settle window.
+  it at once instead of showing a stale question. `dock-full` / `float`
+  (`src/lib/question-panel-model.ts`, which also normalizes the retired
+  `dock-half` / `half` / `bottom` / `side` values) are the one shared, persisted
+  placement of both surfaces: `dock-full` renders that same question surface
+  under the inspector tabs and fills the detail area, and only `float` puts the
+  card over the canvas, so the card still requires the highlighted atom to be
+  the question. The docked layout also expands a historical question the reader
+  selected, which is how a closed request is re-opened for reading. A collapsed
+  EVENTS column has no region to dock into, so `questionDocked` in `app.tsx`
+  falls back to the card for the synchronous window. Questions inside the card
+  are never foldable (only the whole card collapses from its header), its
+  question list scrolls edge to edge — the card carries no outer padding, the
+  rows carry the gutters — so the scrollbar rides the card border, and the
+  shortcut legend shares the footer's action row instead of taking a line. The
+  dock keeps the closed result (`QuestionResultList`) where the answer box was,
+  mirroring the card's settle window.
   For faster answering the floating card focuses its first option and binds
   digit keys to the first question's options, Enter to submit, Escape to
   cancel; `resolvePanelKey` in `src/lib/interaction-panel-model.ts` is the one

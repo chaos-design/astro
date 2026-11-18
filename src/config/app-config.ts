@@ -13,11 +13,11 @@ export type HistoryRangeId =
   | "7d";
 export type Theme = "dark" | "light" | "system";
 /**
- * Where the answer surface for one question lives: docked in the inspector's
- * detail area at half height, filling that area, or floating over the canvas.
- * The three placements are listed in `src/lib/question-panel-model.ts`.
+ * Where the answer surface for one question lives: filling the inspector's
+ * detail area, or floating over the canvas. The two placements are listed in
+ * `src/lib/question-panel-model.ts`.
  */
-export type QuestionPanelMode = "dock-half" | "dock-full" | "float";
+export type QuestionPanelMode = "dock-full" | "float";
 
 /**
  * How long the console keeps its event stream open before it stops syncing.
@@ -100,7 +100,7 @@ export const appDefaults: AppDefaults = {
   taskCompletionChime: true,
   chimeStyle: "bright",
   platform: "claude",
-  questionPanelMode: "dock-half",
+  questionPanelMode: "dock-full",
   replayCursor: 0,
   replayMode: false,
   replayPlaying: false,
@@ -308,7 +308,7 @@ export const storageKeys = {
   inspectorTab: "ASTROX_INSPECTOR_TAB",
   maxSync: "ASTROX_MAX_SYNC",
   platform: "ASTROX_PLATFORM",
-  /** Question panel layout: dock-half / dock-full / float. */
+  /** Question panel layout: dock-full / float. */
   questionPanelMode: "ASTROX_QUESTION_PANEL_MODE",
   /** The performance HUD toggle (Settings → 性能). */
   perfHud: "ASTROX_PERF_HUD",

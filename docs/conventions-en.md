@@ -165,15 +165,17 @@
     column. Both answer surfaces build maps only in
     `src/lib/question-panel-model.ts`: option clicks highlight and fill drafts,
     typed text overrides an option without a Set step, and one Submit sends
-    every question. `dock-half` / `dock-full` / `float` is one shared
-    persisted placement (`src/lib/question-panel-model.ts` normalizes the
-    pre-dock `half` / `bottom` / `side` values): the first two render the same
-    question surface under the inspector tabs, at half of the detail area or
-    filling it, and only `float` puts the card over the canvas — so the card
-    needs the question atom highlighted, while a region layout also expands a
-    historical question the reader selected. A collapsed EVENTS column has no
-    region to dock into, so docked layouts fall back to the card for the
-    synchronous window. Each surface's upper and lower sections stay foldable. The
+    every question. `dock-full` / `float` is one shared persisted placement
+    (`src/lib/question-panel-model.ts` normalizes the retired `dock-half` /
+    `half` / `bottom` / `side` values): `dock-full` renders the same question
+    surface under the inspector tabs filling the detail area, and only `float`
+    puts the card over the canvas — so the card needs the question atom
+    highlighted, while the docked layout also expands a historical question the
+    reader selected. A collapsed EVENTS column has no region to dock into, so
+    the docked layout falls back to the card for the synchronous window. The
+    card's questions never fold, its scrollbar rides the card edge (no outer
+    padding; the rows carry the gutters) and the shortcut legend shares the
+    action row. The
     inspector's batch answer builds its seq chain only in
     `answerInteractionQuestions` (`src/lib/interaction-client.ts`): one `text`
     event per question then one `submit` with the full answer map, with the

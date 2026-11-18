@@ -1277,8 +1277,8 @@ pre,
  * window, so the shell is deliberately wider and taller than a form card. */
 .settings-dialog {
   display: flex;
-  width: min(920px, calc(100vw - 48px));
-  height: min(672px, calc(100dvh - 48px));
+  width: min(960px, calc(100vw - 32px));
+  height: min(780px, calc(100dvh - 32px));
   max-width: none;
   max-height: calc(100dvh - 32px);
   flex-direction: column;
@@ -1448,8 +1448,8 @@ pre,
   min-width: 0;
   min-height: 0;
   flex-direction: column;
-  gap: 18px;
-  padding: 18px 22px 22px;
+  gap: 14px;
+  padding: 14px 18px 16px;
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
@@ -1483,7 +1483,7 @@ pre,
 .settings-field {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 .settings-field__copy {
@@ -1553,7 +1553,7 @@ pre,
 .settings-section {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 14px;
   padding: 0;
   border-top: 0;
 }
@@ -1564,12 +1564,12 @@ pre,
 .settings-group {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
   min-width: 0;
 }
 
 .settings-group + .settings-group {
-  padding-top: 20px;
+  padding-top: 14px;
   border-top: 1px solid var(--line);
 }
 
@@ -1755,6 +1755,9 @@ pre,
  * choices. */
 .settings-options {
   display: grid;
+  /* A two-option row on a 900px pane would otherwise stretch its buttons into
+     full-width bars; the cap keeps every group the same readable width. */
+  max-width: 560px;
   grid-template-columns: repeat(var(--settings-columns, 4), minmax(0, 1fr));
   gap: 6px;
 }
@@ -8129,9 +8132,21 @@ pre,
   width: min(420px, calc(100% - 24px));
   max-height: calc(100% - 130px);
   margin-top: 0;
+  /* No outer padding: the question list scrolls edge to edge, so its
+     scrollbar rides the card's own border instead of cutting into the text.
+     The rows inside carry the 14px instead. */
+  padding: 0;
   overflow: hidden;
   box-shadow: 0 18px 48px rgb(0 0 0 / 35%);
   animation: interaction-panel-enter 200ms ease-out both;
+}
+
+.interaction-panel--floating .interaction-panel__header {
+  padding: 12px 14px 0;
+}
+
+.interaction-panel--floating .interaction-panel__footer {
+  padding: 10px 14px 12px;
 }
 
 /* One mode control, three surfaces: a global button reset would otherwise
@@ -8349,10 +8364,17 @@ pre,
   flex: 1 1 auto;
   min-height: 0;
   max-height: var(--question-scroll-max, min(54vh, 540px));
-  padding-right: 2px;
+  padding: 8px 0 2px;
+  overflow-x: hidden;
   overflow-y: auto;
   scrollbar-color: var(--line-bright) transparent;
   scrollbar-width: thin;
+}
+
+/* Rows keep the card's gutters; a full-bleed row would sit under the
+   scrollbar. */
+.interaction-panel--floating .interaction-panel__question {
+  padding: 0 14px;
 }
 
 .interaction-panel__question-heading {
@@ -8362,7 +8384,6 @@ pre,
   gap: 8px;
 }
 
-.interaction-panel__section-toggle,
 .prompt-input__collapse {
   display: grid;
   flex: 0 0 auto;
@@ -8377,14 +8398,12 @@ pre,
   cursor: pointer;
 }
 
-.interaction-panel__section-toggle:hover,
 .prompt-input__collapse:hover {
   border-color: var(--line-bright);
   color: var(--text, inherit);
   background: var(--panel-hover);
 }
 
-.interaction-panel__section-toggle[aria-expanded="false"] svg,
 .prompt-input__collapse[aria-expanded="false"] svg {
   transform: rotate(180deg);
 }
@@ -8511,11 +8530,10 @@ pre,
   min-height: 0;
 }
 
-/* Docked layouts move the same question surface below the inspector tabs. The
-   detail area is split in two: `dock-half` keeps the selected event readable
-   above the question, `dock-full` gives the question every pixel below the
-   tab bar. The tab content is one grid cell so whichever tab is active fills
-   the upper half without each panel having to measure itself. */
+/* The docked placement moves the same question surface below the inspector
+   tabs and gives it every pixel there. The tab content is one grid cell, so
+   whichever tab is active fills the area without each panel having to measure
+   itself. */
 .inspector-detail {
   display: flex;
   flex: 1 1 auto;
@@ -8530,13 +8548,13 @@ pre,
   min-height: 0;
 }
 
-.inspector-detail[data-question-dock="dock-full"] > .inspector-detail__content {
+.inspector-detail.is-question-docked > .inspector-detail__content {
   display: none;
 }
 
 .inspector-question-dock {
   display: flex;
-  flex: 0 0 50%;
+  flex: 1 1 auto;
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
@@ -8544,14 +8562,8 @@ pre,
   background: var(--panel);
 }
 
-.inspector-question-dock[data-mode="dock-full"] {
-  flex: 1 1 auto;
-}
-
-/* Inside the dock the answer area outranks the preview: half a detail area is
-   little enough that the question text must not push the options and the
-   submit bar out of reach. The preview keeps its toolbar, grows with short
-   questions and is capped on long ones; the answer box scrolls itself. */
+/* The dock owns everything below the tab bar: the surface fills it and its own
+   body does the scrolling under the pinned submit bar. */
 .inspector-question-dock > .prompt-input {
   flex: 1 1 auto;
   height: auto;
@@ -8575,10 +8587,13 @@ pre,
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
-  gap: 16px;
+  gap: 0;
   min-height: 0;
+  overflow-x: hidden;
   overflow-y: auto;
-  padding: 14px 12px 18px;
+  /* Full-bleed scroll container: the items below carry the gutters, so the
+     scrollbar rides the panel edge instead of eating into the text. */
+  padding: 0;
 }
 
 .question-surface__item {
@@ -8586,11 +8601,15 @@ pre,
   flex-direction: column;
   gap: 10px;
   min-width: 0;
+  padding: 12px 12px 14px;
 }
 
 .question-surface__item + .question-surface__item {
-  padding-top: 14px;
   border-top: 1px solid var(--line);
+}
+
+.question-result {
+  padding: 12px 12px 0;
 }
 
 .question-surface__item h3 {
@@ -8713,7 +8732,7 @@ pre,
 .interaction-panel__footer {
   display: flex;
   flex: 0 0 auto;
-  flex-direction: column;
+  align-items: center;
   gap: 6px;
   border-top: 1px solid var(--border);
   padding-top: 10px;
@@ -8727,10 +8746,15 @@ pre,
   gap: 8px;
 }
 
-/* Shortcut hints make the keyboard path discoverable. They are decorative —
-   the same decisions are still reachable by clicking every control. */
+/* Shortcut hints make the keyboard path discoverable. They share the action
+   row (left of the buttons) instead of taking a line of their own; the long
+   wording lives in the element's title. */
 .interaction-panel__keys {
-  margin-left: auto;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 3px;
+  margin-right: auto;
   color: var(--muted-soft, var(--muted));
   font-size: 0.6875rem;
   white-space: nowrap;

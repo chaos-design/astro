@@ -741,13 +741,16 @@ submits. A countdown rule on the card's top edge follows the hook's real window
 and never wraps after the deadline. The card follows the question
 lifecycle: it auto-expands with an entrance animation when a request opens, the
 header chevron collapses it to a one-line summary (handing the canvas back — a
-newly opened question re-expands it), the question list and footer fold
-independently, and the list respects a mode-dependent maximum scroll height
-while Submit/Cancel stay pinned to the card's bottom edge. The card is only the
-`Floating` one of three placements: switching to `Region half` or `Region full`
-moves the same question surface into the inspector's detail area and the card
-stops appearing over the canvas. A collapsed EVENTS column has no region to
-dock into, so those layouts fall back to the card for the synchronous window.
+newly opened question re-expands it), the questions themselves never fold, and
+the list respects a maximum scroll height while Submit/Cancel stay pinned to the
+card's bottom edge. The list scrolls edge to edge — the card carries no outer
+padding, its rows carry the gutters — so the scrollbar rides the card's border
+instead of cutting into the question text, and the shortcut legend shares the
+action row (its long form lives in the title). The card is only the `Floating`
+one of two placements: switching to `Region full` moves the same question
+surface into the inspector's detail area and the card stops appearing over the
+canvas. A collapsed EVENTS column has no region to dock into, so the docked
+layout falls back to the card for the synchronous window.
 Once the request is answered, cancelled or timed out the card shows the result
 (ANSWERED / CANCELLED / …) for about two seconds and then slides away; the
 docked surface keeps the same result in place instead.
@@ -933,11 +936,10 @@ group writes anything back to captured events.
   (`ASTROX_HISTORY_OPEN` / `ASTROX_CONSOLE_OPEN`); a collapsed column keeps a
   vertical label, and its arrow reopens it.
 - **Question panel layout** (`ASTROX_QUESTION_PANEL_MODE`): where the answer
-  surface lands when a question arrives — `Region half` (default: the lower half
-  of the inspector's detail area, the selected event stays readable above it),
-  `Region full` (the whole detail area below the tabs) or `Floating` (the card
-  over the canvas, shown only while the highlighted atom is the question). The
-  three icons in the panel header share this one preference.
+  surface lands when a question arrives — `Region full` (default: the whole
+  detail area below the tabs) or `Floating` (the card over the canvas, shown
+  only while the highlighted atom is the question). The two icons in the panel
+  header share this one preference.
 
 **Performance**
 

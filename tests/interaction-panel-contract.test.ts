@@ -68,13 +68,15 @@ test("the panel styles cover the pressed option and the pending state", () => {
   );
 });
 
-test("the card collapses and both question and footer sections fold", () => {
+test("the card collapses as a whole; the questions themselves do not fold", () => {
   assert.match(panel, /interaction-panel__toggle/);
   assert.match(panel, /aria-expanded=\{!collapsed\}/);
   assert.match(panel, /interaction-panel__summary/);
   assert.match(panel, /interaction-panel__body/);
-  assert.match(panel, /questionsFolded \? null :/);
-  assert.match(panel, /keyboard && !footerFolded/);
+  // The per-question chevrons are gone: a question the host asked must not be
+  // collapsible, or the card can hide part of what has to be answered.
+  assert.doesNotMatch(panel, /questionsFolded/);
+  assert.doesNotMatch(panel, /showSectionToggles/);
   assert.match(styles, /\.interaction-panel\.is-collapsed \.interaction-panel__body \{/);
   assert.match(styles, /@keyframes interaction-panel-enter/);
   assert.match(styles, /\.interaction-panel--settling \{/);

@@ -149,7 +149,7 @@ export function QuestionContent({
         {onPanelModeChange ? (
           <QuestionPanelModeControl
             className="prompt-input__layout"
-            mode={panelMode ?? "dock-half"}
+            mode={panelMode ?? "dock-full"}
             onChange={onPanelModeChange}
           />
         ) : null}

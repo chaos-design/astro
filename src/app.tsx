@@ -3510,8 +3510,10 @@ function TraceInspector({
           <TabsTrigger value="raw">Raw</TabsTrigger>
         </TabsList>
         <div
-          className="inspector-detail"
-          data-question-dock={dockedQuestion ? questionPanelMode : undefined}
+          className={cn(
+            "inspector-detail",
+            dockedQuestion && "is-question-docked",
+          )}
         >
           <div className="inspector-detail__content">
             <TabsContent
@@ -3558,11 +3560,7 @@ function TraceInspector({
           {dockedQuestion ? (
             // The dock is the one question surface in these layouts: preview,
             // mode switch and (when a request is still open) the answer box.
-            <div
-              aria-label="Question dock"
-              className="inspector-question-dock"
-              data-mode={questionPanelMode}
-            >
+            <div aria-label="Question dock" className="inspector-question-dock">
               <QuestionContent
                 answer={questionBinding}
                 key={dockedQuestion.id}
@@ -8002,7 +8000,6 @@ export default function App() {
               request={activeInteraction.request}
               result={activeInteraction.result}
               selections={activeInteraction.selections}
-              showSectionToggles
             />
           ) : settlingInteraction && settlingMatchesView && !questionDocked ? (
             // The request just closed: same key and position as the open card,
@@ -8017,7 +8014,6 @@ export default function App() {
               onModeChange={setQuestionPanelMode}
               request={settlingInteraction.request}
               result={settlingInteraction.result}
-              showSectionToggles
             />
           ) : null}
 

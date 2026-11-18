@@ -86,8 +86,7 @@ const settingsSections = [
     label: "布局",
     hint: "画布与面板",
     title: "布局",
-    description:
-      "一条菜单管完观看方式：画布默认显示哪种视图、显示哪些原子，左右两栏打开到什么程度，以及问题面板停在哪里。",
+    description: "画布怎么画、两栏开多大、问答面板停在哪里，都在这一处。",
     icon: PanelsTopLeft,
   },
   {
@@ -459,15 +458,13 @@ export function SettingsDialog({
 
             <TabsContent className="settings-section" value="layout">
               <SettingsGroup
-                description="打开一条消息时先看哪种画法，以及拓扑里留下哪些原子。画布只影响作图范围，不改动已采集的事件。"
+                description="先看哪种画法，以及拓扑里留下哪些原子。"
                 title="画布"
               >
                 <div className="settings-field">
                   <div className="settings-field__copy">
                     <strong>默认视图</strong>
-                    <span>
-                      打开一条消息时先显示哪种画布：执行拓扑看原子与连线，运行轨迹按轮次顺序看每一步。顶栏的两个图标可随时切换。
-                    </span>
+                    <span>打开消息时先显示哪种；顶栏两个图标可随时切换。</span>
                   </div>
                   <ChoiceGroup
                     label="默认视图"
@@ -489,32 +486,30 @@ export function SettingsDialog({
               </SettingsGroup>
 
               <SettingsGroup
-                description="左右两列各自占多少宽度，以及提问作答面板停在哪里。两者都是展示偏好，不影响事件流。"
+                description="两栏开多大，问答面板停在哪里。"
                 title="面板"
               >
                 <SwitchField
                   label="展开 RUN HISTORY"
-                  description="左侧运行历史列默认展开；收起后只留一条竖排文字，点箭头随时展开。"
+                  description="左侧运行历史列默认展开。"
                   value={historyOpen}
                   onChange={onHistoryOpenChange}
                 />
                 <SwitchField
                   label="展开 EVENTS"
-                  description="右侧事件日志与检查器默认展开；收起后同样留一条竖排标签。"
+                  description="右侧事件日志与检查器默认展开。"
                   value={consoleOpen}
                   onChange={onConsoleOpenChange}
                 />
                 <div className="settings-field">
                   <div className="settings-field__copy">
                     <strong>问题面板布局</strong>
-                    <span>
-                      提问到达时作答面板停在哪里：区域半屏占用检查器下半部分，区域全屏铺满 Tab 以下整个详情区，悬浮则浮在画布上、只在高亮的提问原子上出现。面板头部的三个图标可随时切换。
-                    </span>
+                    <span>区域全屏铺满检查器 Tab 以下，悬浮浮在画布上。</span>
                   </div>
                   <ChoiceGroup
                     label="问题面板布局"
                     value={questionPanelMode}
-                    columns={3}
+                    columns={2}
                     onChange={onQuestionPanelModeChange}
                     options={questionPanelModes.map((mode) => ({
                       id: mode,

@@ -41,15 +41,9 @@ export interface InteractionPanelProps {
   className?: string;
   /** Floating card only: bind number keys, Enter and Escape to the answers. */
   keyboard?: boolean;
-  /** Shared layout preference of the floating card and the inspector. */
+  /** Shared placement preference of the floating card and the inspector. */
   mode?: QuestionPanelMode;
   onModeChange?: (mode: QuestionPanelMode) => void;
-  /** Upper/lower sections can be folded independently on both surfaces. */
-  questionsCollapsed?: boolean;
-  onToggleQuestions?: () => void;
-  footerCollapsed?: boolean;
-  onToggleFooter?: () => void;
-  showSectionToggles?: boolean;
 }
 
 function statusLabel(status: InteractionPanelStatus): string {
@@ -100,18 +94,9 @@ export function InteractionPanel({
   onCancel,
   className,
   keyboard = false,
-  mode = "dock-half",
+  mode = "dock-full",
   onModeChange,
-  questionsCollapsed,
-  onToggleQuestions,
-  footerCollapsed,
-  onToggleFooter,
-  showSectionToggles = false,
 }: InteractionPanelProps) {
-  const [localQuestionsCollapsed, setLocalQuestionsCollapsed] = useState(false);
-  const [localFooterCollapsed, setLocalFooterCollapsed] = useState(false);
-  const questionsFolded = questionsCollapsed ?? localQuestionsCollapsed;
-  const footerFolded = footerCollapsed ?? localFooterCollapsed;
   const [draftSelections, setDraftSelections] = useState(() =>
     cloneSelections(selections),
   );
@@ -307,29 +292,8 @@ export function InteractionPanel({
                   >
                     <div className="interaction-panel__question-heading">
                       <h3>{question.header || question.question}</h3>
-                      {showSectionToggles ? (
-                        <button
-                          aria-expanded={!questionsFolded}
-                          aria-label={
-                            questionsFolded
-                              ? "展开问题内容"
-                              : "收起问题内容"
-                          }
-                          className="interaction-panel__section-toggle"
-                          onClick={() => {
-                            if (onToggleQuestions) {
-                              onToggleQuestions();
-                            } else {
-                              setLocalQuestionsCollapsed((current) => !current);
-                            }
-                          }}
-                          type="button"
-                        >
-                          <ChevronDown aria-hidden="true" />
-                        </button>
-                      ) : null}
                     </div>
-                    {questionsFolded ? null : (
+                    {(
                       <>
                         <p className="interaction-panel__prompt">
                           {question.question}
@@ -395,6 +359,24 @@ export function InteractionPanel({
           {status === "open" ? (
             <footer className="interaction-panel__footer">
               <div className="interaction-panel__footer-actions">
+                {/* The shortcut legend shares the action row instead of taking
+                    a line of its own; the title carries the long form. */}
+                {keyboard ? (
+                  <span
+                    className="interaction-panel__keys"
+                    title="数字键高亮第一个问题的选项，Enter 提交整批，Esc 取消"
+                  >
+                    <kbd>1</kbd>–<kbd>
+                      {request.questions[0]
+                        ? optionLabels(request.questions[0]).length
+                        : 0}
+                    </kbd>
+                    <span aria-hidden="true">·</span>
+                    <kbd>Enter</kbd>
+                    <span aria-hidden="true">·</span>
+                    <kbd>Esc</kbd>
+                  </span>
+                ) : null}
                 <Button
                   disabled={readOnly || pending || !submittable}
                   onClick={submit}
@@ -415,34 +397,12 @@ export function InteractionPanel({
                   <X aria-hidden="true" data-icon="inline-start" />
                   Cancel
                 </Button>
-                {showSectionToggles ? (
-                  <button
-                    aria-expanded={!footerFolded}
-                    aria-label={footerFolded ? "展开快捷说明" : "收起快捷说明"}
-                    className="interaction-panel__section-toggle"
-                    onClick={() => {
-                      if (onToggleFooter) {
-                        onToggleFooter();
-                      } else {
-                        setLocalFooterCollapsed((current) => !current);
-                      }
-                    }}
-                    type="button"
-                  >
-                    <ChevronDown aria-hidden="true" />
-                  </button>
-                ) : null}
                 {pending ? (
                   <span className="interaction-panel__pending" role="status">
                     sending…
                   </span>
                 ) : null}
               </div>
-              {keyboard && !footerFolded ? (
-                <span className="interaction-panel__keys">
-                  <kbd>1</kbd>–<kbd>{request.questions[0] ? optionLabels(request.questions[0]).length : 0}</kbd> 高亮 · <kbd>Enter</kbd> 提交 · <kbd>Esc</kbd> 取消
-                </span>
-              ) : null}
             </footer>
           ) : null}
         </div>

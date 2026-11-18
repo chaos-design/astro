@@ -11,36 +11,33 @@ import type { QuestionDescriptor } from "./interaction-contract.ts";
 export { type QuestionPanelMode };
 
 /**
- * Three places the same question surface can live, in the order the control
+ * Two places the same question surface can live, in the order the control
  * lists them:
- *  - `dock-half` 区域半屏: docked under the inspector tabs, lower half of the
- *    detail area, so the selected event stays readable above it.
- *  - `dock-full` 区域全屏: docked and filling the whole detail area below the
- *    tabs — the long-batch layout.
- *  - `float` 悬浮: the card that floats over the canvas, shown only while the
- *    highlighted atom is the question itself.
+ *  - `dock-full` 区域全屏: fills the inspector's detail area below the tabs —
+ *    the long-batch layout that keeps every question readable.
+ *  - `float` 悬浮: the card over the canvas, shown only while the highlighted
+ *    atom is the question itself.
  */
 export const questionPanelModes: readonly QuestionPanelMode[] = [
-  "dock-half",
   "dock-full",
   "float",
 ];
 
 export const questionPanelModeLabels: Record<QuestionPanelMode, string> = {
-  "dock-half": "区域半屏",
   "dock-full": "区域全屏",
   float: "悬浮",
 };
 
 /**
- * A stored preference from before the dock existed: `half` was the floating
- * card, `bottom` the full-width card at the canvas bottom and `side` the
- * side-expanded card. Mapping them once here keeps a reader's layout after the
- * upgrade instead of silently resetting it.
+ * Stored preferences from before the two-placement switch: `dock-half` was the
+ * half-height dock, `half` the floating card, `bottom` the full-width card and
+ * `side` the side-expanded card. The dock has one size now, so every dock value
+ * maps onto it and the card keeps its own.
  */
 const legacyQuestionPanelModes: Record<string, QuestionPanelMode> = {
+  "dock-half": "dock-full",
   half: "float",
-  bottom: "dock-half",
+  bottom: "dock-full",
   side: "dock-full",
 };
 
@@ -60,12 +57,12 @@ export function normalizeQuestionPanelMode(
   if (typeof value === "string" && legacyQuestionPanelModes[value]) {
     return legacyQuestionPanelModes[value];
   }
-  return "dock-half";
+  return "dock-full";
 }
 
 /** Whether the mode renders the question inside the inspector instead of the canvas. */
 export function isDockedQuestionPanelMode(mode: QuestionPanelMode): boolean {
-  return mode !== "float";
+  return mode === "dock-full";
 }
 
 /**

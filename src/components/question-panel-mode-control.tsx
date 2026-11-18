@@ -1,4 +1,4 @@
-import { AppWindow, Maximize2, PanelBottom } from "lucide-react";
+import { AppWindow, Maximize2 } from "lucide-react";
 import type { QuestionPanelMode } from "@/config/app-config";
 import {
   questionPanelModeLabels,
@@ -6,7 +6,6 @@ import {
 } from "../lib/question-panel-model";
 
 const modeIcons = {
-  "dock-half": PanelBottom,
   "dock-full": Maximize2,
   float: AppWindow,
 } as const;
