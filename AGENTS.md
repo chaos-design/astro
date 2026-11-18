@@ -414,13 +414,19 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   resumed run can chime again, and skips Demo entirely. Refs hold this state, not
   React state, so a streamed batch never re-renders the studio just to record a
   completion.
-- The dialog is a two-pane card: `.settings-nav` (外观 / 运行历史 / 画布 / 面板 /
-  性能 / 通知 / 关于) beside a `.settings-pane` that renders only the active section,
+- The dialog is a two-pane card: `.settings-nav` (外观 / 运行历史 / 布局 / 性能 /
+  通知 / 关于) beside a `.settings-pane` that renders only the active section,
   carried by
   a vertical Radix `Tabs` so arrow keys work. A single stacked column scrolled the
   whole dialog or squeezed the controls on a short window. Header and footer are
   fixed and only the pane scrolls; Done merely closes it. A preference that also
   has an inline control in the header or toolbar is listed here as well.
+  **Layout is one section, not two**: the canvas default view / runtime-atoms
+  switch and the two panel switches would otherwise be two menus for one
+  question, so they live in one section as two labelled `SettingsGroup`s
+  (画布 / 面板) with their own descriptions. The question panel's placement is
+  listed there too (`ASTROX_QUESTION_PANEL_MODE`), next to the panel switches
+  it belongs to.
 - 关于 names the console version, where preferences live (`localStorage`, the
   `ASTROX_` prefix), and that settings never write back to captured events.
 - The footer actions carry their own ink and surface. The app-level
@@ -813,9 +819,19 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   the card's bottom edge, and when the request closes the app keeps the card
   mounted (`--settling`, `INTERACTION_SETTLE_MS`) so the result stays readable
   ~2.4s before it slides away. A stream reset that wiped the record dismisses
-  it at once instead of showing a stale question. `half` / `bottom` / `side`
-  are the one shared, persisted layout mode of both surfaces; each surface can
-  also fold its upper question section and lower answer section independently.
+  it at once instead of showing a stale question. `dock-half` / `dock-full` / `float`
+  (`src/lib/question-panel-model.ts`, which also normalizes the pre-dock
+  `half` / `bottom` / `side` values) are the one shared, persisted placement of
+  both surfaces: the two dock layouts render that same question surface under
+  the inspector tabs — half of the detail area, or all of it — and only `float`
+  puts the card over the canvas, so the card still requires the highlighted
+  atom to be the question. A docked layout also expands a historical question
+  the reader selected, which is how a closed request is re-opened for reading.
+  A collapsed EVENTS column has no region to dock into, so `questionDocked` in
+  `app.tsx` falls back to the card for the synchronous window. Each surface can
+  also fold its upper question section and lower answer section independently,
+  and the dock keeps the closed result (`QuestionResultList`) where the answer
+  box was, mirroring the card's settle window.
   For faster answering the floating card focuses its first option and binds
   digit keys to the first question's options, Enter to submit, Escape to
   cancel; `resolvePanelKey` in `src/lib/interaction-panel-model.ts` is the one

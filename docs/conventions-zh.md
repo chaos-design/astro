@@ -121,8 +121,12 @@
     不各自推断当前问题；检查器作答区在窄面板内换行、区域内滚动并让提交栏保持可见，
     不撑宽日志列。两种作答区都用 `src/lib/question-panel-model.ts` 构建答案：
     选项点击只高亮并填入草稿，输入框内容覆盖选项值，没有 Set；只有一个 Submit，
-    一次提交全部问题。半区域 / 底部全部区域 / 侧边展开是两者共享并持久化的布局模式，
-    各自的上下区域还可单独折叠。检查器的批量作答
+    一次提交全部问题。`dock-half` / `dock-full` / `float` 是两者共享并持久化的落位
+    （`src/lib/question-panel-model.ts` 负责把升级前的 `half` / `bottom` / `side`
+    归一化过来）：前两者把同一份问答面停到检查器 Tab 以下，分别占详情区的一半与全部，
+    只有 `float` 才在画布上浮出卡片，因此卡片要求高亮原子正是提问，区域布局则连历史
+    提问也能展开；EVENTS 列收起时没有可停靠的区域，区域布局临时退回卡片，保证同步
+    窗口内仍可作答。各自的上下区域还可单独折叠。检查器的批量作答
     只在 `src/lib/interaction-client.ts` 的 `answerInteractionQuestions` 一处构建
     seq 链：每个问题一条 `text`，再一条带完整答案映射的 `submit`；单问题入口
     `answerInteractionQuestion` 只是它的单元素包装。同一个模块里的

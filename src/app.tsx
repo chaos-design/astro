@@ -70,7 +70,10 @@ import {
 import { PromptContent } from "./components/prompt-content";
 import { QuestionContent } from "./components/question-content";
 import { QuestionAnswerForm } from "./components/question-answer-form";
-import { InteractionPanel } from "./components/interaction-panel";
+import {
+  InteractionPanel,
+  QuestionResultList,
+} from "./components/interaction-panel";
 import { RepositoryLink } from "./components/repo-link";
 import { RuntimeCanvas } from "./components/runtime-canvas";
 import { SettingsDialog } from "./components/settings-dialog";
@@ -271,7 +274,10 @@ import {
   consoleDeviceId,
   type InteractionSendResult,
 } from "./lib/interaction-client";
-import { normalizeQuestionPanelMode } from "./lib/question-panel-model";
+import {
+  isDockedQuestionPanelMode,
+  normalizeQuestionPanelMode,
+} from "./lib/question-panel-model";
 import {
   matchQuestionInteraction,
   questionMatchesCurrentView,
@@ -3322,6 +3328,8 @@ function TraceInspector({
   onAnswerQuestion,
   questionPanelMode,
   onQuestionPanelModeChange,
+  questionDocked,
+  settledQuestion,
 }: {
   activeTab: string;
   atom: HarnessNodeData | null;
@@ -3338,6 +3346,14 @@ function TraceInspector({
   ) => void;
   questionPanelMode: QuestionPanelMode;
   onQuestionPanelModeChange: (mode: QuestionPanelMode) => void;
+  /**
+   * Whether the question surface is docked below these tabs instead of
+   * floating over the canvas. Resolved by the app: the dock needs the EVENTS
+   * column, so a collapsed column falls back to the floating card.
+   */
+  questionDocked: boolean;
+  /** The request that just closed, kept for the settle window. */
+  settledQuestion: InteractionDraft | null;
 }) {
   if ((!node || !event) && !atom) {
     return (
@@ -3431,7 +3447,8 @@ function TraceInspector({
   // The answer box is only mounted when the displayed question has a live
   // interaction request whose descriptor matches it verbatim. No request (a
   // historical question) or a closed/taken-over one renders nothing here; the
-  // floating panel stays the read-only record in those cases.
+  // docked panel or the floating card stays the read-only record in those
+  // cases.
   const answerForm = matchedQuestion ? (
     <QuestionAnswerForm
       questions={matchedQuestion.draft.request.questions}
@@ -3449,6 +3466,10 @@ function TraceInspector({
       onPanelModeChange={onQuestionPanelModeChange}
     />
   ) : null;
+  // Docked layouts move the question surface out of the Input tab and give it
+  // the bottom of the detail area — half of it, or all of it. The tab then
+  // shows the raw payload, so one question is never rendered twice.
+  const dockedQuestion = questionDocked ? questionEvent : null;
 
   return (
     <section className="message-inspector grid min-h-0 grid-rows-[minmax(56px,auto)_minmax(0,1fr)]">
@@ -3489,48 +3510,78 @@ function TraceInspector({
           <TabsTrigger value="output">Output</TabsTrigger>
           <TabsTrigger value="raw">Raw</TabsTrigger>
         </TabsList>
-        <TabsContent
-          value="overview"
-          className="inspector-tabs__content m-0 min-h-0 overflow-auto"
+        <div
+          className="inspector-detail"
+          data-question-dock={dockedQuestion ? questionPanelMode : undefined}
         >
-          <InspectorOverview
-            node={node}
-            atom={atom}
-            event={event}
-            answerForm={answerForm}
-          />
-        </TabsContent>
-        {(["input", "output", "raw"] as InspectorTab[]).map((tab) => (
-          <TabsContent
-            key={tab}
-            value={tab}
-            className={cn(
-              "inspector-tabs__content m-0 min-h-0",
-              tab === "input" && (promptEvent || questionEvent)
-                ? "inspector-tabs__content--prompt overflow-hidden"
-                : "inspector-tabs__content--json overflow-hidden",
-            )}
-          >
-            {tab === "input" && promptEvent ? (
-              <PromptContent key={promptEvent.id} payload={promptEvent.payload} />
-            ) : tab === "input" && questionEvent ? (
-              <div
-                className="inspector-question-stack"
-                data-mode={questionPanelMode}
+          <div className="inspector-detail__content">
+            <TabsContent
+              value="overview"
+              className="inspector-tabs__content m-0 min-h-0 overflow-auto"
+            >
+              <InspectorOverview
+                node={node}
+                atom={atom}
+                event={event}
+                answerForm={dockedQuestion ? null : answerForm}
+              />
+            </TabsContent>
+            {(["input", "output", "raw"] as InspectorTab[]).map((tab) => (
+              <TabsContent
+                key={tab}
+                value={tab}
+                className={cn(
+                  "inspector-tabs__content m-0 min-h-0",
+                  tab === "input" && (promptEvent || questionEvent)
+                    ? "inspector-tabs__content--prompt overflow-hidden"
+                    : "inspector-tabs__content--json overflow-hidden",
+                )}
               >
-                <QuestionContent
-                  key={questionEvent.id}
-                  panelMode={questionPanelMode}
-                  onPanelModeChange={onQuestionPanelModeChange}
-                  payload={questionEvent.payload}
-                />
-                {answerForm}
-              </div>
-            ) : (
-              <JsonViewer value={payloadByTab[tab]} />
-            )}
-          </TabsContent>
-        ))}
+                {tab === "input" && promptEvent ? (
+                  <PromptContent
+                    key={promptEvent.id}
+                    payload={promptEvent.payload}
+                  />
+                ) : tab === "input" && questionEvent && !dockedQuestion ? (
+                  <div
+                    className="inspector-question-stack"
+                    data-mode={questionPanelMode}
+                  >
+                    <QuestionContent
+                      key={questionEvent.id}
+                      panelMode={questionPanelMode}
+                      onPanelModeChange={onQuestionPanelModeChange}
+                      payload={questionEvent.payload}
+                    />
+                    {answerForm}
+                  </div>
+                ) : (
+                  <JsonViewer value={payloadByTab[tab]} />
+                )}
+              </TabsContent>
+            ))}
+          </div>
+          {dockedQuestion ? (
+            // The dock is the one question surface in these layouts: preview,
+            // mode switch and (when a request is still open) the answer box.
+            <div
+              aria-label="Question dock"
+              className="inspector-question-dock"
+              data-mode={questionPanelMode}
+            >
+              <QuestionContent
+                key={dockedQuestion.id}
+                panelMode={questionPanelMode}
+                onPanelModeChange={onQuestionPanelModeChange}
+                payload={dockedQuestion.payload}
+              />
+              {answerForm ??
+                (settledQuestion?.result ? (
+                  <QuestionResultList result={settledQuestion.result} />
+                ) : null)}
+            </div>
+          ) : null}
+        </div>
       </Tabs>
     </section>
   );
@@ -6805,6 +6856,13 @@ export default function App() {
         : null,
     [matchedQuestionInteraction],
   );
+  // Where the question surface lives. `float` keeps the card over the canvas;
+  // the two dock layouts move it under the inspector tabs, which only exists
+  // while the EVENTS column is open — a collapsed column would leave a live
+  // question with nowhere to land inside its synchronous window, so the card
+  // takes over until the column is reopened.
+  const questionDocked =
+    isDockedQuestionPanelMode(questionPanelMode) && consoleOpen;
   const lastOpenInteractionRef = useRef<InteractionDraft | null>(null);
   if (activeInteraction) {
     lastOpenInteractionRef.current = activeInteraction;
@@ -7723,6 +7781,7 @@ export default function App() {
               liveView={liveFilter}
               maxSync={maxSync}
               perfHud={perfHud}
+              questionPanelMode={questionPanelMode}
               taskCompletionChime={taskCompletionChime}
               theme={theme}
               onActiveViewChange={(view) => {
@@ -7738,6 +7797,7 @@ export default function App() {
               onLiveViewChange={setLiveFilter}
               onMaxSyncChange={setMaxSync}
               onPerfHudChange={setPerfHud}
+              onQuestionPanelModeChange={setQuestionPanelMode}
               onTaskCompletionChimeChange={setTaskCompletionChime}
               onChimeStyleChange={setChimeStyle}
               onThemeChange={setTheme}
@@ -7929,7 +7989,7 @@ export default function App() {
             </div>
           </div>
 
-          {activeInteraction ? (
+          {activeInteraction && !questionDocked ? (
             <InteractionPanel
               className="interaction-panel--floating"
               deviceId={consoleDeviceId}
@@ -7953,7 +8013,7 @@ export default function App() {
               selections={activeInteraction.selections}
               showSectionToggles
             />
-          ) : settlingInteraction && settlingMatchesView ? (
+          ) : settlingInteraction && settlingMatchesView && !questionDocked ? (
             // The request just closed: same key and position as the open card,
             // so the collapsed/expanded state carries over without a remount
             // flicker while the result is shown and the card slides away.
@@ -8073,6 +8133,10 @@ export default function App() {
                 onAnswerQuestion={handleQuestionAnswer}
                 questionPanelMode={questionPanelMode}
                 onQuestionPanelModeChange={setQuestionPanelMode}
+                questionDocked={questionDocked}
+                settledQuestion={
+                  questionDocked && settlingMatchesView ? settlingInteraction : null
+                }
               />
             </>
           ) : (

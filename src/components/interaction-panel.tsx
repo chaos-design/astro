@@ -78,6 +78,40 @@ function cloneSelections(
 }
 
 /**
+ * The closed request, in one place: the floating card shows it while the card
+ * settles and the docked answer box shows it right after a submit, so the
+ * reader sees the same ANSWERED / CANCELLED record on both surfaces.
+ */
+export function QuestionResultList({
+  result,
+}: {
+  result: InteractionResult | null;
+}) {
+  const status = interactionPanelStatus(result);
+  const answers = result?.answers ?? {};
+  return (
+    <div className="interaction-panel__result">
+      {Object.keys(answers).length ? (
+        <ul>
+          {Object.entries(answers).map(([question, answer]) => (
+            <li key={question}>
+              <span>{question}</span>
+              <strong>{answer}</strong>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p>
+          {status === "cancelled"
+            ? "Cancelled; the host's native prompt is still in charge."
+            : "No answer arrived before the host's window closed."}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
  * The console side of the interaction fast path: render the host's questions,
  * collect a selection per question, and submit a full answer map. It is a
  * presentational component — the reducer owns state and the app posts events —
@@ -99,7 +133,7 @@ export function InteractionPanel({
   onCancel,
   className,
   keyboard = false,
-  mode = "half",
+  mode = "dock-half",
   onModeChange,
   questionsCollapsed,
   onToggleQuestions,
@@ -121,7 +155,6 @@ export function InteractionPanel({
   const [collapsed, setCollapsed] = useState(false);
   const status = interactionPanelStatus(result);
   const readOnly = isInteractionPanelReadOnly(status, lockedBy, deviceId);
-  const answers = result?.answers ?? {};
   const answerMap = useMemo(
     () =>
       buildQuestionAnswers({
@@ -389,24 +422,7 @@ export function InteractionPanel({
               })}
             </div>
           ) : (
-            <div className="interaction-panel__result">
-              {Object.keys(answers).length ? (
-                <ul>
-                  {Object.entries(answers).map(([question, answer]) => (
-                    <li key={question}>
-                      <span>{question}</span>
-                      <strong>{answer}</strong>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p>
-                  {status === "cancelled"
-                    ? "Cancelled; the host's native prompt is still in charge."
-                    : "No answer arrived before the host's window closed."}
-                </p>
-              )}
-            </div>
+            <QuestionResultList result={result} />
           )}
 
           {status === "open" ? (

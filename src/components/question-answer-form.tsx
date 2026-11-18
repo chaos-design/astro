@@ -97,7 +97,7 @@ export function QuestionAnswerForm({
         {onPanelModeChange ? (
           <QuestionPanelModeControl
             className="question-answer__layout"
-            mode={panelMode ?? "half"}
+            mode={panelMode ?? "dock-half"}
             onChange={onPanelModeChange}
           />
         ) : null}

@@ -79,11 +79,12 @@ test("the card collapses and both question and footer sections fold", () => {
   );
 });
 
-test("three modes size the floating card and cap its scroll range", () => {
+test("the card is only the floating placement and caps its scroll range", () => {
   assert.match(panel, /QuestionPanelModeControl/);
   assert.match(panel, /data-mode=\{mode\}/);
-  assert.match(styles, /\.interaction-panel--floating\[data-mode="bottom"\] \{/);
-  assert.match(styles, /\.interaction-panel--floating\[data-mode="side"\] \{/);
+  // The card renders only for `float`; the two dock layouts live in the
+  // inspector, so no per-mode card geometry may come back.
+  assert.doesNotMatch(styles, /\.interaction-panel--floating\[data-mode=/);
   assert.match(
     styles,
     /\.interaction-panel--floating \.interaction-panel__questions \{[\s\S]*?max-height: var\(--question-scroll-max/,

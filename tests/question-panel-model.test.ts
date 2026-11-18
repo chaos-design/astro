@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   buildQuestionAnswer,
   buildQuestionAnswers,
+  isDockedQuestionPanelMode,
   normalizeQuestionPanelMode,
   questionPanelSubmittable,
   questionPanelModes,
@@ -23,10 +24,22 @@ const questions: QuestionDescriptor[] = [
 ];
 
 test("the three question panel modes normalize to a known value", () => {
-  assert.deepEqual(questionPanelModes, ["half", "bottom", "side"]);
-  assert.equal(normalizeQuestionPanelMode("bottom"), "bottom");
-  assert.equal(normalizeQuestionPanelMode("side"), "side");
-  assert.equal(normalizeQuestionPanelMode(""), "half");
+  assert.deepEqual(questionPanelModes, ["dock-half", "dock-full", "float"]);
+  assert.equal(normalizeQuestionPanelMode("dock-full"), "dock-full");
+  assert.equal(normalizeQuestionPanelMode("float"), "float");
+  assert.equal(normalizeQuestionPanelMode(""), "dock-half");
+  assert.equal(normalizeQuestionPanelMode("nonsense"), "dock-half");
+});
+
+test("a layout stored before the dock existed keeps its intent", () => {
+  // `half` was the floating card, `bottom` the wide card and `side` the tall
+  // one; the dock replaced both of the latter, so they map onto its two sizes.
+  assert.equal(normalizeQuestionPanelMode("half"), "float");
+  assert.equal(normalizeQuestionPanelMode("bottom"), "dock-half");
+  assert.equal(normalizeQuestionPanelMode("side"), "dock-full");
+  assert.equal(isDockedQuestionPanelMode("dock-half"), true);
+  assert.equal(isDockedQuestionPanelMode("dock-full"), true);
+  assert.equal(isDockedQuestionPanelMode("float"), false);
 });
 
 test("free text wins over clicked labels at submit time", () => {

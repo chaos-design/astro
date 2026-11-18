@@ -1554,6 +1554,42 @@ pre,
   border-top: 0;
 }
 
+/* One section can hold two kinds of preference (the canvas and the panels).
+ * The group header names which is which, so merging two former sections never
+ * turns the pane into an unlabelled list of switches. */
+.settings-group {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.settings-group + .settings-group {
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+
+.settings-group__head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.settings-group__head h4 {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.settings-group__head p {
+  margin: 0;
+  color: var(--muted-soft, var(--muted));
+  font-size: var(--text-caption);
+  line-height: 1.5;
+}
+
 /* About: one key/value card per fact, aligned like a manifest rather than
  * like a paragraph of release notes. */
 .settings-about {
@@ -8077,6 +8113,9 @@ pre,
   background: var(--panel-raised);
 }
 
+/* The floating placement is one of three modes (see question-panel-model):
+   the card only exists in `float`, so it needs no per-mode geometry — the two
+   dock layouts render the same question inside the inspector instead. */
 .interaction-panel--floating {
   --question-scroll-max: min(54vh, 540px);
   position: absolute;
@@ -8089,27 +8128,6 @@ pre,
   overflow: hidden;
   box-shadow: 0 18px 48px rgb(0 0 0 / 35%);
   animation: interaction-panel-enter 200ms ease-out both;
-}
-
-/* Half keeps the canvas visible, bottom uses the full width of the canvas for
-   long batches, and side trades width for almost the full viewport height. */
-.interaction-panel--floating[data-mode="bottom"] {
-  --question-scroll-max: min(34vh, 380px);
-  top: auto;
-  right: 12px;
-  bottom: 12px;
-  left: 12px;
-  width: auto;
-  max-height: min(52vh, 520px);
-}
-
-.interaction-panel--floating[data-mode="side"] {
-  --question-scroll-max: calc(100vh - 210px);
-  top: 12px;
-  right: 12px;
-  bottom: 12px;
-  width: min(560px, calc(100% - 24px));
-  max-height: none;
 }
 
 /* One mode control, three surfaces: a global button reset would otherwise
@@ -8478,6 +8496,8 @@ pre,
 /* Question answer inside the expanded Flow atom inspector. The preview keeps
    the remaining height; the answer box stays pinned below it when a live
    interaction request is bound to the selected question. */
+/* Float mode keeps the question preview inside the Input tab: the preview owns
+   the remaining height and the answer box caps itself and scrolls. */
 .inspector-question-stack {
   display: flex;
   flex-direction: column;
@@ -8490,27 +8510,66 @@ pre,
   min-height: 0;
 }
 
-/* The inspector is the side panel already: bottom trades the preview for the
-   full answer area, side clears the preview entirely so a long batch can use
-   every pixel of the rail. Both still keep their own fold buttons. */
-.inspector-question-stack[data-mode="bottom"] > .prompt-input {
-  flex: 0 0 36px;
+/* Docked layouts move the same question surface below the inspector tabs. The
+   detail area is split in two: `dock-half` keeps the selected event readable
+   above the question, `dock-full` gives the question every pixel below the
+   tab bar. The tab content is one grid cell so whichever tab is active fills
+   the upper half without each panel having to measure itself. */
+.inspector-detail {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
 }
 
-.inspector-question-stack[data-mode="bottom"] > .prompt-input >
-  :not(.prompt-input__toolbar),
-.inspector-question-stack[data-mode="side"] > .prompt-input {
-  visibility: hidden;
+.inspector-detail__content {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-rows: minmax(0, 1fr);
+  min-height: 0;
 }
 
-.inspector-question-stack[data-mode="side"] > .prompt-input {
+.inspector-detail[data-question-dock="dock-full"] > .inspector-detail__content {
   display: none;
 }
 
-.inspector-question-stack[data-mode="bottom"] > .question-answer,
-.inspector-question-stack[data-mode="side"] > .question-answer {
+.inspector-question-dock {
+  display: flex;
+  flex: 0 0 50%;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  border-top: 1px solid var(--line-bright);
+  background: var(--panel);
+}
+
+.inspector-question-dock[data-mode="dock-full"] {
+  flex: 1 1 auto;
+}
+
+/* Inside the dock the answer area outranks the preview: half a detail area is
+   little enough that the question text must not push the options and the
+   submit bar out of reach. The preview keeps its toolbar, grows with short
+   questions and is capped on long ones; the answer box scrolls itself. */
+.inspector-question-dock > .prompt-input {
+  flex: 0 1 auto;
+  max-height: 45%;
+  height: auto;
+  min-height: 0;
+}
+
+.inspector-question-dock > .prompt-input.is-collapsed {
+  flex: 0 0 36px;
+  max-height: 36px;
+}
+
+.inspector-question-dock > .question-answer {
   flex: 1 1 auto;
   max-height: none;
+}
+
+.inspector-question-dock > .question-answer.is-collapsed {
+  flex: 0 0 auto;
 }
 
 .question-answer {

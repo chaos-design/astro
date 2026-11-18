@@ -1,23 +1,21 @@
-import { PanelBottom, PanelRightOpen, Rows2 } from "lucide-react";
+import { AppWindow, Maximize2, PanelBottom } from "lucide-react";
 import type { QuestionPanelMode } from "@/config/app-config";
-import { questionPanelModes } from "../lib/question-panel-model";
+import {
+  questionPanelModeLabels,
+  questionPanelModes,
+} from "../lib/question-panel-model";
 
 const modeIcons = {
-  half: Rows2,
-  bottom: PanelBottom,
-  side: PanelRightOpen,
+  "dock-half": PanelBottom,
+  "dock-full": Maximize2,
+  float: AppWindow,
 } as const;
 
-const modeLabels: Record<QuestionPanelMode, string> = {
-  half: "半区域",
-  bottom: "底部全部区域",
-  side: "侧边展开",
-};
-
 /**
- * One layout switch for both question surfaces: the floating card and the
- * inspector answer box read the same preference, so switching modes cannot
- * leave one surface narrow while the other is expanded.
+ * One layout switch for every question surface: the docked panel inside the
+ * EVENTS inspector and the floating card over the canvas read the same
+ * preference, so switching placement cannot leave one surface docked while the
+ * other one still floats.
  */
 export function QuestionPanelModeControl({
   mode,
@@ -40,14 +38,15 @@ export function QuestionPanelModeControl({
     >
       {questionPanelModes.map((item) => {
         const Icon = modeIcons[item];
+        const label = questionPanelModeLabels[item];
         return (
           <button
-            aria-label={modeLabels[item]}
+            aria-label={label}
             aria-pressed={mode === item}
             className="question-mode-control__button"
             key={item}
             onClick={() => onChange(item)}
-            title={modeLabels[item]}
+            title={label}
             type="button"
           >
             <Icon aria-hidden="true" />

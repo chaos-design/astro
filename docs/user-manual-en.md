@@ -743,10 +743,14 @@ lifecycle: it auto-expands with an entrance animation when a request opens, the
 header chevron collapses it to a one-line summary (handing the canvas back — a
 newly opened question re-expands it), the question list and footer fold
 independently, and the list respects a mode-dependent maximum scroll height
-while Submit/Cancel stay pinned to the card's bottom edge. The mode switch
-offers half / bottom-full / side-expanded and is shared with the inspector.
+while Submit/Cancel stay pinned to the card's bottom edge. The card is only the
+`Floating` one of three placements: switching to `Region half` or `Region full`
+moves the same question surface into the inspector's detail area and the card
+stops appearing over the canvas. A collapsed EVENTS column has no region to
+dock into, so those layouts fall back to the card for the synchronous window.
 Once the request is answered, cancelled or timed out the card shows the result
-(ANSWERED / CANCELLED / …) for about two seconds and then slides away.
+(ANSWERED / CANCELLED / …) for about two seconds and then slides away; the
+docked surface keeps the same result in place instead.
 `ExitPlanMode` renders as an "Approve this plan?" choice — only Approve returns
 a decision and the plan text is echoed unchanged. The floating card is bound to
 the current message and atom: the event must belong to the selected prompt run,
@@ -767,8 +771,11 @@ options can be toggled one by one and the draft is kept in the declared option
 order. Long question text wraps inside the inspector width; when the answer box
 runs out of room it scrolls there with Submit pinned at the bottom instead of
 widening the log column. Both the question preview and the answer area fold
-independently, and the half / bottom-full / side-expanded mode is shared with
-the floating card. If a submit is rejected (busy, closed, answered elsewhere)
+independently, and the region-half / region-full / floating layouts are one
+shared preference with the floating card (only `Floating` puts a card on the
+canvas). A historical question has no open request, so no answer area appears —
+switching to a region layout still expands its full Q&A inside the inspector.
+If a submit is rejected (busy, closed, answered elsewhere)
 the draft is kept and a notice explains why — it is never silently cleared. When one `AskUserQuestion` carries
 several descriptors the
 inspector lists every question with its own options/input and one Submit sends
@@ -862,10 +869,13 @@ duration even when it is longer than the current limit.
 ### 5.8 Settings
 
 The gear in the header opens the settings dialog. It is a two-pane card: a
-section rail on the left (Appearance, Run history, Canvas, Panels, Performance,
+section rail on the left (Appearance, Run history, Layout, Performance,
 Notifications, About) and
 the active section's fields on the right. Every entry applies immediately, and
-the footer's **Done** button only closes the dialog — there is no Apply step:
+the footer's **Done** button only closes the dialog — there is no Apply step.
+**Layout** is one entry for everything about how the console is viewed; inside it,
+**Canvas** and **Panels** stay two labelled groups, so the two halves of one
+question never live in two menus:
 
 **Appearance**
 
@@ -896,16 +906,30 @@ the footer's **Done** button only closes the dialog — there is no Apply step:
   time left under the new cap — and if the console is paused while the new cap
   still has time left (or is `No limit`) it resumes on its own.
 
-**Canvas**
+**Layout**
 
-- **Default view**: topology / trajectory (`ASTROX_ACTIVE_VIEW`).
+One section, two groups: **Canvas** decides how the canvas draws, **Panels**
+decides how much room it gets and where the question surface stops. Neither
+group writes anything back to captured events.
+
+*Canvas*
+
+- **Default view**: topology / trajectory (`ASTROX_ACTIVE_VIEW`). It only picks
+  the view a message opens with; the two header icons still switch at any time.
 - **Runtime atoms only**: hide atoms that take no part in this execution
   (`ASTROX_DEEP_VIEW`).
 
-**Panels**
+*Panels*
 
 - **Expand RUN HISTORY** and **Expand EVENTS**: the two columns' expanded state
-  (`ASTROX_HISTORY_OPEN` / `ASTROX_CONSOLE_OPEN`).
+  (`ASTROX_HISTORY_OPEN` / `ASTROX_CONSOLE_OPEN`); a collapsed column keeps a
+  vertical label, and its arrow reopens it.
+- **Question panel layout** (`ASTROX_QUESTION_PANEL_MODE`): where the answer
+  surface lands when a question arrives — `Region half` (default: the lower half
+  of the inspector's detail area, the selected event stays readable above it),
+  `Region full` (the whole detail area below the tabs) or `Floating` (the card
+  over the canvas, shown only while the highlighted atom is the question). The
+  three icons in the panel header share this one preference.
 
 **Performance**
 

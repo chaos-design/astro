@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import {
   Bell,
   Check,
@@ -9,7 +9,6 @@ import {
   Gauge,
   History,
   Info,
-  Network,
   Palette,
   PanelsTopLeft,
   RotateCcw,
@@ -40,9 +39,14 @@ import {
   type ChimeStyleId,
   type HistoryRangeId,
   type MaxSyncId,
+  type QuestionPanelMode,
   type Theme,
 } from "@/config/app-config";
 import { playTaskCompletionChime } from "@/lib/task-completion-chime";
+import {
+  questionPanelModeLabels,
+  questionPanelModes,
+} from "@/lib/question-panel-model";
 import { cn } from "@/lib/utils";
 
 type ChoiceIcon = (typeof themeOptions)[number]["icon"];
@@ -78,19 +82,12 @@ const settingsSections = [
     icon: History,
   },
   {
-    id: "canvas",
-    label: "画布",
-    hint: "拓扑与轨迹",
-    title: "画布",
-    description: "打开一条消息时默认展示的画布，以及拓扑的原子可见性。",
-    icon: Network,
-  },
-  {
-    id: "panels",
-    label: "面板",
-    hint: "分栏展开状态",
-    title: "面板",
-    description: "左右两列在打开控制台时的展开状态；面板头部的箭头可随时切换。",
+    id: "layout",
+    label: "布局",
+    hint: "画布与面板",
+    title: "布局",
+    description:
+      "一条菜单管完观看方式：画布默认显示哪种视图、显示哪些原子，左右两栏打开到什么程度，以及问题面板停在哪里。",
     icon: PanelsTopLeft,
   },
   {
@@ -169,6 +166,31 @@ function ChoiceGroup<T extends string>({
   );
 }
 
+/**
+ * One labelled cluster inside a section. The layout section holds two kinds of
+ * preference — how the canvas draws and how the panels open — and a reader
+ * should be able to tell them apart without parsing every row.
+ */
+function SettingsGroup({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="settings-group">
+      <header className="settings-group__head">
+        <h4>{title}</h4>
+        <p>{description}</p>
+      </header>
+      {children}
+    </section>
+  );
+}
+
 /** A boolean preference: label and explanation left, switch right. */
 function SwitchField({
   label,
@@ -226,6 +248,7 @@ export function SettingsDialog({
   liveView,
   maxSync,
   perfHud,
+  questionPanelMode,
   taskCompletionChime,
   theme,
   onActiveViewChange,
@@ -237,6 +260,7 @@ export function SettingsDialog({
   onLiveViewChange,
   onMaxSyncChange,
   onPerfHudChange,
+  onQuestionPanelModeChange,
   onTaskCompletionChimeChange,
   onThemeChange,
 }: {
@@ -249,6 +273,7 @@ export function SettingsDialog({
   liveView: boolean;
   maxSync: MaxSyncId;
   perfHud: boolean;
+  questionPanelMode: QuestionPanelMode;
   taskCompletionChime: boolean;
   theme: Theme;
   onActiveViewChange: (view: ActiveView) => void;
@@ -260,6 +285,7 @@ export function SettingsDialog({
   onLiveViewChange: (liveView: boolean) => void;
   onMaxSyncChange: (maxSync: MaxSyncId) => void;
   onPerfHudChange: (perfHud: boolean) => void;
+  onQuestionPanelModeChange: (mode: QuestionPanelMode) => void;
   onTaskCompletionChimeChange: (value: boolean) => void;
   onThemeChange: (theme: Theme) => void;
 }) {
@@ -278,6 +304,7 @@ export function SettingsDialog({
     theme === appDefaults.theme &&
     activeView === appDefaults.activeView &&
     deepView === appDefaults.deepView &&
+    questionPanelMode === appDefaults.questionPanelMode &&
     historyOpen === defaultHistoryOpen &&
     consoleOpen === defaultConsoleOpen;
 
@@ -291,6 +318,7 @@ export function SettingsDialog({
     onThemeChange(appDefaults.theme);
     onActiveViewChange(appDefaults.activeView);
     onDeepViewChange(appDefaults.deepView);
+    onQuestionPanelModeChange(appDefaults.questionPanelMode);
     onHistoryOpenChange(defaultHistoryOpen);
     onConsoleOpenChange(defaultConsoleOpen);
   };
@@ -429,44 +457,72 @@ export function SettingsDialog({
               </div>
             </TabsContent>
 
-            <TabsContent className="settings-section" value="canvas">
-              <div className="settings-field">
-                <div className="settings-field__copy">
-                  <strong>默认视图</strong>
-                  <span>打开一条消息时先显示哪种画布。</span>
+            <TabsContent className="settings-section" value="layout">
+              <SettingsGroup
+                description="打开一条消息时先看哪种画法，以及拓扑里留下哪些原子。画布只影响作图范围，不改动已采集的事件。"
+                title="画布"
+              >
+                <div className="settings-field">
+                  <div className="settings-field__copy">
+                    <strong>默认视图</strong>
+                    <span>
+                      打开一条消息时先显示哪种画布：执行拓扑看原子与连线，运行轨迹按轮次顺序看每一步。顶栏的两个图标可随时切换。
+                    </span>
+                  </div>
+                  <ChoiceGroup
+                    label="默认视图"
+                    value={activeView}
+                    columns={2}
+                    onChange={onActiveViewChange}
+                    options={[
+                      { id: "topology" as const, label: "执行拓扑" },
+                      { id: "trajectory" as const, label: "运行轨迹" },
+                    ]}
+                  />
                 </div>
-                <ChoiceGroup
-                  label="默认视图"
-                  value={activeView}
-                  columns={2}
-                  onChange={onActiveViewChange}
-                  options={[
-                    { id: "topology" as const, label: "执行拓扑" },
-                    { id: "trajectory" as const, label: "运行轨迹" },
-                  ]}
+                <SwitchField
+                  label="仅显示运行时原子"
+                  description="拓扑图隐藏不参与本次执行的原子，只保留运行时路径；关闭后显示完整的原子定义。"
+                  value={deepView}
+                  onChange={onDeepViewChange}
                 />
-              </div>
-              <SwitchField
-                label="仅显示运行时原子"
-                description="拓扑图隐藏不参与本次执行的原子，只保留运行时路径。"
-                value={deepView}
-                onChange={onDeepViewChange}
-              />
-            </TabsContent>
+              </SettingsGroup>
 
-            <TabsContent className="settings-section" value="panels">
-              <SwitchField
-                label="展开 RUN HISTORY"
-                description="左侧运行历史列默认展开。"
-                value={historyOpen}
-                onChange={onHistoryOpenChange}
-              />
-              <SwitchField
-                label="展开 EVENTS"
-                description="右侧事件日志与检查器默认展开。"
-                value={consoleOpen}
-                onChange={onConsoleOpenChange}
-              />
+              <SettingsGroup
+                description="左右两列各自占多少宽度，以及提问作答面板停在哪里。两者都是展示偏好，不影响事件流。"
+                title="面板"
+              >
+                <SwitchField
+                  label="展开 RUN HISTORY"
+                  description="左侧运行历史列默认展开；收起后只留一条竖排文字，点箭头随时展开。"
+                  value={historyOpen}
+                  onChange={onHistoryOpenChange}
+                />
+                <SwitchField
+                  label="展开 EVENTS"
+                  description="右侧事件日志与检查器默认展开；收起后同样留一条竖排标签。"
+                  value={consoleOpen}
+                  onChange={onConsoleOpenChange}
+                />
+                <div className="settings-field">
+                  <div className="settings-field__copy">
+                    <strong>问题面板布局</strong>
+                    <span>
+                      提问到达时作答面板停在哪里：区域半屏占用检查器下半部分，区域全屏铺满 Tab 以下整个详情区，悬浮则浮在画布上、只在高亮的提问原子上出现。面板头部的三个图标可随时切换。
+                    </span>
+                  </div>
+                  <ChoiceGroup
+                    label="问题面板布局"
+                    value={questionPanelMode}
+                    columns={3}
+                    onChange={onQuestionPanelModeChange}
+                    options={questionPanelModes.map((mode) => ({
+                      id: mode,
+                      label: questionPanelModeLabels[mode],
+                    }))}
+                  />
+                </div>
+              </SettingsGroup>
             </TabsContent>
 
             <TabsContent className="settings-section" value="perf">

@@ -53,8 +53,11 @@ test("the answer region folds and shares the three mode preference", () => {
   assert.match(form, /question-answer__collapse/);
   assert.match(form, /QuestionPanelModeControl/);
   assert.match(styles, /\.question-answer\.is-collapsed \{/);
-  assert.match(styles, /\.inspector-question-stack\[data-mode="bottom"\]/);
-  assert.match(styles, /\.inspector-question-stack\[data-mode="side"\]/);
+  // The dock owns the region sizing: half vs full is the detail area's own
+  // attribute, and the answer box inside it takes the leftover height.
+  assert.match(styles, /\.inspector-detail\[data-question-dock="dock-full"\]/);
+  assert.match(styles, /\.inspector-question-dock\[data-mode="dock-full"\]/);
+  assert.match(styles, /\.inspector-question-dock > \.question-answer \{/);
 });
 
 test("busy and closed states disable every control", () => {
