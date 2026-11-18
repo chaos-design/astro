@@ -1,4 +1,4 @@
-import { ChevronDown, Code2, Eye, Send, X } from "lucide-react";
+import { Code2, Eye, Send, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { QuestionPanelMode } from "@/config/app-config";
 import { QuestionPanelModeControl } from "./question-panel-mode-control";
@@ -73,7 +73,6 @@ export function QuestionContent({
 }) {
   const content = useMemo(() => parseUserQuestionContent(payload), [payload]);
   const [viewMode, setViewMode] = useState<QuestionViewMode>("preview");
-  const [collapsed, setCollapsed] = useState(false);
 
   const answers = useMemo(() => {
     if (!answer) {
@@ -122,7 +121,7 @@ export function QuestionContent({
   };
 
   return (
-    <div className={collapsed ? "prompt-input is-collapsed" : "prompt-input"}>
+    <div className="prompt-input">
       <div className="prompt-input__toolbar">
         <ToggleGroup
           aria-label="User question view"
@@ -153,17 +152,8 @@ export function QuestionContent({
             onChange={onPanelModeChange}
           />
         ) : null}
-        <button
-          aria-expanded={!collapsed}
-          aria-label={collapsed ? "展开问题内容" : "收起问题内容"}
-          className="prompt-input__collapse"
-          onClick={() => setCollapsed((current) => !current)}
-          type="button"
-        >
-          <ChevronDown aria-hidden="true" />
-        </button>
       </div>
-      {collapsed ? null : viewMode === "code" ? (
+      {viewMode === "code" ? (
         // Code is the raw payload only: no options, no answer box, no submit.
         <div className="prompt-input__code">
           <JsonViewer emptyLabel="No question payload captured." value={payload} />

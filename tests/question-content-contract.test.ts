@@ -17,14 +17,17 @@ const app = readFileSync(new URL("../src/app.tsx", import.meta.url), "utf8");
  * the merged layout from drifting back into a preview plus a second answer box
  * with its own header, mode switch and fold button.
  */
-test("one toolbar drives view, placement and fold", () => {
+test("one toolbar drives view and placement, with no fold button", () => {
   assert.equal(
     surface.match(/<QuestionPanelModeControl/g)?.length,
     1,
     "the surface must mount the placement control once",
   );
   assert.match(surface, /aria-label="User question view"/);
-  assert.match(surface, /aria-label=\{collapsed \? "展开问题内容" : "收起问题内容"\}/);
+  // The question itself must never be foldable, so the surface carries no
+  // collapse button — the toolbar is only the view switch plus placement.
+  assert.doesNotMatch(surface, /prompt-input__collapse/);
+  assert.doesNotMatch(surface, /展开问题内容/);
   // The old answer box carried its own header; the surface owns both halves now.
   assert.doesNotMatch(surface, /QUESTION · 作答/);
   assert.doesNotMatch(app, /QuestionAnswerForm/);

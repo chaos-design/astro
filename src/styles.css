@@ -1473,7 +1473,6 @@ pre,
 }
 
 .settings-pane__head p {
-  max-width: 64ch;
   margin: 0;
   color: var(--muted-soft);
   font-size: 11px;
@@ -1501,7 +1500,6 @@ pre,
 }
 
 .settings-field__copy span {
-  max-width: 64ch;
   color: var(--muted-soft);
   font-size: 11px;
   line-height: 1.6;
@@ -5456,14 +5454,6 @@ pre,
   box-shadow: inset 0 0 0 1px var(--selection-border);
 }
 
-.prompt-input.is-collapsed {
-  grid-template-rows: 36px minmax(0, 0fr);
-}
-
-.prompt-input.is-collapsed > :not(.prompt-input__toolbar) {
-  visibility: hidden;
-}
-
 .prompt-input__code {
   min-width: 0;
   min-height: 0;
@@ -8384,30 +8374,6 @@ pre,
   gap: 8px;
 }
 
-.prompt-input__collapse {
-  display: grid;
-  flex: 0 0 auto;
-  width: 20px;
-  height: 20px;
-  place-items: center;
-  padding: 0;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--muted-soft, var(--muted));
-  cursor: pointer;
-}
-
-.prompt-input__collapse:hover {
-  border-color: var(--line-bright);
-  color: var(--text, inherit);
-  background: var(--panel-hover);
-}
-
-.prompt-input__collapse[aria-expanded="false"] svg {
-  transform: rotate(180deg);
-}
-
 .interaction-panel__question h3 {
   margin: 0 0 4px;
   color: var(--text-strong, inherit);
@@ -8568,10 +8534,6 @@ pre,
   flex: 1 1 auto;
   height: auto;
   min-height: 0;
-}
-
-.inspector-question-dock > .prompt-input.is-collapsed {
-  flex: 0 0 36px;
 }
 
 /* The question surface itself. The body scrolls; the submit bar is a sibling
@@ -8746,15 +8708,15 @@ pre,
   gap: 8px;
 }
 
-/* Shortcut hints make the keyboard path discoverable. They share the action
-   row (left of the buttons) instead of taking a line of their own; the long
-   wording lives in the element's title. */
+/* Shortcut hints make the keyboard path discoverable. They live in the
+   header's open space, just left of the status — never a line of their own.
+   The summary row flexes to fill the width, which pushes the legend and the
+   status together on the right; the long wording lives in the title. */
 .interaction-panel__keys {
   display: inline-flex;
   flex: 0 0 auto;
   align-items: center;
   gap: 3px;
-  margin-right: auto;
   color: var(--muted-soft, var(--muted));
   font-size: 0.6875rem;
   white-space: nowrap;

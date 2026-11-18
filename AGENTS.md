@@ -781,10 +781,11 @@ use Node.js ES modules or CommonJS according to their existing file extension.
 - When the displayed question has a live `InteractionRequest`, the question
   surface (`src/components/question-content.tsx`) becomes answerable — the dock
   below the inspector tabs and the Input tab render that one component, and
-  Overview no longer mounts a second answer box. One toolbar row owns the view
-  switch (Preview / Code), the placement switch and the fold; Preview shows the
-  question list with option chips, Code shows the raw payload only — no options
-  and no answer bar. While a request is open the options are buttons and the
+  Overview no longer mounts a second answer box. One toolbar row owns only the
+  view switch (Preview / Code) and the placement switch — the question itself is
+  never foldable, so there is no collapse button; Preview shows the question list
+  with option chips, Code shows the raw payload only — no options and no answer
+  bar. While a request is open the options are buttons and the
   Submit / Cancel bar is a sibling of the scrolling body, pinned to the bottom
   of whichever container holds the surface; once it closes (or for a captured
   question with no request) the same chips render as static `spans`, so nothing
@@ -841,7 +842,8 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   are never foldable (only the whole card collapses from its header), its
   question list scrolls edge to edge — the card carries no outer padding, the
   rows carry the gutters — so the scrollbar rides the card border, and the
-  shortcut legend shares the footer's action row instead of taking a line. The
+  keyboard shortcut legend sits in the card header between the summary and the
+  status so the footer keeps only the Submit / Cancel buttons. The
   dock keeps the closed result (`QuestionResultList`) where the answer box was,
   mirroring the card's settle window.
   For faster answering the floating card focuses its first option and binds

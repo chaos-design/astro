@@ -256,6 +256,25 @@ export function InteractionPanel({
         {summary ? (
           <span className="interaction-panel__summary">{summary}</span>
         ) : null}
+        {keyboard ? (
+          // The shortcut legend sits in the header's open space (between the
+          // summary and the status) instead of owning the footer's left half;
+          // the long form lives in the title.
+          <span
+            className="interaction-panel__keys"
+            title="数字键高亮第一个问题的选项，Enter 提交整批，Esc 取消"
+          >
+            <kbd>1</kbd>–<kbd>
+              {request.questions[0]
+                ? optionLabels(request.questions[0]).length
+                : 0}
+            </kbd>
+            <span aria-hidden="true">·</span>
+            <kbd>Enter</kbd>
+            <span aria-hidden="true">·</span>
+            <kbd>Esc</kbd>
+          </span>
+        ) : null}
         <span className="interaction-panel__status">{statusLabel(status)}</span>
         {lockedBy && lockedBy !== deviceId ? (
           <span className="interaction-panel__locked">answered on {lockedBy}</span>
@@ -359,24 +378,6 @@ export function InteractionPanel({
           {status === "open" ? (
             <footer className="interaction-panel__footer">
               <div className="interaction-panel__footer-actions">
-                {/* The shortcut legend shares the action row instead of taking
-                    a line of its own; the title carries the long form. */}
-                {keyboard ? (
-                  <span
-                    className="interaction-panel__keys"
-                    title="数字键高亮第一个问题的选项，Enter 提交整批，Esc 取消"
-                  >
-                    <kbd>1</kbd>–<kbd>
-                      {request.questions[0]
-                        ? optionLabels(request.questions[0]).length
-                        : 0}
-                    </kbd>
-                    <span aria-hidden="true">·</span>
-                    <kbd>Enter</kbd>
-                    <span aria-hidden="true">·</span>
-                    <kbd>Esc</kbd>
-                  </span>
-                ) : null}
                 <Button
                   disabled={readOnly || pending || !submittable}
                   onClick={submit}

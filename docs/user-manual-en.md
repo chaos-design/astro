@@ -745,8 +745,9 @@ newly opened question re-expands it), the questions themselves never fold, and
 the list respects a maximum scroll height while Submit/Cancel stay pinned to the
 card's bottom edge. The list scrolls edge to edge — the card carries no outer
 padding, its rows carry the gutters — so the scrollbar rides the card's border
-instead of cutting into the question text, and the shortcut legend shares the
-action row (its long form lives in the title). The card is only the `Floating`
+instead of cutting into the question text; the shortcut legend moved up into the
+header, between the summary and the status (its long form lives in the title), so
+the footer keeps only the two buttons. The card is only the `Floating`
 one of two placements: switching to `Region full` moves the same question
 surface into the inspector's detail area and the card stops appearing over the
 canvas. A collapsed EVENTS column has no region to dock into, so the docked

@@ -155,7 +155,8 @@
     question" separately. The inspector has exactly one question surface
     (`src/components/question-content.tsx`, reused by the dock and the Input
     tab; Overview mounts no second answer box). One toolbar row owns the
-    Preview / Code switch, the placement switch and the fold: Preview shows the
+    Preview / Code switch and the placement switch only — the question itself is
+    never foldable, so the toolbar carries no collapse button: Preview shows the
     questions and their option chips, Code shows the raw payload only — no
     options, no submit bar. While a request is open the chips are buttons and
     the Submit / Cancel bar is a sibling of the scrolling body, so it stays
@@ -174,8 +175,9 @@
     reader selected. A collapsed EVENTS column has no region to dock into, so
     the docked layout falls back to the card for the synchronous window. The
     card's questions never fold, its scrollbar rides the card edge (no outer
-    padding; the rows carry the gutters) and the shortcut legend shares the
-    action row. The
+    padding; the rows carry the gutters) and the keyboard shortcut legend sits in
+    the header between the summary and the status, so the footer keeps only the
+    Submit / Cancel buttons. The
     inspector's batch answer builds its seq chain only in
     `answerInteractionQuestions` (`src/lib/interaction-client.ts`): one `text`
     event per question then one `submit` with the full answer map, with the
