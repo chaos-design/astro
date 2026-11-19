@@ -824,10 +824,13 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   binding as the inspector, never a global newest request. It is a live answer
   affordance only: `isQuestionActionable()` in `src/lib/question-interaction.ts`
   (delegating to `isPromptExecuting`, so both `active`/running and `waiting`
-  count) gates the floating card and the inspector's answer controls. Once the
-  run reaches a terminal state, or the reader replays a captured snapshot, no
-  card floats and the inspector question goes read-only — the event stays a
-  preview, never an answerable request. It follows the
+  count) gates the floating card and the inspector's answer controls. The gate
+  keys off the *session* status the RUN HISTORY card shows (`getRunHistoryDisplayState`
+  over the active session), not the selected prompt run — drilling into an older
+  message or atom must not freeze the question while the task is still
+  executing. Once the session reaches a terminal state, or the reader replays a
+  captured snapshot, no card floats and the inspector question goes read-only —
+  the event stays a preview, never an answerable request. It follows the
   question lifecycle: the card enters with an animation when its bound request
   opens, the header chevron collapses it to a one-line summary (a new request
   remounts the card via its `requestId` key and re-expands), the question list

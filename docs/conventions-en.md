@@ -177,14 +177,18 @@
     floating card and the inspector's answer controls are a live affordance:
     `isQuestionActionable` in `src/lib/question-interaction.ts` (delegating to
     `isPromptExecuting`, so both `active`/running and `waiting` count) gates
-    them. Once the run reaches a terminal state, or the reader replays a
-    captured snapshot, no card floats and the inspector question goes read-only
-    — the event stays a preview, never an answerable request (the docked layout
-    still expands a historical question for reading, but its controls are
-    disabled). The card's questions never fold, its scrollbar rides the card
-    edge (no outer padding; the rows carry the gutters) and the keyboard shortcut
-    legend sits in the header between the summary and the status, so the footer
-    keeps only the Submit / Cancel buttons. The
+    them. The gate keys off the *session* status the RUN HISTORY card shows
+    (`getRunHistoryDisplayState` over the active session), not the selected
+    prompt run, so drilling into an older message or atom does not freeze the
+    question while the task is still executing. Once the session reaches a
+    terminal state, or the reader replays a captured snapshot, no card floats
+    and the inspector question goes read-only — the event stays a preview,
+    never an answerable request (the docked layout still expands a historical
+    question for reading, but its controls are disabled). The card's questions
+    never fold, its scrollbar rides the card edge (no outer padding; the rows
+    carry the gutters) and the keyboard shortcut legend sits in the header
+    between the summary and the status, so the footer keeps only the Submit /
+    Cancel buttons. The
     inspector's batch answer builds its seq chain only in
     `answerInteractionQuestions` (`src/lib/interaction-client.ts`): one `text`
     event per question then one `submit` with the full answer map, with the

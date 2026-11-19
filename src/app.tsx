@@ -6862,8 +6862,24 @@ export default function App() {
   // (running) or waiting — and the reader is not replaying a snapshot. A
   // finished run or a replayed turn keeps its question readable in the
   // inspector, but the answer controls there go read-only and no card floats.
+  //
+  // The gate keys off the *session* status the left RUN HISTORY card shows
+  // (its newest prompt run), not `activeDisplayState` (the selected prompt
+  // run). Drilling into an older message or atom can leave the selected run
+  // already `complete` inside a still-waiting session, which would freeze the
+  // question even though the task is still executing — so while the card says
+  // RUNNING or WAITING the question stays answerable regardless of the
+  // selected message.
+  const activeSessionDisplayStatus = activeSession
+    ? getRunHistoryDisplayState(
+        activeSession,
+        activePromptRuns,
+        now,
+        appTimings.activeRunTimeoutMs,
+      ).status
+    : undefined;
   const questionActionable = isQuestionActionable({
-    status: activeDisplayState?.status,
+    status: activeSessionDisplayStatus,
     replayMode,
     isDemo,
   });

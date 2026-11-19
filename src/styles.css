@@ -8518,13 +8518,17 @@ pre,
   display: none;
 }
 
+/* The dock and the float surface both live under the same tab bar. The tab
+   row already draws the neutral `border-bottom` separator in every layout, so
+   the dock must not add a second, brighter top border — that line is the one
+   that appears in `dock-full` but not in `float`, making the border under the
+   tabs flicker as the layout arrow toggles. Keep the single shared divider. */
 .inspector-question-dock {
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
-  border-top: 1px solid var(--line-bright);
   background: var(--panel);
 }
 
