@@ -272,7 +272,7 @@ export function SettingsDialog({
   liveView: boolean;
   maxSync: MaxSyncId;
   perfHud: boolean;
-  questionPanelMode: QuestionPanelMode;
+  questionPanelMode: QuestionPanelMode | null;
   taskCompletionChime: boolean;
   theme: Theme;
   onActiveViewChange: (view: ActiveView) => void;
@@ -284,7 +284,7 @@ export function SettingsDialog({
   onLiveViewChange: (liveView: boolean) => void;
   onMaxSyncChange: (maxSync: MaxSyncId) => void;
   onPerfHudChange: (perfHud: boolean) => void;
-  onQuestionPanelModeChange: (mode: QuestionPanelMode) => void;
+  onQuestionPanelModeChange: (mode: QuestionPanelMode | null) => void;
   onTaskCompletionChimeChange: (value: boolean) => void;
   onThemeChange: (theme: Theme) => void;
 }) {
@@ -303,7 +303,7 @@ export function SettingsDialog({
     theme === appDefaults.theme &&
     activeView === appDefaults.activeView &&
     deepView === appDefaults.deepView &&
-    questionPanelMode === appDefaults.questionPanelMode &&
+    questionPanelMode === null &&
     historyOpen === defaultHistoryOpen &&
     consoleOpen === defaultConsoleOpen;
 
@@ -317,7 +317,7 @@ export function SettingsDialog({
     onThemeChange(appDefaults.theme);
     onActiveViewChange(appDefaults.activeView);
     onDeepViewChange(appDefaults.deepView);
-    onQuestionPanelModeChange(appDefaults.questionPanelMode);
+    onQuestionPanelModeChange(null);
     onHistoryOpenChange(defaultHistoryOpen);
     onConsoleOpenChange(defaultConsoleOpen);
   };
@@ -504,17 +504,24 @@ export function SettingsDialog({
                 <div className="settings-field">
                   <div className="settings-field__copy">
                     <strong>问题面板布局</strong>
-                    <span>区域全屏铺满检查器 Tab 以下，悬浮浮在画布上。</span>
+                    <span>
+                      跟随状态：正在提问时悬浮，已回答或历史问题时区域全屏；显式选择则固定并记住该布局。
+                    </span>
                   </div>
                   <ChoiceGroup
                     label="问题面板布局"
-                    value={questionPanelMode}
-                    columns={2}
-                    onChange={onQuestionPanelModeChange}
-                    options={questionPanelModes.map((mode) => ({
-                      id: mode,
-                      label: questionPanelModeLabels[mode],
-                    }))}
+                    value={questionPanelMode ?? "auto"}
+                    columns={3}
+                    onChange={(choice) =>
+                      onQuestionPanelModeChange(choice === "auto" ? null : choice)
+                    }
+                    options={[
+                      { id: "auto", label: "跟随状态" },
+                      ...questionPanelModes.map((mode) => ({
+                        id: mode,
+                        label: questionPanelModeLabels[mode],
+                      })),
+                    ]}
                   />
                 </div>
               </SettingsGroup>

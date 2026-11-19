@@ -20,6 +20,23 @@ export type Theme = "dark" | "light" | "system";
 export type QuestionPanelMode = "dock-full" | "float";
 
 /**
+ * Lifecycle of the question the surface is bound to. With no persisted choice
+ * the placement follows it: an open request is time-critical and belongs over
+ * the canvas; a settled or captured question is reference material and belongs
+ * under the inspector tabs.
+ */
+export type QuestionPanelState = "live" | "settled";
+
+/** Placement used until the reader picks one explicitly in the control. */
+export const questionPanelModeByState: Record<
+  QuestionPanelState,
+  QuestionPanelMode
+> = {
+  live: "float",
+  settled: "dock-full",
+};
+
+/**
  * How long the console keeps its event stream open before it stops syncing.
  * `off` means "no limit". Measured in hours because the console is expected to
  * survive a working day, not a calendar date.
@@ -100,7 +117,7 @@ export const appDefaults: AppDefaults = {
   taskCompletionChime: true,
   chimeStyle: "bright",
   platform: "claude",
-  questionPanelMode: "dock-full",
+  questionPanelMode: questionPanelModeByState.settled,
   replayCursor: 0,
   replayMode: false,
   replayPlaying: false,
@@ -308,7 +325,10 @@ export const storageKeys = {
   inspectorTab: "ASTROX_INSPECTOR_TAB",
   maxSync: "ASTROX_MAX_SYNC",
   platform: "ASTROX_PLATFORM",
-  /** Question panel layout: dock-full / float. */
+  /**
+   * Explicit question panel placement (dock-full / float). Absent means
+   * "follow the question state"; only a reader's choice writes this key.
+   */
   questionPanelMode: "ASTROX_QUESTION_PANEL_MODE",
   /** The performance HUD toggle (Settings → 性能). */
   perfHud: "ASTROX_PERF_HUD",

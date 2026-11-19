@@ -208,14 +208,24 @@ export function QuestionContent({
           {live && answer ? (
             <footer className="question-surface__footer">
               <span className="question-surface__meta">
-                {`${answer.questions.length} 个问题 · 一次提交`}
+                {`${answer.questions.length} 个问题`}
               </span>
               <div className="question-surface__actions">
                 {answer.pending ? (
                   <span className="question-surface__pending" role="status">
-                    发送中…
+                    Sending…
                   </span>
                 ) : null}
+                <Button
+                  disabled={disabled || !submittable}
+                  onClick={() => answer.onSend(answers)}
+                  size="sm"
+                  type="button"
+                  variant="default"
+                >
+                  <Send aria-hidden="true" data-icon="inline-start" />
+                  Submit
+                </Button>
                 <Button
                   disabled={disabled}
                   onClick={answer.onCancel}
@@ -225,16 +235,6 @@ export function QuestionContent({
                 >
                   <X aria-hidden="true" data-icon="inline-start" />
                   Cancel
-                </Button>
-                <Button
-                  disabled={disabled || !submittable}
-                  onClick={() => answer.onSend(answers)}
-                  size="sm"
-                  type="button"
-                  variant="default"
-                >
-                  <Send aria-hidden="true" data-icon="inline-start" />
-                  提交发送
                 </Button>
               </div>
             </footer>

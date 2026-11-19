@@ -51,6 +51,55 @@ test("options and the pinned submit bar belong to the preview only", () => {
   assert.match(surface, /\{live && answer \? \(/);
 });
 
+test("both surfaces use the same Submit / Cancel wording and order", () => {
+  assert.match(
+    surface,
+    /<Send aria-hidden="true" data-icon="inline-start" \/>\s*Submit/,
+  );
+  assert.match(
+    surface,
+    /<X aria-hidden="true" data-icon="inline-start" \/>\s*Cancel/,
+  );
+  assert.doesNotMatch(surface, /一次性提交|提交发送|一次提交/);
+  const footer = surface.slice(
+    surface.indexOf('<footer className="question-surface__footer">'),
+  );
+  assert.ok(
+    footer.indexOf("Submit") < footer.indexOf("Cancel"),
+    "Submit precedes Cancel on both surfaces",
+  );
+});
+
+test("the dock adds no border and the two slots stay mounted across a mode switch", () => {
+  const dock = styles.match(/\.inspector-question-dock \{([^}]*)\}/)?.[1] ?? "";
+  // The tab list already carries a constant border-bottom in both placements;
+  // a dock-only border shifted the whole surface by a pixel on every toggle.
+  assert.doesNotMatch(dock, /border-top/);
+  assert.match(
+    styles,
+    /\.inspector-question-dock\[hidden\],\s*\.inspector-question-stack\[hidden\] \{[\s\S]*?display: none/,
+  );
+  assert.match(
+    app,
+    /inspector-question-stack[\s\S]*?hidden=\{dockedQuestion \? true : undefined\}/,
+  );
+  assert.match(
+    app,
+    /inspector-question-dock[\s\S]*?hidden=\{dockedQuestion \? undefined : true\}/,
+  );
+});
+
+test("the pinned answer bar stays reachable on a narrow viewport", () => {
+  const narrow = styles
+    .split("@media (max-width: 620px)")
+    .filter((chunk) => chunk.includes(".question-surface__footer {"))
+    .at(-1);
+  assert.ok(narrow, "the narrow-viewport rule exists");
+  assert.match(narrow, /\.question-surface__footer \{[\s\S]*?flex-wrap:\s*wrap/);
+  assert.match(narrow, /\.question-surface__meta \{[\s\S]*?flex:\s*1 1 100%/);
+  assert.match(narrow, /\.question-surface__actions \{[\s\S]*?margin-left:\s*0/);
+});
+
 test("a closed question keeps the same chips without controls", () => {
   assert.match(surface, /question-options__option is-static/);
   assert.match(surface, /disabled=\{disabled\}/);

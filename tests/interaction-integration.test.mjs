@@ -10,6 +10,11 @@ import {
   aggregateDecisionOutputs,
   buildInteractionRequest,
 } from "../plugin/interaction-contract.mjs";
+import { answerInteractionQuestions } from "../src/lib/interaction-client.ts";
+import {
+  initialInteractionState,
+  interactionReducer,
+} from "../src/lib/interaction-reducer.ts";
 import { startServer } from "./helpers/interaction-server.mjs";
 
 const projectDir = new URL("..", import.meta.url).pathname;
@@ -424,6 +429,88 @@ test("F4: a service that is down still fails open", async () => {
   assert.equal(result.status, 0);
   assert.equal(result.stdout, "");
   assert.match(result.stderr, /\[astro:interaction\] no decision/);
+});
+
+test("E2E: the real client submits text + submit and the hook returns the answers", async (t) => {
+  const { url, home } = await startServer(t);
+  const controller = new AbortController();
+  const stream = await fetch(`${url}/api/stream`, {
+    headers: { Accept: "text/event-stream" },
+    signal: controller.signal,
+  });
+  assert.equal(stream.status, 200);
+  const reader = stream.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  const hook = runHook(askPayload(), {
+    ASTRO_INTERACTION_SERVICE: url,
+    ASTRO_HOME: home,
+    // 4 s window -> 3500 ms TTL: enough for the real submit chain, short
+    // enough that a stall fails the test instead of hanging it.
+    ASTRO_INTERACTION_TIMEOUT_MS: "4000",
+  });
+
+  try {
+    for (;;) {
+      const chunk = await reader.read();
+      if (chunk.done) {
+        throw new Error("stream ended before interaction.open");
+      }
+      buffer += decoder.decode(chunk.value, { stream: true });
+      if (/event: interaction\.open/.test(buffer)) {
+        break;
+      }
+    }
+    const line = buffer
+      .split("\n")
+      .find((item) => item.startsWith("data: ") && item.includes("requestId"));
+    assert.ok(line, "interaction.open carries the request");
+    const request = JSON.parse(line.slice("data: ".length));
+
+    // The same reducer the console uses builds the draft; the same client the
+    // surfaces call sends one `text` per question plus a single `submit`.
+    const state = interactionReducer(initialInteractionState, {
+      type: "open",
+      request,
+    });
+    const draft = state.requests[request.requestId];
+    assert.ok(draft, "the open frame reduces into an answerable draft");
+    const sent = [];
+    const submitted = await answerInteractionQuestions(
+      draft,
+      { "Which framework?": "React" },
+      (action) => sent.push(action),
+      { apiBase: url },
+    );
+    assert.equal(submitted.ok, true, submitted.error);
+    assert.equal(submitted.result?.status, "answered");
+    assert.deepEqual(submitted.result?.answers, {
+      "Which framework?": "React",
+    });
+    assert.deepEqual(
+      sent.filter((action) => action.type === "update").map((action) => action.event.action),
+      ["text", "submit"],
+      "one text event then one batch submit",
+    );
+
+    const result = await hook;
+    assert.equal(result.status, 0, result.stderr);
+    const output = JSON.parse(result.stdout);
+    assert.equal(output.hookSpecificOutput.decision.behavior, "allow");
+    assert.deepEqual(
+      output.hookSpecificOutput.decision.updatedInput.answers,
+      { "Which framework?": "React" },
+    );
+
+    const closed = await waitForResultFile(home);
+    assert.ok(closed, "the service wrote the result file");
+    assert.equal(closed.status, "answered");
+    assert.equal(closed.answeredBy, "console");
+    assert.deepEqual(closed.answers, { "Which framework?": "React" });
+  } finally {
+    controller.abort();
+  }
 });
 
 // A request id is deterministic from its host fields; the integration test

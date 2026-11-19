@@ -258,6 +258,39 @@ test("inspector answer sends text and submit as one keyed chain", async () => {
   ]);
 });
 
+test("the client reads the result from the service's nested events response", async () => {
+  const base = draft();
+  const { transport: wire } = transport([
+    { ok: true, status: 202 },
+    {
+      ok: true,
+      status: 202,
+      payload: {
+        requestId: base.request.requestId,
+        event: {},
+        duplicate: false,
+        result: {
+          requestId: base.request.requestId,
+          status: "answered",
+          answers: { "Which framework?": "React" },
+        },
+      },
+    },
+  ]);
+
+  const result = await answerInteractionQuestion(
+    base,
+    "Which framework?",
+    "React",
+    () => {},
+    wire,
+  );
+
+  assert.equal(result.ok, true);
+  assert.equal(result.result?.status, "answered");
+  assert.deepEqual(result.result?.answers, { "Which framework?": "React" });
+});
+
 test("a multi-question answer sends one text event per question and one submit", async () => {
   const request = buildInteractionRequest(
     {

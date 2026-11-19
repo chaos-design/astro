@@ -747,11 +747,15 @@ card's bottom edge. The list scrolls edge to edge — the card carries no outer
 padding, its rows carry the gutters — so the scrollbar rides the card's border
 instead of cutting into the question text; the shortcut legend moved up into the
 header, between the summary and the status (its long form lives in the title), so
-the footer keeps only the two buttons. The card is only the `Floating`
+the footer keeps only the two buttons: `Submit` (Send icon) and `Cancel` (X
+icon), in that order on both surfaces. The card is only the `Floating`
 one of two placements: switching to `Region full` moves the same question
 surface into the inspector's detail area and the card stops appearing over the
 canvas. A collapsed EVENTS column has no region to dock into, so the docked
-layout falls back to the card for the synchronous window.
+layout falls back to the card for the synchronous window. With no explicit
+preference the placement follows the question: a live request floats, a settled
+or captured question docks; switching never adds a border or remounts the
+surface, and the pinned Submit / Cancel bar stays reachable on a narrow screen.
 Once the request is answered, cancelled or timed out the card shows the result
 (ANSWERED / CANCELLED / …) for about two seconds and then slides away; the
 docked surface keeps the same result in place instead.
@@ -769,7 +773,7 @@ inspector to that question's start event (not to its answer); Overview shows
 the question text and the event details. The question surface exists exactly
 once — the dock below the inspector tabs in a region layout, the Input tab in
 `Floating` — and one toolbar row owns the Preview / Code switch, the placement
-switch and the fold:
+switch only (the question itself never folds):
 
 - **Preview** shows the questions and their option chips. While the request is
   open the chips are buttons (single-select and a plan approval's Approve/Reject
@@ -784,9 +788,9 @@ switch and the fold:
   full Q&A inside the inspector.
 
 Long question text wraps inside the inspector width and the body scrolls instead
-of widening the log column. The region-half / region-full / floating layouts are
-one shared preference with the floating card (only `Floating` puts a card on the
-canvas).
+of widening the log column. `Region full` and `Floating` are the two shared
+placements (only `Floating` puts a card on the canvas); the dock and Input tab
+keep their surface mounted so switching placements does not remount it.
 If a submit is rejected (busy, closed, answered elsewhere)
 the draft is kept and a notice explains why — it is never silently cleared. When one `AskUserQuestion` carries
 several descriptors the
@@ -937,10 +941,12 @@ group writes anything back to captured events.
   (`ASTROX_HISTORY_OPEN` / `ASTROX_CONSOLE_OPEN`); a collapsed column keeps a
   vertical label, and its arrow reopens it.
 - **Question panel layout** (`ASTROX_QUESTION_PANEL_MODE`): where the answer
-  surface lands when a question arrives — `Region full` (default: the whole
-  detail area below the tabs) or `Floating` (the card over the canvas, shown
-  only while the highlighted atom is the question). The two icons in the panel
-  header share this one preference.
+  surface lands — `Follow state` (default: a live request floats, a settled or
+  captured question docks), `Region full` (the whole detail area below the tabs)
+  or `Floating` (the card over the canvas, shown only while the highlighted atom
+  is the question). Picking one of the latter two fixes and persists that
+  placement; "restore defaults" returns to `Follow state`. The two icons in the
+  panel header share this one preference.
 
 **Performance**
 

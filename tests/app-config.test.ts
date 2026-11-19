@@ -21,6 +21,7 @@ import {
   isMaxSyncId,
   legacyStorageKeys,
   maxSyncOptions,
+  questionPanelModeByState,
   retiredStorageKeys,
   resolvePerfHudInitial,
   shouldShowDemo,
@@ -47,6 +48,16 @@ test("keeps user preference defaults and storage keys in app config", () => {
   assert.ok(
     Object.values(storageKeys).every((key) => key.startsWith("ASTROX_")),
   );
+});
+
+test("defaults the question panel placement from the question state", () => {
+  // No explicit preference -> a live request floats, a captured question
+  // docks. The static default is the settled one so a bare reader lands on the
+  // inspectable placement (see resolveQuestionPanelMode for the resolver).
+  assert.equal(appDefaults.questionPanelMode, questionPanelModeByState.settled);
+  assert.equal(appDefaults.questionPanelMode, "dock-full");
+  assert.equal(questionPanelModeByState.live, "float");
+  assert.equal(storageKeys.questionPanelMode, "ASTROX_QUESTION_PANEL_MODE");
 });
 
 test("defaults the loaded message range to the last three hours", () => {

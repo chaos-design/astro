@@ -126,12 +126,18 @@
     问答面在窄面板内换行、正文区域内滚动，不撑宽日志列。
     两种作答面都用 `src/lib/question-panel-model.ts` 构建答案：
     选项点击只高亮并填入草稿，输入框内容覆盖选项值，没有 Set；只有一个 Submit，
-    一次提交全部问题。`dock-full` / `float` 是两者共享并持久化的落位
+    一次提交全部问题。两个表面的按钮文案、图标、尺寸、variant 与顺序完全一致（Submit
+    用发送图标、Cancel 用叉号图标，不留「一次性提交 / 提交发送」旧文案），窄视口下提交栏
+    换行后仍吸附可达。`dock-full` / `float` 是两者共享并持久化的落位
     （`src/lib/question-panel-model.ts` 负责把升级前的 `dock-half` / `half` /
     `bottom` / `side` 归一化过来）：`dock-full` 把同一份问答面停到检查器 Tab 以下并
     铺满详情区，只有 `float` 才在画布上浮出卡片，因此卡片要求高亮原子正是提问，区域
     布局则连历史提问也能展开；EVENTS 列收起时没有可停靠的区域，区域布局临时退回卡片，
-    保证同步窗口内仍可作答。卡片的问题本身不可折叠，滚动条贴卡片右边缘（卡片不留外层
+    保证同步窗口内仍可作答。没有显式偏好时 `resolveQuestionPanelMode` 按问题状态取默认：
+    live/open 请求为 `float`、已关闭或历史问题为 `dock-full`；显式选择写入
+    `ASTROX_QUESTION_PANEL_MODE` 并覆盖默认。停靠区与 Input 页的问答面各自保持挂载、
+    只用 `hidden` 切换可见性，Tab 列表恒定的分隔线替代了只在停靠时出现的新边框，因此
+    切换落位不 reflow、不重挂载、不跳动。卡片的问题本身不可折叠，滚动条贴卡片右边缘（卡片不留外层
     内边距，留白由问题行承载），键盘快捷键提示放在卡片头部摘要与状态之间（底部只留
     提交 / Cancel 两个按钮）。检查器的批量作答
     只在 `src/lib/interaction-client.ts` 的 `answerInteractionQuestions` 一处构建

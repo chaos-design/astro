@@ -6,9 +6,12 @@ import {
   buildQuestionAnswers,
   isDockedQuestionPanelMode,
   normalizeQuestionPanelMode,
+  parseQuestionPanelMode,
   questionPanelSubmittable,
   questionPanelModes,
+  resolveQuestionPanelMode,
 } from "../src/lib/question-panel-model.ts";
+import { questionPanelModeByState } from "../src/config/app-config.ts";
 import type { QuestionDescriptor } from "../src/lib/interaction-contract.ts";
 
 const questions: QuestionDescriptor[] = [
@@ -28,6 +31,31 @@ test("the two question panel placements normalize to a known value", () => {
   assert.equal(normalizeQuestionPanelMode("float"), "float");
   assert.equal(normalizeQuestionPanelMode(""), "dock-full");
   assert.equal(normalizeQuestionPanelMode("nonsense"), "dock-full");
+});
+
+test("with no explicit choice the placement follows the question state", () => {
+  // A live request is time-critical and floats over the canvas; a settled or
+  // captured question docks under the inspector tabs.
+  assert.deepEqual(questionPanelModeByState, {
+    live: "float",
+    settled: "dock-full",
+  });
+  assert.equal(resolveQuestionPanelMode(null, "live"), "float");
+  assert.equal(resolveQuestionPanelMode("", "live"), "float");
+  assert.equal(resolveQuestionPanelMode("nonsense", "live"), "float");
+  assert.equal(resolveQuestionPanelMode(undefined, "settled"), "dock-full");
+});
+
+test("an explicit or migrated placement wins over the state default", () => {
+  assert.equal(resolveQuestionPanelMode("dock-full", "live"), "dock-full");
+  assert.equal(resolveQuestionPanelMode("float", "settled"), "float");
+  assert.equal(resolveQuestionPanelMode("half", "settled"), "float");
+  assert.equal(resolveQuestionPanelMode("side", "live"), "dock-full");
+  // Absence is distinguishable from a corrupt value so the state default can
+  // take over without normalizing an empty preference into a fixed placement.
+  assert.equal(parseQuestionPanelMode(""), null);
+  assert.equal(parseQuestionPanelMode("nonsense"), null);
+  assert.equal(parseQuestionPanelMode("float"), "float");
 });
 
 test("a layout stored before the two-placement switch keeps its intent", () => {
