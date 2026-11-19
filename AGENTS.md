@@ -787,7 +787,13 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   `src/components/payload-overlay.tsx` only renders them and owns the
   Preview/Code switch — it must not grow a second conversion or sanitizer. The
   expand control opens a Dialog (portaled to the document body) whose payload
-  always follows the current event and tab, never a global newest request.
+  always follows the current event and tab, never a global newest request. Its
+  Preview is type-aware: a user.question Input tab passes the raw question
+  payload to `QuestionPreview` (the shared read-only question / option / answer
+  list) instead of the Markdown path; every other tab keeps the Markdown view.
+  The docked answer form and the floating card share one Cancel / 提交 order and
+  one button label, and the "N questions · one submit" hint lives above the
+  question list rather than in the action bar.
 - "What counts as a user question" lives only in `src/lib/trace-event-kind.ts`
   (`isUserQuestionEvent` / `isUserQuestionStartEvent`): question-named events,
   a `Pre/PostToolUse` naming the question tool, plus a

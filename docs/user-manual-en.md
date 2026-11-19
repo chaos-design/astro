@@ -626,9 +626,11 @@ The inspector provides:
 - copy control for structured JSON;
 - an expand control in the inspector header, available on `Input` / `Output` /
   `Raw`, opens a **global overlay** that shows the same payload in a much larger
-  area. The overlay has its own `Preview` / `Code` switch: `Preview` turns the
-  result data into a Markdown document and renders it (headings, lists, code
-  blocks) with highlight.js syntax highlighting, after the same HTML sanitizer
+  area. The overlay has its own `Preview` / `Code` switch: `Preview` follows the
+  atom's type — a `user.question` Input tab shows the question / option / answer
+  list the reader saw, while every other payload turns into a Markdown document
+  rendered (headings, lists, code blocks) with highlight.js syntax highlighting,
+  after the same HTML sanitizer
   strips acting markup. A single text field (message, output, plan text) is the
   document itself; structured fields appear as highlighted JSON code blocks.
   With nothing previewable the overlay says so and `Code` still shows the raw
@@ -743,7 +745,9 @@ Answers are never replayed outside the window.
 Panel behavior: an option click only highlights the choice; multi-select joins
 labels in the declared option order with commas; the input field is the answer
 submitted at the end of the batch, so there is no Set step. Submit requires
-every required question and sends all answers once; Esc/cancel ends the request
+every required question and sends all answers once; the "N questions · one submit"
+hint sits above the question list, not in the action bar, and both placements use
+the same Cancel / Submit order. Esc/cancel ends the request
 and falls back; another device answering first turns the panel read-only. The
 floating card also supports keyboard answering: it focuses the first option on
 open, digits `1`–`9` highlight that option of the first question, `Enter`
@@ -798,7 +802,7 @@ switch and the fold:
   open the chips are buttons (single-select and a plan approval's Approve/Reject
   highlight on click; multi-select toggles one by one and the draft keeps the
   declared option order), the input value is what Submit sends (no Set step),
-  and the Submit / Cancel bar is a sibling of the scrolling body, so it stays
+  and the Cancel / Submit bar is a sibling of the scrolling body, so it stays
   pinned to the bottom of the panel however long the question is.
 - **Code** shows the raw payload only — no options, no answer box, no submit bar.
 - **A closed or historical question** keeps the same chips as static, unclickable

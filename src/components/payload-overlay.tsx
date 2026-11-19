@@ -11,8 +11,10 @@ import {
   ToggleGroup,
   ToggleGroupItem,
 } from "@/components/ui/toggle-group";
+import { QuestionPreview } from "@/components/question-content";
 import { renderMarkdownPreview } from "@/lib/markdown-preview";
 import { payloadToMarkdown } from "@/lib/payload-markdown";
+import type { TracePayload } from "@/types/trace";
 
 type PayloadViewMode = "preview" | "code";
 
@@ -20,19 +22,23 @@ type PayloadViewMode = "preview" | "code";
  * The inspector's wide surface for one Input / Output / Raw payload. It is a
  * Dialog, so Radix portals it to the document body: the layer is global no
  * matter which panel mounted it, and Escape / outside-click close it like the
- * other console dialogs. `Preview` reads the payload as markdown (with code
- * highlighting); `Code` keeps the raw, untyped structured view.
+ * other console dialogs. `Preview` follows the atom's type: a user.question
+ * payload renders as the question / option / answer list the reader saw, while
+ * every other payload reads as Markdown with code highlighting. `Code` keeps
+ * the raw, untyped structured view.
  */
 export function PayloadOverlay({
   label,
   onOpenChange,
   open,
   payload,
+  variant = "default",
 }: {
   label: string;
   onOpenChange: (open: boolean) => void;
   open: boolean;
   payload: unknown;
+  variant?: "default" | "question";
 }) {
   const [viewMode, setViewMode] = useState<PayloadViewMode>("preview");
   const markdown = useMemo(() => payloadToMarkdown(payload), [payload]);
@@ -43,10 +49,14 @@ export function PayloadOverlay({
       <DialogContent className="payload-overlay">
         <header className="payload-overlay__head">
           <div className="payload-overlay__copy">
-            <span className="eyebrow">CAPTURED PAYLOAD</span>
+            <span className="eyebrow">
+              {variant === "question" ? "USER QUESTION" : "CAPTURED PAYLOAD"}
+            </span>
             <DialogTitle>{label}</DialogTitle>
             <DialogDescription>
-              Preview 把结果数据渲染成 Markdown（含代码高亮）；Code 查看原始载荷。
+              {variant === "question"
+                ? "Preview 按用户问题的形态展示问题、选项与答案；Code 查看原始载荷。"
+                : "Preview 把结果数据渲染成 Markdown（含代码高亮）；Code 查看原始载荷。"}
             </DialogDescription>
           </div>
           <ToggleGroup
@@ -74,7 +84,9 @@ export function PayloadOverlay({
         </header>
         {viewMode === "preview" ? (
           <div className="payload-overlay__body">
-            {preview.valid ? (
+            {variant === "question" ? (
+              <QuestionPreview payload={payload as TracePayload} />
+            ) : preview.valid ? (
               <div
                 className="markdown-preview"
                 dangerouslySetInnerHTML={{ __html: preview.html }}

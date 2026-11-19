@@ -3619,10 +3619,13 @@ function TraceInspector({
         onOpenChange={setOverlayOpen}
         open={overlayOpen}
         payload={
-          activeTab === "input" || activeTab === "output" || activeTab === "raw"
-            ? payloadByTab[activeTab]
-            : null
+          activeTab === "input" && questionEvent
+            ? questionEvent.payload
+            : activeTab === "input" || activeTab === "output" || activeTab === "raw"
+              ? payloadByTab[activeTab]
+              : null
         }
+        variant={activeTab === "input" && questionEvent ? "question" : "default"}
       />
     </section>
   );

@@ -300,6 +300,14 @@ export function InteractionPanel({
       <div className="interaction-panel__body">
         <div className="interaction-panel__body-inner">
           {status === "open" ? (
+            <div className="question-surface__summary">
+              <span>{`${request.questions.length} 个问题 · 一次提交`}</span>
+              {!submittable ? (
+                <span className="question-surface__todo">还有必答题未填写</span>
+              ) : null}
+            </div>
+          ) : null}
+          {status === "open" ? (
             <div
               aria-label="Question content"
               className="interaction-panel__questions"
@@ -397,16 +405,6 @@ export function InteractionPanel({
             <footer className="interaction-panel__footer">
               <div className="interaction-panel__footer-actions">
                 <Button
-                  disabled={readOnly || pending || !submittable}
-                  onClick={submit}
-                  size="sm"
-                  type="button"
-                  variant="default"
-                >
-                  <Send aria-hidden="true" data-icon="inline-start" />
-                  一次性提交
-                </Button>
-                <Button
                   disabled={readOnly || pending}
                   onClick={onCancel}
                   size="sm"
@@ -414,7 +412,17 @@ export function InteractionPanel({
                   variant="ghost"
                 >
                   <X aria-hidden="true" data-icon="inline-start" />
-                  Cancel
+                  取消
+                </Button>
+                <Button
+                  disabled={readOnly || pending || !submittable}
+                  onClick={submit}
+                  size="sm"
+                  type="button"
+                  variant="default"
+                >
+                  <Send aria-hidden="true" data-icon="inline-start" />
+                  提交
                 </Button>
                 {pending ? (
                   <span className="interaction-panel__pending" role="status">

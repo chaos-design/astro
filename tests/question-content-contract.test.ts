@@ -62,6 +62,28 @@ test("a closed question keeps the same chips without controls", () => {
   assert.match(styles, /\.question-options__option:disabled \{/);
 });
 
+test("the batch hint sits above the list and the footer is a Cancel / 提交 pair", () => {
+  assert.ok(
+    surface.indexOf("question-surface__summary") <
+      surface.indexOf('<div className="question-surface">'),
+    "the summary row must precede the scrolling question list",
+  );
+  assert.ok(
+    surface.indexOf('className="question-surface__summary"') <
+      surface.indexOf("question-surface__body"),
+  );
+  assert.doesNotMatch(surface, /question-surface__meta/);
+  assert.doesNotMatch(surface, /一次性提交|提交发送/);
+  const footer = surface.slice(surface.indexOf("<footer"), surface.indexOf("</footer>"));
+  assert.ok(footer.indexOf("取消") < footer.indexOf("提交"));
+  assert.match(footer, /disabled=\{disabled \|\| !submittable\}/);
+});
+
+test("the shared question preview is exported for the global overlay", () => {
+  assert.match(surface, /export function QuestionPreview\(/);
+  assert.match(surface, /<QuestionPreview payload=\{payload\} \/>/);
+});
+
 test("the submit bar is a sibling of the scroll area, not part of it", () => {
   const body = styles.match(/\.question-surface__body \{([^}]*)\}/)?.[1] ?? "";
   const footer = styles.match(/\.question-surface__footer \{([^}]*)\}/)?.[1] ?? "";

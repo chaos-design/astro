@@ -75,7 +75,6 @@ export function QuestionContent({
   onPanelModeChange?: (mode: QuestionPanelMode) => void;
   answer?: QuestionAnswerBinding | null;
 }) {
-  const content = useMemo(() => parseUserQuestionContent(payload), [payload]);
   const [viewMode, setViewMode] = useState<QuestionViewMode>("preview");
 
   const answers = useMemo(() => {
@@ -178,6 +177,18 @@ export function QuestionContent({
           />
         ) : null}
       </div>
+      {viewMode === "preview" && answer ? (
+        // The batch rule belongs with the question list, not the action bar:
+        // the footer stays a pure Cancel / 提交 pair on every surface.
+        <div className="question-surface__summary">
+          <span>{`${answer.questions.length} 个问题 · 一次提交`}</span>
+          {unanswered ? (
+            <span className="question-surface__todo">
+              {`还需回答 ${unanswered} 项`}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
       {viewMode === "code" ? (
         // Code is the raw payload only: no options, no answer box, no submit.
         <div className="prompt-input__code">
@@ -244,16 +255,11 @@ export function QuestionContent({
                 </article>
               ))
             ) : (
-              <StaticQuestionContent content={content} />
+              <QuestionPreview payload={payload} />
             )}
           </div>
           {live && answer ? (
             <footer className="question-surface__footer">
-              <span className="question-surface__meta">
-                {unanswered
-                  ? `${answer.questions.length} 个问题 · 还需回答 ${unanswered} 项`
-                  : `${answer.questions.length} 个问题 · 一次提交`}
-              </span>
               <div className="question-surface__actions">
                 {answer.pending ? (
                   <span className="question-surface__pending" role="status">
@@ -278,7 +284,7 @@ export function QuestionContent({
                   variant="default"
                 >
                   <Send aria-hidden="true" data-icon="inline-start" />
-                  一次性提交
+                  提交
                 </Button>
               </div>
             </footer>
@@ -393,6 +399,16 @@ function StaticQuestionContent({
       ) : null}
     </>
   );
+}
+
+/**
+ * The read-only question list used by a captured user.question event and by
+ * the global overlay's Preview. It is exported so both places render the same
+ * question / option / answer shapes instead of growing a second preview.
+ */
+export function QuestionPreview({ payload }: { payload: TracePayload }) {
+  const content = useMemo(() => parseUserQuestionContent(payload), [payload]);
+  return <StaticQuestionContent content={content} />;
 }
 
 function StaticPrompt({
