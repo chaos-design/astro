@@ -18,7 +18,12 @@ use Node.js ES modules or CommonJS according to their existing file extension.
 - `opencode-plugin/`: zero-dependency OpenCode plugin installed globally by
   `scripts/install-opencode-plugin.mjs`; `mapping.ts` maps OpenCode server
   events onto canonical event names, `claim.ts` guarantees one recorder per
-  session.
+  session. Durable events carry no location envelope, so
+  `opencodeEventDirectory` keeps every host spelling plus a per-session
+  remembered directory — dropping that fallback lost the main agent's text.
+  `session.text.delta` is accumulated into throttled `AgentMessage` snapshots so
+  content is visible while the agent executes; the claim is taken only once an
+  event actually maps to a trace, never on an unmapped event.
 - `pi-plugin/`: zero-dependency Pi extension installed globally by
   `scripts/install-pi-plugin.mjs`; `mapping.ts` maps Pi extension events onto
   canonical event names, and `claim.ts` stores the owning pid so resumable Pi
@@ -1068,6 +1073,13 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   native prompt returns immediately. The contract validates a configured
   window against `maxHookTimeoutMs` (1 h), with `hookTimeoutMs` (5 s) staying
   the no-flag default.
+- Cancel / Escape applies the close result **locally** as soon as the POST
+  succeeds: `cancelInteraction` dispatches `close` from the response (the service
+  wraps it as `{ requestId, result, duplicate }`), and the SSE close frame stays
+  authoritative for other devices. Relying on the frame alone left a card still
+  answerable after a 200 close whenever the frame was lost to a reconnect or the
+  request had already been closed by the service. The reducer's "already closed"
+  guard makes the second close a no-op.
 - `scripts/install-interaction-hook.mjs` reuses the merge / validate / remove
   helpers of `install-auto-approve-hook.mjs` (parameterized by `hookMarker`,
   `events`, `hookArgs`). Dry-run by default, backup on `--apply`, `--remove`

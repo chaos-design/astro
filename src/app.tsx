@@ -5294,7 +5294,9 @@ export default function App() {
       if (!draft) {
         return;
       }
-      void cancelInteraction(draft, { apiBase }).then(reportInteractionResult);
+      void cancelInteraction(draft, dispatchInteraction, { apiBase }).then(
+        reportInteractionResult,
+      );
     },
     [apiBase, reportInteractionResult],
   );

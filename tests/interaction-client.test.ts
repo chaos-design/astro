@@ -416,16 +416,33 @@ test("inspector answer rolls back both events when submit fails", async () => {
   assert.deepEqual(after.requests[base.request.requestId].selections, {});
 });
 
-test("cancel closes through the service, not through an event", async () => {
+test("cancel closes through the service and applies the nested result locally", async () => {
   const base = draft();
   const { transport: wire, calls } = transport([
     {
       ok: true,
       status: 200,
-      payload: { requestId: base.request.requestId, status: "cancelled" },
+      // The real close route wraps the result: { requestId, result, duplicate }.
+      payload: {
+        requestId: base.request.requestId,
+        result: {
+          requestId: base.request.requestId,
+          status: "cancelled",
+          answers: {},
+          answeredBy: "console",
+          answeredAt: new Date().toISOString(),
+          elapsedMs: 100,
+        },
+        duplicate: false,
+      },
     },
   ]);
-  const result = await cancelInteraction(base, wire);
+  const dispatches: unknown[] = [];
+  const result = await cancelInteraction(
+    base,
+    (action) => dispatches.push(action),
+    wire,
+  );
   assert.equal(result.ok, true);
   assert.equal(result.result?.status, "cancelled");
   assert.match(calls[0].url, /\/close$/);
@@ -433,4 +450,6 @@ test("cancel closes through the service, not through an event", async () => {
     status: "cancelled",
     answeredBy: "console",
   });
+  assert.equal(dispatches.length, 1);
+  assert.deepEqual(dispatches[0], { type: "close", result: result.result });
 });

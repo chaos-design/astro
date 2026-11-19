@@ -126,7 +126,15 @@ function resultOf(payload: unknown): InteractionResult | null {
   if (!payload || typeof payload !== "object") {
     return null;
   }
-  const candidate = payload as Partial<InteractionResult>;
+  const wrapper = payload as { result?: unknown };
+  // The close route answers `{ requestId, result, duplicate }`, while other
+  // transports may put the result at the top level. Accept both so a successful
+  // 200 can always be applied locally instead of depending on the SSE frame.
+  const candidate = (
+    wrapper.result && typeof wrapper.result === "object"
+      ? wrapper.result
+      : payload
+  ) as Partial<InteractionResult>;
   return typeof candidate.status === "string" && candidate.requestId
     ? (candidate as InteractionResult)
     : null;
@@ -333,9 +341,17 @@ export async function answerInteractionQuestion(
   );
 }
 
-/** Cancel is closed through the service, which broadcasts the one close frame. */
+/**
+ * Cancel is closed through the service, which broadcasts one close frame. The
+ * console applies that result locally as soon as the POST succeeds: the frame is
+ * never replayed and can be lost to a reconnect or a slow stream, so waiting
+ * for it alone left a 200-cancelled card still showing as answerable. The SSE
+ * frame remains authoritative for other devices; the reducer ignores a second
+ * close for the same request.
+ */
 export async function cancelInteraction(
   draft: InteractionDraft,
+  dispatch: (action: InteractionStateAction) => void,
   transport: InteractionTransport,
 ): Promise<InteractionSendResult> {
   const response = await postJson(
@@ -352,5 +368,9 @@ export async function cancelInteraction(
       error: errorText(response.payload, `cancel rejected (${response.status})`),
     };
   }
-  return { ok: true, result: resultOf(response.payload) };
+  const result = resultOf(response.payload);
+  if (result) {
+    dispatch({ type: "close", result });
+  }
+  return { ok: true, result };
 }
