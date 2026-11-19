@@ -58,12 +58,19 @@
     `preview-state.json`）：服务端在控制台页面接入 `/api/stream` 时打点，
     Hook 启动流程据此决定是否还需要为用户打开浏览器；
   - 把载荷变成 Markdown 预览文档只在 `src/lib/payload-markdown.ts`
-    （`payloadToMarkdown`：单个文本字段直接作为文档，多个字段保留结构、
-    结构化值以 JSON 代码块呈现）；Markdown 的解析、代码语法高亮与 HTML 清理
+    （`payloadToMarkdown`：孤立文本字段直接作为文档，`answers` 渲染成问题→Markdown
+    答案行，`questions` 渲染成带选项的列表，嵌套工具内容拍平为文本，其余保留
+    字段与 JSON 代码块）；Markdown 的解析、代码语法高亮与 HTML 清理
     只在 `src/lib/markdown-preview.ts`（`renderMarkdownPreview`，highlight.js 只
     注册捕获载荷常见语言）。检查器的 Input/Output/Raw 与全局浮层共用这两个
     单一来源，浮层组件 `src/components/payload-overlay.tsx` 只负责展示与
     Preview/Code 切换，不再另写一份转换或消毒逻辑；
+  - 捕获答案的展示只在 `src/components/answer-rows.tsx`：悬浮卡结果、停靠检查器
+    与历史 Answers 三处共用；选中选项由 `src/lib/question-panel-model.ts` 的
+    `matchAnswerOptions` 从答案原文还原（只认与声明标签完全相同的逗号 token，
+    自由文本不会被误点亮），以高亮 chip 呈现，余下文本按 Markdown 渲染。
+    `QuestionResultList` 通过 `resultAnswerRows` 保持请求的题目顺序；结果到达后
+    草稿会被清空，所以历史选中态必须从答案还原，不能从草稿推断；
   - 运行所用模型的读取只在 `src/lib/trace-model.ts`（`extractRunModel` +
     `buildSessionPromptRuns` 的 SessionStart 回退）：各客户端的 payload 形态
     （pi 的 `model`/`provider`、deepseek 的模型对象、opencode 的 step 通知、

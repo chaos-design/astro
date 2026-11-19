@@ -52,7 +52,11 @@ test("options and the pinned submit bar belong to the preview only", () => {
 });
 
 test("a closed question keeps the same chips without controls", () => {
-  assert.match(surface, /question-options__option is-static/);
+  // Static chips keep the same look but are spans, and a captured answer now
+  // highlights its selected options via `is-selected` instead of losing them.
+  assert.match(surface, /"is-static"/);
+  assert.match(surface, /chosen && "is-selected"/);
+  assert.match(surface, /matchAnswerOptions\(answer \?\? "", prompt\.options\)/);
   assert.match(surface, /disabled=\{disabled\}/);
   assert.match(styles, /\.question-options__option\.is-static \{/);
   assert.match(styles, /\.question-options__option:disabled \{/);

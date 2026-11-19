@@ -26,9 +26,60 @@ test("multiple fields keep their structure and stringify structured values as JS
   assert.match(markdown, /- \*\*ok\*\*: `true`/);
 });
 
-test("arrays join with a separator and other scalars stay readable", () => {
-  assert.equal(payloadToMarkdown(["one", "two"]), "one\n\n---\n\ntwo");
+test("arrays of plain values render as a list and other scalars stay readable", () => {
+  assert.equal(payloadToMarkdown(["one", "two"]), "- one\n- two");
   assert.equal(payloadToMarkdown(42), "42");
   assert.equal(payloadToMarkdown(null), "");
   assert.equal(payloadToMarkdown({ blank: "", kept: "yes" }), "### kept\n\nyes");
+});
+
+test("an answers map becomes question rows with Markdown answers", () => {
+  const markdown = payloadToMarkdown({
+    tool_input: {
+      answers: {
+        "Pick a target": "**Edge**\n\n- low latency",
+        "Which framework?": "React",
+      },
+    },
+  });
+  assert.match(markdown, /### Answers/);
+  assert.match(markdown, /\*\*Pick a target\*\*\n\n\*\*Edge\*\*/);
+  assert.match(markdown, /- low latency/);
+});
+
+test("a questions list becomes a list with its options", () => {
+  const markdown = payloadToMarkdown({
+    tool_input: {
+      questions: [
+        {
+          header: "Target",
+          question: "Where should we deploy?",
+          options: [
+            { label: "Edge", description: "low latency" },
+            "Origin",
+          ],
+        },
+      ],
+    },
+  });
+  assert.match(markdown, /### Questions/);
+  assert.match(markdown, /1\. \*\*Target\*\* — Where should we deploy\?/);
+  assert.match(markdown, /   - \*\*Edge\*\* — low latency/);
+  assert.match(markdown, /   - \*\*Origin\*\*/);
+});
+
+test("nested tool content is flattened to its text", () => {
+  assert.equal(
+    payloadToMarkdown({
+      tool_response: { content: [{ type: "text", text: "hello **world**" }] },
+    }),
+    "hello **world**",
+  );
+});
+
+test("circular payloads fall back instead of throwing", () => {
+  const circular: Record<string, unknown> = { label: "loop" };
+  circular.self = circular;
+  const markdown = payloadToMarkdown(circular);
+  assert.match(markdown, /unserializable|\[circular reference\]/);
 });

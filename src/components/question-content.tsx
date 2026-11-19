@@ -1,6 +1,9 @@
-import { Code2, Eye, Send, X } from "lucide-react";
+import { Check, Code2, Eye, Send, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { QuestionPanelMode } from "@/config/app-config";
+import { cn } from "@/lib/utils";
+import { AnswerRows } from "./answer-rows";
+import { MarkdownView } from "./markdown-view";
 import { QuestionPanelModeControl } from "./question-panel-mode-control";
 import { QuestionResultList } from "./question-result";
 import { Button } from "./ui/button";
@@ -9,14 +12,15 @@ import {
   ToggleGroup,
   ToggleGroupItem,
 } from "./ui/toggle-group";
-import { renderMarkdownPreview } from "../lib/markdown-preview";
 import {
   normalizeQuestionOptions,
   type InteractionResult,
   type QuestionDescriptor,
+  type QuestionOption,
 } from "../lib/interaction-contract";
 import {
   buildQuestionAnswers,
+  matchAnswerOptions,
   questionPanelSubmittable,
 } from "../lib/question-panel-model";
 import {
@@ -120,6 +124,27 @@ export function QuestionContent({
     );
   };
 
+  // Once the request closes the app clears drafts, so the selected chip has to
+  // come from the recorded answer — otherwise every historical choice loses
+  // its highlight the moment the result arrives.
+  const selectedFor = (question: QuestionDescriptor): string[] => {
+    if (answer?.result) {
+      return matchAnswerOptions(
+        answer.result.answers[question.question] ?? "",
+        question.options,
+      ).labels;
+    }
+    return tokensOf(answer?.drafts[question.question]);
+  };
+
+  const unanswered = answer
+    ? answer.questions.filter(
+        (question) =>
+          question.required !== false &&
+          !answers[question.question]?.trim(),
+      ).length
+    : 0;
+
   return (
     <div className="prompt-input">
       <div className="prompt-input__toolbar">
@@ -164,41 +189,58 @@ export function QuestionContent({
             {answer?.result ? (
               // The outcome leads: after a submit or a cancel the reader must
               // see what the host received before scrolling the questions.
-              <QuestionResultList result={answer.result} />
+              <QuestionResultList
+                questions={answer.questions}
+                result={answer.result}
+              />
             ) : null}
             {answer ? (
               answer.questions.map((question, index) => (
                 <article
                   className="question-surface__item"
-                  key={question.question}
+                  key={`${question.question}-${index}`}
                 >
-                  <h3>{question.header || `Question ${index + 1}`}</h3>
-                  <p className="question-surface__prompt">{question.question}</p>
+                  <div className="question-surface__heading">
+                    <h3>{question.header || `Question ${index + 1}`}</h3>
+                    {question.required !== false ? (
+                      <span className="question-surface__required">必答</span>
+                    ) : null}
+                    {question.multiSelect ? (
+                      <span className="question-surface__hint">可多选</span>
+                    ) : null}
+                  </div>
+                  <MarkdownView
+                    fallback="No question text captured."
+                    source={question.question}
+                  />
                   <QuestionOptions
                     disabled={disabled}
-                    labels={normalizeQuestionOptions(question.options).map(
-                      (option) => option.label,
-                    )}
                     onToggle={(label) => toggleOption(question, label)}
-                    selected={tokensOf(answer.drafts[question.question])}
+                    options={normalizeQuestionOptions(question.options)}
+                    selected={selectedFor(question)}
                   />
-                  <input
-                    aria-label={`Answer for ${question.question}`}
-                    className="question-surface__input"
-                    disabled={disabled}
-                    onChange={(event) =>
-                      answer.onDraftChange(question.question, event.target.value)
-                    }
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" && !disabled && submittable) {
-                        event.preventDefault();
-                        answer.onSend(answers);
+                  {answer.result ? null : (
+                    <input
+                      aria-label={`Answer for ${question.question}`}
+                      className="question-surface__input"
+                      disabled={disabled}
+                      onChange={(event) =>
+                        answer.onDraftChange(
+                          question.question,
+                          event.target.value,
+                        )
                       }
-                    }}
-                    placeholder="键入答案…"
-                    type="text"
-                    value={answer.drafts[question.question] ?? ""}
-                  />
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" && !disabled && submittable) {
+                          event.preventDefault();
+                          answer.onSend(answers);
+                        }
+                      }}
+                      placeholder="选择选项，或直接输入答案…"
+                      type="text"
+                      value={answer.drafts[question.question] ?? ""}
+                    />
+                  )}
                 </article>
               ))
             ) : (
@@ -208,7 +250,9 @@ export function QuestionContent({
           {live && answer ? (
             <footer className="question-surface__footer">
               <span className="question-surface__meta">
-                {`${answer.questions.length} 个问题 · 一次提交`}
+                {unanswered
+                  ? `${answer.questions.length} 个问题 · 还需回答 ${unanswered} 项`
+                  : `${answer.questions.length} 个问题 · 一次提交`}
               </span>
               <div className="question-surface__actions">
                 {answer.pending ? (
@@ -224,7 +268,7 @@ export function QuestionContent({
                   variant="ghost"
                 >
                   <X aria-hidden="true" data-icon="inline-start" />
-                  Cancel
+                  取消
                 </Button>
                 <Button
                   disabled={disabled || !submittable}
@@ -234,7 +278,7 @@ export function QuestionContent({
                   variant="default"
                 >
                   <Send aria-hidden="true" data-icon="inline-start" />
-                  提交发送
+                  一次性提交
                 </Button>
               </div>
             </footer>
@@ -251,17 +295,17 @@ export function QuestionContent({
  * readable without looking answerable.
  */
 function QuestionOptions({
-  labels,
+  options,
   selected,
   disabled,
   onToggle,
 }: {
-  labels: readonly string[];
+  options: readonly QuestionOption[];
   selected: readonly string[];
   disabled: boolean;
   onToggle: (label: string) => void;
 }) {
-  if (!labels.length) {
+  if (!options.length) {
     return null;
   }
   return (
@@ -270,18 +314,28 @@ function QuestionOptions({
       className="question-options"
       role="group"
     >
-      {labels.map((label) => (
-        <button
-          aria-pressed={selected.includes(label)}
-          className="question-options__option"
-          disabled={disabled}
-          key={label}
-          onClick={() => onToggle(label)}
-          type="button"
-        >
-          {label}
-        </button>
-      ))}
+      {options.map((option, index) => {
+        const pressed = selected.includes(option.label);
+        return (
+          <button
+            aria-pressed={pressed}
+            className="question-options__option"
+            disabled={disabled}
+            key={`${option.label}-${index}`}
+            onClick={() => onToggle(option.label)}
+            title={option.description || undefined}
+            type="button"
+          >
+            {pressed ? <Check aria-hidden="true" /> : null}
+            <span className="question-options__label">{option.label}</span>
+            {option.description ? (
+              <small className="question-options__description">
+                {option.description}
+              </small>
+            ) : null}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -299,11 +353,20 @@ function StaticQuestionContent({
       </section>
     );
   }
+  const descriptors: QuestionDescriptor[] = content.prompts.map((prompt) => ({
+    question: prompt.question,
+    options: prompt.options,
+  }));
+
   return (
     <>
       {content.prompts.length ? (
         content.prompts.map((prompt, index) => (
           <StaticPrompt
+            answer={
+              content.answers.find((item) => item.question === prompt.question)
+                ?.answer
+            }
             index={index}
             key={`${prompt.title}-${index}`}
             prompt={prompt}
@@ -312,26 +375,20 @@ function StaticQuestionContent({
       ) : content.message ? (
         <section className="question-surface__item">
           <h3>Question</h3>
-          <MarkdownPreview source={content.message} />
+          <MarkdownView source={content.message} />
         </section>
       ) : content.plan ? (
         // Plan approval (ZCode/Claude ExitPlanMode) carries its question as a
         // Markdown plan rather than a question string or options.
         <section className="question-surface__item">
           <h3>Plan</h3>
-          <MarkdownPreview source={content.plan} />
+          <MarkdownView source={content.plan} />
         </section>
       ) : null}
       {content.answers.length ? (
         <section className="question-surface__item">
           <h3>Answers</h3>
-          <ul className="question-content__options">
-            {content.answers.map((item, index) => (
-              <li key={`${item.question}-${index}`}>
-                {item.question} → {item.answer}
-              </li>
-            ))}
-          </ul>
+          <AnswerRows questions={descriptors} rows={content.answers} />
         </section>
       ) : null}
     </>
@@ -339,51 +396,43 @@ function StaticQuestionContent({
 }
 
 function StaticPrompt({
+  answer,
   index,
   prompt,
 }: {
+  answer?: string;
   index: number;
   prompt: UserQuestionPrompt;
 }) {
+  const selected = matchAnswerOptions(answer ?? "", prompt.options).labels;
   return (
     <section className="question-surface__item">
       <h3>{prompt.title || `Question ${index + 1}`}</h3>
-      <MarkdownPreview source={prompt.question} />
+      <MarkdownView source={prompt.question} />
       {prompt.options.length ? (
         <div
           aria-label="Question options"
           className="question-options"
           role="group"
         >
-          {prompt.options.map((option, optionIndex) => (
-            <span
-              className="question-options__option is-static"
-              key={optionIndex}
-            >
-              {option}
-            </span>
-          ))}
+          {prompt.options.map((option, optionIndex) => {
+            const chosen = selected.includes(option);
+            return (
+              <span
+                className={cn(
+                  "question-options__option",
+                  chosen && "is-selected",
+                  "is-static",
+                )}
+                key={`${option}-${optionIndex}`}
+              >
+                {chosen ? <Check aria-hidden="true" /> : null}
+                {option}
+              </span>
+            );
+          })}
         </div>
       ) : null}
     </section>
-  );
-}
-
-function MarkdownPreview({ source }: { source: string }) {
-  const render = useMemo(() => renderMarkdownPreview(source), [source]);
-  if (!render.valid) {
-    // An invalid or empty markdown source renders as the captured text,
-    // never as a broken or half-rendered document.
-    return (
-      <p className="prompt-content__text">
-        {source || "No question text captured."}
-      </p>
-    );
-  }
-  return (
-    <div
-      className="markdown-preview"
-      dangerouslySetInnerHTML={{ __html: render.html }}
-    />
   );
 }

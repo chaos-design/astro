@@ -6,7 +6,10 @@
  */
 
 import type { QuestionPanelMode } from "../config/app-config.ts";
-import type { QuestionDescriptor } from "./interaction-contract.ts";
+import type {
+  QuestionDescriptor,
+  QuestionOption,
+} from "./interaction-contract.ts";
 
 export { type QuestionPanelMode };
 
@@ -103,6 +106,28 @@ export function buildQuestionAnswers(input: {
     }
   }
   return answers;
+}
+
+/**
+ * Split a captured answer back into the option labels it selected and any
+ * free text. Only whole comma tokens that exactly match a declared label count
+ * as a selection, so a free-text answer like "Paris, France" never lights up a
+ * "France" option, and a selected chip never reappears as prose.
+ */
+export function matchAnswerOptions(
+  answer: string,
+  options: readonly (QuestionOption | string)[] | undefined,
+): { labels: string[]; text: string } {
+  const labels = (options ?? []).map((option) =>
+    typeof option === "string" ? option : option.label,
+  );
+  const tokens = (answer ?? "")
+    .split(",")
+    .map((token) => token.trim())
+    .filter(Boolean);
+  const matched = labels.filter((label) => tokens.includes(label));
+  const text = tokens.filter((token) => !labels.includes(token)).join(", ");
+  return { labels: matched, text };
 }
 
 export function questionPanelSubmittable(

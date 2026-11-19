@@ -1,5 +1,12 @@
-import type { InteractionResult } from "../lib/interaction-contract";
-import { interactionPanelStatus } from "../lib/interaction-panel-model";
+import { AnswerRows } from "./answer-rows";
+import type {
+  InteractionResult,
+  QuestionDescriptor,
+} from "../lib/interaction-contract";
+import {
+  interactionPanelStatus,
+  resultAnswerRows,
+} from "../lib/interaction-panel-model";
 
 /**
  * The closed request, in one place: the floating card shows it while the card
@@ -8,29 +15,32 @@ import { interactionPanelStatus } from "../lib/interaction-panel-model";
  */
 export function QuestionResultList({
   result,
+  questions,
 }: {
   result: InteractionResult | null;
+  questions?: readonly QuestionDescriptor[];
 }) {
   const status = interactionPanelStatus(result);
-  const answers = result?.answers ?? {};
+  const rows = questions?.length
+    ? resultAnswerRows({ questions }, result)
+    : Object.entries(result?.answers ?? {}).map(([question, answer]) => ({
+        question,
+        answer,
+      }));
   return (
-    <div className="question-result">
-      {Object.keys(answers).length ? (
-        <ul>
-          {Object.entries(answers).map(([question, answer]) => (
-            <li key={question}>
-              <span>{question}</span>
-              <strong>{answer}</strong>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p>
-          {status === "cancelled"
-            ? "Cancelled; the host's native prompt is still in charge."
-            : "No answer arrived before the host's window closed."}
-        </p>
-      )}
-    </div>
+    <AnswerRows
+      meta={
+        result
+          ? {
+              answeredBy: result.answeredBy,
+              answeredAt: result.answeredAt,
+              elapsedMs: result.elapsedMs,
+            }
+          : null
+      }
+      questions={questions}
+      rows={rows}
+      status={status}
+    />
   );
 }

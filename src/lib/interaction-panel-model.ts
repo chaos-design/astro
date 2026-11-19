@@ -160,7 +160,7 @@ export function interactionTimeLeft(
 
 /** Closed-state answer rows, one per question, in the request's order. */
 export function resultAnswerRows(
-  request: InteractionRequest,
+  request: { questions: readonly QuestionDescriptor[] },
   result: InteractionResult | null,
 ): Array<{ question: string; answer: string }> {
   if (!result) {

@@ -8727,7 +8727,14 @@ pre,
 }
 
 .question-result {
-  padding: 12px 12px 0;
+  min-width: 0;
+  padding: 12px 12px 4px;
+}
+
+.question-surface__heading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .question-surface__item h3 {
@@ -8735,6 +8742,22 @@ pre,
   color: var(--text-strong, inherit);
   font-size: var(--text-label, 0.75rem);
   font-weight: var(--weight-medium, 600);
+}
+
+.question-surface__required,
+.question-surface__hint {
+  padding: 1px 5px;
+  border: 1px solid var(--line-bright);
+  border-radius: 4px;
+  color: var(--muted-soft, var(--muted));
+  font-family: var(--font-mono, monospace);
+  font-size: 0.625rem;
+  letter-spacing: 0.02em;
+}
+
+.question-surface__required {
+  border-color: color-mix(in srgb, var(--teal) 42%, transparent);
+  color: var(--teal);
 }
 
 .question-surface__prompt {
@@ -8815,15 +8838,43 @@ pre,
 }
 
 .question-options__option {
+  display: inline-flex;
   max-width: 100%;
-  padding: 6px 14px;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 6px;
+  padding: 6px 12px;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: 10px;
   background: var(--panel);
   color: inherit;
   font-size: 0.8125rem;
+  text-align: left;
   overflow-wrap: anywhere;
   cursor: pointer;
+  transition:
+    border-color 140ms ease,
+    background 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.question-options__option > svg {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 12px;
+  color: var(--teal);
+}
+
+.question-options__label {
+  font-weight: var(--weight-medium, 600);
+}
+
+.question-options__description {
+  flex-basis: 100%;
+  color: var(--muted-soft, var(--muted));
+  font-size: 0.6875rem;
+  line-height: 1.45;
 }
 
 .question-options__option:hover:not(:disabled):not(.is-static) {
@@ -8831,14 +8882,21 @@ pre,
   background: color-mix(in srgb, var(--teal) 12%, var(--panel));
 }
 
-.question-options__option[aria-pressed="true"] {
+.question-options__option[aria-pressed="true"],
+.question-options__option.is-selected {
   border-color: var(--teal);
   background: color-mix(in srgb, var(--teal) 20%, var(--panel));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--teal) 28%, transparent);
 }
 
 .question-options__option:disabled {
   cursor: default;
-  opacity: 0.55;
+  opacity: 0.72;
+}
+
+.question-options__option:disabled[aria-pressed="true"],
+.question-options__option.is-static.is-selected {
+  opacity: 1;
 }
 
 .question-options__option.is-static {
@@ -8894,20 +8952,82 @@ pre,
   font-size: var(--text-caption);
 }
 
-.question-result ul {
+.answer-rows {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   margin: 0;
   padding: 0;
   list-style: none;
-  font-size: 0.8125rem;
 }
 
-.question-result li {
+.answer-rows__row {
+  min-width: 0;
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+}
+
+.answer-rows__row:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.answer-rows__question {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--muted-soft, var(--muted));
+  font-size: 0.6875rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.answer-rows__value {
+  min-width: 0;
+  color: var(--text);
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+
+.answer-rows__chips {
   display: flex;
-  justify-content: space-between;
-  gap: 12px;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.answer-rows__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 3px 9px;
+  border: 1px solid color-mix(in srgb, var(--teal) 46%, transparent);
+  border-radius: 999px;
+  color: var(--teal);
+  background: color-mix(in srgb, var(--teal) 14%, var(--panel));
+  font-size: 0.75rem;
+  font-weight: var(--weight-medium, 600);
+  overflow-wrap: anywhere;
+}
+
+.answer-rows__chip svg {
+  width: 11px;
+  height: 11px;
+  flex: 0 0 11px;
+}
+
+.answer-rows__value .markdown-preview {
+  margin-top: 4px;
+}
+
+.answer-rows__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: 8px 0 0;
+  color: var(--muted, inherit);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.625rem;
+  letter-spacing: 0.02em;
 }
 
 .question-result p {

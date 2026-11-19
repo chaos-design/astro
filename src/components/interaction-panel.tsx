@@ -117,10 +117,9 @@ export function InteractionPanel({
     [drafts, draftSelections, request.questions],
   );
   const submittable = questionPanelSubmittable(request.questions, answerMap);
-  const summary =
-    collapsed && status === "open"
-      ? request.questions[0]?.header || request.questions[0]?.question
-      : null;
+  const summary = collapsed
+    ? request.questions[0]?.header || request.questions[0]?.question
+    : null;
   const panelRef = useRef<HTMLElement | null>(null);
   const optionsRef = useRef<HTMLButtonElement | null>(null);
   // Drive the countdown from the host's own timestamps with one CSS animation
@@ -182,10 +181,13 @@ export function InteractionPanel({
       return;
     }
     const target = event.target;
+    // Match by editability, not by a tag-name blacklist that drifts as new
+    // controls appear: digits typed into the answer field must select nothing,
+    // and Enter there submits only through the field's own handler.
     if (
       target instanceof HTMLElement &&
       (target.isContentEditable ||
-        ["TEXTAREA", "SELECT"].includes(target.tagName))
+        target.closest("input, textarea, select, [contenteditable]"))
     ) {
       return;
     }
@@ -302,77 +304,93 @@ export function InteractionPanel({
               aria-label="Question content"
               className="interaction-panel__questions"
             >
-              {request.questions.map((question) => {
+              {request.questions.map((question, questionIndex) => {
                 const selected = draftSelections[question.question] ?? [];
                 return (
                   <article
                     className="interaction-panel__question"
-                    key={question.question}
+                    key={`${question.question}-${questionIndex}`}
                   >
                     <div className="interaction-panel__question-heading">
                       <h3>{question.header || question.question}</h3>
+                      {question.required !== false ? (
+                        <span className="question-surface__required">必答</span>
+                      ) : null}
+                      {question.multiSelect ? (
+                        <span className="question-surface__hint">可多选</span>
+                      ) : null}
                     </div>
-                    {(
-                      <>
-                        <p className="interaction-panel__prompt">
-                          {question.question}
-                        </p>
-                        <div
-                          aria-label={question.question}
-                          className="interaction-panel__options"
-                          role="group"
-                        >
-                          {optionLabels(question).map((label, optionIndex) => {
-                            const pressed = selected.includes(label);
-                            const description = optionDescription(question, label);
-                            return (
-                              <button
-                                ref={
-                                  question === request.questions[0] &&
-                                  optionIndex === 0
-                                    ? optionsRef
-                                    : undefined
-                                }
-                                aria-pressed={pressed}
-                                className="interaction-panel__option"
-                                disabled={readOnly || pending}
-                                key={label}
-                                onClick={() =>
-                                  toggleOption(question.question, label)
-                                }
-                                type="button"
-                              >
-                                {pressed ? <Check aria-hidden="true" /> : null}
-                                <span>{label}</span>
-                                {description ? <small>{description}</small> : null}
-                              </button>
-                            );
-                          })}
-                        </div>
-
-                        <div className="interaction-panel__text">
-                          <input
-                            aria-label={`Answer for ${question.question}`}
-                            disabled={readOnly || pending}
-                            onChange={(event) =>
-                              setDrafts((current) => ({
-                                ...current,
-                                [question.question]: event.target.value,
-                              }))
+                    <p className="interaction-panel__prompt">
+                      {question.question}
+                    </p>
+                    <div
+                      aria-label={question.question}
+                      className="interaction-panel__options"
+                      role="group"
+                    >
+                      {optionLabels(question).map((label, optionIndex) => {
+                        const pressed = selected.includes(label);
+                        const description = optionDescription(question, label);
+                        return (
+                          <button
+                            ref={
+                              question === request.questions[0] &&
+                              optionIndex === 0
+                                ? optionsRef
+                                : undefined
                             }
-                            placeholder="选一项或直接输入；提交时发送输入框内容"
-                            type="text"
-                            value={drafts[question.question] ?? ""}
-                          />
-                        </div>
-                      </>
-                    )}
+                            aria-pressed={pressed}
+                            className="interaction-panel__option"
+                            disabled={readOnly || pending}
+                            key={`${label}-${optionIndex}`}
+                            onClick={() =>
+                              toggleOption(question.question, label)
+                            }
+                            type="button"
+                          >
+                            {pressed ? <Check aria-hidden="true" /> : null}
+                            <span>{label}</span>
+                            {description ? <small>{description}</small> : null}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <div className="interaction-panel__text">
+                      <input
+                        aria-label={`Answer for ${question.question}`}
+                        disabled={readOnly || pending}
+                        onChange={(event) =>
+                          setDrafts((current) => ({
+                            ...current,
+                            [question.question]: event.target.value,
+                          }))
+                        }
+                        onKeyDown={(event) => {
+                          if (
+                            event.key === "Enter" &&
+                            !readOnly &&
+                            !pending &&
+                            submittable
+                          ) {
+                            event.preventDefault();
+                            submit();
+                          }
+                        }}
+                        placeholder="选择选项，或直接输入答案…"
+                        type="text"
+                        value={drafts[question.question] ?? ""}
+                      />
+                    </div>
                   </article>
                 );
               })}
             </div>
           ) : (
-            <QuestionResultList result={result} />
+            <QuestionResultList
+              questions={request.questions}
+              result={result}
+            />
           )}
 
           {status === "open" ? (

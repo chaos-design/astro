@@ -765,10 +765,22 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   `isUserQuestionStartEvent`: that predicate drives run state (question starts,
   not answers), while the preview follows the display key, so an answer row
   still previews its payload.
+- A captured answer has one rendering: `src/components/answer-rows.tsx`, used
+  by the floating card's result, the docked question surface and the inspector's
+  historical Answers section. It reconstructs selected options through
+  `matchAnswerOptions` in `src/lib/question-panel-model.ts` (whole comma tokens
+  matching a declared label, so "Paris, France" never lights a "France" chip),
+  paints them as highlighted chips, and renders any remaining free text as
+  Markdown. `QuestionResultList` keeps the request's answer order through
+  `resultAnswerRows`; do not re-derive answers from drafts after the result
+  arrives — the app clears drafts on close, which is why historical selections
+  used to lose their highlight.
 - Turning an inspector payload into a Markdown preview document lives only in
-  `src/lib/payload-markdown.ts` (`payloadToMarkdown`: a single text field is the
-  document, multiple fields keep their structure and structured values become
-  JSON code blocks); Markdown parsing, syntax highlighting and HTML sanitizing
+  `src/lib/payload-markdown.ts` (`payloadToMarkdown`: a lone text field is the
+  document, an `answers` map becomes question → Markdown-answer rows, a
+  `questions` list becomes a numbered list with option bullets, nested tool
+  content is flattened to its text, and anything else keeps its fields with
+  fenced JSON); Markdown parsing, syntax highlighting and HTML sanitizing
   live only in `src/lib/markdown-preview.ts` (`renderMarkdownPreview`, with
   highlight.js registering only the languages captured payloads carry). The
   Input/Output/Raw tabs and the global expand layer share these two sources;

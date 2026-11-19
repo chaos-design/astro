@@ -67,15 +67,27 @@
     page attaches to `/api/stream`, and the hook launch flow consumes it to
     decide whether the browser still gets opened;
   - turning a payload into a Markdown preview document lives only in
-    `src/lib/payload-markdown.ts` (`payloadToMarkdown`: a single text field is
-    the document, multiple fields keep their structure, and structured values
-    become JSON code blocks); Markdown parsing, code syntax highlighting and
+    `src/lib/payload-markdown.ts` (`payloadToMarkdown`: a lone text field is the
+    document, an `answers` map becomes question → Markdown-answer rows, a
+    `questions` list a numbered list with option bullets, nested tool content is
+    flattened to text, and anything else keeps its fields with fenced JSON);
+    Markdown parsing, code syntax highlighting and
     HTML sanitizing live only in `src/lib/markdown-preview.ts`
     (`renderMarkdownPreview`, with highlight.js registering only the languages
     captured payloads carry). The inspector's Input/Output/Raw tabs and the
     global overlay share these two single sources; `src/components/payload-overlay.tsx`
     only renders them and owns the Preview/Code switch, never a second
     conversion or sanitizer;
+  - a captured answer has one rendering: `src/components/answer-rows.tsx`, shared
+    by the floating card's result, the docked question surface and the
+    inspector's historical Answers section. Selected options are reconstructed
+    from the answer text by `matchAnswerOptions` in `src/lib/question-panel-model.ts`
+    (only comma tokens exactly matching a declared label count, so free text
+    like "Paris, France" never lights a "France" chip), painted as highlighted
+    chips, with any remaining text rendered as Markdown. `QuestionResultList`
+    keeps the request's question order through `resultAnswerRows`; drafts are
+    cleared once the result arrives, so a historical selection must be derived
+    from the answer, never from the draft;
   - the run model (which LLM a prompt executed on) is read only in
     `src/lib/trace-model.ts` (`extractRunModel` + the SessionStart fallback in
     `buildSessionPromptRuns`), which normalizes every client's payload spelling
