@@ -58,9 +58,11 @@
     `preview-state.json`）：服务端在控制台页面接入 `/api/stream` 时打点，
     Hook 启动流程据此决定是否还需要为用户打开浏览器；
   - 把载荷变成 Markdown 预览文档只在 `src/lib/payload-markdown.ts`
-    （`payloadToMarkdown`：孤立文本字段直接作为文档，`answers` 渲染成问题→Markdown
-    答案行，`questions` 渲染成带选项的列表，嵌套工具内容拍平为文本，其余保留
-    字段与 JSON 代码块）；Markdown 的解析、代码语法高亮与 HTML 清理
+    （`payloadToMarkdown`：在任意深度优先找真正的捕获结果——`captured`、
+    `tool_response`、`output`、`result` 及其嵌套 `content` 数组——直接作为文本返回，
+    让工具返回值的 Markdown 被真正渲染，而不是展示字段名和 JSON 块；JSON 结果
+    用代码块包住以启用高亮；`answers` 渲染成问题→Markdown 答案行，`questions`
+    渲染成带选项的列表，其余保留字段与 JSON 代码块）；Markdown 的解析、代码语法高亮与 HTML 清理
     只在 `src/lib/markdown-preview.ts`（`renderMarkdownPreview`，highlight.js 只
     注册捕获载荷常见语言）。检查器的 Input/Output/Raw 与全局浮层共用这两个
     单一来源，浮层组件 `src/components/payload-overlay.tsx` 只负责展示与
@@ -140,11 +142,13 @@
     问答面在窄面板内换行、正文区域内滚动，不撑宽日志列。
     两种作答面都用 `src/lib/question-panel-model.ts` 构建答案：
     选项点击只高亮并填入草稿，输入框内容覆盖选项值，没有 Set；只有一个 Submit，
-    一次提交全部问题。`dock-full` / `float` 是两者共享并持久化的落位
+    一次提交全部问题，底部按钮统一「提交 / 取消」顺序。`dock-full` / `float` 是两者共享的落位
     （`src/lib/question-panel-model.ts` 负责把升级前的 `dock-half` / `half` /
-    `bottom` / `side` 归一化过来）：`dock-full` 把同一份问答面停到检查器 Tab 以下并
-    铺满详情区，只有 `float` 才在画布上浮出卡片，因此卡片要求高亮原子正是提问，区域
-    布局则连历史提问也能展开；EVENTS 列收起时没有可停靠的区域，区域布局临时退回卡片，
+    `bottom` / `side` 归一化过来）：未手动切换时由 `autoQuestionPanelMode` 按运行状态决定——
+    可作答的提问浮在画布上，已结束/历史提问铺满详情区；只有手动切换才写入偏好，避免把
+    派生默认值固化到下次加载。`dock-full` 把同一份问答面停到检查器 Tab 以下并
+    铺满详情区、行距更紧以显示更多正文，只有 `float` 才在画布上浮出卡片且每个选项独占一行，
+    因此卡片要求高亮原子正是提问，区域布局则连历史提问也能展开；EVENTS 列收起时没有可停靠的区域，区域布局临时退回卡片，
     保证同步窗口内仍可作答。浮层卡片与检查器作答控件都是「实时作答」能力，只在当前任务
     仍在执行中才可用：判定键在左侧 RUN HISTORY 卡片显示的那个**会话**状态上（对当前会话
     走 `getRunHistoryDisplayState`），而非被选中的单条 prompt run（`isQuestionActionable`，

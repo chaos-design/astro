@@ -67,10 +67,13 @@
     page attaches to `/api/stream`, and the hook launch flow consumes it to
     decide whether the browser still gets opened;
   - turning a payload into a Markdown preview document lives only in
-    `src/lib/payload-markdown.ts` (`payloadToMarkdown`: a lone text field is the
-    document, an `answers` map becomes question → Markdown-answer rows, a
-    `questions` list a numbered list with option bullets, nested tool content is
-    flattened to text, and anything else keeps its fields with fenced JSON);
+    `src/lib/payload-markdown.ts` (`payloadToMarkdown`: the real captured result
+    is found at any depth — `captured`, `tool_response`, `output`, `result` and
+    their nested `content` arrays — and returned as its text, so a Markdown tool
+    result renders as Markdown instead of field labels and JSON; JSON results
+    are fenced for the highlighter; an `answers` map becomes question →
+    Markdown-answer rows, a `questions` list a numbered list with option bullets,
+    and anything else keeps its fields with fenced JSON);
     Markdown parsing, code syntax highlighting and
     HTML sanitizing live only in `src/lib/markdown-preview.ts`
     (`renderMarkdownPreview`, with highlight.js registering only the languages
@@ -188,14 +191,20 @@
     column. Both answer surfaces build maps only in
     `src/lib/question-panel-model.ts`: option clicks highlight and fill drafts,
     typed text overrides an option without a Set step, and one Submit sends
-    every question. `dock-full` / `float` is one shared persisted placement
+    every question; the footer order is Submit / Cancel on both surfaces.
+    `dock-full` / `float` is one shared placement
     (`src/lib/question-panel-model.ts` normalizes the retired `dock-half` /
-    `half` / `bottom` / `side` values): `dock-full` renders the same question
-    surface under the inspector tabs filling the detail area, and only `float`
-    puts the card over the canvas — so the card needs the question atom
-    highlighted, while the docked layout also expands a historical question the
-    reader selected. A collapsed EVENTS column has no region to dock into, so
-    the docked layout falls back to the card for the synchronous window. The
+    `half` / `bottom` / `side` values). Until the reader switches by hand,
+    `autoQuestionPanelMode` follows the run state: an answerable question floats
+    over the canvas, a finished or captured one docks full; only an explicit
+    switch is persisted, so a derived default is not frozen into the next load.
+    `dock-full` renders the same question surface under the inspector tabs
+    filling the detail area with tighter rows, and only `float` puts the card
+    over the canvas with one option per full-width row — so the card needs the
+    question atom highlighted, while the docked layout also expands a historical
+    question the reader selected. A collapsed EVENTS column has no region to
+    dock into, so the docked layout falls back to the card for the synchronous
+    window. The
     floating card and the inspector's answer controls are a live affordance:
     `isQuestionActionable` in `src/lib/question-interaction.ts` (delegating to
     `isPromptExecuting`, so both `active`/running and `waiting` count) gates

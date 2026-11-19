@@ -179,7 +179,7 @@ export function QuestionContent({
       </div>
       {viewMode === "preview" && answer ? (
         // The batch rule belongs with the question list, not the action bar:
-        // the footer stays a pure Cancel / 提交 pair on every surface.
+        // the footer stays a pure 提交 / Cancel pair on every surface.
         <div className="question-surface__summary">
           <span>{`${answer.questions.length} 个问题 · 一次提交`}</span>
           {unanswered ? (
@@ -267,16 +267,6 @@ export function QuestionContent({
                   </span>
                 ) : null}
                 <Button
-                  disabled={disabled}
-                  onClick={answer.onCancel}
-                  size="sm"
-                  type="button"
-                  variant="ghost"
-                >
-                  <X aria-hidden="true" data-icon="inline-start" />
-                  取消
-                </Button>
-                <Button
                   disabled={disabled || !submittable}
                   onClick={() => answer.onSend(answers)}
                   size="sm"
@@ -285,6 +275,16 @@ export function QuestionContent({
                 >
                   <Send aria-hidden="true" data-icon="inline-start" />
                   提交
+                </Button>
+                <Button
+                  disabled={disabled}
+                  onClick={answer.onCancel}
+                  size="sm"
+                  type="button"
+                  variant="ghost"
+                >
+                  <X aria-hidden="true" data-icon="inline-start" />
+                  取消
                 </Button>
               </div>
             </footer>

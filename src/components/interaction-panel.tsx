@@ -409,16 +409,6 @@ export function InteractionPanel({
             <footer className="interaction-panel__footer">
               <div className="interaction-panel__footer-actions">
                 <Button
-                  disabled={readOnly || pending}
-                  onClick={onCancel}
-                  size="sm"
-                  type="button"
-                  variant="ghost"
-                >
-                  <X aria-hidden="true" data-icon="inline-start" />
-                  取消
-                </Button>
-                <Button
                   disabled={readOnly || pending || !submittable}
                   onClick={submit}
                   size="sm"
@@ -427,6 +417,16 @@ export function InteractionPanel({
                 >
                   <Send aria-hidden="true" data-icon="inline-start" />
                   提交
+                </Button>
+                <Button
+                  disabled={readOnly || pending}
+                  onClick={onCancel}
+                  size="sm"
+                  type="button"
+                  variant="ghost"
+                >
+                  <X aria-hidden="true" data-icon="inline-start" />
+                  取消
                 </Button>
                 {pending ? (
                   <span className="interaction-panel__pending" role="status">

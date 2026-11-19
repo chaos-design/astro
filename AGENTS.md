@@ -780,11 +780,13 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   arrives — the app clears drafts on close, which is why historical selections
   used to lose their highlight.
 - Turning an inspector payload into a Markdown preview document lives only in
-  `src/lib/payload-markdown.ts` (`payloadToMarkdown`: a lone text field is the
-  document, an `answers` map becomes question → Markdown-answer rows, a
-  `questions` list becomes a numbered list with option bullets, nested tool
-  content is flattened to its text, and anything else keeps its fields with
-  fenced JSON); Markdown parsing, syntax highlighting and HTML sanitizing
+  `src/lib/payload-markdown.ts` (`payloadToMarkdown`: a captured result is found
+  at any depth — `captured`, `tool_response`, `output`, `result` and their nested
+  content arrays — and returned as its real text, so a tool result renders as
+  the Markdown it is instead of a wall of field labels and fenced JSON; a JSON
+  result is fenced for the highlighter; an `answers` map becomes question →
+  Markdown-answer rows, a `questions` list a numbered list with option bullets,
+  and anything else keeps its fields with fenced JSON); Markdown parsing, syntax highlighting and HTML sanitizing
   live only in `src/lib/markdown-preview.ts` (`renderMarkdownPreview`, with
   highlight.js registering only the languages captured payloads carry). The
   Input/Output/Raw tabs and the global expand layer share these two sources;
@@ -890,19 +892,25 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   ~2.4s before it slides away. A stream reset that wiped the record dismisses
   it at once instead of showing a stale question. `dock-full` / `float`
   (`src/lib/question-panel-model.ts`, which also normalizes the retired
-  `dock-half` / `half` / `bottom` / `side` values) are the one shared, persisted
-  placement of both surfaces: `dock-full` renders that same question surface
-  under the inspector tabs and fills the detail area, and only `float` puts the
-  card over the canvas, so the card still requires the highlighted atom to be
-  the question. The docked layout also expands a historical question the reader
-  selected, which is how a closed request is re-opened for reading. A collapsed
-  EVENTS column has no region to dock into, so `questionDocked` in `app.tsx`
-  falls back to the card for the synchronous window. Questions inside the card
-  are never foldable (only the whole card collapses from its header), its
-  question list scrolls edge to edge — the card carries no outer padding, the
-  rows carry the gutters — so the scrollbar rides the card border, and the
-  keyboard shortcut legend sits in the card header between the summary and the
-  status so the footer keeps only the Submit / Cancel buttons. The
+  `dock-half` / `half` / `bottom` / `side` values) are the one shared placement
+  of both surfaces: `dock-full` renders that same question surface under the
+  inspector tabs and fills the detail area, and only `float` puts the card over
+  the canvas, so the card still requires the highlighted atom to be the
+  question. Until the reader switches layouts by hand, the mode follows the run
+  state (`autoQuestionPanelMode`: an answerable question floats so it stays next
+  to the run it blocks, a finished or captured one docks full); only an explicit
+  switch is persisted, so a derived default is not frozen across reloads. The
+  docked layout expands a historical question the reader selected, which is how
+  a closed request is re-opened for reading, and uses tighter rows so more of the
+  question fits; the floating card puts one option per full-width row for quick
+  answering. A collapsed EVENTS column has no region to dock into, so
+  `questionDocked` in `app.tsx` falls back to the card for the synchronous
+  window. Questions inside the card are never foldable (only the whole card
+  collapses from its header), its question list scrolls edge to edge — the card
+  carries no outer padding, the rows carry the gutters — so the scrollbar rides
+  the card border, and the keyboard shortcut legend sits in the card header
+  between the summary and the status so the footer keeps only the Submit / Cancel
+  buttons, in that order (the docked footer matches). The
   dock keeps the closed result (`QuestionResultList`) where the answer box was,
   mirroring the card's settle window.
   For faster answering the floating card focuses its first option and binds

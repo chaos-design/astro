@@ -69,6 +69,17 @@ export function isDockedQuestionPanelMode(mode: QuestionPanelMode): boolean {
 }
 
 /**
+ * The default placement while the reader has not picked one: a question that
+ * can be answered right now floats over the canvas so it stays visible next to
+ * the executing run; a finished or captured question docks full in the
+ * inspector so its whole text and every option fit on screen. The stored mode
+ * still wins once the reader switches layouts by hand.
+ */
+export function autoQuestionPanelMode(actionable: boolean): QuestionPanelMode {
+  return actionable ? "float" : "dock-full";
+}
+
+/**
  * Answer drafts are keyed by the verbatim question text, like the host's answer
  * map. A free-text draft wins over clicked option labels; multi-select labels
  * are emitted in the descriptor's declared order, never in click order.

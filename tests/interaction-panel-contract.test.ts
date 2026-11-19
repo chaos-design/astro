@@ -64,7 +64,7 @@ test("a closed panel renders only the result and marks the device that answered"
   assert.match(rows, /<MarkdownView source=\{text\} \/>/);
 });
 
-test("the floating card uses the same batch hint and Cancel / 提交 order", () => {
+test("the floating card uses the same batch hint and 提交 / 取消 order", () => {
   assert.match(panel, /question-surface__summary/);
   assert.match(panel, /className="question-options"/);
   assert.match(panel, /className="question-options__option"/);
@@ -74,7 +74,7 @@ test("the floating card uses the same batch hint and Cancel / 提交 order", () 
     panel.indexOf("<footer"),
     panel.indexOf("</footer>"),
   );
-  assert.ok(footer.indexOf("取消") < footer.indexOf("提交"));
+  assert.ok(footer.indexOf("提交") < footer.indexOf("取消"));
 });
 
 test("the panel styles cover the pressed option and the pending state", () => {

@@ -631,8 +631,12 @@ The inspector provides:
   list the reader saw, while every other payload turns into a Markdown document
   rendered (headings, lists, code blocks) with highlight.js syntax highlighting,
   after the same HTML sanitizer
-  strips acting markup. A single text field (message, output, plan text) is the
-  document itself; structured fields appear as highlighted JSON code blocks.
+  strips acting markup. A tool result is unwrapped at any depth (`captured`,
+  `tool_response`, `output`, `result` and their nested content) and rendered as
+  the text it really is, so a Markdown result becomes headings, lists and
+  highlighted code rather than field labels and a JSON string; JSON results are
+  fenced for the highlighter. A lone text field (message, output, plan text) is
+  the document itself; structured fields appear as highlighted JSON code blocks.
   With nothing previewable the overlay says so and `Code` still shows the raw
   payload. `Code` is the token-coloured structured JSON used in the inspector.
   Escape or the scrim closes the layer. The layer is global (portaled to the
@@ -747,7 +751,7 @@ labels in the declared option order with commas; the input field is the answer
 submitted at the end of the batch, so there is no Set step. Submit requires
 every required question and sends all answers once; the "N questions · one submit"
 hint sits above the question list, not in the action bar, and both placements use
-the same Cancel / Submit order. Esc/cancel ends the request
+the same Submit / Cancel order. Esc/cancel ends the request
 and falls back; another device answering first turns the panel read-only. The
 floating card also supports keyboard answering: it focuses the first option on
 open, digits `1`–`9` highlight that option of the first question, `Enter`
@@ -763,11 +767,16 @@ card's bottom edge. The list scrolls edge to edge — the card carries no outer
 padding, its rows carry the gutters — so the scrollbar rides the card's border
 instead of cutting into the question text; the shortcut legend moved up into the
 header, between the summary and the status (its long form lives in the title), so
-the footer keeps only the two buttons. The card is only the `Floating`
-one of two placements: switching to `Region full` moves the same question
-surface into the inspector's detail area and the card stops appearing over the
-canvas. A collapsed EVENTS column has no region to dock into, so the docked
-layout falls back to the card for the synchronous window.
+the footer keeps only the two buttons, Submit then Cancel. The card is only the
+`Floating` one of two placements: until you switch layouts by hand the choice
+follows the run state — an answerable question (session RUNNING / WAITING)
+floats, a finished or captured one docks full. Only a manual switch is saved, so
+a derived default is not frozen into the next load. In the floating card each
+option takes a full-width row for quick answering; switching to `Region full`
+moves the same question surface into the inspector's detail area with tighter
+rows so more of the question fits, and the card stops appearing over the canvas.
+A collapsed EVENTS column has no region to dock into, so the docked layout falls
+back to the card for the synchronous window.
 Once the request is answered, cancelled or timed out the card shows the result
 (ANSWERED / CANCELLED / …) for about two seconds and then slides away; the
 docked surface keeps the same result in place instead.
@@ -802,7 +811,7 @@ switch and the fold:
   open the chips are buttons (single-select and a plan approval's Approve/Reject
   highlight on click; multi-select toggles one by one and the draft keeps the
   declared option order), the input value is what Submit sends (no Set step),
-  and the Cancel / Submit bar is a sibling of the scrolling body, so it stays
+  and the Submit / Cancel bar is a sibling of the scrolling body, so it stays
   pinned to the bottom of the panel however long the question is.
 - **Code** shows the raw payload only — no options, no answer box, no submit bar.
 - **A closed or historical question** keeps the same chips as static, unclickable
@@ -811,9 +820,9 @@ switch and the fold:
   full Q&A inside the inspector.
 
 Long question text wraps inside the inspector width and the body scrolls instead
-of widening the log column. The region-half / region-full / floating layouts are
-one shared preference with the floating card (only `Floating` puts a card on the
-canvas).
+of widening the log column. The region-full / floating layouts are one shared
+placement with the floating card (only `Floating` puts a card on the canvas); it
+follows the run state until you switch it by hand.
 If a submit is rejected (busy, closed, answered elsewhere)
 the draft is kept and a notice explains why — it is never silently cleared. When one `AskUserQuestion` carries
 several descriptors the
@@ -968,10 +977,11 @@ group writes anything back to captured events.
   (`ASTROX_HISTORY_OPEN` / `ASTROX_CONSOLE_OPEN`); a collapsed column keeps a
   vertical label, and its arrow reopens it.
 - **Question panel layout** (`ASTROX_QUESTION_PANEL_MODE`): where the answer
-  surface lands when a question arrives — `Region full` (default: the whole
-  detail area below the tabs) or `Floating` (the card over the canvas, shown
-  only while the highlighted atom is the question). The two icons in the panel
-  header share this one preference.
+  surface lands — `Region full` (the whole detail area below the tabs) or
+  `Floating` (the card over the canvas, shown only while the highlighted atom is
+  the question). It follows the run state by default (floating while answerable,
+  region full otherwise); a manual choice sticks and is the only value saved.
+  The two icons in the panel header share this one preference.
 
 **Performance**
 

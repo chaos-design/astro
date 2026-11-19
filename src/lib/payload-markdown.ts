@@ -28,6 +28,24 @@ const TEXT_KEYS = [
   "reasoning",
 ];
 
+/**
+ * Fields that carry a *result* as opposed to metadata. They win over the
+ * generic key/value view at any depth, so a tool response wrapped next to ids
+ * and status still previews its Markdown body instead of a JSON blob. The
+ * global overlay passes `{ contract, captured }` for an atom tab; `captured`
+ * is the actual captured output and leads the list.
+ */
+const RESULT_KEYS = [
+  "captured",
+  "tool_response",
+  "toolResult",
+  "tool_result",
+  "result",
+  "output",
+  "stdout",
+  "stderr",
+];
+
 const MAX_DEPTH = 6;
 
 type UnknownRecord = Record<string, unknown>;
@@ -93,6 +111,63 @@ function unwrapText(value: unknown, depth: number, seen: WeakSet<object>): strin
     return unwrapText(entries[0][1], depth + 1, seen);
   }
   return "";
+}
+
+/**
+ * Find a readable result anywhere in a captured payload. `unwrapText` handles
+ * one container; this walks the tree and tries it on every result-bearing
+ * field, so `{ tool_use_id, tool_response: { content: [...] } }` previews the
+ * text the tool returned rather than a wall of field labels and fenced JSON.
+ */
+function findResultText(value: unknown, depth: number, seen: WeakSet<object>): string {
+  if (depth > MAX_DEPTH || value === null || typeof value !== "object" || seen.has(value)) {
+    return "";
+  }
+  seen.add(value);
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = findResultText(item, depth + 1, seen);
+      if (found.trim()) {
+        return found;
+      }
+    }
+    return "";
+  }
+  const record = value as UnknownRecord;
+  for (const key of RESULT_KEYS) {
+    if (!(key in record)) {
+      continue;
+    }
+    const text = unwrapText(record[key], depth + 1, new WeakSet());
+    if (text.trim()) {
+      return text;
+    }
+  }
+  for (const child of Object.values(record)) {
+    const found = findResultText(child, depth + 1, seen);
+    if (found.trim()) {
+      return found;
+    }
+  }
+  return "";
+}
+
+/**
+ * A result that is itself a JSON document belongs in a fenced block so the
+ * renderer's highlighter colours it; prose and Markdown stay as-is so headings,
+ * lists and inline code render normally.
+ */
+function resultToMarkdown(text: string): string {
+  const trimmed = text.trim();
+  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+    try {
+      JSON.parse(trimmed);
+      return `\`\`\`json\n${trimmed}\n\`\`\``;
+    } catch {
+      // Not JSON after all: keep the original text.
+    }
+  }
+  return text;
 }
 
 function answersToMarkdown(answers: UnknownRecord): string {
@@ -242,9 +317,17 @@ export function payloadToMarkdown(
     return structured;
   }
 
-  // Unwrap only a lone result field. With several fields the generic view is
-  // the honest one — it keeps every field visible instead of silently
-  // discarding metadata next to the text.
+  // A captured result wins over its metadata, wherever it sits in the payload.
+  // This is the "read the result, not the field names" path the global preview
+  // relies on: fenced code and Markdown are rendered, not shown as JSON text.
+  const result = findResultText(value, depth, new WeakSet());
+  if (result) {
+    return resultToMarkdown(result);
+  }
+
+  // Without a known result container, a lone text field is still the document.
+  // With several unrelated fields the generic view is the honest one — it keeps
+  // every field visible instead of silently discarding metadata.
   if (Object.keys(record).length === 1) {
     // A fresh guard: `unwrapText` walks this same object and would otherwise
     // see itself as already visited.

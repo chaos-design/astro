@@ -62,7 +62,7 @@ test("a closed question keeps the same chips without controls", () => {
   assert.match(styles, /\.question-options__option:disabled \{/);
 });
 
-test("the batch hint sits above the list and the footer is a Cancel / 提交 pair", () => {
+test("the batch hint sits above the list and the footer is a 提交 / 取消 pair", () => {
   assert.ok(
     surface.indexOf("question-surface__summary") <
       surface.indexOf('<div className="question-surface">'),
@@ -75,7 +75,7 @@ test("the batch hint sits above the list and the footer is a Cancel / 提交 pai
   assert.doesNotMatch(surface, /question-surface__meta/);
   assert.doesNotMatch(surface, /一次性提交|提交发送/);
   const footer = surface.slice(surface.indexOf("<footer"), surface.indexOf("</footer>"));
-  assert.ok(footer.indexOf("取消") < footer.indexOf("提交"));
+  assert.ok(footer.indexOf("提交") < footer.indexOf("取消"));
   assert.match(footer, /disabled=\{disabled \|\| !submittable\}/);
 });
 

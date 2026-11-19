@@ -276,7 +276,9 @@ import {
   type InteractionSendResult,
 } from "./lib/interaction-client";
 import {
+  autoQuestionPanelMode,
   isDockedQuestionPanelMode,
+  isQuestionPanelMode,
   normalizeQuestionPanelMode,
 } from "./lib/question-panel-model";
 import {
@@ -5563,19 +5565,22 @@ export default function App() {
       "overview",
     ),
   );
-  // The floating card and the inspector share one layout: a half-height card,
-  // a bottom-wide card, or a side-expanded card. Stored as a preference so a
-  // reload does not collapse the answer surface the reader relies on.
+  // The floating card and the inspector share one layout. Until the reader
+  // switches it by hand, the mode follows the run state (float while the
+  // question is answerable, dock-full for a finished or captured one). A stored
+  // value is the mark of a manual choice, so a derived default is deliberately
+  // NOT written back — that keeps "follow the run" as the real default.
+  const questionPanelModeManualRef = useRef(false);
   const [questionPanelMode, setQuestionPanelMode] =
-    useState<QuestionPanelMode>(() =>
-      normalizeQuestionPanelMode(
-        readStorageValue(
-          window.localStorage,
-          storageKeys.questionPanelMode,
-          appDefaults.questionPanelMode,
-        ),
-      ),
-    );
+    useState<QuestionPanelMode>(() => {
+      const stored = readStorageValue(
+        window.localStorage,
+        storageKeys.questionPanelMode,
+        "",
+      );
+      questionPanelModeManualRef.current = isQuestionPanelMode(stored);
+      return normalizeQuestionPanelMode(stored);
+    });
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const preserveAtomSelectionRef = useRef(false);
   const previousAtomRef = useRef("");
@@ -5637,13 +5642,14 @@ export default function App() {
     writeStorageValue(window.localStorage, storageKeys.inspectorTab, inspectorTab);
   }, [inspectorTab]);
 
-  useEffect(() => {
-    writeStorageValue(
-      window.localStorage,
-      storageKeys.questionPanelMode,
-      questionPanelMode,
-    );
-  }, [questionPanelMode]);
+  // Only an explicit layout switch is persisted. The state-driven default is
+  // re-derived on every load, so a finished question never inherits a stale
+  // "float" from a run that ended days ago.
+  const changeQuestionPanelMode = useCallback((mode: QuestionPanelMode) => {
+    questionPanelModeManualRef.current = true;
+    setQuestionPanelMode(mode);
+    writeStorageValue(window.localStorage, storageKeys.questionPanelMode, mode);
+  }, []);
 
   useEffect(() => {
     writeStorageValue(window.localStorage, storageKeys.activeView, activeView);
@@ -6935,6 +6941,18 @@ export default function App() {
     replayMode,
     isDemo,
   });
+  // Unchosen layouts track the run: an answerable question floats so it stays
+  // visible above the canvas it blocks, while a finished/captured one docks
+  // full so its whole text and options fit. A stored manual switch wins.
+  useEffect(() => {
+    if (questionPanelModeManualRef.current) {
+      return;
+    }
+    setQuestionPanelMode((current) => {
+      const next = autoQuestionPanelMode(questionActionable);
+      return current === next ? current : next;
+    });
+  }, [questionActionable]);
   const lastOpenInteractionRef = useRef<InteractionDraft | null>(null);
   if (activeInteraction) {
     lastOpenInteractionRef.current = activeInteraction;
@@ -7869,7 +7887,7 @@ export default function App() {
               onLiveViewChange={setLiveFilter}
               onMaxSyncChange={setMaxSync}
               onPerfHudChange={setPerfHud}
-              onQuestionPanelModeChange={setQuestionPanelMode}
+              onQuestionPanelModeChange={changeQuestionPanelMode}
               onTaskCompletionChimeChange={setTaskCompletionChime}
               onChimeStyleChange={setChimeStyle}
               onThemeChange={setTheme}
@@ -8072,7 +8090,7 @@ export default function App() {
               onCancel={() =>
                 handleInteractionCancel(activeInteraction.request.requestId)
               }
-              onModeChange={setQuestionPanelMode}
+              onModeChange={changeQuestionPanelMode}
               onSend={(answers) =>
                 handleInteractionAnswers(
                   activeInteraction.request.requestId,
@@ -8097,7 +8115,7 @@ export default function App() {
               key={settlingInteraction.request.requestId}
               lockedBy={settlingInteraction.lockedBy}
               mode={questionPanelMode}
-              onModeChange={setQuestionPanelMode}
+              onModeChange={changeQuestionPanelMode}
               request={settlingInteraction.request}
               result={settlingInteraction.result}
             />
@@ -8207,7 +8225,7 @@ export default function App() {
                 onCancelQuestion={handleInteractionCancel}
                 questionActionable={questionActionable}
                 questionPanelMode={questionPanelMode}
-                onQuestionPanelModeChange={setQuestionPanelMode}
+                onQuestionPanelModeChange={changeQuestionPanelMode}
                 questionDocked={questionDocked}
                 settledQuestion={
                   settlingMatchesView ? settlingInteraction : null

@@ -77,6 +77,32 @@ test("nested tool content is flattened to its text", () => {
   );
 });
 
+test("a tool result beside metadata previews its markdown, not its field names", () => {
+  assert.equal(
+    payloadToMarkdown({
+      tool_use_id: "call_001",
+      tool_name: "Read",
+      tool_response: {
+        content: [{ type: "text", text: "# Deploy\n\nRun `pnpm build`." }],
+      },
+    }),
+    "# Deploy\n\nRun `pnpm build`.",
+  );
+});
+
+test("the inspector's captured wrapper previews the captured result", () => {
+  const markdown = payloadToMarkdown({
+    contract: { label: "tool.result", output: { summary: "ok" } },
+    captured: { content: [{ type: "text", text: "## Result\n\n- one\n- two" }] },
+  });
+  assert.equal(markdown, "## Result\n\n- one\n- two");
+});
+
+test("a JSON tool result is fenced so it renders with syntax highlighting", () => {
+  const markdown = payloadToMarkdown({ tool_response: '{"ok":true,"count":2}' });
+  assert.equal(markdown, '```json\n{"ok":true,"count":2}\n```');
+});
+
 test("circular payloads fall back instead of throwing", () => {
   const circular: Record<string, unknown> = { label: "loop" };
   circular.self = circular;

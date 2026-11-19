@@ -8501,6 +8501,18 @@ pre,
   padding: 0 14px;
 }
 
+/* The floating card is the quick-answer layout: one option per full-width row
+   so a narrow card never wraps a chip cloud into an unreadable grid. The docked
+   surface stays compact so more of the question fits on screen. */
+.interaction-panel--floating .question-options {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.interaction-panel--floating .question-options__option {
+  width: 100%;
+}
+
 .interaction-panel__question-heading {
   display: flex;
   align-items: center;
@@ -8611,11 +8623,17 @@ pre,
 }
 
 /* The dock owns everything below the tab bar: the surface fills it and its own
-   body does the scrolling under the pinned submit bar. */
+   body does the scrolling under the pinned submit bar. Rows are tighter here
+   than on the card so a long question and all its options fit without scrolling. */
 .inspector-question-dock > .prompt-input {
   flex: 1 1 auto;
   height: auto;
   min-height: 0;
+}
+
+.inspector-question-dock .question-surface__item {
+  gap: 8px;
+  padding: 9px 12px 11px;
 }
 
 /* The question surface itself. The body scrolls; the submit bar is a sibling

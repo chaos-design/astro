@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  autoQuestionPanelMode,
   buildQuestionAnswer,
   buildQuestionAnswers,
   isDockedQuestionPanelMode,
@@ -39,6 +40,11 @@ test("a layout stored before the two-placement switch keeps its intent", () => {
   assert.equal(normalizeQuestionPanelMode("side"), "dock-full");
   assert.equal(isDockedQuestionPanelMode("dock-full"), true);
   assert.equal(isDockedQuestionPanelMode("float"), false);
+});
+
+test("the untouched default follows whether the question can still be answered", () => {
+  assert.equal(autoQuestionPanelMode(true), "float");
+  assert.equal(autoQuestionPanelMode(false), "dock-full");
 });
 
 test("free text wins over clicked labels at submit time", () => {
