@@ -1177,6 +1177,8 @@ Deterministic IDs make unchanged imports idempotent.
 pnpm service:up [--port N] [--home DIR]       # restart in place if running, start if down
 pnpm service:start|restart|status             # single-action shortcuts
 astro-trace serve
+astro-trace ax [--json]                       # quick start + service status (forwards to astrox)
+astro-trace status|stop|restart|up|info|open|logs|path   # daemon control (forwards to astrox)
 astro-trace install [--target DIR] [--clients trae,claude,chatgpt,deepseek,workbuddy] [--scope user|project]
 astro-trace update [--no-deepseek] [--astro-home DIR]
 astro-trace doctor [--target DIR] [--scope user|project] [--deepseek-profile NAME]
@@ -1230,14 +1232,43 @@ astrox logs [--lines N]        tail the dashboard log
 astrox path                    print ASTRO home, plugin dir, and CLI entry
 ```
 
-- `ax` (also available as `astrox ax`) is the one-command shortcut: it brings
-  the dashboard up through the same path as `start`, registers both the global
-  `astrox` and `ax` shorthands, then reports the start result, service/process
-  state, plugin version and Hook integration readiness on one screen. `--json`
-  emits a machine-readable report; a failed start still prints status and exits
-  non-zero. It shares the same internal helpers as `start` and `status` rather
-  than duplicating them. Run it from a checkout with `pnpm ax`, or as `ax` after
-  a global install.
+```text
+ax [--json] [--open] [--port N]   quick start + service/integration status (= astrox ax)
+ax <command> [args…]              every other astrox command passes straight through
+                                  (ax status, ax stop, ax open …)
+ax --version | ax --help          print the version / usage
+astrox start [--port N] [--host H] [--open] [--no-global] [--bin-dir DIR]
+astrox stop
+astrox restart
+astrox up                     # restart if running, start if down, on the same port
+astrox status [--json] [--deepseek-profile web]
+astrox info [--json]
+astrox update [--no-deepseek]
+astrox doctor [options]       run the full astro-trace diagnostics
+astrox install [options]      install or refresh hook integrations
+astrox migrate [FILE_OR_DIR]  migrate legacy trace data
+astrox open                   open the running dashboard in a browser
+astrox logs [--lines N]       tail the dashboard log
+astrox path                   print ASTRO home, plugin dir, and CLI entry
+astrox --version              print the CLI version
+```
+
+- `ax` (also available as `astrox ax`) is the one-command shortcut: when the
+  runtime is missing it first bootstraps `ASTRO_HOME` via
+  `installPluginRuntime` (hook configs and trace data are never touched;
+  `--no-install` keeps the explicit install hint), then brings the dashboard
+  up through the same path as `start`, registers both the global `astrox` and
+  `ax` shorthands, polls `/api/health` to confirm the service actually
+  answers, and reports the start result, health latency, service/process
+  state, plugin version and Hook integration readiness on one screen.
+  `--json` emits a machine-readable report (`start.healthy` /
+  `start.elapsedMs` / `start.bootstrapped`); a failed start still prints
+  status and exits non-zero. Every other `ax` subcommand maps 1:1 onto its
+  astrox equivalent; bare `ax` is always the quick start and an unknown
+  subcommand is a usage error. It shares the same internal helpers as `start`
+  and `status` rather than duplicating them. Run it from a checkout with
+  `pnpm ax`, as `ax` after a global install, or as `npx astro-plugin ax`
+  without one.
 - `start` launches the dashboard daemon (default `127.0.0.1:5678`). It also
   registers this entry as the global `astrox` command: on Unix it symlinks into
   the first writable of `/usr/local/bin`, `~/.local/bin`, or `~/bin`; on Windows
@@ -1262,7 +1293,15 @@ astrox path                    print ASTRO home, plugin dir, and CLI entry
   `astro-trace update`); `--no-deepseek` skips the DeepSeek plugin package.
 
 > The control commands require an installed plugin runtime; run `astrox install`
-> (or `astro-trace install`) first.
+> (or `astro-trace install`) first — or run `ax` / `npx astro-plugin ax` and
+> let it bootstrap.
+>
+> Publishing and npx: `pnpm publish:plugin` builds, validates and dry-runs the
+> npm publish of `astro-plugin` (`--apply` publishes for real; prerelease
+> versions carry an `alpha` dist-tag automatically). The published package
+> supports `npm i -g astro-plugin` and `npx astro-plugin <command>`. See
+> "Install from npm / run with npx" and "Publishing the npm package" in
+> `docs/plugin-installation.md`.
 
 ## 13. HTTP API
 

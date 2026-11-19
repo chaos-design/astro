@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { spawnSync } from "node:child_process";
 import {
   existsSync,
   readdirSync,
@@ -32,6 +33,37 @@ import {
 } from "../scripts/migrate-data.mjs";
 
 const command = process.argv[2] || "help";
+
+/**
+ * Daemon-control commands the astrox CLI owns. `npx astro-plugin ax` runs this
+ * package's own bin (the bin named after the package), so these names are
+ * forwarded to bin/astrox.mjs unchanged — the same handlers `astrox` and `ax`
+ * use, never a second start path or a second status collector.
+ */
+const ASTROX_DELEGATED_COMMANDS = new Set([
+  "ax",
+  "info",
+  "logs",
+  "open",
+  "path",
+  "restart",
+  "status",
+  "stop",
+  "up",
+]);
+
+function delegateToAstrox() {
+  const result = spawnSync(
+    process.execPath,
+    [join(import.meta.dirname, "astrox.mjs"), ...process.argv.slice(2)],
+    { stdio: "inherit" },
+  );
+  if (result.error) {
+    throw result.error;
+  }
+  process.exitCode = result.status ?? 1;
+}
+
 const { expandHome, resolveAstroHome } = storagePaths;
 const {
   formatRuntimeConfigDiagnostic,
@@ -523,6 +555,14 @@ Usage:
   astro-trace migrate [FILE_OR_DIR]
   astro-trace import-chatgpt [FILE ...] [--chatgpt-home DIR]
   astro-trace ingest [FILE] [--source NAME]
+  astro-trace ax [--json]        Quick start + service/integration status
+  astro-trace status|stop|restart|up|open|logs|info|path
+                                 Daemon control (delegates to astrox)
+  astro-trace --version          Print the CLI version
+
+Quick start without a global install:
+  npx astro-plugin ax            Same flow as the "ax" command
+  npx astro-plugin status        Any astrox command works the same way
 
 Configuration:
   <ASTRO_HOME>/plugins/astro/config.yaml  Structured plugin configuration
@@ -567,6 +607,8 @@ if (command === "help" || command === "--help" || command === "-h") {
   await importChatGPT();
 } else if (command === "ingest") {
   await ingest();
+} else if (ASTROX_DELEGATED_COMMANDS.has(command)) {
+  delegateToAstrox();
 } else {
   console.error(`Unknown astro-trace command: ${command}`);
   printHelp();

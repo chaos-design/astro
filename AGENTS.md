@@ -94,10 +94,36 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   start result plus the shared status report (`collectStatusReport`, also used
   by `status`). Do not grow a second start path or a second status collector —
   a quick command that disagrees with `status` is worse than no shortcut.
+- Every other `ax` subcommand is a forward: `bin/ax.mjs` dispatches on
+  `commandNames` (the exported keys of `astrox`'s command map, also covering
+  `--version`/`--help`), and `astrox`'s own `run` resolves `ax <command>` the
+  same way for the direct and delegated (`astro-trace ax …` / `npx
+  astro-plugin ax …`) invocations. Bare `ax` is always the quick start; an
+  unknown positional is a usage error, never a silent quick start.
+- When the installed runtime is missing, bare `ax` bootstraps it through
+  `installPluginRuntime` — the one runtime installer `astro-trace install`
+  uses — before starting; it writes `ASTRO_HOME` only, never hook configs or
+  trace data. `--no-install` keeps the explicit install hint. After the pid
+  record appears, `ax` additionally polls `/api/health`
+  (`checkDashboardHealth`, 3 s deadline) and reports
+  `start.healthy` / `start.elapsedMs` / `start.bootstrapped` in the JSON
+  result — a pid file alone is not a verified startup.
 - `--json` keeps stdout to one document (registration chatter is suppressed).
-  A failed start still prints status and exits non-zero. Both `astrox` and `ax`
-  are shipped as bins of the packaged `astro-plugin` runtime
-  (`scripts/build-plugin.mjs`), so a global install provides both commands.
+  A failed start still prints status and exits non-zero. `astrox`, `ax` and
+  `astro-trace` are bins of the packaged `astro-plugin` runtime
+  (`scripts/build-plugin.mjs`): a global install provides all three, and
+  `npx astro-plugin <command>` works because `bin/astro.mjs` forwards the
+  astrox daemon commands (`ax`, `status`, `stop`, `restart`, `up`, `info`,
+  `open`, `logs`, `path`) to `bin/astrox.mjs` — one delegation surface, no
+  second start path.
+- Publishing is `pnpm publish:plugin` (`scripts/publish-plugin.mjs`):
+  build → validate the staging package (publishable license — npm refuses
+  `UNLICENSED` — every bin and declared file present, tarball for the current
+  version) → `npm publish --dry-run`. `--apply` performs the real publish;
+  prerelease versions default to their prerelease dist-tag (`alpha`), never
+  `latest`. The staging manifest's `license`/`repository`/`keywords` fields
+  are part of the publishable contract — do not regress them to
+  `UNLICENSED`.
 
 ## Demo Dataset
 

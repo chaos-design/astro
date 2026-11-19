@@ -18,6 +18,7 @@
     "build:docs": "vite build --config site/vite.config.ts",
     "build:native-plugins": "node scripts/build-native-plugins.mjs",
     "build:plugin": "pnpm build && pnpm build:native-plugins && node scripts/build-plugin.mjs",
+    "publish:plugin": "node scripts/publish-plugin.mjs",
     "dev": "vite",
     "astrox": "node bin/astrox.mjs",
     "ax": "node bin/ax.mjs",

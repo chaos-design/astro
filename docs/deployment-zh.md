@@ -110,8 +110,16 @@ pnpm start        # 服务：127.0.0.1:5678，托管 dist/
 
 ```bash
 ax                       # 一键启动 + 服务/集成状态（astrox ax 的短命令）
-astrox status|start|stop|restart|update|logs|doctor|path|open|info
+astrox status|start|stop|restart|update|logs|doctor|path|open|info|ax
+npx astro-plugin ax      # 无全局安装的快速启动（npx astro-plugin status|stop|… 同理）
 ```
+
+`ax` 的其余子命令直接透传（`ax status`、`ax stop`、`ax open`、`ax logs` …与
+`astrox` 同名命令完全一致；裸 `ax` 永远是快速启动）。运行时缺失时裸 `ax`
+会先自举运行时（`installPluginRuntime`，只写 `ASTRO_HOME`，不碰 hook 配置与
+trace 数据）；`--no-install` 保持显式安装提示。启动后 `ax` 轮询
+`/api/health`，文本输出报告 `health OK … (Nms)`，`--json` 输出
+`start.healthy` / `start.elapsedMs` / `start.bootstrapped`。
 
 两个 HTTP 端点等价于对应动作（控制台服务卡片在用）：
 

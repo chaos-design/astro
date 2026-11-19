@@ -55,6 +55,7 @@ async function loadDependencies() {
       getTraceStats: clientStatus.getTraceStats,
       hasDeepseekPlugin: clientStatus.hasDeepseekPlugin,
       hasInstalledHook: clientStatus.hasInstalledHook,
+      installPluginRuntime: installPlugins.installPluginRuntime,
       loadRuntimeConfig: runtimeConfigLoader.loadRuntimeConfig,
       resolveAstroHome: storagePathsModule.resolveAstroHome,
       updateInstalledPlugins: installPlugins.updateInstalledPlugins,
@@ -331,6 +332,36 @@ function isProcessAlive(pid) {
 
 function sleep(ms) {
   return new Promise((done) => setTimeout(done, ms));
+}
+
+const HEALTH_TIMEOUT_MS = 3_000;
+const HEALTH_INTERVAL_MS = 100;
+
+/**
+ * Poll `/api/health` until the service answers or the deadline passes. A pid
+ * record only proves the daemon wrote a file; this proves it actually serves,
+ * so `ax` can report a verified startup instead of a hopeful one.
+ */
+async function checkDashboardHealth(base) {
+  const url = new URL(
+    "/api/health",
+    base.endsWith("/") ? base : `${base}/`,
+  ).toString();
+  const deadline = Date.now() + HEALTH_TIMEOUT_MS;
+  let error = "";
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(url, { signal: AbortSignal.timeout(1_000) });
+      if (response.ok) {
+        return { ok: true, url };
+      }
+      error = `HTTP ${response.status}`;
+    } catch (cause) {
+      error = cause?.message || String(cause);
+    }
+    await sleep(HEALTH_INTERVAL_MS);
+  }
+  return { ok: false, url, error };
 }
 
 async function waitForDashboard(astroHome, timeoutMs = 15_000, port) {
@@ -749,15 +780,67 @@ async function statusCommand() {
   printStatusReport(report, ctx.runtime);
 }
 
+/** Options whose next token is a value, never a positional argument. */
+const OPTIONS_WITH_VALUES = new Set([
+  "astro-home",
+  "aot-home",
+  "bin-dir",
+  "chatgpt-home",
+  "claude-home",
+  "deepseek-command",
+  "deepseek-profile",
+  "dsh-home",
+  "host",
+  "lines",
+  "log-file",
+  "port",
+  "tail",
+  "workbuddy-home",
+]);
+
 /**
- * `ax` is the one-command quick start: bring the dashboard up, register both
- * global shorthands, then report service and integration readiness in one
+ * Positional arguments left after the `ax` command token and its options are
+ * removed. `ax` takes no positionals of its own: anything left here arrived
+ * through the launcher passthrough and is an unknown subcommand.
+ */
+export function getAxPositionalArgs(argv = process.argv) {
+  const values = [];
+  for (let index = 2; index < argv.length; index += 1) {
+    const argument = argv[index];
+    if (argument === "ax") {
+      continue;
+    }
+    if (argument.startsWith("--")) {
+      const name = argument.slice(2).split("=")[0];
+      if (!argument.includes("=") && OPTIONS_WITH_VALUES.has(name)) {
+        index += 1;
+      }
+      continue;
+    }
+    values.push(argument);
+  }
+  return values;
+}
+
+/**
+ * `ax` is the one-command quick start: bring the dashboard up (bootstrapping
+ * the runtime when nothing is installed yet), register both global shorthands,
+ * verify `/api/health`, then report service and integration readiness in one
  * screen. The start and status steps reuse the very same helpers as `start`
  * and `status`, so the two command surfaces can never disagree.
  */
 async function axCommand() {
   const ctx = await resolveRuntimeContext();
   const binDirs = (await getBinDirOption()) ?? getGlobalBinDirs();
+  const positionals = getAxPositionalArgs();
+  if (positionals.length) {
+    console.error(
+      `Unknown ax command: ${positionals[0]}. Bare "ax" runs the quick start; other commands go through directly ("ax status", "ax stop"). See "ax help".`,
+    );
+    printHelp();
+    process.exitCode = 1;
+    return;
+  }
 
   if (!hasFlag("no-global")) {
     const registered = registerGlobalCli({ binDirs });
@@ -774,10 +857,35 @@ async function axCommand() {
   }
 
   let start;
+  const startedAtMs = Date.now();
   try {
+    let bootstrapped = false;
+    if (!existsSync(ctx.runtime.dashboardFile)) {
+      if (hasFlag("no-install")) {
+        throw new Error(
+          `No installed ASTRO plugin found under ${ctx.runtime.pluginDir}. Run "astrox install" first, or drop --no-install to bootstrap the runtime.`,
+        );
+      }
+      if (!hasFlag("json")) {
+        console.log(
+          `Installing ASTRO runtime → v${getPackageVersion()} (${ctx.runtime.pluginDir})…`,
+        );
+      }
+      // installPluginRuntime is the one runtime installer (the same call
+      // `astro-trace install` makes); it touches ASTRO_HOME only — hooks and
+      // trace data are never written here.
+      ctx.deps.installPluginRuntime(ctx.astroHome);
+      bootstrapped = true;
+      if (!existsSync(ctx.runtime.dashboardFile)) {
+        throw new Error(
+          `The runtime was installed but the dashboard bundle is missing under ${ctx.runtime.pluginDir}. Run "pnpm build" in the ASTRO checkout first.`,
+        );
+      }
+    }
     const result = await ensureDashboardStarted(ctx);
     start = {
       action: result.action,
+      bootstrapped,
       message:
         result.action === "already-running"
           ? `Dashboard already running: ${result.state.url || "unknown"}`
@@ -785,14 +893,32 @@ async function axCommand() {
       pid: result.state.pid,
       url: result.state.url || "",
     };
-    if (result.bundleStale && result.action === "already-running") {
+    if (bootstrapped) {
+      start.note = `Installed runtime → v${result.cliVersion} in ${ctx.runtime.pluginDir}`;
+    } else if (result.bundleStale && result.action === "already-running") {
       start.note = `Installed bundle is ${result.bundleVersion ? `v${result.bundleVersion}` : "unstamped"} but this CLI is v${result.cliVersion}; run "astrox restart".`;
+    }
+    const health = await checkDashboardHealth(
+      result.state.url ||
+        `http://127.0.0.1:${resolveDashboardPort(ctx.environment)}`,
+    );
+    start.healthy = health.ok;
+    start.healthUrl = health.url;
+    start.elapsedMs = Date.now() - startedAtMs;
+    if (!health.ok) {
+      const detail = `Service did not answer /api/health within ${HEALTH_TIMEOUT_MS}ms: ${health.error || "no response"}`;
+      start.note = start.note ? `${start.note}; ${detail}` : detail;
     }
     if (hasFlag("open") && result.state.url) {
       openUrl(result.state.url);
     }
   } catch (error) {
-    start = { action: "failed", message: error.message };
+    start = {
+      action: "failed",
+      elapsedMs: Date.now() - startedAtMs,
+      healthy: false,
+      message: error.message,
+    };
   }
 
   const report = await collectStatusReport(ctx);
@@ -804,6 +930,13 @@ async function axCommand() {
     if (start.note) {
       console.log(`                ${start.note}`);
     }
+    console.log(
+      `  health        ${
+        start.healthy
+          ? `OK ${start.healthUrl} (${start.elapsedMs}ms)`
+          : `UNVERIFIED (${start.elapsedMs}ms)`
+      }`,
+    );
     console.log(
       `  service       ${
         report.dashboard.running
@@ -1008,9 +1141,13 @@ Usage:
   astrox logs [--lines N]        Tail the dashboard log
   astrox path                    Print ASTRO home, plugin dir, and CLI entry
   astrox ax [--json]             Quick start + service/integration status
+  astrox --version               Print the CLI version
 
 Notes:
   "ax" is the short form of "astrox ax" and can be installed globally.
+  The ax launcher forwards every other astrox command directly, so
+  "ax status", "ax stop" and "ax open" behave exactly like their
+  astrox equivalents; bare "ax" is always the quick start.
   astrox start registers this entry as a global "astrox" command
   (${getGlobalBinDirs().join(", ")}).
   astrox stop terminates the dashboard process; no extra cleanup is performed.
@@ -1039,10 +1176,52 @@ const commands = {
   status: statusCommand,
   stop: stopCommand,
   update: updateCommand,
+  "--version": () => console.log(getPackageVersion()),
+  "-v": () => console.log(getPackageVersion()),
+  "--help": printHelp,
+  "-h": printHelp,
 };
 
+/**
+ * Command names accepted by `run`, exported so the `ax` launcher (and the
+ * npx entry delegated from `astro-trace`) dispatch through the same set.
+ */
+export const commandNames = new Set(Object.keys(commands));
+
+/**
+ * The first non-flag token after the quick-start command decides where an
+ * `ax` invocation goes: `ax status`, the launcher's `ax stop` and the npx
+ * entry's `astro-plugin ax open` all forward to the same astrox command.
+ * Flags stay with the quick start; option values are never mistaken for a
+ * command token.
+ */
+function getForwardedAxCommand(rest) {
+  for (let index = 0; index < rest.length; index += 1) {
+    const argument = rest[index];
+    if (!argument.startsWith("--")) {
+      return argument === "ax" ? null : argument;
+    }
+    const name = argument.slice(2).split("=")[0];
+    if (!argument.includes("=") && OPTIONS_WITH_VALUES.has(name)) {
+      index += 1;
+    }
+  }
+  return null;
+}
+
 export async function run(argv = process.argv) {
-  const command = argv[2] || "help";
+  let command = argv[2] || "help";
+  if (command === "ax") {
+    const next = argv[3];
+    if (next === "--version" || next === "-v" || next === "--help" || next === "-h") {
+      command = next;
+    } else {
+      const forwarded = getForwardedAxCommand(argv.slice(3));
+      if (forwarded && commandNames.has(forwarded)) {
+        command = forwarded;
+      }
+    }
+  }
   const handler = commands[command];
   if (!handler) {
     console.error(`Unknown astrox command: ${command}`);

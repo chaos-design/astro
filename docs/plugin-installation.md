@@ -523,6 +523,57 @@ pnpm dlx "$PLUGIN_TGZ" install \
 Use `--no-migrate` to skip automatic legacy data migration. Use
 `--astro-home /path/to/.astrox` to override the default `~/.astrox` root.
 
+## Install from npm / run with npx
+
+The packaged runtime publishes to npm as `astro-plugin` (`pnpm publish:plugin`
+builds, validates and dry-runs the publish; add `--apply` to publish for real
+— see "Publishing the npm package" below). Once installed — globally, from a
+tarball, or through `npx` — the package ships three commands:
+
+- `astro-trace` — the installer/diagnostics CLI (`install`, `doctor`,
+  `serve`, …);
+- `astrox` — the plugin control CLI (`start`, `stop`, `status`, …);
+- `ax` — the short quick-start command.
+
+`npx astro-plugin <command>` runs the package's own bin and forwards the
+astrox daemon commands, so no global install is required:
+
+```bash
+npx astro-plugin ax                # quick start: bootstrap + dashboard + health + status
+npx astro-plugin status            # same as astrox status
+npx astro-plugin ax stop           # stop the dashboard
+npx astro-plugin doctor            # installer diagnostics (astro-trace's own command)
+```
+
+Bare `ax` is always the quick start. When the installed runtime is missing it
+bootstraps `<ASTRO_HOME>/plugins/astro/` first (hook configs and trace data
+are never touched); `--no-install` keeps the explicit install hint instead.
+After starting, `ax` polls `/api/health` and reports the verified startup
+(`health OK … (Nms)`, or `start.healthy` / `start.elapsedMs` in `--json`
+output). Every other `ax` subcommand passes straight through to its astrox
+equivalent.
+
+## Publishing the npm package
+
+`pnpm publish:plugin` is the maintainer flow, and it is **dry-run by
+default**:
+
+```bash
+pnpm build                          # dist/ must exist; build:plugin packs it
+pnpm publish:plugin                 # build + validate + npm publish --dry-run
+pnpm publish:plugin -- --apply      # real publish
+pnpm publish:plugin -- --skip-build # reuse artifacts/astro-plugin-<version>.tgz
+pnpm publish:plugin -- --tag beta   # override the dist-tag
+```
+
+The script validates the staged package (publishable license, every bin and
+declared file present, tarball for the current version) and derives the
+dist-tag from the version: prerelease versions such as `0.0.7-alpha.4`
+publish under `alpha`, never `latest`, unless `--tag` overrides. Publishing
+targets the registry npm is configured for — point it at
+`registry.npmjs.org` for the real publish (mirror registries such as
+npmmirror do not accept publishes).
+
 ## Shared configuration
 
 Installation automatically creates:

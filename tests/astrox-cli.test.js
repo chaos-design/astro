@@ -64,6 +64,17 @@ function runCli(args, environment) {
   });
 }
 
+const axFile = fileURLToPath(new URL("../bin/ax.mjs", import.meta.url));
+
+/** The ax launcher shares the fixture discipline: every run pins --bin-dir. */
+function runAx(args, environment) {
+  return spawnSync(process.execPath, [axFile, ...args], {
+    encoding: "utf8",
+    env: environment,
+    timeout: 20_000,
+  });
+}
+
 test("help documents the plugin command set", (t) => {
   const { environment } = fixture(t);
   const result = runCli(["help"], environment);
@@ -259,14 +270,18 @@ test("status flags an installed bundle that lags behind the CLI", (t) => {
 
 test("ax reports start failure and status for an uninstalled runtime", (t) => {
   const { environment, root } = fixture(t);
+  // --no-install keeps the failure explicit: without it, ax would bootstrap
+  // the runtime (and, with a built dist/, launch a real dashboard).
   const result = runCli(
-    ["ax", "--json", "--bin-dir", join(root, "bin")],
+    ["ax", "--json", "--no-install", "--bin-dir", join(root, "bin")],
     environment,
   );
   assert.equal(result.status, 1, result.stderr);
   const report = JSON.parse(result.stdout);
   assert.equal(report.start.action, "failed");
   assert.match(report.start.message, /No installed ASTRO plugin found/);
+  assert.equal(report.start.healthy, false);
+  assert.equal(typeof report.start.elapsedMs, "number");
   assert.equal(report.dashboard.running, false);
   assert.equal(report.plugin.installed, false);
   assert.equal(report.integrations.length > 0, true);
@@ -275,7 +290,7 @@ test("ax reports start failure and status for an uninstalled runtime", (t) => {
 test("ax registers both the astrox and ax global shorthands", (t) => {
   const { environment, root } = fixture(t);
   const binDir = join(root, "bin");
-  runCli(["ax", "--json", "--bin-dir", binDir], environment);
+  runCli(["ax", "--json", "--no-install", "--bin-dir", binDir], environment);
   const suffix = process.platform === "win32" ? ".cmd" : "";
   assert.equal(existsSync(join(binDir, `astrox${suffix}`)), true);
   assert.equal(existsSync(join(binDir, `ax${suffix}`)), true);
@@ -283,18 +298,63 @@ test("ax registers both the astrox and ax global shorthands", (t) => {
 
 test("the ax launcher runs the aggregated command", (t) => {
   const { environment, root } = fixture(t);
-  const axFile = fileURLToPath(new URL("../bin/ax.mjs", import.meta.url));
-  const result = spawnSync(
-    process.execPath,
-    [axFile, "--json", "--no-global", "--bin-dir", join(root, "bin")],
-    {
-      encoding: "utf8",
-      env: environment,
-      timeout: 20_000,
-    },
+  const result = runAx(
+    ["--json", "--no-global", "--no-install", "--bin-dir", join(root, "bin")],
+    environment,
   );
   assert.equal(result.status, 1, result.stderr);
   const report = JSON.parse(result.stdout);
   assert.equal(report.start.action, "failed");
   assert.match(report.start.message, /No installed ASTRO plugin found/);
+});
+
+test("the ax launcher forwards astrox commands unchanged", (t) => {
+  const { environment, root } = fixture(t);
+  const result = runAx(
+    ["status", "--json", "--bin-dir", join(root, "bin")],
+    environment,
+  );
+  assert.equal(result.status, 0, result.stderr);
+  const report = JSON.parse(result.stdout);
+  assert.equal(report.plugin.installed, false);
+  assert.equal(report.dashboard.running, false);
+});
+
+test("ax reports unknown subcommands instead of quick-starting them", (t) => {
+  const { environment, root } = fixture(t);
+  const result = runAx(
+    ["frobnicate", "--bin-dir", join(root, "bin")],
+    environment,
+  );
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /Unknown ax command: frobnicate/);
+});
+
+test("ax and astrox print the package version for --version", (t) => {
+  const { environment } = fixture(t);
+  assert.equal(runAx(["--version"], environment).stdout.trim(), packageVersion);
+  assert.equal(
+    runCli(["--version"], environment).stdout.trim(),
+    packageVersion,
+  );
+});
+
+test("ax bootstrap names the missing build when dist is absent", (t) => {
+  const distIndex = fileURLToPath(
+    new URL("../dist/index.html", import.meta.url),
+  );
+  if (existsSync(distIndex)) {
+    t.skip("dist is built; the bootstrap would start a real dashboard");
+    return;
+  }
+  const { environment, root } = fixture(t);
+  const result = runAx(
+    ["--json", "--no-global", "--bin-dir", join(root, "bin")],
+    environment,
+  );
+  assert.equal(result.status, 1, result.stderr);
+  const report = JSON.parse(result.stdout);
+  assert.equal(report.start.action, "failed");
+  // The runtime was installed, so the failure names the actual gap.
+  assert.match(report.start.message, /pnpm build/);
 });
