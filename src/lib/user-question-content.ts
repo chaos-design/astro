@@ -17,13 +17,20 @@ import type { TracePayload } from "../types/trace";
  * the `tool_input` object the input tab resolves to.
  */
 
+export interface UserQuestionOption {
+  /** The verbatim option label — also the answer token the host records. */
+  label: string;
+  /** The client's explanation, when it captured one. */
+  description?: string;
+}
+
 export interface UserQuestionPrompt {
   /** Section title: the client's header, or "Question N" when none is given. */
   title: string;
   /** The question text itself, a markdown source. */
   question: string;
-  /** Choice labels, when the client captured options for the question. */
-  options: string[];
+  /** Choices, when the client captured options for the question. */
+  options: UserQuestionOption[];
 }
 
 export interface UserQuestionAnswer {
@@ -51,21 +58,33 @@ function asRecord(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
-function optionLabel(option: unknown): string {
+function optionInfo(option: unknown): UserQuestionOption | null {
   if (typeof option === "string") {
-    return option.trim();
+    const label = option.trim();
+    return label ? { label } : null;
   }
   const record = asRecord(option);
   if (!record) {
-    return "";
+    return null;
   }
+  let label = "";
   for (const key of ["label", "name", "value", "title", "header"]) {
     const value = record[key];
     if (typeof value === "string" && value.trim()) {
-      return value.trim();
+      label = value.trim();
+      break;
     }
   }
-  return "";
+  if (!label) {
+    return null;
+  }
+  for (const key of ["description", "desc", "detail", "help"]) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim()) {
+      return { label, description: value.trim() };
+    }
+  }
+  return { label };
 }
 
 function questionText(record: Record<string, unknown>): string {
@@ -102,7 +121,9 @@ function extractQuestions(source: unknown): UserQuestionPrompt[] {
       title:
         typeof header === "string" && header.trim() ? header.trim() : "",
       question,
-      options: rawOptions.map(optionLabel).filter(Boolean),
+      options: rawOptions
+        .map(optionInfo)
+        .filter((option): option is UserQuestionOption => Boolean(option)),
     });
   }
   return prompts;

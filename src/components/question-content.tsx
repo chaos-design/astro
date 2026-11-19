@@ -416,7 +416,7 @@ function StaticPrompt({
           role="group"
         >
           {prompt.options.map((option, optionIndex) => {
-            const chosen = selected.includes(option);
+            const chosen = selected.includes(option.label);
             return (
               <span
                 className={cn(
@@ -424,10 +424,16 @@ function StaticPrompt({
                   chosen && "is-selected",
                   "is-static",
                 )}
-                key={`${option}-${optionIndex}`}
+                key={`${option.label}-${optionIndex}`}
+                title={option.description || undefined}
               >
                 {chosen ? <Check aria-hidden="true" /> : null}
-                {option}
+                <span className="question-options__label">{option.label}</span>
+                {option.description ? (
+                  <small className="question-options__description">
+                    {option.description}
+                  </small>
+                ) : null}
               </span>
             );
           })}
