@@ -501,6 +501,13 @@
   HISTORY shows skeleton rows and a `loading…` subtitle, and the header marker
   reads `connecting`. `0 runs` and `offline` are statements about confirmed
   facts; neither is true while the snapshot is still on its way.
+- **A virtualized list never measures on the state it writes.** `AtomicLog`
+  reads row / separator heights from a ref and its layout effect follows entry
+  changes only. With `metrics` in the dependencies, `setMetrics` mounted a new
+  slice whose first row had a different height, looping until React threw #185
+  (Maximum update depth exceeded) on the deployed console. The estimate is the
+  tallest mounted row of each kind, so a sliding window neither clips a wrapped
+  row nor flips the height by swapping the first row.
 - **On-demand UI gets its own chunk.** A panel that only appears after an explicit
   action (history search) stays out of the first-paint bundle: `lazy()` plus an
   idle preload (`requestIdleCallback`, falling back to a timer). On a machine

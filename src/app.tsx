@@ -2894,6 +2894,12 @@ const AtomicLog = memo(function AtomicLog({
     row: LOG_ROW_ESTIMATE,
     turn: LOG_TURN_ESTIMATE,
   });
+  // The measurement effect reads the latest metrics without depending on them.
+  // Depending on `metrics` made every `setMetrics` re-run the measurement; when
+  // the newly mounted slice started with a different row, its height differed
+  // and the loop repeated until React threw "Maximum update depth exceeded".
+  const metricsRef = useRef(metrics);
+  metricsRef.current = metrics;
   const [viewport, setViewport] = useState({ height: 0, top: 0 });
   const [scrollPosition, setScrollPosition] = useState({
     canScrollDown: false,
@@ -2998,23 +3004,35 @@ const AtomicLog = memo(function AtomicLog({
     };
   }, []);
 
-  // Measure the real row and separator heights once they are in the DOM.
+  // Measure real row and separator heights once they are in the DOM. Take the
+  // tallest mounted item of each kind: the layout assumes one uniform height,
+  // so an estimate that clips a wrapped row is worse than one that over-shots,
+  // and the maximum stays stable as the mounted window slides.
+  //
+  // `metrics` is deliberately NOT a dependency. It is read from a ref so a
+  // measurement only follows a change in the entries, never its own result —
+  // reporting the new height as state re-renders the slice, which would mount
+  // a different first row and start a feedback loop (React error #185).
   useLayoutEffect(() => {
     const list = listRef.current;
     if (!list) {
       return;
     }
-    const row = list.querySelector<HTMLElement>(".atomic-log__row");
-    const turn = list.querySelector<HTMLElement>(".atomic-log__turn");
+    const current = metricsRef.current;
+    const tallest = (selector: string) =>
+      [...list.querySelectorAll<HTMLElement>(selector)].reduce(
+        (max, element) => Math.max(max, element.offsetHeight),
+        0,
+      );
     const next = {
-      gap: metrics.gap,
-      row: row?.offsetHeight || metrics.row,
-      turn: turn?.offsetHeight || metrics.turn,
+      gap: current.gap,
+      row: tallest(".atomic-log__row") || current.row,
+      turn: tallest(".atomic-log__turn") || current.turn,
     };
-    if (next.row !== metrics.row || next.turn !== metrics.turn) {
+    if (next.row !== current.row || next.turn !== current.turn) {
       setMetrics(next);
     }
-  }, [metrics, visibleEntries]);
+  }, [visibleEntries]);
 
   const handleScroll = useCallback(() => {
     if (scrollFrameRef.current) {

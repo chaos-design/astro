@@ -674,6 +674,13 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   and an unreachable edge is a `disabled` button (dimmed ink, `cursor:
   default`, no hover cues), never an unmount — reserving the width stops the
   sibling search input from resizing on every streamed event.
+- The virtualized LOG measures its row / turn heights **without depending on
+  the metrics it writes**: `AtomicLog` reads them from a ref, so the layout
+  effect runs only when the entries change. Measuring on `metrics` itself made
+  each `setMetrics` mount a new slice whose first row had a different height,
+  looping until React threw error #185 on the deployed console. The estimate is
+  the *tallest* mounted row of each kind, so a sliding window cannot clip a
+  wrapped row or flip the height by swapping the first row.
 
 ## Run Trajectory Order
 
