@@ -119,6 +119,7 @@ Install and launch also bring up the dashboard; refresh afterwards with
 ### 2.6 Service management and upgrades
 
 ```bash
+ax                       # quick start + service/integration status (short for astrox ax)
 astrox status|start|stop|restart|update|logs|doctor|path|open|info
 ```
 

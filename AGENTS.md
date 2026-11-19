@@ -85,6 +85,20 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   `docs/conventions-*.md`, this file, `docs/index.md`, and `site/src/docs.ts`
   agree with it.
 
+## Quick Start CLI (ax)
+
+- `bin/ax.mjs` is a thin launcher for the aggregated `ax` command implemented
+  in `bin/astrox.mjs`; it is the only definition of that flow. `ax` starts the
+  dashboard through `ensureDashboardStarted` (the same helper `start`/`restart`
+  use), registers both global `astrox` and `ax` shorthands, and reports the
+  start result plus the shared status report (`collectStatusReport`, also used
+  by `status`). Do not grow a second start path or a second status collector —
+  a quick command that disagrees with `status` is worse than no shortcut.
+- `--json` keeps stdout to one document (registration chatter is suppressed).
+  A failed start still prints status and exits non-zero. Both `astrox` and `ax`
+  are shipped as bins of the packaged `astro-plugin` runtime
+  (`scripts/build-plugin.mjs`), so a global install provides both commands.
+
 ## Demo Dataset
 
 - The sample run is a local resource file, `data/demo-events.json`, not a

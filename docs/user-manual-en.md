@@ -1207,6 +1207,7 @@ status and trace data. Diagnostics, installation, and migration delegate to the
 underlying `astro-trace` shown above.
 
 ```text
+ax [--json] [--open] [--port N]   quick start + service/integration status (= astrox ax)
 astrox start [--port N] [--host H] [--open] [--no-global] [--bin-dir DIR]
 astrox stop
 astrox restart
@@ -1222,6 +1223,14 @@ astrox logs [--lines N]        tail the dashboard log
 astrox path                    print ASTRO home, plugin dir, and CLI entry
 ```
 
+- `ax` (also available as `astrox ax`) is the one-command shortcut: it brings
+  the dashboard up through the same path as `start`, registers both the global
+  `astrox` and `ax` shorthands, then reports the start result, service/process
+  state, plugin version and Hook integration readiness on one screen. `--json`
+  emits a machine-readable report; a failed start still prints status and exits
+  non-zero. It shares the same internal helpers as `start` and `status` rather
+  than duplicating them. Run it from a checkout with `pnpm ax`, or as `ax` after
+  a global install.
 - `start` launches the dashboard daemon (default `127.0.0.1:5678`). It also
   registers this entry as the global `astrox` command: on Unix it symlinks into
   the first writable of `/usr/local/bin`, `~/.local/bin`, or `~/bin`; on Windows

@@ -1000,6 +1000,7 @@ printf '%s\n' \
 `astrox` 是 ASTRO 插件的轻量控制命令行，封装了仪表盘守护进程的启停、插件刷新以及状态与数据检视。诊断、安装与数据迁移等复杂任务会委托给底层 `astro-trace`（见上方命令表）。
 
 ```text
+ax [--json] [--open] [--port N]   一键启动并检查服务与集成状态（等价于 astrox ax）
 astrox start [--port N] [--host H] [--open] [--no-global] [--bin-dir DIR]
 astrox stop
 astrox restart
@@ -1015,6 +1016,7 @@ astrox logs [--lines N]        查看仪表盘日志尾部
 astrox path                   打印 ASTRO home、插件目录与 CLI 入口
 ```
 
+- `ax`（也可写作 `astrox ax`）是「一条命令就绪」的快捷入口：先按 `start` 的同一套逻辑把仪表盘拉起来，再把全局 `astrox` 与 `ax` 命令都注册好，最后在一屏里给出启动结果、服务/进程状态、插件版本与 Hook 集成状态。`--json` 输出机器可读报告；启动失败时报告仍会给出状态，并以非零状态退出。它不会重复实现启动或状态逻辑——`start`、`status` 与它共享同一组内部函数。本仓库可用 `pnpm ax` 调用，全局安装后直接 `ax`。
 - `start` 启动仪表盘守护进程（默认 `127.0.0.1:5678`）。它会同时把当前入口注册为全局 `astrox` 命令——在 Unix 下软链到 `/usr/local/bin`、`~/.local/bin` 或 `~/bin` 中第一个可写目录，在 Windows 下写入 `%USERPROFILE%\.astrox\bin\astrox.cmd`。已存在的同名软链若指向本入口则复用，指向其他文件则保留不动。`--no-global` 跳过注册，`--bin-dir DIR` 指定候选目录，`--open` 在启动后自动打开浏览器。
 - 守护进程启动后写入 `<ASTRO_HOME>/dashboard-<port>.pid`（含 `pid` 与 `url`），运行日志落在 `<ASTRO_HOME>/dashboard.log`。`logs [--lines N]` 默认查看末尾 40 行。
 - `stop` 向守护进程发送 `SIGTERM`（必要时 `SIGKILL`）并结束进程，不触发额外清理；`restart` 等价于先 `stop` 再 `start`。
