@@ -39,3 +39,12 @@ export function writeStorageValue(
     // Preferences remain usable for the current page when storage is unavailable.
   }
 }
+
+/** Drop a stored preference so a state-aware default can take over again. */
+export function removeStorageValue(storage: StorageAccess, key: string) {
+  try {
+    storage.removeItem(key);
+  } catch {
+    // The in-memory preference still governs this page when storage is blocked.
+  }
+}

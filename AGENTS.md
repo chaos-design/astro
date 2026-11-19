@@ -85,6 +85,20 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   `docs/conventions-*.md`, this file, `docs/index.md`, and `site/src/docs.ts`
   agree with it.
 
+## Quick Start CLI (ax)
+
+- `bin/ax.mjs` is a thin launcher for the aggregated `ax` command implemented
+  in `bin/astrox.mjs`; it is the only definition of that flow. `ax` starts the
+  dashboard through `ensureDashboardStarted` (the same helper `start`/`restart`
+  use), registers both global `astrox` and `ax` shorthands, and reports the
+  start result plus the shared status report (`collectStatusReport`, also used
+  by `status`). Do not grow a second start path or a second status collector —
+  a quick command that disagrees with `status` is worse than no shortcut.
+- `--json` keeps stdout to one document (registration chatter is suppressed).
+  A failed start still prints status and exits non-zero. Both `astrox` and `ax`
+  are shipped as bins of the packaged `astro-plugin` runtime
+  (`scripts/build-plugin.mjs`), so a global install provides both commands.
+
 ## Demo Dataset
 
 - The sample run is a local resource file, `data/demo-events.json`, not a
@@ -783,11 +797,16 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   below the inspector tabs and the Input tab render that one component, and
   Overview no longer mounts a second answer box. One toolbar row owns only the
   view switch (Preview / Code) and the placement switch — the question itself is
-  never foldable, so there is no collapse button; Preview shows the question list
+  never foldable, so there is no collapse button; the view mode is controlled by
+  the inspector so the dock and Input tab instances cannot show different views.
+  Preview shows the question list
   with option chips, Code shows the raw payload only — no options and no answer
-  bar. While a request is open the options are buttons and the
+  bar. Both surfaces use one wording set — `Submit` with a Send icon, `Cancel`
+  with an X icon, same order (Submit first) — so a mode switch never changes the
+  button copy. While a request is open the options are buttons and the
   Submit / Cancel bar is a sibling of the scrolling body, pinned to the bottom
-  of whichever container holds the surface; once it closes (or for a captured
+  of whichever container holds the surface (it wraps on a narrow viewport so
+  both stay reachable); once it closes (or for a captured
   question with no request) the same chips render as static `spans`, so nothing
   looks answerable when there is nothing to answer. `src/lib/question-interaction.ts` owns
   the one match rule (tool id first, then session + verbatim question text,
@@ -835,10 +854,16 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   placement of both surfaces: `dock-full` renders that same question surface
   under the inspector tabs and fills the detail area, and only `float` puts the
   card over the canvas, so the card still requires the highlighted atom to be
-  the question. The docked layout also expands a historical question the reader
-  selected, which is how a closed request is re-opened for reading. A collapsed
-  EVENTS column has no region to dock into, so `questionDocked` in `app.tsx`
-  falls back to the card for the synchronous window. Questions inside the card
+  the question. With no explicit choice `resolveQuestionPanelMode` derives the
+  default from the question's state: a live/open request floats, a settled or
+  captured question docks; an explicit choice persists in
+  `ASTROX_QUESTION_PANEL_MODE` and wins. The dock and Input tab keep their
+  surface mounted and only toggle `hidden`; the tab list's constant
+  border-bottom replaces the dock-only border, so a placement switch adds no
+  border, reflow or remount. The docked layout also expands a historical question
+  the reader selected, which is how a closed request is re-opened for reading. A
+  collapsed EVENTS column has no region to dock into, so `questionDocked` in
+  `app.tsx` falls back to the card for the synchronous window. Questions inside the card
   are never foldable (only the whole card collapses from its header), its
   question list scrolls edge to edge — the card carries no outer padding, the
   rows carry the gutters — so the scrollbar rides the card border, and the

@@ -156,7 +156,9 @@
     (`src/components/question-content.tsx`, reused by the dock and the Input
     tab; Overview mounts no second answer box). One toolbar row owns the
     Preview / Code switch and the placement switch only — the question itself is
-    never foldable, so the toolbar carries no collapse button: Preview shows the
+    never foldable, so the toolbar carries no collapse button; the view mode is
+    controlled by the inspector so the dock and Input tab cannot show different
+    views: Preview shows the
     questions and their option chips, Code shows the raw payload only — no
     options, no submit bar. While a request is open the chips are buttons and
     the Submit / Cancel bar is a sibling of the scrolling body, so it stays
@@ -166,14 +168,23 @@
     column. Both answer surfaces build maps only in
     `src/lib/question-panel-model.ts`: option clicks highlight and fill drafts,
     typed text overrides an option without a Set step, and one Submit sends
-    every question. `dock-full` / `float` is one shared persisted placement
+    every question. Both surfaces use identical button copy, icons, size,
+    variant and order (`Submit` with a Send icon, `Cancel` with an X icon; no
+    "one-shot send" wording), and the pinned bar stays reachable when it wraps
+    on a narrow viewport. `dock-full` / `float` is one shared persisted placement
     (`src/lib/question-panel-model.ts` normalizes the retired `dock-half` /
     `half` / `bottom` / `side` values): `dock-full` renders the same question
     surface under the inspector tabs filling the detail area, and only `float`
     puts the card over the canvas — so the card needs the question atom
     highlighted, while the docked layout also expands a historical question the
     reader selected. A collapsed EVENTS column has no region to dock into, so
-    the docked layout falls back to the card for the synchronous window. The
+    the docked layout falls back to the card for the synchronous window. With
+    no explicit choice `resolveQuestionPanelMode` derives the default from the
+    question's state: live/open requests float, settled or captured questions
+    dock; an explicit choice persists in `ASTROX_QUESTION_PANEL_MODE` and wins.
+    The dock and Input tab keep their surface mounted and only toggle `hidden`;
+    the tab list's constant separator replaces the dock-only border, so a
+    placement switch causes no reflow, remount or teleport. The
     card's questions never fold, its scrollbar rides the card edge (no outer
     padding; the rows carry the gutters) and the keyboard shortcut legend sits in
     the header between the summary and the status, so the footer keeps only the

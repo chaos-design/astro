@@ -386,7 +386,7 @@ export function InteractionPanel({
                   variant="default"
                 >
                   <Send aria-hidden="true" data-icon="inline-start" />
-                  一次性提交
+                  Submit
                 </Button>
                 <Button
                   disabled={readOnly || pending}
@@ -400,7 +400,7 @@ export function InteractionPanel({
                 </Button>
                 {pending ? (
                   <span className="interaction-panel__pending" role="status">
-                    sending…
+                    Sending…
                   </span>
                 ) : null}
               </div>

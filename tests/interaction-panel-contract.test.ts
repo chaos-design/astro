@@ -38,6 +38,23 @@ test("typed answers are part of the one Submit with no Set step", () => {
   assert.match(panel, /onCancel\?\.\(\)/);
 });
 
+test("the floating card uses the shared Submit / Cancel wording and order", () => {
+  assert.match(
+    panel,
+    /<Send aria-hidden="true" data-icon="inline-start" \/>\s*Submit/,
+  );
+  assert.match(
+    panel,
+    /<X aria-hidden="true" data-icon="inline-start" \/>\s*Cancel/,
+  );
+  assert.doesNotMatch(panel, /一次性提交|提交发送/);
+  const footer = panel.slice(panel.indexOf('<footer className="interaction-panel__footer">'));
+  assert.ok(
+    footer.indexOf("Submit") < footer.indexOf("Cancel"),
+    "Submit precedes Cancel on both surfaces",
+  );
+});
+
 test("submit is blocked while a POST is in flight and while required answers are missing", () => {
   assert.match(panel, /questionPanelSubmittable\(request\.questions, answerMap\)/);
   assert.match(panel, /disabled=\{readOnly \|\| pending \|\| !submittable\}/);

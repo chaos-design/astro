@@ -126,7 +126,14 @@ function resultOf(payload: unknown): InteractionResult | null {
   if (!payload || typeof payload !== "object") {
     return null;
   }
-  const candidate = payload as Partial<InteractionResult>;
+  // The real service answers POST /api/interactions/:id/events with
+  // `{ requestId, event, result, duplicate }`; the close route and older
+  // transports put the result at the top level. Accept both so the client
+  // reports the answered result the service actually sent.
+  const root = payload as { result?: unknown };
+  const candidate = (
+    root.result && typeof root.result === "object" ? root.result : payload
+  ) as Partial<InteractionResult>;
   return typeof candidate.status === "string" && candidate.requestId
     ? (candidate as InteractionResult)
     : null;

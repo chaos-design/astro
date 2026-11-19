@@ -5,10 +5,14 @@
  * different widgets with two different submits.
  */
 
-import type { QuestionPanelMode } from "../config/app-config.ts";
+import {
+  questionPanelModeByState,
+  type QuestionPanelMode,
+  type QuestionPanelState,
+} from "../config/app-config.ts";
 import type { QuestionDescriptor } from "./interaction-contract.ts";
 
-export { type QuestionPanelMode };
+export { type QuestionPanelMode, type QuestionPanelState };
 
 /**
  * Two places the same question surface can live, in the order the control
@@ -48,16 +52,38 @@ export function isQuestionPanelMode(value: unknown): value is QuestionPanelMode 
   );
 }
 
-export function normalizeQuestionPanelMode(
+/**
+ * Parses a stored placement without inventing one for an absent or corrupt
+ * value. `null` is the signal that the state-aware default still applies.
+ */
+export function parseQuestionPanelMode(
   value: string | null | undefined,
-): QuestionPanelMode {
+): QuestionPanelMode | null {
   if (isQuestionPanelMode(value)) {
     return value;
   }
   if (typeof value === "string" && legacyQuestionPanelModes[value]) {
     return legacyQuestionPanelModes[value];
   }
-  return "dock-full";
+  return null;
+}
+
+export function normalizeQuestionPanelMode(
+  value: string | null | undefined,
+): QuestionPanelMode {
+  return parseQuestionPanelMode(value) ?? "dock-full";
+}
+
+/**
+ * The one placement decision: an explicit (or migrated legacy) choice wins,
+ * otherwise the question's lifecycle picks it — a live request floats, a
+ * settled or captured question docks.
+ */
+export function resolveQuestionPanelMode(
+  stored: string | null | undefined,
+  state: QuestionPanelState,
+): QuestionPanelMode {
+  return parseQuestionPanelMode(stored) ?? questionPanelModeByState[state];
 }
 
 /** Whether the mode renders the question inside the inspector instead of the canvas. */

@@ -71,6 +71,7 @@ import { PromptContent } from "./components/prompt-content";
 import {
   QuestionContent,
   type QuestionAnswerBinding,
+  type QuestionViewMode,
 } from "./components/question-content";
 import { InteractionPanel } from "./components/interaction-panel";
 import { RepositoryLink } from "./components/repo-link";
@@ -197,6 +198,7 @@ import {
 import {
   readStorageBoolean,
   readStorageValue,
+  removeStorageValue,
   writeStorageValue,
 } from "./lib/local-storage";
 import type { HistorySearchEntry } from "./lib/history-search";
@@ -275,7 +277,9 @@ import {
 } from "./lib/interaction-client";
 import {
   isDockedQuestionPanelMode,
-  normalizeQuestionPanelMode,
+  parseQuestionPanelMode,
+  resolveQuestionPanelMode,
+  type QuestionPanelState,
 } from "./lib/question-panel-model";
 import {
   matchQuestionInteraction,
@@ -3353,6 +3357,14 @@ function TraceInspector({
   /** The request that just closed, kept for the settle window. */
   settledQuestion: InteractionDraft | null;
 }) {
+  // The dock and the Input tab keep their own surface mounted, so their
+  // Preview / Code toggle must be controlled from here: one view state shared
+  // by both slots, reset for each newly selected question.
+  const [questionView, setQuestionView] = useState<{
+    id: string;
+    mode: QuestionViewMode;
+  }>({ id: "", mode: "preview" });
+
   if ((!node || !event) && !atom) {
     return (
       <section className="message-inspector message-inspector--empty flex min-h-0 flex-col items-center justify-center gap-[7px] p-[22px] text-center">
@@ -3469,6 +3481,30 @@ function TraceInspector({
   // the bottom of the detail area — half of it, or all of it. The tab then
   // shows the raw payload, so one question is never rendered twice.
   const dockedQuestion = questionDocked ? questionEvent : null;
+  const questionViewMode: QuestionViewMode =
+    questionEvent && questionView.id === questionEvent.id
+      ? questionView.mode
+      : "preview";
+  const handleQuestionViewModeChange = (mode: QuestionViewMode) => {
+    if (questionEvent) {
+      setQuestionView({ id: questionEvent.id, mode });
+    }
+  };
+  // The dock and the Input tab each keep their own instance mounted while a
+  // question is selected; only `hidden` changes with the placement. Toggling
+  // dock/float must not remount the surface or lose the reader's scroll, and
+  // the controlled view mode keeps Preview / Code identical in both slots.
+  const questionSurface = questionEvent ? (
+    <QuestionContent
+      answer={questionBinding}
+      key={questionEvent.id}
+      onViewModeChange={handleQuestionViewModeChange}
+      panelMode={questionPanelMode}
+      payload={questionEvent.payload}
+      viewMode={questionViewMode}
+      onPanelModeChange={onQuestionPanelModeChange}
+    />
+  ) : null;
 
   return (
     <section className="message-inspector grid min-h-0 grid-rows-[minmax(56px,auto)_minmax(0,1fr)]">
@@ -3538,18 +3574,13 @@ function TraceInspector({
                     key={promptEvent.id}
                     payload={promptEvent.payload}
                   />
-                ) : tab === "input" && questionEvent && !dockedQuestion ? (
+                ) : tab === "input" && questionEvent ? (
                   <div
                     className="inspector-question-stack"
                     data-mode={questionPanelMode}
+                    hidden={dockedQuestion ? true : undefined}
                   >
-                    <QuestionContent
-                      answer={questionBinding}
-                      key={questionEvent.id}
-                      panelMode={questionPanelMode}
-                      onPanelModeChange={onQuestionPanelModeChange}
-                      payload={questionEvent.payload}
-                    />
+                    {questionSurface}
                   </div>
                 ) : (
                   <JsonViewer value={payloadByTab[tab]} />
@@ -3557,17 +3588,15 @@ function TraceInspector({
               </TabsContent>
             ))}
           </div>
-          {dockedQuestion ? (
-            // The dock is the one question surface in these layouts: preview,
-            // mode switch and (when a request is still open) the answer box.
-            <div aria-label="Question dock" className="inspector-question-dock">
-              <QuestionContent
-                answer={questionBinding}
-                key={dockedQuestion.id}
-                panelMode={questionPanelMode}
-                onPanelModeChange={onQuestionPanelModeChange}
-                payload={dockedQuestion.payload}
-              />
+          {questionEvent ? (
+            // The dock is the visible question surface in dock-full; in float
+            // it stays mounted but hidden so a mode switch never remounts it.
+            <div
+              aria-label="Question dock"
+              className="inspector-question-dock"
+              hidden={dockedQuestion ? undefined : true}
+            >
+              {questionSurface}
             </div>
           ) : null}
         </div>
@@ -5506,19 +5535,14 @@ export default function App() {
       "overview",
     ),
   );
-  // The floating card and the inspector share one layout: a half-height card,
-  // a bottom-wide card, or a side-expanded card. Stored as a preference so a
-  // reload does not collapse the answer surface the reader relies on.
-  const [questionPanelMode, setQuestionPanelMode] =
-    useState<QuestionPanelMode>(() =>
-      normalizeQuestionPanelMode(
-        readStorageValue(
-          window.localStorage,
-          storageKeys.questionPanelMode,
-          appDefaults.questionPanelMode,
-        ),
-      ),
-    );
+  // The floating card and the inspector share one placement. An empty stored
+  // value means "no explicit choice": the effective mode below follows the
+  // question's lifecycle (live → float, settled → dock-full). Only a reader's
+  // pick writes the key — writing on every render would freeze the first
+  // default into a permanent preference.
+  const [questionPanelPreference, setQuestionPanelPreference] = useState(() =>
+    readStorageValue(window.localStorage, storageKeys.questionPanelMode, ""),
+  );
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const preserveAtomSelectionRef = useRef(false);
   const previousAtomRef = useRef("");
@@ -5580,13 +5604,23 @@ export default function App() {
     writeStorageValue(window.localStorage, storageKeys.inspectorTab, inspectorTab);
   }, [inspectorTab]);
 
-  useEffect(() => {
-    writeStorageValue(
-      window.localStorage,
-      storageKeys.questionPanelMode,
-      questionPanelMode,
-    );
-  }, [questionPanelMode]);
+  // `null` is the reset-to-default signal: it removes the stored choice so the
+  // state-aware placement applies again on the next question.
+  const handleQuestionPanelModeChange = useCallback(
+    (mode: QuestionPanelMode | null) => {
+      setQuestionPanelPreference(mode ?? "");
+      if (mode === null) {
+        removeStorageValue(window.localStorage, storageKeys.questionPanelMode);
+      } else {
+        writeStorageValue(
+          window.localStorage,
+          storageKeys.questionPanelMode,
+          mode,
+        );
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     writeStorageValue(window.localStorage, storageKeys.activeView, activeView);
@@ -6845,11 +6879,23 @@ export default function App() {
         : null,
     [matchedQuestionInteraction],
   );
-  // Where the question surface lives. `float` keeps the card over the canvas;
-  // the two dock layouts move it under the inspector tabs, which only exists
-  // while the EVENTS column is open — a collapsed column would leave a live
-  // question with nowhere to land inside its synchronous window, so the card
-  // takes over until the column is reopened.
+  // With no explicit choice the placement follows the question: an open
+  // request floats over the canvas, a settled or captured question docks. The
+  // dock needs the EVENTS column, so a collapsed column falls back to the
+  // floating card until the column is reopened.
+  const questionPanelState: QuestionPanelState = activeInteraction
+    ? "live"
+    : "settled";
+  const questionPanelMode = resolveQuestionPanelMode(
+    questionPanelPreference,
+    questionPanelState,
+  );
+  // Settings edits the stored choice, not the resolved one: with no explicit
+  // preference it must show "follow state", otherwise the control silently
+  // presents a fixed placement and can never be restored to the default.
+  const questionPanelPreferenceMode = parseQuestionPanelMode(
+    questionPanelPreference,
+  );
   const questionDocked =
     isDockedQuestionPanelMode(questionPanelMode) && consoleOpen;
   const lastOpenInteractionRef = useRef<InteractionDraft | null>(null);
@@ -7770,7 +7816,7 @@ export default function App() {
               liveView={liveFilter}
               maxSync={maxSync}
               perfHud={perfHud}
-              questionPanelMode={questionPanelMode}
+              questionPanelMode={questionPanelPreferenceMode}
               taskCompletionChime={taskCompletionChime}
               theme={theme}
               onActiveViewChange={(view) => {
@@ -7786,7 +7832,7 @@ export default function App() {
               onLiveViewChange={setLiveFilter}
               onMaxSyncChange={setMaxSync}
               onPerfHudChange={setPerfHud}
-              onQuestionPanelModeChange={setQuestionPanelMode}
+              onQuestionPanelModeChange={handleQuestionPanelModeChange}
               onTaskCompletionChimeChange={setTaskCompletionChime}
               onChimeStyleChange={setChimeStyle}
               onThemeChange={setTheme}
@@ -7989,7 +8035,7 @@ export default function App() {
               onCancel={() =>
                 handleInteractionCancel(activeInteraction.request.requestId)
               }
-              onModeChange={setQuestionPanelMode}
+              onModeChange={handleQuestionPanelModeChange}
               onSend={(answers) =>
                 handleInteractionAnswers(
                   activeInteraction.request.requestId,
@@ -8011,7 +8057,7 @@ export default function App() {
               key={settlingInteraction.request.requestId}
               lockedBy={settlingInteraction.lockedBy}
               mode={questionPanelMode}
-              onModeChange={setQuestionPanelMode}
+              onModeChange={handleQuestionPanelModeChange}
               request={settlingInteraction.request}
               result={settlingInteraction.result}
             />
@@ -8120,7 +8166,7 @@ export default function App() {
                 onAnswerQuestion={handleQuestionAnswer}
                 onCancelQuestion={handleInteractionCancel}
                 questionPanelMode={questionPanelMode}
-                onQuestionPanelModeChange={setQuestionPanelMode}
+                onQuestionPanelModeChange={handleQuestionPanelModeChange}
                 questionDocked={questionDocked}
                 settledQuestion={
                   settlingMatchesView ? settlingInteraction : null

@@ -1,6 +1,6 @@
 # Host integration equivalence acceptance (plan F3)
 
-Generated: 2026-11-16T04:37:59.459Z
+Generated: 2026-11-19T08:07:40.245Z
 
 This record covers protocol-level acceptance using captured payloads and real
 hook processes. It does **not** replace launching Claude Code or ZCode:
@@ -10,8 +10,8 @@ what this machine can and cannot verify; the runbook lists the remaining steps.
 
 | Check | Result | Detail |
 | --- | --- | --- |
-| captured payload source | pass | /Users/xcz/.astrox/zcode/2026/11-15/20_12_53-sess_e368bd57-f885-4f11-b215-e2e8b8693cf6/events.jsonl (3 questions) |
-| auto-approve hook emits a real-host PermissionRequest decision | pass | 3 answers, keys match question text |
+| captured payload source | pass | /Users/xcz/.astrox/zcode/2026/11-19/11_34_14-sess_a0c25db4-1565-4fea-8aaf-e9da8ba75cc1/events.jsonl (2 questions) |
+| auto-approve hook emits a real-host PermissionRequest decision | pass | 2 answers, keys match question text |
 | interaction hook fails open with no host service | pass | empty stdout, exit 0 (host prompt remains) |
 | interaction decision matches Claude PreToolUse schema | pass | permissionDecision + updatedInput.answers |
 | interaction decision matches ZCode strict PermissionRequest schema | pass | hookSpecificOutput.decision.behavior, strict key set |
@@ -31,7 +31,7 @@ Machine-generated on every run; this is the evidence behind the F3 blocker.
 
 ## Live ZCode host session (machine-scanned)
 
-Scanned /Users/xcz/.zcode/cli/log/zcode-2026-11-16.jsonl (2026-11-16): **329** hook.run.allowed, **0** hook.run.failed, 329 ASTRO-sourced, last ASTRO call Bash at 2026-11-16T04:37:41.829Z.
+Scanned /Users/xcz/.zcode/cli/log/zcode-2026-11-19.jsonl (2026-11-19): **848** hook.run.allowed, **0** hook.run.failed, 848 ASTRO-sourced, last ASTRO call Bash at 2026-11-19T04:44:54.909Z.
 
 A real ZCode host session ran ASTRO hooks on this day with **no `hook.run.failed`** — the F3 ZCode criterion of a clean fresh-session log holds on this machine.
 
@@ -61,4 +61,27 @@ implementation-breakdown.md` and archive the plan.
 3. Record: paste both evidences into this file under a dated section, tick
    F3, `plan_flow.py --root plans move 03 planing`, complete the remaining
    DoD boxes (`code`, `func_test_result`) and archive.
+
+## 2026-11-19 re-verification (F3 still blocked)
+
+- Machine scan refreshed above: 848 `hook.run.allowed` and **0** `hook.run.failed`
+  in the 2026-11-19 ZCode log, all recorder-plugin sourced. The day's session is
+  clean; this is still not the interaction-hook closed loop.
+- Equivalence checks 6/6 pass against a fresh captured payload (2026-11-19,
+  2 questions).
+- Plan 04 added a real-process end-to-end check: `node --test
+  tests/interaction-integration.test.mjs` (11/11) runs a real
+  `scripts/interaction-hook.mjs` process against the real service, answers with
+  the real console client `answerInteractionQuestions`, and asserts one `text`
+  plus one `submit`, a result file with `status=answered` and the verbatim
+  answer map, and hook stdout `allow` with `updatedInput.answers`. This proves
+  the chain up to the hook's stdout — it does **not** prove a host consumed the
+  decision.
+- Still missing for F3: Claude `/hooks` visibility and the transcript wording
+  `Allowed by PermissionRequest hook` (no Claude binary or credentials here),
+  and an interaction-hook closed loop inside a real Claude/ZCode session (the
+  hosts are GUI-only in this sandbox, and the plans forbid writing the user's
+  real `~/.claude` / `~/.zcode` config without authorization).
+- F3 stays unchecked and plan 03 stays pending. Do not record "host acceptance
+  passed" until a real host session produces the two evidences in the runbook.
 

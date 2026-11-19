@@ -32,6 +32,8 @@ for (const directory of ["deepseek-plugin", "dist", "plugin", "server"]) {
 for (const file of [
   ".env.example",
   "bin/astro.mjs",
+  "bin/astrox.mjs",
+  "bin/ax.mjs",
   "config.example.yaml",
   "scripts/install-plugins.mjs",
   "scripts/migrate-data.mjs",
@@ -58,6 +60,8 @@ writeFileSync(
       bin: {
         "astro-trace": "bin/astro.mjs",
         "astro-plugin": "bin/astro.mjs",
+        astrox: "bin/astrox.mjs",
+        ax: "bin/ax.mjs",
       },
       files: [
         "bin",

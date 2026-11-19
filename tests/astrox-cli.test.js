@@ -81,6 +81,7 @@ test("help documents the plugin command set", (t) => {
     "open",
     "logs",
     "path",
+    "ax",
   ]) {
     assert.match(result.stdout, new RegExp(`astrox ${command}\\b`));
   }
@@ -254,4 +255,46 @@ test("status flags an installed bundle that lags behind the CLI", (t) => {
 
   const text = runCli(["status", "--bin-dir", join(root, "bin")], environment);
   assert.match(text.stdout, /plugin build +OK/);
+});
+
+test("ax reports start failure and status for an uninstalled runtime", (t) => {
+  const { environment, root } = fixture(t);
+  const result = runCli(
+    ["ax", "--json", "--bin-dir", join(root, "bin")],
+    environment,
+  );
+  assert.equal(result.status, 1, result.stderr);
+  const report = JSON.parse(result.stdout);
+  assert.equal(report.start.action, "failed");
+  assert.match(report.start.message, /No installed ASTRO plugin found/);
+  assert.equal(report.dashboard.running, false);
+  assert.equal(report.plugin.installed, false);
+  assert.equal(report.integrations.length > 0, true);
+});
+
+test("ax registers both the astrox and ax global shorthands", (t) => {
+  const { environment, root } = fixture(t);
+  const binDir = join(root, "bin");
+  runCli(["ax", "--json", "--bin-dir", binDir], environment);
+  const suffix = process.platform === "win32" ? ".cmd" : "";
+  assert.equal(existsSync(join(binDir, `astrox${suffix}`)), true);
+  assert.equal(existsSync(join(binDir, `ax${suffix}`)), true);
+});
+
+test("the ax launcher runs the aggregated command", (t) => {
+  const { environment, root } = fixture(t);
+  const axFile = fileURLToPath(new URL("../bin/ax.mjs", import.meta.url));
+  const result = spawnSync(
+    process.execPath,
+    [axFile, "--json", "--no-global", "--bin-dir", join(root, "bin")],
+    {
+      encoding: "utf8",
+      env: environment,
+      timeout: 20_000,
+    },
+  );
+  assert.equal(result.status, 1, result.stderr);
+  const report = JSON.parse(result.stdout);
+  assert.equal(report.start.action, "failed");
+  assert.match(report.start.message, /No installed ASTRO plugin found/);
 });

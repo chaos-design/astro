@@ -109,6 +109,7 @@ pnpm start        # 服务：127.0.0.1:5678，托管 dist/
 ### 2.6 服务管理与升级
 
 ```bash
+ax                       # 一键启动 + 服务/集成状态（astrox ax 的短命令）
 astrox status|start|stop|restart|update|logs|doctor|path|open|info
 ```
 

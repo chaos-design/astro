@@ -64,9 +64,11 @@ async function loadDependencies() {
 }
 
 const CLI_NAME = "astrox";
+const AX_CLI_NAME = "ax";
 const ENTRY_FILE = fileURLToPath(import.meta.url);
 const PACKAGE_DIR = resolve(dirname(ENTRY_FILE), "..");
 const ASTRO_CLI_FILE = join(PACKAGE_DIR, "bin", "astro.mjs");
+const AX_CLI_FILE = join(PACKAGE_DIR, "bin", "ax.mjs");
 const IS_WINDOWS = platform() === "win32";
 /** Sources inspected by `status` and `info`. */
 const TRACE_SOURCES = [
@@ -142,22 +144,24 @@ export function getGlobalBinDirs() {
   ];
 }
 
-function globalCliTarget(dir) {
-  return join(dir, IS_WINDOWS ? `${CLI_NAME}.cmd` : CLI_NAME);
+function globalCliTarget(dir, name = CLI_NAME) {
+  return join(dir, IS_WINDOWS ? `${name}.cmd` : name);
 }
 
 /**
- * Expose this entry file as a global `astrox` command. The first writable
- * candidate directory wins; a foreign file already holding the name is left
- * untouched. Registration is best effort and never fatal.
+ * Expose an entry file as a global command. `name` defaults to `astrox`, but the
+ * same mechanism registers the short `ax` alias. The first writable candidate
+ * directory wins; a foreign file already holding the name is left untouched.
+ * Registration is best effort and never fatal.
  */
 export function registerGlobalCli({
   binDirs = getGlobalBinDirs(),
   entryFile = ENTRY_FILE,
+  name = CLI_NAME,
 } = {}) {
   const failures = [];
   for (const dir of binDirs) {
-    const target = globalCliTarget(dir);
+    const target = globalCliTarget(dir, name);
     try {
       mkdirSync(dir, { recursive: true });
       if (existsSync(target) || isSymlink(target)) {
@@ -210,13 +214,14 @@ function resolveCliEntry(target) {
   }
 }
 
-/** Locate an already registered global `astrox` command. */
+/** Locate an already registered global command (`astrox` or `ax`). */
 export function findGlobalCli({
   binDirs = getGlobalBinDirs(),
   entryFile = ENTRY_FILE,
+  name = CLI_NAME,
 } = {}) {
   for (const dir of binDirs) {
-    const target = globalCliTarget(dir);
+    const target = globalCliTarget(dir, name);
     if (!existsSync(target) && !isSymlink(target)) {
       continue;
     }
@@ -382,16 +387,32 @@ function resolveDashboardPort(environment) {
   return Number.isFinite(port) && port > 0 ? port : 5_678;
 }
 
-async function startCommand() {
+/** One shot load of the config and paths every runtime command needs. */
+async function resolveRuntimeContext() {
   const deps = await loadDependencies();
-  const { environment } = await loadConfig();
+  const config = await loadConfig();
+  const environment = config.environment;
   const astroHome = deps.resolveAstroHome(environment);
   const runtime = deps.getInstalledRuntimePaths(astroHome);
+  return { astroHome, config, deps, environment, runtime };
+}
+
+/** The installed plugin must exist before any start path is attempted. */
+function assertDashboardInstalled(runtime) {
   if (!existsSync(runtime.dashboardFile)) {
     throw new Error(
       `No installed ASTRO plugin found under ${runtime.pluginDir}. Run "astrox install" first.`,
     );
   }
+}
+
+/**
+ * Bring the dashboard up on the configured port, refreshing a stale bundle on
+ * the way. Returns a result instead of printing so `start`, `restart` and the
+ * combined `ax` command all share the one start path.
+ */
+async function ensureDashboardStarted({ astroHome, deps, environment, runtime }) {
+  assertDashboardInstalled(runtime);
   const port = resolveDashboardPort(environment);
   // The installed runtime is a *copy* of this package made by `astrox install`
   // / `astrox update`. When the CLI moved on and the copy did not, the daemon
@@ -401,38 +422,24 @@ async function startCommand() {
   const cliVersion = getPackageVersion();
   const bundleVersion = readInstalledBundleVersion(runtime.pluginDir);
   const bundleStale = bundleVersion !== cliVersion;
-
-  if (!hasFlag("no-global")) {
-    const registered = registerGlobalCli({
-      binDirs: (await getBinDirOption()) ?? getGlobalBinDirs(),
-    });
-    printGlobalCli(registered);
-  }
-
   const existing = readDashboardState(astroHome, port);
   if (existing?.running) {
-    if (bundleStale) {
-      console.log(
-        `Installed bundle is ${bundleVersion ? `v${bundleVersion}` : "unstamped"} but this CLI is v${cliVersion}.`,
-      );
-      console.log('Run "astrox restart" to serve the current build.');
-    }
-    console.log(`Dashboard already running: ${existing.url || "unknown"}`);
-    if (hasFlag("open") && existing.url) {
-      openUrl(existing.url);
-    }
-    return;
+    return {
+      action: "already-running",
+      bundleStale,
+      bundleVersion,
+      cliVersion,
+      state: existing,
+    };
   }
-
+  let refreshed = false;
   if (bundleStale) {
-    console.log(
-      `Refreshing installed bundle ${bundleVersion ? `v${bundleVersion}` : "(unstamped)"} → v${cliVersion}…`,
-    );
     deps.updateInstalledPlugins({
       astroHome,
       environment,
       refreshDeepseek: false,
     });
+    refreshed = true;
   }
 
   const logFile = getOption("log-file") || join(astroHome, "dashboard.log");
@@ -453,10 +460,50 @@ async function startCommand() {
       `The dashboard did not report a PID within 15s. Check ${logFile}.`,
     );
   }
-  console.log(`Dashboard started: ${state.url || "unknown"} (pid ${state.pid})`);
-  console.log(`Log file: ${logFile}`);
-  if (hasFlag("open") && state.url) {
-    openUrl(state.url);
+  return {
+    action: "started",
+    bundleStale,
+    bundleVersion,
+    cliVersion,
+    logFile,
+    refreshed,
+    state,
+  };
+}
+
+async function startCommand() {
+  const ctx = await resolveRuntimeContext();
+  // Keep the early guard: a failed start must not touch the real global bin.
+  assertDashboardInstalled(ctx.runtime);
+  if (!hasFlag("no-global")) {
+    const registered = registerGlobalCli({
+      binDirs: (await getBinDirOption()) ?? getGlobalBinDirs(),
+    });
+    printGlobalCli(registered);
+  }
+  const result = await ensureDashboardStarted(ctx);
+  if (result.action === "already-running") {
+    if (result.bundleStale) {
+      console.log(
+        `Installed bundle is ${result.bundleVersion ? `v${result.bundleVersion}` : "unstamped"} but this CLI is v${result.cliVersion}.`,
+      );
+      console.log('Run "astrox restart" to serve the current build.');
+    }
+    console.log(`Dashboard already running: ${result.state.url || "unknown"}`);
+    if (hasFlag("open") && result.state.url) {
+      openUrl(result.state.url);
+    }
+    return;
+  }
+  if (result.refreshed) {
+    console.log(`Refreshed installed bundle → v${result.cliVersion}.`);
+  }
+  console.log(
+    `Dashboard started: ${result.state.url || "unknown"} (pid ${result.state.pid})`,
+  );
+  console.log(`Log file: ${result.logFile}`);
+  if (hasFlag("open") && result.state.url) {
+    openUrl(result.state.url);
   }
 }
 
@@ -469,14 +516,12 @@ async function getBinDirOption() {
   return [resolve(deps.expandHome(binDir))];
 }
 
-function printGlobalCli(registered) {
+function printGlobalCli(registered, name = CLI_NAME) {
   if (registered.path) {
-    console.log(
-      `Global ${CLI_NAME} CLI ${registered.action}: ${registered.path}`,
-    );
+    console.log(`Global ${name} CLI ${registered.action}: ${registered.path}`);
     return;
   }
-  console.log(`Global ${CLI_NAME} CLI: not registered`);
+  console.log(`Global ${name} CLI: not registered`);
   for (const failure of registered.failures) {
     console.log(`  ${failure}`);
   }
@@ -534,12 +579,14 @@ async function restartCommand() {
   await startCommand();
 }
 
-async function statusCommand() {
-  const deps = await loadDependencies();
-  const config = await loadConfig();
-  const environment = config.environment;
-  const astroHome = deps.resolveAstroHome(environment);
-  const runtime = deps.getInstalledRuntimePaths(astroHome);
+/** Build the shared status report consumed by both `status` and `ax`. */
+async function collectStatusReport({
+  astroHome,
+  config,
+  deps,
+  environment,
+  runtime,
+}) {
   const globalCli = findGlobalCli({
     binDirs: (await getBinDirOption()) ?? getGlobalBinDirs(),
   });
@@ -642,7 +689,11 @@ async function statusCommand() {
     })),
     version: cliVersion,
   };
+  return report;
+}
 
+/** Render the shared status report as human text or machine JSON. */
+function printStatusReport(report, runtime) {
   if (hasFlag("json")) {
     console.log(JSON.stringify(report, null, 2));
     return;
@@ -690,6 +741,91 @@ async function statusCommand() {
       .map(({ id, state }) => `${id}=${state}`)
       .join(" ")}`,
   );
+}
+
+async function statusCommand() {
+  const ctx = await resolveRuntimeContext();
+  const report = await collectStatusReport(ctx);
+  printStatusReport(report, ctx.runtime);
+}
+
+/**
+ * `ax` is the one-command quick start: bring the dashboard up, register both
+ * global shorthands, then report service and integration readiness in one
+ * screen. The start and status steps reuse the very same helpers as `start`
+ * and `status`, so the two command surfaces can never disagree.
+ */
+async function axCommand() {
+  const ctx = await resolveRuntimeContext();
+  const binDirs = (await getBinDirOption()) ?? getGlobalBinDirs();
+
+  if (!hasFlag("no-global")) {
+    const registered = registerGlobalCli({ binDirs });
+    const axRegistered = registerGlobalCli({
+      binDirs,
+      entryFile: AX_CLI_FILE,
+      name: AX_CLI_NAME,
+    });
+    // Keep --json stdout to a single machine-readable document.
+    if (!hasFlag("json")) {
+      printGlobalCli(registered);
+      printGlobalCli(axRegistered, AX_CLI_NAME);
+    }
+  }
+
+  let start;
+  try {
+    const result = await ensureDashboardStarted(ctx);
+    start = {
+      action: result.action,
+      message:
+        result.action === "already-running"
+          ? `Dashboard already running: ${result.state.url || "unknown"}`
+          : `Dashboard started: ${result.state.url || "unknown"} (pid ${result.state.pid})`,
+      pid: result.state.pid,
+      url: result.state.url || "",
+    };
+    if (result.bundleStale && result.action === "already-running") {
+      start.note = `Installed bundle is ${result.bundleVersion ? `v${result.bundleVersion}` : "unstamped"} but this CLI is v${result.cliVersion}; run "astrox restart".`;
+    }
+    if (hasFlag("open") && result.state.url) {
+      openUrl(result.state.url);
+    }
+  } catch (error) {
+    start = { action: "failed", message: error.message };
+  }
+
+  const report = await collectStatusReport(ctx);
+  if (hasFlag("json")) {
+    console.log(JSON.stringify({ ...report, start }, null, 2));
+  } else {
+    console.log(`ASTROX QUICK · v${report.version}`);
+    console.log(`  start         ${start.message}`);
+    if (start.note) {
+      console.log(`                ${start.note}`);
+    }
+    console.log(
+      `  service       ${
+        report.dashboard.running
+          ? `RUNNING ${report.dashboard.url || ""} (pid ${report.dashboard.pid}${report.dashboard.version ? `, v${report.dashboard.version}` : ""})`
+          : "STOPPED"
+      }`,
+    );
+    console.log(
+      `  plugin        ${report.plugin.installed ? `INSTALLED v${report.plugin.version}` : "MISSING"} ${report.plugin.pluginDir}`,
+    );
+    console.log(
+      `  recorder      ${report.plugin.recorder ? "OK" : "MISSING"} ${ctx.runtime.recorderFile}`,
+    );
+    console.log(
+      `  integrations  ${report.integrations
+        .map(({ id, state }) => `${id}=${state}`)
+        .join(" ")}`,
+    );
+  }
+  if (start.action === "failed") {
+    process.exitCode = 1;
+  }
 }
 
 async function infoCommand() {
@@ -871,8 +1007,10 @@ Usage:
   astrox open                    Open the running dashboard in a browser
   astrox logs [--lines N]        Tail the dashboard log
   astrox path                    Print ASTRO home, plugin dir, and CLI entry
+  astrox ax [--json]             Quick start + service/integration status
 
 Notes:
+  "ax" is the short form of "astrox ax" and can be installed globally.
   astrox start registers this entry as a global "astrox" command
   (${getGlobalBinDirs().join(", ")}).
   astrox stop terminates the dashboard process; no extra cleanup is performed.
@@ -884,6 +1022,7 @@ Environment:
 }
 
 const commands = {
+  ax: axCommand,
   doctor: () => delegateCommand("doctor"),
   help: printHelp,
   info: infoCommand,
