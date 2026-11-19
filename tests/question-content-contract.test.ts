@@ -72,3 +72,27 @@ test("the dock hands its whole height to the merged surface", () => {
   assert.doesNotMatch(dock, /max-height:\s*45%/);
   assert.doesNotMatch(styles, /\.question-answer \{/);
 });
+
+/**
+ * The floating card is a live answer affordance, not a history preview. Both
+ * the floating render paths and the inspector binding must go through the
+ * single `questionActionable` gate, so a finished or replayed run never floats
+ * a card and its answer controls stay read-only.
+ */
+test("floating card and inspector answers are gated by the executing task", () => {
+  assert.match(app, /questionActionable && activeInteraction && !questionDocked/);
+  assert.match(app, /questionActionable &&\s+settlingInteraction &&\s+settlingMatchesView/);
+  const binding = app.slice(
+    app.indexOf("const questionBinding"),
+    app.indexOf("const dockedQuestion"),
+  );
+  assert.match(binding, /readOnly:\s*!questionActionable \|\|/);
+  // The gate must delegate to the one live-state definition rather than grow
+  // a second list of executing statuses.
+  const interaction = readFileSync(
+    new URL("../src/lib/question-interaction.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(interaction, /isQuestionActionable/);
+  assert.match(interaction, /isPromptExecuting\(input\.status, input\.isDemo\)/);
+});

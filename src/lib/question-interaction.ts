@@ -15,6 +15,7 @@ import type { QuestionDescriptor } from "./interaction-contract.ts";
 import type { InteractionDraft } from "./interaction-reducer.ts";
 import type { TraceEvent } from "../types/trace.ts";
 import { getAtomIdForEvent } from "../config/atom-platforms.ts";
+import { isPromptExecuting } from "./atom-selection.ts";
 import { parseUserQuestionContent } from "./user-question-content.ts";
 
 export interface MatchedQuestionInteraction {
@@ -134,6 +135,28 @@ export function questionMatchesCurrentView(input: {
     return false;
   }
   return !event.source || draft.request.source === event.source;
+}
+
+/**
+ * Whether the floating question card is a live answer affordance. A question
+ * is actionable only while the task it belongs to is still in flight — an
+ * `active` (running) turn, or a `waiting` turn paused on that very question —
+ * and the reader is not replaying a captured snapshot. Once the run reaches a
+ * terminal state, or history is being replayed, the event is a read-only
+ * preview: the answer controls are disabled and no card floats over the
+ * canvas.
+ *
+ * Delegates to {@link isPromptExecuting} on purpose: RUN HISTORY's live tag,
+ * the footer Live button and this card must agree on one definition of
+ * "executing" (active OR waiting), so a `waiting` question never falls into a
+ * gap where the run is live but its question cannot be answered.
+ */
+export function isQuestionActionable(input: {
+  status: string | undefined;
+  replayMode: boolean;
+  isDemo: boolean;
+}): boolean {
+  return isPromptExecuting(input.status, input.isDemo) && !input.replayMode;
 }
 
 export function matchQuestionInteraction(

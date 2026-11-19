@@ -4,6 +4,7 @@ import test from "node:test";
 import { buildRequest as buildHostRequest } from "../scripts/interaction-hook.mjs";
 import { buildInteractionRequest } from "../src/lib/interaction-contract.ts";
 import {
+  isQuestionActionable,
   matchQuestionInteraction,
   questionMatchesCurrentView,
   questionTextsFromEvent,
@@ -365,4 +366,40 @@ test("a WorkBuddy PreToolUse can be answered from the console", () => {
   assert.equal(matched?.question.question, "Which language?");
   assert.equal(matched?.draft.request.source, "workbuddy");
   assert.equal(matched?.draft.request.toolUseId, "call_wb_1");
+});
+
+test("floating question is actionable only while the task is executing and not replayed", () => {
+  // Both live states count: a running turn and a turn paused on this very
+  // question. These are the states RUN HISTORY and the Live button call live.
+  assert.equal(
+    isQuestionActionable({ status: "active", replayMode: false, isDemo: false }),
+    true,
+  );
+  assert.equal(
+    isQuestionActionable({ status: "waiting", replayMode: false, isDemo: false }),
+    true,
+  );
+  // A finished, failed or interrupted run is a history preview: the question
+  // stays readable, but no card floats and the answer controls go read-only.
+  for (const status of ["complete", "failed", "terminated", undefined]) {
+    assert.equal(
+      isQuestionActionable({ status, replayMode: false, isDemo: false }),
+      false,
+      `status ${String(status)} must not float a question card`,
+    );
+  }
+  // Replaying a captured snapshot is historical even while the run is live.
+  assert.equal(
+    isQuestionActionable({ status: "active", replayMode: true, isDemo: false }),
+    false,
+  );
+  assert.equal(
+    isQuestionActionable({ status: "waiting", replayMode: true, isDemo: false }),
+    false,
+  );
+  // The sample dataset carries no live interaction requests to answer.
+  assert.equal(
+    isQuestionActionable({ status: "active", replayMode: false, isDemo: true }),
+    false,
+  );
 });

@@ -174,10 +174,17 @@
     highlighted, while the docked layout also expands a historical question the
     reader selected. A collapsed EVENTS column has no region to dock into, so
     the docked layout falls back to the card for the synchronous window. The
-    card's questions never fold, its scrollbar rides the card edge (no outer
-    padding; the rows carry the gutters) and the keyboard shortcut legend sits in
-    the header between the summary and the status, so the footer keeps only the
-    Submit / Cancel buttons. The
+    floating card and the inspector's answer controls are a live affordance:
+    `isQuestionActionable` in `src/lib/question-interaction.ts` (delegating to
+    `isPromptExecuting`, so both `active`/running and `waiting` count) gates
+    them. Once the run reaches a terminal state, or the reader replays a
+    captured snapshot, no card floats and the inspector question goes read-only
+    — the event stays a preview, never an answerable request (the docked layout
+    still expands a historical question for reading, but its controls are
+    disabled). The card's questions never fold, its scrollbar rides the card
+    edge (no outer padding; the rows carry the gutters) and the keyboard shortcut
+    legend sits in the header between the summary and the status, so the footer
+    keeps only the Submit / Cancel buttons. The
     inspector's batch answer builds its seq chain only in
     `answerInteractionQuestions` (`src/lib/interaction-client.ts`): one `text`
     event per question then one `submit` with the full answer map, with the

@@ -278,6 +278,7 @@ import {
   normalizeQuestionPanelMode,
 } from "./lib/question-panel-model";
 import {
+  isQuestionActionable,
   matchQuestionInteraction,
   questionMatchesCurrentView,
   shouldLocateInteractionRequest,
@@ -3323,6 +3324,7 @@ function TraceInspector({
   onAnswerDraftChange,
   onAnswerQuestion,
   onCancelQuestion,
+  questionActionable,
   questionPanelMode,
   onQuestionPanelModeChange,
   questionDocked,
@@ -3342,6 +3344,8 @@ function TraceInspector({
     answers: Record<string, string>,
   ) => void;
   onCancelQuestion: (requestId: string) => void;
+  /** Live answer affordance: false for a finished run or a replayed preview. */
+  questionActionable: boolean;
   questionPanelMode: QuestionPanelMode;
   onQuestionPanelModeChange: (mode: QuestionPanelMode) => void;
   /**
@@ -3458,6 +3462,7 @@ function TraceInspector({
         onCancel: () => onCancelQuestion(questionDraft.request.requestId),
         pending: Boolean(questionDraft.pending),
         readOnly:
+          !questionActionable ||
           Boolean(questionDraft.result) ||
           Boolean(
             questionDraft.lockedBy && questionDraft.lockedBy !== consoleDeviceId,
@@ -6852,6 +6857,16 @@ export default function App() {
   // takes over until the column is reopened.
   const questionDocked =
     isDockedQuestionPanelMode(questionPanelMode) && consoleOpen;
+  // The floating card is a live answer affordance, not a history preview. It
+  // only floats while the task being inspected is actually executing — active
+  // (running) or waiting — and the reader is not replaying a snapshot. A
+  // finished run or a replayed turn keeps its question readable in the
+  // inspector, but the answer controls there go read-only and no card floats.
+  const questionActionable = isQuestionActionable({
+    status: activeDisplayState?.status,
+    replayMode,
+    isDemo,
+  });
   const lastOpenInteractionRef = useRef<InteractionDraft | null>(null);
   if (activeInteraction) {
     lastOpenInteractionRef.current = activeInteraction;
@@ -7978,7 +7993,7 @@ export default function App() {
             </div>
           </div>
 
-          {activeInteraction && !questionDocked ? (
+          {questionActionable && activeInteraction && !questionDocked ? (
             <InteractionPanel
               className="interaction-panel--floating"
               deviceId={consoleDeviceId}
@@ -8001,7 +8016,10 @@ export default function App() {
               result={activeInteraction.result}
               selections={activeInteraction.selections}
             />
-          ) : settlingInteraction && settlingMatchesView && !questionDocked ? (
+          ) : questionActionable &&
+            settlingInteraction &&
+            settlingMatchesView &&
+            !questionDocked ? (
             // The request just closed: same key and position as the open card,
             // so the collapsed/expanded state carries over without a remount
             // flicker while the result is shown and the card slides away.
@@ -8119,6 +8137,7 @@ export default function App() {
                 }
                 onAnswerQuestion={handleQuestionAnswer}
                 onCancelQuestion={handleInteractionCancel}
+                questionActionable={questionActionable}
                 questionPanelMode={questionPanelMode}
                 onQuestionPanelModeChange={setQuestionPanelMode}
                 questionDocked={questionDocked}

@@ -764,6 +764,15 @@ such a request opens, the canvas flashes its question atom. CodeBuddy / WorkBudd
 `PreToolUse.modifiedInput` carries only the decision and answers — no notification
 extras that a strict host schema could reject.
 
+Only an executing task is answerable: the floating card and the inspector's
+answer controls appear only while the task is still in flight — `active`
+(running) or `waiting` (paused on the question). Once the run finishes (complete /
+failed / terminated), or you replay a captured snapshot, no card floats and the
+inspector question goes read-only: you can still read the question and its
+answer, but the options, input and Submit / Cancel are disabled, so you can never
+answer for a run that already ended. The region layout still expands a historical
+question for reading, read-only as well.
+
 Answering from a Flow atom: selecting the `User Question` atom binds the
 inspector to that question's start event (not to its answer); Overview shows
 the question text and the event details. The question surface exists exactly
