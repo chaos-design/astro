@@ -797,7 +797,9 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   below the inspector tabs and the Input tab render that one component, and
   Overview no longer mounts a second answer box. One toolbar row owns only the
   view switch (Preview / Code) and the placement switch — the question itself is
-  never foldable, so there is no collapse button; Preview shows the question list
+  never foldable, so there is no collapse button; the view mode is controlled by
+  the inspector so the dock and Input tab instances cannot show different views.
+  Preview shows the question list
   with option chips, Code shows the raw payload only — no options and no answer
   bar. Both surfaces use one wording set — `Submit` with a Send icon, `Cancel`
   with an X icon, same order (Submit first) — so a mode switch never changes the

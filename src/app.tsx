@@ -71,6 +71,7 @@ import { PromptContent } from "./components/prompt-content";
 import {
   QuestionContent,
   type QuestionAnswerBinding,
+  type QuestionViewMode,
 } from "./components/question-content";
 import { InteractionPanel } from "./components/interaction-panel";
 import { RepositoryLink } from "./components/repo-link";
@@ -3355,6 +3356,14 @@ function TraceInspector({
   /** The request that just closed, kept for the settle window. */
   settledQuestion: InteractionDraft | null;
 }) {
+  // The dock and the Input tab keep their own surface mounted, so their
+  // Preview / Code toggle must be controlled from here: one view state shared
+  // by both slots, reset for each newly selected question.
+  const [questionView, setQuestionView] = useState<{
+    id: string;
+    mode: QuestionViewMode;
+  }>({ id: "", mode: "preview" });
+
   if ((!node || !event) && !atom) {
     return (
       <section className="message-inspector message-inspector--empty flex min-h-0 flex-col items-center justify-center gap-[7px] p-[22px] text-center">
@@ -3471,17 +3480,28 @@ function TraceInspector({
   // the bottom of the detail area — half of it, or all of it. The tab then
   // shows the raw payload, so one question is never rendered twice.
   const dockedQuestion = questionDocked ? questionEvent : null;
+  const questionViewMode: QuestionViewMode =
+    questionEvent && questionView.id === questionEvent.id
+      ? questionView.mode
+      : "preview";
+  const handleQuestionViewModeChange = (mode: QuestionViewMode) => {
+    if (questionEvent) {
+      setQuestionView({ id: questionEvent.id, mode });
+    }
+  };
   // The dock and the Input tab each keep their own instance mounted while a
   // question is selected; only `hidden` changes with the placement. Toggling
-  // dock/float must not remount the surface or lose the reader's scroll and
-  // preview position.
+  // dock/float must not remount the surface or lose the reader's scroll, and
+  // the controlled view mode keeps Preview / Code identical in both slots.
   const questionSurface = questionEvent ? (
     <QuestionContent
       answer={questionBinding}
       key={questionEvent.id}
+      onViewModeChange={handleQuestionViewModeChange}
       panelMode={questionPanelMode}
-      onPanelModeChange={onQuestionPanelModeChange}
       payload={questionEvent.payload}
+      viewMode={questionViewMode}
+      onPanelModeChange={onQuestionPanelModeChange}
     />
   ) : null;
 

@@ -51,6 +51,18 @@ test("options and the pinned submit bar belong to the preview only", () => {
   assert.match(surface, /\{live && answer \? \(/);
 });
 
+test("Preview / Code is controlled so the dock and Input tab cannot drift", () => {
+  // The dock and Input tab stay mounted together; a local useState per
+  // instance would show different views after a placement switch.
+  assert.doesNotMatch(surface, /useState<QuestionViewMode>/);
+  assert.match(surface, /viewMode: QuestionViewMode;/);
+  assert.match(surface, /onViewModeChange: \(mode: QuestionViewMode\) => void;/);
+  assert.match(surface, /onViewModeChange\(value as QuestionViewMode\)/);
+  assert.match(app, /type QuestionViewMode/);
+  assert.match(app, /viewMode=\{questionViewMode\}/);
+  assert.match(app, /onViewModeChange=\{handleQuestionViewModeChange\}/);
+});
+
 test("both surfaces use the same Submit / Cancel wording and order", () => {
   assert.match(
     surface,

@@ -156,7 +156,9 @@
     (`src/components/question-content.tsx`, reused by the dock and the Input
     tab; Overview mounts no second answer box). One toolbar row owns the
     Preview / Code switch and the placement switch only — the question itself is
-    never foldable, so the toolbar carries no collapse button: Preview shows the
+    never foldable, so the toolbar carries no collapse button; the view mode is
+    controlled by the inspector so the dock and Input tab cannot show different
+    views: Preview shows the
     questions and their option chips, Code shows the raw payload only — no
     options, no submit bar. While a request is open the chips are buttons and
     the Submit / Cancel bar is a sibling of the scrolling body, so it stays

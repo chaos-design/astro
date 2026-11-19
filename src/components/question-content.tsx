@@ -1,5 +1,5 @@
 import { Code2, Eye, Send, X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import type { QuestionPanelMode } from "@/config/app-config";
 import { QuestionPanelModeControl } from "./question-panel-mode-control";
 import { QuestionResultList } from "./question-result";
@@ -25,7 +25,7 @@ import {
 } from "../lib/user-question-content";
 import type { TracePayload } from "../types/trace";
 
-type QuestionViewMode = "preview" | "code";
+export type QuestionViewMode = "preview" | "code";
 
 /**
  * Everything the surface needs to answer the question that is still open (or
@@ -65,14 +65,18 @@ export function QuestionContent({
   panelMode,
   onPanelModeChange,
   answer = null,
+  viewMode,
+  onViewModeChange,
 }: {
   payload: TracePayload;
   panelMode?: QuestionPanelMode;
   onPanelModeChange?: (mode: QuestionPanelMode) => void;
   answer?: QuestionAnswerBinding | null;
+  /** Controlled by the inspector so the dock and Input tab share one view. */
+  viewMode: QuestionViewMode;
+  onViewModeChange: (mode: QuestionViewMode) => void;
 }) {
   const content = useMemo(() => parseUserQuestionContent(payload), [payload]);
-  const [viewMode, setViewMode] = useState<QuestionViewMode>("preview");
 
   const answers = useMemo(() => {
     if (!answer) {
@@ -128,7 +132,7 @@ export function QuestionContent({
           className="prompt-input__mode"
           onValueChange={(value) => {
             if (value) {
-              setViewMode(value as QuestionViewMode);
+              onViewModeChange(value as QuestionViewMode);
             }
           }}
           spacing={0}

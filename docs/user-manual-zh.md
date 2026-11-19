@@ -630,7 +630,7 @@ CodeBuddy / WorkBuddy 的 `PreToolUse.modifiedInput` 只携带决策与答案字
 **从 Flow 原子作答**：点击画布上的 `User Question` 原子，右侧检查器会绑定该提问
 的开始事件（不是回答事件），Overview 显示问题原文与事件详情。问答面只有一处：区域
 布局下是 Tab 以下的停靠面板，悬浮布局下是 Input 页，两者是同一个组件，顶部一行工具条
-只负责「Preview / Code」与两档落位（区域全屏 / 悬浮）；问题本身不可折叠，工具条上没有折叠按钮。
+只负责「Preview / Code」与两档落位（区域全屏 / 悬浮）；问题本身不可折叠，工具条上没有折叠按钮，切换落位时 Preview / Code 视图保持一致。
 
 - **Preview**：展示问题与选项。这条提问仍有未关闭的交互请求时，选项是可点的按钮
   （单选与 Plan 批准的 Approve/Reject 都是点一下即高亮，多选题逐个点选/取消，草稿按

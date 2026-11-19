@@ -773,7 +773,8 @@ inspector to that question's start event (not to its answer); Overview shows
 the question text and the event details. The question surface exists exactly
 once — the dock below the inspector tabs in a region layout, the Input tab in
 `Floating` — and one toolbar row owns the Preview / Code switch, the placement
-switch only (the question itself never folds):
+switch only (the question itself never folds); switching placements keeps the
+same Preview / Code view:
 
 - **Preview** shows the questions and their option chips. While the request is
   open the chips are buttons (single-select and a plan approval's Approve/Reject
