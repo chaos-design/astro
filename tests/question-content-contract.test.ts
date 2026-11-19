@@ -11,6 +11,10 @@ const styles = readFileSync(
   "utf8",
 );
 const app = readFileSync(new URL("../src/app.tsx", import.meta.url), "utf8");
+const settings = readFileSync(
+  new URL("../src/components/settings-dialog.tsx", import.meta.url),
+  "utf8",
+);
 
 /**
  * The preview / code pair is one surface with one toolbar. These checks keep
@@ -49,6 +53,16 @@ test("options and the pinned submit bar belong to the preview only", () => {
   assert.match(surface, /onClick=\{answer\.onCancel\}/);
   assert.match(surface, /onClick=\{\(\) => answer\.onSend\(answers\)\}/);
   assert.match(surface, /\{live && answer \? \(/);
+});
+
+test("settings edits the stored preference, not the state-resolved placement", () => {
+  // Passing the resolved mode would hide the "follow state" option behind a
+  // concrete placement and make the restore-default state unreachable.
+  assert.match(app, /parseQuestionPanelMode\(\s*questionPanelPreference/);
+  assert.match(app, /questionPanelMode=\{questionPanelPreferenceMode\}/);
+  assert.match(settings, /questionPanelMode: QuestionPanelMode \| null;/);
+  assert.match(settings, /questionPanelMode === null/);
+  assert.match(settings, /value=\{questionPanelMode \?\? "auto"\}/);
 });
 
 test("Preview / Code is controlled so the dock and Input tab cannot drift", () => {

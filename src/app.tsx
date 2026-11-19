@@ -277,6 +277,7 @@ import {
 } from "./lib/interaction-client";
 import {
   isDockedQuestionPanelMode,
+  parseQuestionPanelMode,
   resolveQuestionPanelMode,
   type QuestionPanelState,
 } from "./lib/question-panel-model";
@@ -6889,6 +6890,12 @@ export default function App() {
     questionPanelPreference,
     questionPanelState,
   );
+  // Settings edits the stored choice, not the resolved one: with no explicit
+  // preference it must show "follow state", otherwise the control silently
+  // presents a fixed placement and can never be restored to the default.
+  const questionPanelPreferenceMode = parseQuestionPanelMode(
+    questionPanelPreference,
+  );
   const questionDocked =
     isDockedQuestionPanelMode(questionPanelMode) && consoleOpen;
   const lastOpenInteractionRef = useRef<InteractionDraft | null>(null);
@@ -7809,7 +7816,7 @@ export default function App() {
               liveView={liveFilter}
               maxSync={maxSync}
               perfHud={perfHud}
-              questionPanelMode={questionPanelMode}
+              questionPanelMode={questionPanelPreferenceMode}
               taskCompletionChime={taskCompletionChime}
               theme={theme}
               onActiveViewChange={(view) => {
