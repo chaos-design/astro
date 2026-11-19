@@ -264,7 +264,10 @@
 - Platform-specific mappings belong in `src/config/atom-platforms.ts` or the
   relevant adapter; domain helpers stay platform-neutral.
 - Prefer Lucide icons for interface actions. Brand glyphs (such as GitHub) ship
-  as inline SVG components instead of adding a dependency.
+  as inline SVG components instead of adding a dependency. Agent marks are built
+  by the local `createBrandIcon` in `src/components/agent-icons.tsx`, which gives
+  every path node a key; do not fall back to lucide's `createLucideIcon`, which
+  leaves path nodes unkeyed in v1.42 and warns on every multi-path mark.
 
 ## 5. The time window
 

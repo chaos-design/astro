@@ -560,7 +560,10 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   the nav collapses on narrow screens.
 - Brand glyphs are inline SVG components (`src/components/repo-link.tsx`).
   Lucide no longer ships brand icons, and a single path is not worth a
-  dependency.
+  dependency. The agent marks in `src/components/agent-icons.tsx` are built by
+  a local `createBrandIcon` factory with a keyed element per path node — do not
+  switch them back to lucide's `createLucideIcon`, which renders its path nodes
+  without keys and warns on every multi-path mark.
 - Every icon control keeps an `aria-label`; a **tooltip is opt-in**. Add one
   only when the glyph cannot carry the meaning on its own (the chevrons that
   say *which* panel collapses, the action menu, the topology/trajectory

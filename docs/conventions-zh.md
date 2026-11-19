@@ -188,7 +188,9 @@
 - 平台相关的映射放到 `src/config/atom-platforms.ts` 或对应适配器，领域工具函数
   保持平台无关。
 - 界面动作优先使用 Lucide 图标；品牌图标（如 GitHub）以内联 SVG 组件提供，不额外
-  引入依赖。
+  引入依赖。智能体品牌图标由 `src/components/agent-icons.tsx` 的本地 `createBrandIcon`
+  构建，每个路径节点都带 key；不要用 lucide 的 `createLucideIcon` 回退——它在 1.42
+  版本里不给路径节点加 key，多路径图标每次渲染都会警告。
 
 ## 5. 时间窗口（本次约定）
 
