@@ -914,13 +914,11 @@ the active section's fields on the right. Every entry applies immediately, and
 the footer's **Done** button only closes the dialog — there is no Apply step.
 **Layout** is one entry for everything about how the console is viewed; inside it,
 **Canvas** and **Panels** stay two labelled groups, so the two halves of one
-question never live in two menus. Every choice button (theme, time range,
-canvas, panels, chime style, chime preview) shares one width spec
-(`--settings-option-width`): a group's option count decides how many fit on a
-row, not how wide each button is — a two-option group no longer stretches into
-bars and an eight-option group no longer shrinks into chips. The footer's
-**Restore defaults** and **Done** are equal width too. The grid falls back to
-fluid columns only when a narrow viewport cannot fit the fixed width.
+question never live in two menus. Every choice group (theme, time range, canvas,
+panels, chime style, chime preview) divides its row equally: three options take
+three equal thirds, four take four equal quarters, and the chime previews use the
+same rule for three. The footer's **Restore defaults** and **Done** keep equal
+width inside the action bar.
 
 **Appearance**
 

@@ -432,13 +432,12 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   (画布 / 面板) with their own descriptions. The question panel's placement is
   listed there too (`ASTROX_QUESTION_PANEL_MODE`), next to the panel switches
   it belongs to.
-- Every choice / preview button in the dialog shares one width,
-  `--settings-option-width` on `.settings-dialog`. A group's
-  `--settings-columns` decides how many buttons fit on a row, never their width:
-  a two-option group used to stretch into bars and an eight-option range group
-  to shrink into chips. `.settings-options` and `.settings-chime-preview` both
-  consume the token; the two footer actions are equal width too. Only a narrow
-  viewport falls back to fluid columns.
+- Every choice / preview button group in the dialog divides its row equally:
+  `.settings-options` and `.settings-chime-preview` share one grid rule,
+  `repeat(var(--settings-columns, 4), minmax(0, 1fr))`, so three options fill
+  three equal thirds and four fill four quarters. The chime previews set the
+  same token to 3 instead of growing a separate column rule. The two footer
+  actions keep their own equal `min-width` in the action bar.
 - 关于 names the console version, where preferences live (`localStorage`, the
   `ASTROX_` prefix), and that settings never write back to captured events.
 - The footer actions carry their own ink and surface. The app-level

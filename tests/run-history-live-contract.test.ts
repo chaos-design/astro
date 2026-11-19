@@ -177,16 +177,19 @@ test("matches the header icon controls to the theme switcher", () => {
   assert.match(glyph, /height:\s*15px/);
 });
 
-test("lays the range choices out four per row at one shared button width", () => {
-  // A group's column count changes how many buttons fit, never their width:
-  // every pick-one and preview button in Settings uses the same token.
-  assert.match(cssRule(".settings-dialog"), /--settings-option-width:\s*124px/);
-  const grid = cssRule(".settings-options");
+test("divides each Settings choice row equally among its options", () => {
+  // One width rule for the whole type: N options take N equal columns, so
+  // three fill three thirds and four fill four quarters. The chime previews
+  // reuse it by setting the same column token.
   assert.match(
-    grid,
-    /grid-template-columns:\s*repeat\(\s*var\(--settings-columns, 4\),\s*var\(--settings-option-width\)\s*\)/,
+    styles,
+    /\.settings-options,\s*\.settings-chime-preview \{[\s\S]*?grid-template-columns:\s*repeat\(var\(--settings-columns, 4\), minmax\(0, 1fr\)\)/,
   );
-  assert.match(cssRule(".settings-chime-preview"), /var\(--settings-option-width\)/);
+  assert.doesNotMatch(cssRule(".settings-dialog"), /--settings-option-width/);
+  assert.match(
+    styles,
+    /\.settings-chime-preview \{\s*--settings-columns:\s*3/,
+  );
 
   // The tick reserves its slot instead of being added on selection: a layout
   // that grows on select makes the whole grid jump.

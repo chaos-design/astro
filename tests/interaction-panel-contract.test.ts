@@ -66,6 +66,8 @@ test("a closed panel renders only the result and marks the device that answered"
 
 test("the floating card uses the same batch hint and Cancel / 提交 order", () => {
   assert.match(panel, /question-surface__summary/);
+  assert.match(panel, /className="question-options"/);
+  assert.match(panel, /className="question-options__option"/);
   assert.match(panel, /个问题 · 一次提交/);
   assert.doesNotMatch(panel, /一次性提交/);
   const footer = panel.slice(
@@ -77,8 +79,10 @@ test("the floating card uses the same batch hint and Cancel / 提交 order", () 
 
 test("the panel styles cover the pressed option and the pending state", () => {
   assert.match(styles, /\.interaction-panel \{/);
-  assert.match(styles, /\.interaction-panel__option\[aria-pressed="true"\] \{/);
-  assert.match(styles, /\.interaction-panel__option:hover:not\(:disabled\) \{/);
+  // The floating card and the docked surface share one compact option chip.
+  assert.match(styles, /\.question-options__option\[aria-pressed="true"\]/);
+  assert.match(styles, /\.question-options__option\.is-selected/);
+  assert.doesNotMatch(styles, /\.interaction-panel__option \{/);
   assert.match(styles, /\.interaction-panel__pending \{/);
   assert.match(styles, /\.answer-rows__row \{/);
   assert.match(styles, /\.answer-rows__chip \{/);

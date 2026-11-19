@@ -333,7 +333,7 @@ export function InteractionPanel({
                     </p>
                     <div
                       aria-label={question.question}
-                      className="interaction-panel__options"
+                      className="question-options"
                       role="group"
                     >
                       {optionLabels(question).map((label, optionIndex) => {
@@ -348,7 +348,7 @@ export function InteractionPanel({
                                 : undefined
                             }
                             aria-pressed={pressed}
-                            className="interaction-panel__option"
+                            className="question-options__option"
                             disabled={readOnly || pending}
                             key={`${label}-${optionIndex}`}
                             onClick={() =>
@@ -357,8 +357,12 @@ export function InteractionPanel({
                             type="button"
                           >
                             {pressed ? <Check aria-hidden="true" /> : null}
-                            <span>{label}</span>
-                            {description ? <small>{description}</small> : null}
+                            <span className="question-options__label">{label}</span>
+                            {description ? (
+                              <small className="question-options__description">
+                                {description}
+                              </small>
+                            ) : null}
                           </button>
                         );
                       })}
