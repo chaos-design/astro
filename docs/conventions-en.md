@@ -66,6 +66,16 @@
     `preview-state.json` in `ASTRO_HOME`): the service marks it when a console
     page attaches to `/api/stream`, and the hook launch flow consumes it to
     decide whether the browser still gets opened;
+  - turning a payload into a Markdown preview document lives only in
+    `src/lib/payload-markdown.ts` (`payloadToMarkdown`: a single text field is
+    the document, multiple fields keep their structure, and structured values
+    become JSON code blocks); Markdown parsing, code syntax highlighting and
+    HTML sanitizing live only in `src/lib/markdown-preview.ts`
+    (`renderMarkdownPreview`, with highlight.js registering only the languages
+    captured payloads carry). The inspector's Input/Output/Raw tabs and the
+    global overlay share these two single sources; `src/components/payload-overlay.tsx`
+    only renders them and owns the Preview/Code switch, never a second
+    conversion or sanitizer;
   - the run model (which LLM a prompt executed on) is read only in
     `src/lib/trace-model.ts` (`extractRunModel` + the SessionStart fallback in
     `buildSessionPromptRuns`), which normalizes every client's payload spelling

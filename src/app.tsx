@@ -20,6 +20,7 @@ import {
   ListTree,
   LocateFixed,
   Loader2,
+  Maximize2,
   Menu,
   Network,
   Pause,
@@ -73,6 +74,7 @@ import {
   type QuestionAnswerBinding,
 } from "./components/question-content";
 import { InteractionPanel } from "./components/interaction-panel";
+import { PayloadOverlay } from "./components/payload-overlay";
 import { RepositoryLink } from "./components/repo-link";
 import { RuntimeCanvas } from "./components/runtime-canvas";
 import { SettingsDialog } from "./components/settings-dialog";
@@ -3357,6 +3359,11 @@ function TraceInspector({
   /** The request that just closed, kept for the settle window. */
   settledQuestion: InteractionDraft | null;
 }) {
+  // The wide payload layer is opened from the Input / Output / Raw tabs. The
+  // hook has to sit above the empty-state return so the component keeps a
+  // stable hook order when the selection changes.
+  const [overlayOpen, setOverlayOpen] = useState(false);
+
   if ((!node || !event) && !atom) {
     return (
       <section className="message-inspector message-inspector--empty flex min-h-0 flex-col items-center justify-center gap-[7px] p-[22px] text-center">
@@ -3502,6 +3509,18 @@ function TraceInspector({
           <CornerUpRight data-icon="inline-start" />
           <span className="min-w-0 truncate">{inspectorTitle}</span>
         </Badge>
+        {activeTab !== "overview" ? (
+          <Button
+            aria-label="放大查看完整内容"
+            className="inspector-header__expand"
+            onClick={() => setOverlayOpen(true)}
+            size="console-icon"
+            type="button"
+            variant="console"
+          >
+            <Maximize2 />
+          </Button>
+        ) : null}
       </header>
       <Tabs
         value={activeTab}
@@ -3577,6 +3596,16 @@ function TraceInspector({
           ) : null}
         </div>
       </Tabs>
+      <PayloadOverlay
+        label={`${inspectorTitle} · ${activeTab === "input" ? "INPUT" : activeTab === "output" ? "OUTPUT" : "RAW"}`}
+        onOpenChange={setOverlayOpen}
+        open={overlayOpen}
+        payload={
+          activeTab === "input" || activeTab === "output" || activeTab === "raw"
+            ? payloadByTab[activeTab]
+            : null
+        }
+      />
     </section>
   );
 }

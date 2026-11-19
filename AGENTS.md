@@ -427,6 +427,13 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   (画布 / 面板) with their own descriptions. The question panel's placement is
   listed there too (`ASTROX_QUESTION_PANEL_MODE`), next to the panel switches
   it belongs to.
+- Every choice / preview button in the dialog shares one width,
+  `--settings-option-width` on `.settings-dialog`. A group's
+  `--settings-columns` decides how many buttons fit on a row, never their width:
+  a two-option group used to stretch into bars and an eight-option range group
+  to shrink into chips. `.settings-options` and `.settings-chime-preview` both
+  consume the token; the two footer actions are equal width too. Only a narrow
+  viewport falls back to fluid columns.
 - 关于 names the console version, where preferences live (`localStorage`, the
   `ASTROX_` prefix), and that settings never write back to captured events.
 - The footer actions carry their own ink and surface. The app-level
@@ -748,6 +755,17 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   `isUserQuestionStartEvent`: that predicate drives run state (question starts,
   not answers), while the preview follows the display key, so an answer row
   still previews its payload.
+- Turning an inspector payload into a Markdown preview document lives only in
+  `src/lib/payload-markdown.ts` (`payloadToMarkdown`: a single text field is the
+  document, multiple fields keep their structure and structured values become
+  JSON code blocks); Markdown parsing, syntax highlighting and HTML sanitizing
+  live only in `src/lib/markdown-preview.ts` (`renderMarkdownPreview`, with
+  highlight.js registering only the languages captured payloads carry). The
+  Input/Output/Raw tabs and the global expand layer share these two sources;
+  `src/components/payload-overlay.tsx` only renders them and owns the
+  Preview/Code switch — it must not grow a second conversion or sanitizer. The
+  expand control opens a Dialog (portaled to the document body) whose payload
+  always follows the current event and tab, never a global newest request.
 - "What counts as a user question" lives only in `src/lib/trace-event-kind.ts`
   (`isUserQuestionEvent` / `isUserQuestionStartEvent`): question-named events,
   a `Pre/PostToolUse` naming the question tool, plus a

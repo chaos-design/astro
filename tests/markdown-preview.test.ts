@@ -61,3 +61,25 @@ test("non-image data URLs are stripped while image data URLs stay", () => {
   assert.doesNotMatch(render.html, /data:text\/html/);
   assert.match(render.html, /data:image\/png/);
 });
+
+test("fenced code is highlighted without losing the sanitizer's protection", () => {
+  const render = renderMarkdownPreview(
+    "```js\nconst answer = 42; // done\n```",
+  );
+  assert.equal(render.valid, true);
+  // A known language becomes hljs tokens the theme CSS can colour.
+  assert.match(render.html, /<code class="hljs language-js">/);
+  assert.match(render.html, /hljs-keyword/);
+  assert.match(render.html, /hljs-number/);
+  assert.match(render.html, /hljs-comment/);
+});
+
+test("an unknown fenced language is escaped, never trusted as a class or markup", () => {
+  const render = renderMarkdownPreview(
+    '```lang" onmouseover="pwned\n<script>alert(1)</script>\n```',
+  );
+  assert.equal(render.valid, true);
+  assert.doesNotMatch(render.html, /onmouseover/i);
+  assert.doesNotMatch(render.html, /<script/i);
+  assert.match(render.html, /&lt;script&gt;/);
+});

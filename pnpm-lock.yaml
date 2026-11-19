@@ -26,6 +26,9 @@ importers:
       dotenv:
         specifier: ^17.4.2
         version: 17.4.2
+      highlight.js:
+        specifier: ^11.11.1
+        version: 11.12.0
       lucide-react:
         specifier: ^1.42.0
         version: 1.42.0(react@19.2.8)
@@ -72,9 +75,6 @@ importers:
       '@vitejs/plugin-react':
         specifier: ^6.1.1
         version: 6.1.1(vite@8.2.2(@types/node@26.5.0)(jiti@2.7.0)(yaml@2.9.0))
-      highlight.js:
-        specifier: ^11.11.1
-        version: 11.12.0
       linkedom:
         specifier: ^0.18.15
         version: 0.18.15

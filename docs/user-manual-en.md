@@ -623,7 +623,19 @@ The inspector provides:
   and topology counts stay unchanged. `Code` shows the raw payload;
 - `Output`: tool result or response;
 - `Raw`: full normalized event;
-- copy control for structured JSON.
+- copy control for structured JSON;
+- an expand control in the inspector header, available on `Input` / `Output` /
+  `Raw`, opens a **global overlay** that shows the same payload in a much larger
+  area. The overlay has its own `Preview` / `Code` switch: `Preview` turns the
+  result data into a Markdown document and renders it (headings, lists, code
+  blocks) with highlight.js syntax highlighting, after the same HTML sanitizer
+  strips acting markup. A single text field (message, output, plan text) is the
+  document itself; structured fields appear as highlighted JSON code blocks.
+  With nothing previewable the overlay says so and `Code` still shows the raw
+  payload. `Code` is the token-coloured structured JSON used in the inspector.
+  Escape or the scrim closes the layer. The layer is global (portaled to the
+  document body) but its content always follows the current event and tab — it
+  never shows a different message.
 
 Selecting a topology atom additionally exposes the atom contract, input/output ports, gate state, and bound event.
 The right panel state is stored in `ASTROX_CONSOLE_OPEN`.
@@ -898,7 +910,13 @@ the active section's fields on the right. Every entry applies immediately, and
 the footer's **Done** button only closes the dialog — there is no Apply step.
 **Layout** is one entry for everything about how the console is viewed; inside it,
 **Canvas** and **Panels** stay two labelled groups, so the two halves of one
-question never live in two menus:
+question never live in two menus. Every choice button (theme, time range,
+canvas, panels, chime style, chime preview) shares one width spec
+(`--settings-option-width`): a group's option count decides how many fit on a
+row, not how wide each button is — a two-option group no longer stretches into
+bars and an eight-option group no longer shrinks into chips. The footer's
+**Restore defaults** and **Done** are equal width too. The grid falls back to
+fluid columns only when a narrow viewport cannot fit the fixed width.
 
 **Appearance**
 

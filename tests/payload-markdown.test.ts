@@ -1,0 +1,34 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import { payloadToMarkdown } from "../src/lib/payload-markdown.ts";
+
+test("a captured string is the markdown document", () => {
+  assert.equal(payloadToMarkdown("# Deploy\n\nRun `pnpm build`."), "# Deploy\n\nRun `pnpm build`.");
+});
+
+test("a single text field is unwrapped instead of gaining a redundant heading", () => {
+  assert.equal(payloadToMarkdown({ message: "**done**" }), "**done**");
+  assert.equal(payloadToMarkdown({ output: "hello" }), "hello");
+});
+
+test("multiple fields keep their structure and stringify structured values as JSON", () => {
+  const markdown = payloadToMarkdown({
+    message: "Here is the plan",
+    meta: { turns: 2 },
+    count: 3,
+    ok: true,
+  });
+  assert.match(markdown, /### message\n\nHere is the plan/);
+  assert.match(markdown, /### meta\n\n```json\n/);
+  assert.match(markdown, /"turns": 2/);
+  assert.match(markdown, /- \*\*count\*\*: `3`/);
+  assert.match(markdown, /- \*\*ok\*\*: `true`/);
+});
+
+test("arrays join with a separator and other scalars stay readable", () => {
+  assert.equal(payloadToMarkdown(["one", "two"]), "one\n\n---\n\ntwo");
+  assert.equal(payloadToMarkdown(42), "42");
+  assert.equal(payloadToMarkdown(null), "");
+  assert.equal(payloadToMarkdown({ blank: "", kept: "yes" }), "### kept\n\nyes");
+});

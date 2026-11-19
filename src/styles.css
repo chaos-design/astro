@@ -1276,6 +1276,12 @@ pre,
  * either scrolled the entire dialog or squeezed every control on a short
  * window, so the shell is deliberately wider and taller than a form card. */
 .settings-dialog {
+  /* One width for every pick-one / preview button in the dialog. A group's
+     column count changes how many fit on a row, never how wide a button is —
+     without this, a two-option group stretched into bars while an eight-range
+     group shrank into chips. */
+  --settings-option-width: 124px;
+
   display: flex;
   width: min(960px, calc(100vw - 32px));
   height: min(780px, calc(100dvh - 32px));
@@ -1513,7 +1519,8 @@ pre,
    the sound stands for. */
 .settings-chime-preview {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(3, var(--settings-option-width));
+  justify-content: start;
   gap: 6px;
 }
 
@@ -1678,6 +1685,7 @@ pre,
  * border — both hard to read on the dark panel. Disabled stays legible in
  * muted tones instead of fading to 50% opacity and disappearing. */
 .settings-footer__actions button {
+  min-width: 92px;
   border-radius: 6px;
   font-family: var(--font-mono);
   font-size: 10px;
@@ -1748,15 +1756,27 @@ pre,
   }
 }
 
+/* On a phone the fixed grid would overflow the pane, so columns become fluid
+   there. The width spec still holds on every viewport that can fit it. */
+@media (max-width: 560px) {
+  .settings-options,
+  .settings-chime-preview {
+    grid-template-columns: repeat(var(--settings-columns, 3), minmax(0, 1fr));
+  }
+}
+
 /* Four per row by default (eight ranges read as two tidy rows: hours above,
  * days below); a pick-one group sets `--settings-columns` when it has fewer
- * choices. */
+ * choices. Columns take the shared fixed width and sit left-aligned, so a
+ * two-option group no longer becomes two bars and a four-option group no
+ * longer becomes four chips — every button in Settings is one size. */
 .settings-options {
   display: grid;
-  /* A two-option row on a 900px pane would otherwise stretch its buttons into
-     full-width bars; the cap keeps every group the same readable width. */
-  max-width: 560px;
-  grid-template-columns: repeat(var(--settings-columns, 4), minmax(0, 1fr));
+  grid-template-columns: repeat(
+    var(--settings-columns, 4),
+    var(--settings-option-width)
+  );
+  justify-content: start;
   gap: 6px;
 }
 
@@ -5612,6 +5632,132 @@ pre,
   border-radius: 6px;
 }
 
+/* Fenced code is highlighted by highlight.js in the markdown pipeline. Only
+   token colours are set here — the code surface keeps the panel's own
+   background in both themes, and the overlay reuses `.markdown-preview`. */
+.markdown-preview pre code.hljs {
+  color: var(--text);
+  background: transparent;
+}
+
+.markdown-preview pre code .hljs-comment {
+  color: var(--muted-soft);
+  font-style: italic;
+}
+
+.markdown-preview pre code .hljs-keyword,
+.markdown-preview pre code .hljs-selector-tag,
+.markdown-preview pre code .hljs-literal {
+  color: var(--violet);
+}
+
+.markdown-preview pre code .hljs-string,
+.markdown-preview pre code .hljs-regexp,
+.markdown-preview pre code .hljs-addition {
+  color: var(--teal);
+}
+
+.markdown-preview pre code .hljs-number,
+.markdown-preview pre code .hljs-built_in,
+.markdown-preview pre code .hljs-symbol {
+  color: var(--amber);
+}
+
+.markdown-preview pre code .hljs-title,
+.markdown-preview pre code .hljs-function,
+.markdown-preview pre code .hljs-attr,
+.markdown-preview pre code .hljs-attribute {
+  color: var(--selection-text);
+}
+
+.markdown-preview pre code .hljs-deletion {
+  color: var(--red);
+}
+
+/* Global payload layer: the same data as the inspector tab, but large enough
+   to read a whole tool result. Header and mode switch stay put; only the body
+   scrolls, so toggling Preview / Code never reflows the controls. */
+.payload-overlay {
+  display: flex;
+  width: min(1040px, calc(100vw - 40px));
+  height: min(780px, calc(100dvh - 48px));
+  max-width: none;
+  max-height: calc(100dvh - 48px);
+  flex-direction: column;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--line-bright);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--panel) 97%, transparent);
+  box-shadow:
+    0 32px 90px rgb(0 0 0 / 58%),
+    0 0 0 1px color-mix(in srgb, var(--selection-border) 12%, transparent);
+}
+
+.payload-overlay__head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  /* Reserve the dialog's own close button slot at the right edge. */
+  padding: 14px 56px 14px 18px;
+  border-bottom: 1px solid var(--chrome-line);
+}
+
+.payload-overlay__copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.payload-overlay__copy .eyebrow {
+  color: var(--muted);
+  font-size: 8px;
+  letter-spacing: 0.16em;
+}
+
+.payload-overlay [data-slot="dialog-title"] {
+  overflow: hidden;
+  color: var(--text-strong);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.payload-overlay [data-slot="dialog-description"] {
+  color: var(--muted-soft);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.payload-overlay__body {
+  flex: 1;
+  min-height: 0;
+  padding: 16px 18px 20px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-bright) transparent;
+}
+
+.payload-overlay__body--code {
+  display: flex;
+  padding: 0;
+  overflow: hidden;
+}
+
+.payload-overlay__empty {
+  margin: 0;
+  color: var(--muted-soft);
+  font-size: 11px;
+}
+
 /* AskUserQuestion choices read as the option buttons the client offered:
    one bordered chip per captured label under its question. */
 .question-content__options {
@@ -6449,6 +6595,12 @@ pre,
   box-shadow: inset 0 0 12px color-mix(in srgb, currentColor 7%, transparent);
   font-family: var(--font-mono);
   font-size: 9px;
+}
+
+/* Widen the current Input / Output / Raw payload into the global layer. It
+   sits after the focus badge at the far edge of the inspector header. */
+.inspector-header__expand {
+  flex: none;
 }
 
 .studio-header,

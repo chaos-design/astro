@@ -1,4 +1,41 @@
+import hljs from "highlight.js/lib/core";
+import bash from "highlight.js/lib/languages/bash";
+import diff from "highlight.js/lib/languages/diff";
+import javascript from "highlight.js/lib/languages/javascript";
+import json from "highlight.js/lib/languages/json";
+import markdown from "highlight.js/lib/languages/markdown";
+import python from "highlight.js/lib/languages/python";
+import typescript from "highlight.js/lib/languages/typescript";
+import xml from "highlight.js/lib/languages/xml";
+import yaml from "highlight.js/lib/languages/yaml";
 import { Marked } from "marked";
+
+// Only the languages a captured payload realistically carries. The docs site
+// can afford `highlight.js/lib/common`; the console ships in the main bundle,
+// so registering a focused set keeps its code out of the first paint.
+const highlightedLanguages: Record<string, Parameters<typeof hljs.registerLanguage>[1]> = {
+  bash,
+  diff,
+  javascript,
+  js: javascript,
+  jsx: javascript,
+  json,
+  markdown,
+  md: markdown,
+  python,
+  py: python,
+  typescript,
+  ts: typescript,
+  tsx: typescript,
+  xml,
+  html: xml,
+  yaml,
+  yml: yaml,
+  shell: bash,
+};
+for (const [name, grammar] of Object.entries(highlightedLanguages)) {
+  hljs.registerLanguage(name, grammar);
+}
 
 /**
  * Rendering captured question text as the rich text the reader would have
@@ -10,6 +47,39 @@ import { Marked } from "marked";
  */
 
 const markdownParser = new Marked({ breaks: true, gfm: true });
+
+/**
+ * Fenced code is a common carrier of captured commands, JSON and diffs. Give
+ * it the same token colours the docs site uses so a Preview reads like the
+ * source the agent produced. highlight.js emits only `<span class="hljs-*">`
+ * tokens — no inline styles or event handlers — so the sanitizer below keeps
+ * them and the theme stays entirely in `styles.css`.
+ */
+markdownParser.use({
+  renderer: {
+    code(token: unknown) {
+      const fence = token as { text?: string; lang?: string };
+      const code = fence.text ?? "";
+      // A language is a class name, never raw source: strip anything that is
+      // not a language identifier before it reaches the HTML string.
+      const language = (fence.lang ?? "").trim().split(/\s+/)[0].replace(/[^a-zA-Z0-9_+-]/g, "");
+      const body =
+        language && hljs.getLanguage(language)
+          ? hljs.highlight(code, { language, ignoreIllegals: true }).value
+          : escapeHtml(code);
+      const classes = language ? `hljs language-${language}` : "hljs";
+      return `<pre><code class="${classes}">${body}</code></pre>`;
+    },
+  },
+});
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
 
 export interface MarkdownRender {
   /** Rendered HTML for a valid source; empty when the source is invalid. */

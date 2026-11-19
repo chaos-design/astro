@@ -57,6 +57,13 @@
     （`readPreviewState` / `markPreviewOpened`，持久化为 `ASTRO_HOME` 下的
     `preview-state.json`）：服务端在控制台页面接入 `/api/stream` 时打点，
     Hook 启动流程据此决定是否还需要为用户打开浏览器；
+  - 把载荷变成 Markdown 预览文档只在 `src/lib/payload-markdown.ts`
+    （`payloadToMarkdown`：单个文本字段直接作为文档，多个字段保留结构、
+    结构化值以 JSON 代码块呈现）；Markdown 的解析、代码语法高亮与 HTML 清理
+    只在 `src/lib/markdown-preview.ts`（`renderMarkdownPreview`，highlight.js 只
+    注册捕获载荷常见语言）。检查器的 Input/Output/Raw 与全局浮层共用这两个
+    单一来源，浮层组件 `src/components/payload-overlay.tsx` 只负责展示与
+    Preview/Code 切换，不再另写一份转换或消毒逻辑；
   - 运行所用模型的读取只在 `src/lib/trace-model.ts`（`extractRunModel` +
     `buildSessionPromptRuns` 的 SessionStart 回退）：各客户端的 payload 形态
     （pi 的 `model`/`provider`、deepseek 的模型对象、opencode 的 step 通知、

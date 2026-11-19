@@ -177,12 +177,16 @@ test("matches the header icon controls to the theme switcher", () => {
   assert.match(glyph, /height:\s*15px/);
 });
 
-test("lays the range choices out four per row", () => {
+test("lays the range choices out four per row at one shared button width", () => {
+  // A group's column count changes how many buttons fit, never their width:
+  // every pick-one and preview button in Settings uses the same token.
+  assert.match(cssRule(".settings-dialog"), /--settings-option-width:\s*124px/);
   const grid = cssRule(".settings-options");
   assert.match(
     grid,
-    /grid-template-columns:\s*repeat\(var\(--settings-columns, 4\), minmax\(0, 1fr\)\)/,
+    /grid-template-columns:\s*repeat\(\s*var\(--settings-columns, 4\),\s*var\(--settings-option-width\)\s*\)/,
   );
+  assert.match(cssRule(".settings-chime-preview"), /var\(--settings-option-width\)/);
 
   // The tick reserves its slot instead of being added on selection: a layout
   // that grows on select makes the whole grid jump.
