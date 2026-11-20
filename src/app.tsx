@@ -74,7 +74,10 @@ import {
   type QuestionAnswerBinding,
 } from "./components/question-content";
 import { InteractionPanel } from "./components/interaction-panel";
-import { PayloadOverlay } from "./components/payload-overlay";
+import {
+  PayloadOverlay,
+  type PayloadOverlayAtom,
+} from "./components/payload-overlay";
 import { RepositoryLink } from "./components/repo-link";
 import { RuntimeCanvas } from "./components/runtime-canvas";
 import { SettingsDialog } from "./components/settings-dialog";
@@ -266,7 +269,6 @@ import {
   isPromptExecuting,
   resolveLocateAtomId,
   resolveSelectedAtomId,
-  toggleAtomSelection,
 } from "./lib/atom-selection";
 import { isSameEventSequence } from "./lib/event-snapshot";
 import {
@@ -3341,6 +3343,9 @@ function TraceInspector({
   index,
   node,
   onActiveTabChange,
+  overlayAtoms,
+  overlaySelectedAtomId,
+  onOverlaySelectAtom,
   matchedQuestion,
   answerDrafts,
   onAnswerDraftChange,
@@ -3358,6 +3363,10 @@ function TraceInspector({
   index: number;
   node: TraceNodeType | null;
   onActiveTabChange: (tab: string) => void;
+  /** Atoms of the current run, shown in the overlay's left rail. */
+  overlayAtoms: PayloadOverlayAtom[];
+  overlaySelectedAtomId: string;
+  onOverlaySelectAtom: (atomId: string) => void;
   matchedQuestion: MatchedQuestionInteraction | null;
   answerDrafts: Readonly<Record<string, string>>;
   onAnswerDraftChange: (question: string, text: string) => void;
@@ -3617,9 +3626,12 @@ function TraceInspector({
         </div>
       </Tabs>
       <PayloadOverlay
+        atoms={overlayAtoms}
         label={`${inspectorTitle} · ${activeTab === "input" ? "INPUT" : activeTab === "output" ? "OUTPUT" : "RAW"}`}
         onOpenChange={setOverlayOpen}
+        onSelectAtom={onOverlaySelectAtom}
         open={overlayOpen}
+        selectedAtomId={overlaySelectedAtomId}
         payload={
           activeTab === "input" && questionEvent
             ? questionEvent.payload
@@ -6852,6 +6864,22 @@ export default function App() {
     harnessFlow.nodes.find((node) => node.id === currentAtomId)?.data || null;
   const selectedEventIndex =
     activeEvents.findIndex((event) => event.id === selectedEventId);
+  // The payload overlay's left rail lists every atom of the run currently on
+  // screen, from the same harness topology the canvas projects. It is a view of
+  // this one selection, never a second one: picking a row commits through the
+  // same `commitAtomSelection` the canvas uses. Store only display fields here
+  // so the overlay needs no knowledge of TraceEvent / HarnessNodeData.
+  const overlayAtoms = useMemo(
+    () =>
+      harnessFlow.nodes.map((node) => ({
+        id: node.id,
+        index: node.data.index + 1,
+        key: node.data.key,
+        label: node.data.label,
+        status: node.data.status,
+      })),
+    [harnessFlow.nodes],
+  );
   // The question the inspector shows is also the question an answer must be
   // keyed to. Prefer the selected event (a LOG row may be the question itself,
   // and a plan approval tool row previews the same plan) and fall back to the
@@ -7464,16 +7492,35 @@ export default function App() {
     [activeEvents, platformId],
   );
 
-  const handleCanvasSelectNode = useCallback(
-    (node: HarnessNode) => {
-      const deselecting = selectedAtomId === node.id;
+  // One commit point for selecting a harness atom from any surface. The canvas
+  // toggles when you click the already-selected node; the overlay's rail never
+  // does (clicking the current row is a no-op there). Both paths go through
+  // this function so there is a single definition of what "selected" means.
+  const commitAtomSelection = useCallback(
+    (node: HarnessNode, deselect: boolean) => {
       setPlaying(false);
       setReplayMode(false);
-      setSelectedAtomId((current) => toggleAtomSelection(current, node.id));
+      setSelectedAtomId(deselect ? null : node.id);
       const boundEvent = node.data.endEvent || node.data.event;
-      setSelectedEventId(deselecting ? "" : boundEvent?.id || "");
+      setSelectedEventId(deselect ? "" : boundEvent?.id || "");
     },
-    [selectedAtomId],
+    [],
+  );
+
+  const handleCanvasSelectNode = useCallback(
+    (node: HarnessNode) => commitAtomSelection(node, selectedAtomId === node.id),
+    [commitAtomSelection, selectedAtomId],
+  );
+
+  /** The overlay rail selects an atom without ever toggling it off. */
+  const handleOverlaySelectAtom = useCallback(
+    (atomId: string) => {
+      const node = harnessFlow.nodes.find((candidate) => candidate.id === atomId);
+      if (node) {
+        commitAtomSelection(node, false);
+      }
+    },
+    [commitAtomSelection, harnessFlow.nodes],
   );
 
   const handleReplaySeek = useCallback((index: number) => {
@@ -8215,6 +8262,9 @@ export default function App() {
                 atom={selectedAtom}
                 index={selectedEventIndex}
                 onActiveTabChange={setInspectorTab}
+                overlayAtoms={overlayAtoms}
+                overlaySelectedAtomId={currentAtomId}
+                onOverlaySelectAtom={handleOverlaySelectAtom}
                 matchedQuestion={matchedQuestionInteraction}
                 answerDrafts={questionAnswerDrafts}
                 onAnswerDraftChange={(question, text) =>

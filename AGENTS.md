@@ -799,7 +799,14 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   `src/components/payload-overlay.tsx` only renders them — it must not grow a
   second conversion or sanitizer. The expand control opens a Dialog (portaled
   to the document body) whose payload always follows the current event and tab,
-  never a global newest request. The layer keeps **both readings behind one
+  never a global newest request. Its left rail lists every atom of the current
+  run (`overlayAtoms`, mapped from `harnessFlow.nodes` in app.tsx) for quick
+  switching; it is a view of the **single** console selection, never a second
+  one — picking a row calls `handleOverlaySelectAtom` → `commitAtomSelection`,
+  the same commit point as the canvas's `handleCanvasSelectNode`, so the overlay
+  cannot highlight A while the canvas / LOG / inspector stay on B. The dialog
+  only receives `atoms` / `selectedAtomId` / `onSelectAtom` and follows the main
+  selection reactively. The layer keeps **both readings behind one
   toggle**: `Preview` is the rendered content (Markdown headings, GFM task lists,
   highlighted code, question/option/answer lists) and `Code` is the untouched
   structured JSON, so a reader can check either shape without leaving the

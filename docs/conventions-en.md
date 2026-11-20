@@ -85,7 +85,12 @@
     only renders them, with one toggle between `Preview` (rendered Markdown —
     headings, GFM task lists, highlighted code — and question/option/answer
     lists) and `Code` (the untouched structured JSON), never a second conversion
-    or sanitizer;
+    or sanitizer. The overlay's left rail is fed by `overlayAtoms`, mapped from
+    `harnessFlow.nodes` in app.tsx; picking a row goes through
+    `handleOverlaySelectAtom` → `commitAtomSelection`, the same commit point as
+    the canvas's `handleCanvasSelectNode`. The dialog holds no second selection:
+    it only receives `atoms` / `selectedAtomId` / `onSelectAtom`, and its content
+    follows the main console selection reactively;
   - a captured answer has one rendering: `src/components/answer-rows.tsx`, shared
     by the floating card's result, the docked question surface and the
     inspector's historical Answers section. Selected options are reconstructed

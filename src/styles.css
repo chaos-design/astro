@@ -5661,8 +5661,8 @@ pre,
    scrolls, so toggling Preview / Code never reflows the controls. */
 .payload-overlay {
   display: flex;
-  width: min(1040px, calc(100vw - 40px));
-  height: min(780px, calc(100dvh - 48px));
+  width: min(1440px, calc(100vw - 64px));
+  height: min(920px, calc(100dvh - 48px));
   max-width: none;
   max-height: calc(100dvh - 48px);
   flex-direction: column;
@@ -5739,6 +5739,137 @@ pre,
   color: var(--muted-soft);
   font-size: 11px;
 }
+
+/* The rail lists every atom of the current run. It is a view of the single
+   console selection: picking a row commits through the canvas's own handler,
+   and the payload on the right follows reactively. The rail and the content
+   scroll independently so a long run never moves the controls or vice versa. */
+.payload-overlay__main {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+
+.payload-overlay__rail {
+  display: flex;
+  flex: none;
+  width: clamp(152px, 22%, 288px);
+  min-height: 0;
+  flex-direction: column;
+  border-right: 1px solid var(--chrome-line);
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+}
+
+.payload-overlay__rail-title {
+  flex: none;
+  padding: 12px 14px 10px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+}
+
+.payload-overlay__atom-list {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 0 8px 10px;
+  list-style: none;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-bright) transparent;
+}
+
+.payload-overlay__atom {
+  display: grid;
+  width: 100%;
+  grid-template-columns: 26px minmax(0, 1fr) 8px;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.payload-overlay__atom:hover {
+  background: color-mix(in srgb, var(--selection-border) 10%, transparent);
+}
+
+.payload-overlay__atom.is-selected {
+  border-color: var(--selection-border);
+  background: color-mix(in srgb, var(--selection-border) 18%, transparent);
+  color: var(--text-strong);
+}
+
+.payload-overlay__atom-seq {
+  color: var(--muted-soft);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.payload-overlay__atom-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.payload-overlay__atom-label,
+.payload-overlay__atom-key {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.payload-overlay__atom-label {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.payload-overlay__atom-key {
+  color: var(--muted-soft);
+  font-family: var(--font-mono);
+  font-size: 9px;
+}
+
+.payload-overlay__atom-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--muted-soft);
+}
+
+.payload-overlay__atom-dot[data-status="running"] {
+  background: var(--status-running);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--status-running) 55%, transparent);
+}
+
+.payload-overlay__atom-dot[data-status="waiting"] {
+  background: var(--status-waiting);
+}
+
+.payload-overlay__atom-dot[data-status="complete"] {
+  background: var(--status-completed);
+}
+
+.payload-overlay__atom-dot[data-status="failed"] {
+  background: var(--status-failed);
+}
+
+.payload-overlay__content {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+}
+
 
 /* AskUserQuestion choices read as the option buttons the client offered:
    one bordered chip per captured label under its question. */

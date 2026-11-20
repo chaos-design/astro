@@ -71,6 +71,10 @@
     单一来源，浮层组件 `src/components/payload-overlay.tsx` 只负责展示，并用同一个
     切换提供 `Preview`（渲染后的 Markdown：标题、GFM 任务列表、高亮代码、问题/选项/答案）
     与 `Code`（未加工的原始 JSON）两种形态，不再另写一份转换或消毒逻辑；
+    浮层左侧的「当前运行原子」列表由 app.tsx 从 `harnessFlow.nodes` 映射出的
+    `overlayAtoms` 提供，点选走 `handleOverlaySelectAtom` → `commitAtomSelection`，
+    与画布的 `handleCanvasSelectNode` 共用同一个提交点；弹窗不持有第二份选中态，
+    只接收 `atoms` / `selectedAtomId` / `onSelectAtom`，内容随主控制台选中态响应式更新；
   - 捕获答案的展示只在 `src/components/answer-rows.tsx`：悬浮卡结果、停靠检查器
     与历史 Answers 三处共用；选中选项由 `src/lib/question-panel-model.ts` 的
     `matchAnswerOptions` 从答案原文还原（只认与声明标签完全相同的逗号 token，

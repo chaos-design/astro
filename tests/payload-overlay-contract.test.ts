@@ -66,3 +66,35 @@ test("the inspector passes the raw prompt payload so the overlay previews its co
     /activeTab === "input" && promptEvent\s*\? promptEvent\.payload/,
   );
 });
+
+/**
+ * The left rail lists every atom of the current run and is a view of the single
+ * console selection — picking a row calls `onSelectAtom` instead of growing a
+ * second, overlay-local selection that could drift from the canvas / LOG.
+ */
+test("the overlay renders a run-atom rail that commits through onSelectAtom", () => {
+  assert.match(overlay, /atoms\.map\(/);
+  assert.match(overlay, /payload-overlay__rail/);
+  assert.match(overlay, /onClick=\{\(\) => onSelectAtom\(atom\.id\)\}/);
+  assert.match(overlay, /aria-current=\{selected \? "true" : undefined\}/);
+  assert.match(overlay, /const selected = atom\.id === selectedAtomId/);
+  assert.match(overlay, /atoms\.length > 0 \?/);
+});
+
+test("the inspector threads the atom list and selection handler into the overlay", () => {
+  const binding = app.slice(
+    app.indexOf("<PayloadOverlay"),
+    app.indexOf("</section>", app.indexOf("<PayloadOverlay")),
+  );
+  assert.match(binding, /atoms=\{overlayAtoms\}/);
+  assert.match(binding, /selectedAtomId=\{overlaySelectedAtomId\}/);
+  assert.match(binding, /onSelectAtom=\{onOverlaySelectAtom\}/);
+});
+
+test("the overlay rail and the canvas share one atom-selection commit point", () => {
+  assert.match(app, /const commitAtomSelection = useCallback\(/);
+  assert.match(app, /handleCanvasSelectNode[\s\S]*commitAtomSelection\(node, selectedAtomId === node\.id\)/);
+  assert.match(app, /handleOverlaySelectAtom[\s\S]*commitAtomSelection\(node, false\)/);
+  // The rail data comes from the same harness topology the canvas projects.
+  assert.match(app, /harnessFlow\.nodes\.map\(/);
+});

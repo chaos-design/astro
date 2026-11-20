@@ -642,9 +642,14 @@ The inspector provides:
   `captured`, keeping topology metadata out of the layer. `Code` is the raw,
   token-coloured JSON of the same payload, so both readings stay in one dialog;
   with nothing previewable the overlay says so and `Code` still shows it.
-  Escape or the scrim closes the layer. The layer is
-  global (portaled to the document body) but its content always follows the
-  current event and tab — it never shows a different message.
+  Escape or the scrim closes the layer. A left rail lists every message atom of
+  the current run (sequence, label, kind key and a status dot); picking a row
+  jumps to that atom's payload. The rail shares the single console selection
+  with the canvas, LOG and inspector — selecting a row in the overlay also moves
+  the main console to that atom, so the overlay can never highlight A while the
+  canvas stays on B. The selected row is highlighted and marked `aria-current`.
+  The layer is global (portaled to the document body), but the rail is scoped to
+  the current run and its content always follows that one selection.
 
 Selecting a topology atom additionally exposes the atom contract, input/output ports, gate state, and bound event.
 The right panel state is stored in `ASTROX_CONSOLE_OPEN`.
