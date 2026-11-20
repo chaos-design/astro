@@ -28,6 +28,15 @@ test("the global overlay is preview-only, never a raw JSON view", () => {
   assert.match(overlay, /原始载荷见检查器的 Raw 标签/);
 });
 
+test("an answers-only question falls back to the markdown answer preview", () => {
+  assert.match(overlay, /parseUserQuestionContent/);
+  assert.match(overlay, /showQuestion \?/);
+  assert.match(
+    overlay,
+    /question\.prompts\.length \|\| question\.message\.trim\(\) \|\| question\.plan\.trim\(\)/,
+  );
+});
+
 test("the inspector passes the raw question payload for question atoms", () => {
   const binding = app.slice(
     app.indexOf("<PayloadOverlay"),

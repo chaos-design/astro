@@ -8,6 +8,7 @@ import {
 import { QuestionPreview } from "@/components/question-content";
 import { renderMarkdownPreview } from "@/lib/markdown-preview";
 import { payloadToMarkdown } from "@/lib/payload-markdown";
+import { parseUserQuestionContent } from "@/lib/user-question-content";
 import type { TracePayload } from "@/types/trace";
 
 /**
@@ -36,6 +37,19 @@ export function PayloadOverlay({
 }) {
   const markdown = useMemo(() => payloadToMarkdown(payload), [payload]);
   const preview = useMemo(() => renderMarkdownPreview(markdown), [markdown]);
+  // An answers-only question has no question / plan for QuestionPreview to
+  // render (StaticQuestionContent returns null there). With no Code toggle to
+  // fall back on, use the Markdown path so the captured answers still show.
+  const question = useMemo(
+    () =>
+      variant === "question"
+        ? parseUserQuestionContent(payload as TracePayload)
+        : null,
+    [variant, payload],
+  );
+  const showQuestion = Boolean(
+    question && (question.prompts.length || question.message.trim() || question.plan.trim()),
+  );
 
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
@@ -54,7 +68,7 @@ export function PayloadOverlay({
           </div>
         </header>
         <div className="payload-overlay__body">
-          {variant === "question" ? (
+          {showQuestion ? (
             <QuestionPreview payload={payload as TracePayload} />
           ) : preview.valid ? (
             <div

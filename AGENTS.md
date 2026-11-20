@@ -801,8 +801,10 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   rendered prompt / output content belongs; the untouched payload stays in the
   inspector's Raw tab. Its preview is type-aware: a user.question Input tab
   passes the raw question payload to `QuestionPreview` (the shared read-only
-  question / option / answer list) instead of the Markdown path; every other
-  tab keeps the Markdown view.
+  question / option / answer list) instead of the Markdown path — an
+  answers-only payload with no question / plan falls back to the Markdown
+  answer preview so the overlay is never blank; every other tab keeps the
+  Markdown view.
   The docked answer form and the floating card share one Cancel / 提交 order and
   one button label, and the "N questions · one submit" hint lives above the
   question list rather than in the action bar.
