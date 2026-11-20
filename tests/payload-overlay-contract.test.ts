@@ -35,3 +35,18 @@ test("the inspector passes the raw question payload for question atoms", () => {
     /variant=\{activeTab === "input" && questionEvent \? "question" : "default"\}/,
   );
 });
+
+test("the inspector passes the raw prompt payload so the overlay previews its content", () => {
+  const binding = app.slice(
+    app.indexOf("<PayloadOverlay"),
+    app.indexOf("</section>", app.indexOf("<PayloadOverlay")),
+  );
+  assert.match(
+    binding,
+    /activeTab === "input" && promptEvent\s*\? promptEvent\.payload/,
+  );
+});
+
+test("opening the overlay always shows the rendered preview, not a stale Code mode", () => {
+  assert.match(overlay, /if \(open\) \{\s*setViewMode\("preview"\);\s*\}/);
+});

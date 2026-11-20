@@ -783,18 +783,23 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   `src/lib/payload-markdown.ts` (`payloadToMarkdown`: a captured result is found
   at any depth — `captured`, `tool_response`, `output`, `result` and their nested
   content arrays — and returned as its real text, so a tool result renders as
-  the Markdown it is instead of a wall of field labels and fenced JSON; a JSON
-  result is fenced for the highlighter; an `answers` map becomes question →
-  Markdown-answer rows, a `questions` list a numbered list with option bullets,
-  and anything else keeps its fields with fenced JSON); Markdown parsing, syntax highlighting and HTML sanitizing
+  the Markdown it is instead of a wall of field labels and fenced JSON; a `plan`
+  nested in `tool_input` is read the same way; a JSON result is fenced for the
+  highlighter; an `answers` map becomes question → Markdown-answer rows, a
+  `questions` list a numbered list with option bullets, and a captured result
+  with no single text shows as readable field lines rather than a JSON dump —
+  the inspector/overlay's `{ contract, captured }` wrapper previews only
+  `captured`, leaving the `contract` topology metadata to Code); Markdown parsing, syntax highlighting and HTML sanitizing
   live only in `src/lib/markdown-preview.ts` (`renderMarkdownPreview`, with
   highlight.js registering only the languages captured payloads carry). The
   Input/Output/Raw tabs and the global expand layer share these two sources;
   `src/components/payload-overlay.tsx` only renders them and owns the
   Preview/Code switch — it must not grow a second conversion or sanitizer. The
   expand control opens a Dialog (portaled to the document body) whose payload
-  always follows the current event and tab, never a global newest request. Its
-  Preview is type-aware: a user.question Input tab passes the raw question
+  always follows the current event and tab, never a global newest request.
+  Opening always resets the view to Preview so a stale Code mode cannot greet
+  the reader with raw JSON. Its Preview is type-aware: a user.question Input
+  tab passes the raw question
   payload to `QuestionPreview` (the shared read-only question / option / answer
   list) instead of the Markdown path; every other tab keeps the Markdown view.
   The docked answer form and the floating card share one Cancel / 提交 order and

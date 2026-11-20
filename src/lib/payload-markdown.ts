@@ -46,6 +46,17 @@ const RESULT_KEYS = [
   "stderr",
 ];
 
+/**
+ * Containers that hold the real content one level down rather than being the
+ * display text themselves. A captured tool call often nests the meaningful
+ * text under `tool_input` or a translated `payload`; walking these keeps the
+ * preview on the content even when metadata sits alongside it.
+ */
+const CONTAINER_KEYS = ["tool_input", "toolInput", "input", "payload", "arguments", "args"];
+
+/** One module-level list so per-event unwrapping never allocates a new array. */
+const UNWRAP_KEYS = [...new Set([...TEXT_KEYS, ...RESULT_KEYS, ...CONTAINER_KEYS])];
+
 const MAX_DEPTH = 6;
 
 type UnknownRecord = Record<string, unknown>;
@@ -94,21 +105,35 @@ function unwrapText(value: unknown, depth: number, seen: WeakSet<object>): strin
   seen.add(value);
   if (Array.isArray(value)) {
     return value
-      .map((item) => unwrapText(item, depth + 1, seen))
+      .map((item) => unwrapText(item, depth + 1, new WeakSet()))
       .filter(Boolean)
       .join("\n\n");
   }
   const record = value as UnknownRecord;
-  for (const key of TEXT_KEYS) {
+  // Direct text fields are the content itself and win over any container.
+  for (const key of UNWRAP_KEYS) {
     const child = record[key];
     if (typeof child === "string" && child.trim()) {
       return child;
     }
   }
+  // A content field often holds a nested container — `content: [{ type:
+  // "text", text: "..." }]` — or a result key wraps the text one level down.
+  // Walk those too so a multi-field tool response previews its text instead
+  // of its field names. MAX_DEPTH bounds recursion, which also stops cycles.
+  for (const key of UNWRAP_KEYS) {
+    const child = record[key];
+    if (child && typeof child === "object") {
+      const nested = unwrapText(child, depth + 1, new WeakSet());
+      if (nested.trim()) {
+        return nested;
+      }
+    }
+  }
   // A single meaningful field is the result itself, whatever its name.
   const entries = Object.entries(record);
   if (entries.length === 1 && typeof entries[0][1] === "object") {
-    return unwrapText(entries[0][1], depth + 1, seen);
+    return unwrapText(entries[0][1], depth + 1, new WeakSet());
   }
   return "";
 }
@@ -289,6 +314,75 @@ function objectToMarkdown(value: UnknownRecord, depth: number, seen: WeakSet<obj
   return blocks.join("\n\n");
 }
 
+/**
+ * A captured result with no single display text is still content, not
+ * metadata: render its fields as readable lines instead of a JSON dump. Plain
+ * nested objects become indented lines and arrays become bullet lists, so a
+ * small structured result reads as its values rather than as field labels and
+ * fenced JSON.
+ */
+function readableFields(value: unknown, depth: number, seen: WeakSet<object>): string {
+  if (!isRecord(value) || depth > MAX_DEPTH || seen.has(value)) {
+    return payloadToMarkdown(value, depth + 1, new WeakSet());
+  }
+  seen.add(value);
+  const lines: string[] = [];
+  for (const [key, item] of Object.entries(value)) {
+    if (item === null || item === undefined) {
+      continue;
+    }
+    const label = escapeInline(key);
+    if (Array.isArray(item)) {
+      const children = item
+        .map((entry) =>
+          typeof entry === "string" || typeof entry === "number" || typeof entry === "boolean"
+            ? `  - ${escapeInline(String(entry))}`
+            : `  - \`${escapeInline(safeJson(entry))}\``,
+        )
+        .join("\n");
+      lines.push(`- **${label}**${children ? `:\n${children}` : ""}`);
+    } else if (isRecord(item)) {
+      const nested = readableFields(item, depth + 1, new WeakSet());
+      if (nested) {
+        lines.push(
+          `- **${label}**:\n${nested
+            .split("\n")
+            .map((line) => `  ${line}`)
+            .join("\n")}`,
+        );
+      }
+    } else {
+      lines.push(`- **${label}**: \`${escapeInline(String(item))}\``);
+    }
+  }
+  return lines.join("\n");
+}
+
+/**
+ * Preview a captured result from the inspector's `{ contract, captured }`
+ * wrapper. `contract` is topology metadata and would only add a fenced JSON
+ * block of field names, so it is deliberately ignored here. Structured
+ * questions/answers and a readable result text win first; otherwise the
+ * result is shown as readable fields rather than a JSON structure.
+ */
+function capturedResultToMarkdown(value: unknown, depth: number, seen: WeakSet<object>): string {
+  const structured = findStructured(value, depth, new WeakSet());
+  if (structured) {
+    return structured;
+  }
+  // `value` is the captured result itself, so read its display text directly:
+  // unwrapText understands prompt / message / stdout / plan and the nested
+  // `content` arrays a tool response hides its text in.
+  const text = unwrapText(value, depth, new WeakSet());
+  if (text.trim()) {
+    return resultToMarkdown(text);
+  }
+  if (isRecord(value)) {
+    return readableFields(value, depth, seen);
+  }
+  return payloadToMarkdown(value, depth, seen);
+}
+
 export function payloadToMarkdown(
   value: unknown,
   depth = 0,
@@ -311,6 +405,15 @@ export function payloadToMarkdown(
     return arrayToMarkdown(value, depth, seen);
   }
   const record = value as UnknownRecord;
+
+  // The inspector and the global overlay wrap a tab's payload as
+  // `{ contract, captured }`. `contract` is topology metadata; previewing it
+  // only produces a fenced JSON block of field names. Follow `captured` so the
+  // preview shows the prompt / output content the reader asked for, leaving
+  // the untouched wrapper to the Code view.
+  if ("captured" in record && "contract" in record) {
+    return capturedResultToMarkdown(record.captured, depth, seen);
+  }
 
   const structured = findStructured(value, depth, new WeakSet());
   if (structured) {

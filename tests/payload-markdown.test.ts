@@ -103,6 +103,50 @@ test("a JSON tool result is fenced so it renders with syntax highlighting", () =
   assert.equal(markdown, '```json\n{"ok":true,"count":2}\n```');
 });
 
+test("the inspector wrapper previews the captured content, not the contract metadata", () => {
+  const markdown = payloadToMarkdown({
+    contract: { label: "user.prompt", input: {} },
+    captured: { prompt: "Trace this run", turn: 1, turn_id: "turn-1" },
+  });
+  assert.equal(markdown, "Trace this run");
+  assert.doesNotMatch(markdown, /contract|captured|```json/);
+});
+
+test("a structured captured result reads as fields instead of a JSON dump", () => {
+  const markdown = payloadToMarkdown({
+    contract: { label: "tool.result", output: {} },
+    captured: {
+      tool_use_id: "tool-read",
+      tool_name: "Read",
+      tool_response: { status: "ok", bytes: 18420 },
+    },
+  });
+  assert.match(markdown, /\*\*tool\\_response\*\*:/);
+  assert.match(markdown, /\*\*status\*\*: `ok`/);
+  assert.match(markdown, /\*\*bytes\*\*: `18420`/);
+  assert.doesNotMatch(markdown, /```json/);
+});
+
+test("a nested tool_input plan previews as markdown, not field labels", () => {
+  const markdown = payloadToMarkdown({
+    contract: { label: "harness.user-question", input: {} },
+    captured: { tool_input: { plan: "# Plan\n\n1. Do A" }, tool_name: "ExitPlanMode" },
+  });
+  assert.equal(markdown, "# Plan\n\n1. Do A");
+});
+
+test("a multi-field tool response with nested content previews its text", () => {
+  const markdown = payloadToMarkdown({
+    contract: { label: "tool.result", output: {} },
+    captured: {
+      role: "assistant",
+      content: [{ type: "text", text: "## Deploy\n\n- step one" }],
+      stop_reason: "end_turn",
+    },
+  });
+  assert.equal(markdown, "## Deploy\n\n- step one");
+});
+
 test("circular payloads fall back instead of throwing", () => {
   const circular: Record<string, unknown> = { label: "loop" };
   circular.self = circular;

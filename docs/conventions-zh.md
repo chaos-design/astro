@@ -60,9 +60,12 @@
   - 把载荷变成 Markdown 预览文档只在 `src/lib/payload-markdown.ts`
     （`payloadToMarkdown`：在任意深度优先找真正的捕获结果——`captured`、
     `tool_response`、`output`、`result` 及其嵌套 `content` 数组——直接作为文本返回，
-    让工具返回值的 Markdown 被真正渲染，而不是展示字段名和 JSON 块；JSON 结果
-    用代码块包住以启用高亮；`answers` 渲染成问题→Markdown 答案行，`questions`
-    渲染成带选项的列表，其余保留字段与 JSON 代码块）；Markdown 的解析、代码语法高亮与 HTML 清理
+    让工具返回值的 Markdown 被真正渲染，而不是展示字段名和 JSON 块；`tool_input`
+    等容器里的 `plan` 同样会被读出；JSON 结果用代码块包住以启用高亮；`answers`
+    渲染成问题→Markdown 答案行，`questions` 渲染成带选项的列表，没有单一文本的
+    捕获结果按可读字段行展示而不是 JSON 结构——检查器/浮层的 `{ contract,
+    captured }` 包装只预览 `captured`，`contract` 拓扑元数据留给 Code）；
+    Markdown 的解析、代码语法高亮与 HTML 清理
     只在 `src/lib/markdown-preview.ts`（`renderMarkdownPreview`，highlight.js 只
     注册捕获载荷常见语言）。检查器的 Input/Output/Raw 与全局浮层共用这两个
     单一来源，浮层组件 `src/components/payload-overlay.tsx` 只负责展示与

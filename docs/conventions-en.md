@@ -70,10 +70,13 @@
     `src/lib/payload-markdown.ts` (`payloadToMarkdown`: the real captured result
     is found at any depth — `captured`, `tool_response`, `output`, `result` and
     their nested `content` arrays — and returned as its text, so a Markdown tool
-    result renders as Markdown instead of field labels and JSON; JSON results
-    are fenced for the highlighter; an `answers` map becomes question →
-    Markdown-answer rows, a `questions` list a numbered list with option bullets,
-    and anything else keeps its fields with fenced JSON);
+    result renders as Markdown instead of field labels and JSON; a `plan` nested
+    in `tool_input` is read the same way; JSON results are fenced for the
+    highlighter; an `answers` map becomes question → Markdown-answer rows, a
+    `questions` list a numbered list with option bullets, and a captured result
+    with no single text shows as readable field lines rather than a JSON dump —
+    the inspector/overlay's `{ contract, captured }` wrapper previews only
+    `captured`, leaving the `contract` topology metadata to Code);
     Markdown parsing, code syntax highlighting and
     HTML sanitizing live only in `src/lib/markdown-preview.ts`
     (`renderMarkdownPreview`, with highlight.js registering only the languages

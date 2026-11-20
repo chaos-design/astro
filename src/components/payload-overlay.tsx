@@ -1,5 +1,5 @@
 import { Code2, Eye } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { JsonViewer } from "@/components/json-viewer";
 import {
   Dialog,
@@ -41,6 +41,14 @@ export function PayloadOverlay({
   variant?: "default" | "question";
 }) {
   const [viewMode, setViewMode] = useState<PayloadViewMode>("preview");
+  // Opening the global layer always shows the rendered content first: a Code
+  // mode left over from a previous inspect must not greet the reader with raw
+  // JSON instead of the prompt / output preview.
+  useEffect(() => {
+    if (open) {
+      setViewMode("preview");
+    }
+  }, [open]);
   const markdown = useMemo(() => payloadToMarkdown(payload), [payload]);
   const preview = useMemo(() => renderMarkdownPreview(markdown), [markdown]);
 

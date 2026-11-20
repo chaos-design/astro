@@ -3623,9 +3623,11 @@ function TraceInspector({
         payload={
           activeTab === "input" && questionEvent
             ? questionEvent.payload
-            : activeTab === "input" || activeTab === "output" || activeTab === "raw"
-              ? payloadByTab[activeTab]
-              : null
+            : activeTab === "input" && promptEvent
+              ? promptEvent.payload
+              : activeTab === "input" || activeTab === "output" || activeTab === "raw"
+                ? payloadByTab[activeTab]
+                : null
         }
         variant={activeTab === "input" && questionEvent ? "question" : "default"}
       />
