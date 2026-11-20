@@ -942,7 +942,6 @@ pre,
   display: flex;
   min-width: 0;
   align-items: baseline;
-  justify-content: space-between;
   gap: 8px;
 }
 
@@ -958,7 +957,7 @@ pre,
   overflow-wrap: anywhere;
   color: var(--text);
   font-variant-numeric: tabular-nums;
-  text-align: right;
+  text-align: left;
 }
 
 .service-card__path {
