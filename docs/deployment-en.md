@@ -121,6 +121,8 @@ Install and launch also bring up the dashboard; refresh afterwards with
 ```bash
 ax                       # quick start + service/integration status (short for astrox ax)
 astrox status|start|stop|restart|update|logs|doctor|path|open|info|ax
+astrox health [--json]   # probe /api/health (exit 1 when down); stop/restart/up accept --json
+astro-trace serve [--port N] [--host H] [--astro-home DIR] [--open]   # run the service in the foreground
 npx astro-plugin ax      # quick start without a global install (npx astro-plugin status|stop|… likewise)
 ```
 

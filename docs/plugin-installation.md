@@ -542,6 +542,7 @@ astrox daemon commands, so no global install is required:
 npx astro-plugin ax                # quick start: bootstrap + dashboard + health + status
 npx astro-plugin status            # same as astrox status
 npx astro-plugin ax stop           # stop the dashboard
+npx astro-plugin health            # probe /api/health; exit 1 when down
 npx astro-plugin doctor            # installer diagnostics (astro-trace's own command)
 ```
 
@@ -549,9 +550,11 @@ Bare `ax` is always the quick start. When the installed runtime is missing it
 bootstraps `<ASTRO_HOME>/plugins/astro/` first (hook configs and trace data
 are never touched); `--no-install` keeps the explicit install hint instead.
 After starting, `ax` polls `/api/health` and reports the verified startup
-(`health OK … (Nms)`, or `start.healthy` / `start.elapsedMs` in `--json`
-output). Every other `ax` subcommand passes straight through to its astrox
-equivalent.
+(`health OK … (Nms)`, or `start.healthy` / `start.elapsedMs` / `start.service`
+in `--json` — `start.service` carries the live event count, build, and
+uptime). Every other `ax` subcommand passes straight through to its astrox
+equivalent, and `health` / `logs --follow` / `stop` / `restart` round out the
+operational surface.
 
 ## Publishing the npm package
 

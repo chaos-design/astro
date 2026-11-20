@@ -105,17 +105,35 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   uses — before starting; it writes `ASTRO_HOME` only, never hook configs or
   trace data. `--no-install` keeps the explicit install hint. After the pid
   record appears, `ax` additionally polls `/api/health`
-  (`checkDashboardHealth`, 3 s deadline) and reports
-  `start.healthy` / `start.elapsedMs` / `start.bootstrapped` in the JSON
-  result — a pid file alone is not a verified startup.
+  (`getDashboardHealth(base, timeoutMs)`, 3 s deadline) and reports
+  `start.healthy` / `start.elapsedMs` / `start.bootstrapped` /
+  `start.service` in the JSON result — a pid file alone is not a verified
+  startup. `start.service` carries the live `/api/health` facts
+  (`eventCount`, `build`, `uptimeMs`) so the quick screen shows how much data
+  the service just loaded.
+- `health` (`astrox health` / `ax health` / `astro-trace health`) is the
+  scriptable probe: one `/api/health` read (1 s deadline) via the same
+  `getDashboardHealth`. It exits `1` when nothing answers so CI can gate on
+  it. The pid record of the current `ASTRO_HOME` names the daemon it owns;
+  without one the probe still asks the configured port but reports
+  `recordedPid` / "no pid record" so a foreign answer is never hidden. `stop`,
+  `restart` and `up` print one machine-readable JSON document under `--json`
+  (`stop` = `{action,pid,port,url}` or `{action:"not-running",port,others}`;
+  `restart` = `{stop,start}` reusing `ensureDashboardStarted` — no second
+  start path). `logs --follow` tails `dashboard.log` and keeps streaming
+  (Ctrl-C exits cleanly).
 - `--json` keeps stdout to one document (registration chatter is suppressed).
   A failed start still prints status and exits non-zero. `astrox`, `ax` and
   `astro-trace` are bins of the packaged `astro-plugin` runtime
   (`scripts/build-plugin.mjs`): a global install provides all three, and
   `npx astro-plugin <command>` works because `bin/astro.mjs` forwards the
-  astrox daemon commands (`ax`, `status`, `stop`, `restart`, `up`, `info`,
-  `open`, `logs`, `path`) to `bin/astrox.mjs` — one delegation surface, no
-  second start path.
+  astrox daemon commands (`ax`, `health`, `status`, `stop`, `restart`, `up`,
+  `info`, `open`, `logs`, `path`) to `bin/astrox.mjs` — one delegation
+  surface, no second start path. `astro-trace serve [--port N] [--host H]
+  [--astro-home DIR] [--open]` maps its flags onto the `ASTRO_*` environment
+  the server reads (`applyServeOptions`); the serve path is gated by a main
+  guard (`isInvokedAsEntry`, same pattern as `astrox`) so the module can be
+  imported by tests without running the command dispatch.
 - Publishing is `pnpm publish:plugin` (`scripts/publish-plugin.mjs`):
   build → validate the staging package (publishable license — npm refuses
   `UNLICENSED` — every bin and declared file present, tarball for the current

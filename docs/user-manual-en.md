@@ -1176,9 +1176,10 @@ Deterministic IDs make unchanged imports idempotent.
 ```text
 pnpm service:up [--port N] [--home DIR]       # restart in place if running, start if down
 pnpm service:start|restart|status             # single-action shortcuts
-astro-trace serve
+astro-trace serve [--port N] [--host H] [--astro-home DIR] [--open]   # run the service in the foreground
 astro-trace ax [--json]                       # quick start + service status (forwards to astrox)
-astro-trace status|stop|restart|up|info|open|logs|path   # daemon control (forwards to astrox)
+astro-trace health [--json]                   # probe /api/health (exit 1 when down)
+astro-trace status|stop|restart|up|info|open|logs|path   # daemon control (forwards to astrox; stop/restart/up accept --json)
 astro-trace install [--target DIR] [--clients trae,claude,chatgpt,deepseek,workbuddy] [--scope user|project]
 astro-trace update [--no-deepseek] [--astro-home DIR]
 astro-trace doctor [--target DIR] [--scope user|project] [--deepseek-profile NAME]
@@ -1218,17 +1219,18 @@ underlying `astro-trace` shown above.
 ```text
 ax [--json] [--open] [--port N]   quick start + service/integration status (= astrox ax)
 astrox start [--port N] [--host H] [--open] [--no-global] [--bin-dir DIR]
-astrox stop
-astrox restart
+astrox stop [--json]
+astrox restart [--json]
 astrox up                     # restart if running, start if down, on the same port
 astrox status [--json] [--deepseek-profile web]
+astrox health [--json]        # probe /api/health; exit 1 when down
 astrox info [--json]
 astrox update [--no-deepseek]
 astrox doctor [options]        run the full astro-trace diagnostics
 astrox install [options]       install or refresh hook integrations
 astrox migrate [FILE_OR_DIR]   migrate legacy trace data
 astrox open                    open the running dashboard in a browser
-astrox logs [--lines N]        tail the dashboard log
+astrox logs [--lines N] [--follow]  tail the log; --follow keeps streaming
 astrox path                    print ASTRO home, plugin dir, and CLI entry
 ```
 
@@ -1238,17 +1240,18 @@ ax <command> [args…]              every other astrox command passes straight t
                                   (ax status, ax stop, ax open …)
 ax --version | ax --help          print the version / usage
 astrox start [--port N] [--host H] [--open] [--no-global] [--bin-dir DIR]
-astrox stop
-astrox restart
-astrox up                     # restart if running, start if down, on the same port
+astrox stop [--json]
+astrox restart [--json]
+astrox up [--json]               # restart if running, start if down, on the same port
 astrox status [--json] [--deepseek-profile web]
+astrox health [--json]           # probe /api/health; exit 1 when down
 astrox info [--json]
 astrox update [--no-deepseek]
 astrox doctor [options]       run the full astro-trace diagnostics
 astrox install [options]      install or refresh hook integrations
 astrox migrate [FILE_OR_DIR]  migrate legacy trace data
 astrox open                   open the running dashboard in a browser
-astrox logs [--lines N]       tail the dashboard log
+astrox logs [--lines N] [--follow]  tail the log; --follow keeps streaming (Ctrl-C exits)
 astrox path                   print ASTRO home, plugin dir, and CLI entry
 astrox --version              print the CLI version
 ```
@@ -1259,11 +1262,13 @@ astrox --version              print the CLI version
   `--no-install` keeps the explicit install hint), then brings the dashboard
   up through the same path as `start`, registers both the global `astrox` and
   `ax` shorthands, polls `/api/health` to confirm the service actually
-  answers, and reports the start result, health latency, service/process
-  state, plugin version and Hook integration readiness on one screen.
-  `--json` emits a machine-readable report (`start.healthy` /
-  `start.elapsedMs` / `start.bootstrapped`); a failed start still prints
-  status and exits non-zero. Every other `ax` subcommand maps 1:1 onto its
+  answers, and reports the start result, health latency, live service facts,
+  service/process state, plugin version and Hook integration readiness on one
+  screen. `--json` emits a machine-readable report (`start.healthy` /
+  `start.elapsedMs` / `start.bootstrapped` / `start.service`); `start.service`
+  carries the live `/api/health` facts (`eventCount` / `build` / `uptimeMs`)
+  and the text view adds an `events` line. A failed start still prints status
+  and exits non-zero. Every other `ax` subcommand maps 1:1 onto its
   astrox equivalent; bare `ax` is always the quick start and an unknown
   subcommand is a usage error. It shares the same internal helpers as `start`
   and `status` rather than duplicating them. Run it from a checkout with
@@ -1278,13 +1283,23 @@ astrox --version              print the CLI version
   directories; `--open` opens the browser after launch.
 - Once launched, the daemon writes `<ASTRO_HOME>/dashboard-<port>.pid` (with
   `pid` and `url`); the run log lands at `<ASTRO_HOME>/dashboard.log`.
-  `logs [--lines N]` tails the last 40 lines by default.
+  `logs [--lines N]` tails the last 40 lines by default; `logs --follow` keeps
+  streaming new lines and Ctrl-C exits cleanly.
 - `stop` sends `SIGTERM` (then `SIGKILL` if needed) to the daemon and clears the
   process; no extra cleanup runs. `restart` is `stop` followed by `start`.
+  `stop`, `restart`, and `up` each emit one machine-readable JSON document
+  under `--json` (`stop` = `{action,pid,port,url}` or
+  `{action:"not-running",port,others}`; `restart` = `{stop,start}`).
 - `status` summarizes the plugin config (config.yaml / .env as OK, WARN, or
   MISSING), the global CLI state, the dashboard run state, and per-client hook
   integrations (chatgpt, claude, workbuddy, trae, deepseek). `--json` emits a
   machine-readable report.
+- `health` probes the live service at `/api/health` and reports its facts
+  (pid, uptime, eventCount, build, dataRoot, restartCount); it exits `1` when
+  nothing answers so scripts and CI can gate on it. It asks the running service
+  rather than the pid record, and when this `ASTRO_HOME` has no record it
+  marks that ("no pid record") so a foreign answer on the shared port is never
+  reported as your own install.
 - `info` lists each source's trace file count and byte total (claude, chatgpt,
   copilot, cursor, deepseek, gemini, iflow, llama, opencode, pi, qwen, trae,
   workbuddy, zcode, …) plus the trace root, plugin directory, and global CLI

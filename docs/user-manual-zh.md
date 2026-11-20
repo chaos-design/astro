@@ -971,9 +971,10 @@ node bin/astro.mjs import-chatgpt --chatgpt-home=/path/to/.chatgpt
 ```text
 pnpm service:up [--port N] [--home DIR]       # 服务在跑就原地重启，没跑就启动
 pnpm service:start|restart|status             # 单动作快捷方式
-astro-trace serve
+astro-trace serve [--port N] [--host H] [--astro-home DIR] [--open]   # 前台起服务
 astro-trace ax [--json]                       # 快速启动 + 服务/集成状态（透传给 astrox）
-astro-trace status|stop|restart|up|info|open|logs|path   # 守护进程控制（透传给 astrox）
+astro-trace health [--json]                   # 探活 /api/health（未应答退出码 1）
+astro-trace status|stop|restart|up|info|open|logs|path   # 守护进程控制（透传给 astrox；stop/restart/up 支持 --json）
 astro-trace install [--target DIR] [--clients trae,claude,chatgpt,deepseek,workbuddy] [--scope user|project]
 astro-trace update [--no-deepseek]
 astro-trace doctor [--target DIR] [--scope user|project] [--deepseek-profile NAME]
@@ -1011,26 +1012,28 @@ ax [--json] [--open] [--port N]   一键启动并检查服务与集成状态（�
 ax <command> [args…]              其余 astrox 命令原样透传（ax status、ax stop、ax open …）
 ax --version | ax --help          打印版本 / 用法
 astrox start [--port N] [--host H] [--open] [--no-global] [--bin-dir DIR]
-astrox stop
-astrox restart
-astrox up                     # 在跑就重启、没跑就启动，端口与 --port/ASTRO_PORT 一致
+astrox stop [--json]
+astrox restart [--json]
+astrox up [--json]               # 在跑就重启、没跑就启动，端口与 --port/ASTRO_PORT 一致
 astrox status [--json] [--deepseek-profile web]
+astrox health [--json]           # 探活 /api/health；未应答退出码 1
 astrox info [--json]
 astrox update [--no-deepseek]
 astrox doctor [options]       运行完整的 astro-trace 诊断
 astrox install [options]      安装或刷新 Hook 集成
 astrox migrate [FILE_OR_DIR]  迁移旧版 trace 数据
 astrox open                   在浏览器中打开运行中的仪表盘
-astrox logs [--lines N]       查看仪表盘日志尾部
+astrox logs [--lines N] [--follow]  查看日志尾部；--follow 持续跟随（Ctrl-C 退出）
 astrox path                   打印 ASTRO home、插件目录与 CLI 入口
 astrox --version              打印 CLI 版本
 ```
 
-- `ax`（也可写作 `astrox ax`）是「一条命令就绪」的快捷入口：运行时未安装时先用 `installPluginRuntime` 自举到 `ASTRO_HOME`（不碰 hook 配置与 trace 数据，`--no-install` 改为显式提示），再按 `start` 的同一套逻辑把仪表盘拉起来，把全局 `astrox` 与 `ax` 命令都注册好，随后轮询 `/api/health` 确认服务真实可用，最后在一屏里给出启动结果、health 耗时、服务/进程状态、插件版本与 Hook 集成状态。`--json` 输出机器可读报告（`start.healthy` / `start.elapsedMs` / `start.bootstrapped`）；启动失败时报告仍会给出状态，并以非零状态退出。它不会重复实现启动或状态逻辑——`start`、`status` 与它共享同一组内部函数。`ax` 的其余子命令与 `astrox` 同名命令一一对应；裸 `ax` 永远是快速启动，未知子命令报用法错误。本仓库可用 `pnpm ax` 调用，全局安装后直接 `ax`，无全局安装时 `npx astro-plugin ax` 同效。
+- `ax`（也可写作 `astrox ax`）是「一条命令就绪」的快捷入口：运行时未安装时先用 `installPluginRuntime` 自举到 `ASTRO_HOME`（不碰 hook 配置与 trace 数据，`--no-install` 改为显式提示），再按 `start` 的同一套逻辑把仪表盘拉起来，把全局 `astrox` 与 `ax` 命令都注册好，随后轮询 `/api/health` 确认服务真实可用，最后在一屏里给出启动结果、health 耗时、服务数据规模、服务/进程状态、插件版本与 Hook 集成状态。`--json` 输出机器可读报告（`start.healthy` / `start.elapsedMs` / `start.bootstrapped` / `start.service`）；`start.service` 携带存活服务的 `eventCount` / `build` / `uptimeMs`，文本输出另加一行 `events`。启动失败时报告仍会给出状态，并以非零状态退出。它不会重复实现启动或状态逻辑——`start`、`status` 与它共享同一组内部函数。`ax` 的其余子命令与 `astrox` 同名命令一一对应；裸 `ax` 永远是快速启动，未知子命令报用法错误。本仓库可用 `pnpm ax` 调用，全局安装后直接 `ax`，无全局安装时 `npx astro-plugin ax` 同效。
 - `start` 启动仪表盘守护进程（默认 `127.0.0.1:5678`）。它会同时把当前入口注册为全局 `astrox` 命令——在 Unix 下软链到 `/usr/local/bin`、`~/.local/bin` 或 `~/bin` 中第一个可写目录，在 Windows 下写入 `%USERPROFILE%\.astrox\bin\astrox.cmd`。已存在的同名软链若指向本入口则复用，指向其他文件则保留不动。`--no-global` 跳过注册，`--bin-dir DIR` 指定候选目录，`--open` 在启动后自动打开浏览器。
-- 守护进程启动后写入 `<ASTRO_HOME>/dashboard-<port>.pid`（含 `pid` 与 `url`），运行日志落在 `<ASTRO_HOME>/dashboard.log`。`logs [--lines N]` 默认查看末尾 40 行。
-- `stop` 向守护进程发送 `SIGTERM`（必要时 `SIGKILL`）并结束进程，不触发额外清理；`restart` 等价于先 `stop` 再 `start`。
+- 守护进程启动后写入 `<ASTRO_HOME>/dashboard-<port>.pid`（含 `pid` 与 `url`），运行日志落在 `<ASTRO_HOME>/dashboard.log`。`logs [--lines N]` 默认查看末尾 40 行；`logs --follow` 持续跟随新行，Ctrl-C 干净退出。
+- `stop` 向守护进程发送 `SIGTERM`（必要时 `SIGKILL`）并结束进程，不触发额外清理；`restart` 等价于先 `stop` 再 `start`。二者与 `up` 在 `--json` 下各输出一份机器可读 JSON（`stop` 为 `{action,pid,port,url}` 或 `{action:"not-running",port,others}`；`restart` 为 `{stop,start}`）。
 - `status` 汇总插件配置（config.yaml / .env 的 OK、WARN、MISSING）、global cli 状态、仪表盘运行状态，以及各客户端 Hook 集成（chatgpt、claude、workbuddy、trae、deepseek）。`--json` 输出机器可读报告。
+- `health` 直接向 `/api/health` 探活并报告服务事实（pid、uptime、eventCount、build、dataRoot、restartCount）；未应答时退出码 1，便于脚本与 CI 作为门禁。它读的是活服务自身，而非本 `ASTRO_HOME` 的 pid 记录——没有记录时会标注 "no pid record"，避免把别家安装应答的端口误报为本 home。
 - `info` 列出每个来源（claude、chatgpt、copilot、cursor、deepseek、gemini、iflow、llama、opencode、pi、qwen、trae、workbuddy、zcode 等）的 trace 文件数与字节数及合计，并展示 trace 根目录、插件目录与全局 CLI 路径。`--json` 同效。
 - `update` 原地刷新已安装的插件运行时（等价于 `astro-trace update`），`--no-deepseek` 跳过 DeepSeek 插件包。
 

@@ -111,6 +111,8 @@ pnpm start        # 服务：127.0.0.1:5678，托管 dist/
 ```bash
 ax                       # 一键启动 + 服务/集成状态（astrox ax 的短命令）
 astrox status|start|stop|restart|update|logs|doctor|path|open|info|ax
+astrox health [--json]    # 探活 /api/health（未应答退出码 1）；stop/restart/up 支持 --json
+astro-trace serve [--port N] [--host H] [--astro-home DIR] [--open]   # 前台起服务
 npx astro-plugin ax      # 无全局安装的快速启动（npx astro-plugin status|stop|… 同理）
 ```
 

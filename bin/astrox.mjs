@@ -20,7 +20,9 @@ import {
   readdirSync,
   readFileSync,
   readlinkSync,
+  readSync,
   realpathSync,
+  statSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -336,24 +338,34 @@ function sleep(ms) {
 
 const HEALTH_TIMEOUT_MS = 3_000;
 const HEALTH_INTERVAL_MS = 100;
+const HEALTH_PROBE_TIMEOUT_MS = 1_000;
+const LOG_FOLLOW_INTERVAL_MS = 500;
 
 /**
  * Poll `/api/health` until the service answers or the deadline passes. A pid
  * record only proves the daemon wrote a file; this proves it actually serves,
- * so `ax` can report a verified startup instead of a hopeful one.
+ * so `ax` can report a verified startup instead of a hopeful one. The parsed
+ * payload rides along as `health` — the quick report folds its service facts
+ * in and the `health` command prints them.
  */
-async function checkDashboardHealth(base) {
+async function getDashboardHealth(base, timeoutMs = HEALTH_TIMEOUT_MS) {
   const url = new URL(
     "/api/health",
     base.endsWith("/") ? base : `${base}/`,
   ).toString();
-  const deadline = Date.now() + HEALTH_TIMEOUT_MS;
+  const deadline = Date.now() + timeoutMs;
   let error = "";
   while (Date.now() < deadline) {
     try {
       const response = await fetch(url, { signal: AbortSignal.timeout(1_000) });
       if (response.ok) {
-        return { ok: true, url };
+        let health = null;
+        try {
+          health = await response.json();
+        } catch {
+          // A 200 with a non-JSON body still counts as answering.
+        }
+        return { health, ok: true, url };
       }
       error = `HTTP ${response.status}`;
     } catch (cause) {
@@ -361,7 +373,22 @@ async function checkDashboardHealth(base) {
     }
     await sleep(HEALTH_INTERVAL_MS);
   }
-  return { ok: false, url, error };
+  return { error, health: null, ok: false, url };
+}
+
+/**
+ * The service facts the quick report shows. Only fields /api/health actually
+ * guarantees are read; anything else stays out of the report.
+ */
+function pickHealthServiceFacts(health) {
+  if (!health) {
+    return null;
+  }
+  return {
+    build: typeof health.build === "string" ? health.build : "",
+    eventCount: Number.isFinite(health.eventCount) ? health.eventCount : 0,
+    uptimeMs: Number.isFinite(health.uptimeMs) ? health.uptimeMs : 0,
+  };
 }
 
 async function waitForDashboard(astroHome, timeoutMs = 15_000, port) {
@@ -558,7 +585,12 @@ function printGlobalCli(registered, name = CLI_NAME) {
   }
 }
 
-async function stopCommand() {
+/**
+ * Stop the dashboard scoped to the configured port. Returns the result so
+ * `stop --json` and `restart --json` can print one machine-readable document;
+ * `quiet` suppresses the text rendering (the JSON path owns stdout then).
+ */
+async function stopCommand({ quiet = false } = {}) {
   const deps = await loadDependencies();
   const { environment } = await loadConfig();
   const astroHome = deps.resolveAstroHome(environment);
@@ -570,17 +602,37 @@ async function stopCommand() {
     const others = readDashboardStates(astroHome).filter(
       (candidate) => candidate.running && candidate.port !== port,
     );
-    console.log("Dashboard is not running.");
-    for (const other of others) {
-      console.log(
-        `Another dashboard is running on port ${other.port}: ${other.url} (stop it with --port ${other.port}).`,
-      );
+    if (!quiet) {
+      console.log("Dashboard is not running.");
+      for (const other of others) {
+        console.log(
+          `Another dashboard is running on port ${other.port}: ${other.url} (stop it with --port ${other.port}).`,
+        );
+      }
     }
-    return;
+    return {
+      action: "not-running",
+      others: others.map(({ pid, port: otherPort, url }) => ({
+        pid,
+        port: otherPort,
+        url,
+      })),
+      pid: 0,
+      port,
+      url: "",
+    };
   }
   if (!state.running) {
-    console.log(`Dashboard is not running (stale pid file ${state.file}).`);
-    return;
+    if (!quiet) {
+      console.log(`Dashboard is not running (stale pid file ${state.file}).`);
+    }
+    return {
+      action: "not-running",
+      others: [],
+      pid: 0,
+      port,
+      url: "",
+    };
   }
   try {
     process.kill(state.pid, "SIGTERM");
@@ -600,14 +652,65 @@ async function stopCommand() {
       // The process exited between the check and the signal.
     }
   }
-  console.log(`Dashboard stopped (pid ${state.pid}).`);
+  if (!quiet) {
+    console.log(`Dashboard stopped (pid ${state.pid}).`);
+  }
+  return {
+    action: "stopped",
+    others: [],
+    pid: state.pid,
+    port,
+    url: state.url || "",
+  };
+}
+
+async function stopAction() {
+  const result = await stopCommand({ quiet: hasFlag("json") });
+  if (hasFlag("json")) {
+    console.log(JSON.stringify(result, null, 2));
+  }
 }
 
 async function restartCommand() {
-  await stopCommand();
+  const json = hasFlag("json");
+  const stop = await stopCommand({ quiet: json });
   // Give the previous listener a moment to release the port.
   await sleep(500);
-  await startCommand();
+  if (!json) {
+    await startCommand();
+    return;
+  }
+  const ctx = await resolveRuntimeContext();
+  try {
+    const start = await ensureDashboardStarted(ctx);
+    console.log(
+      JSON.stringify(
+        {
+          start: {
+            action: start.action,
+            message:
+              start.action === "already-running"
+                ? `Dashboard already running: ${start.state.url || "unknown"}`
+                : `Dashboard started: ${start.state.url || "unknown"} (pid ${start.state.pid})`,
+            pid: start.state.pid,
+            url: start.state.url || "",
+          },
+          stop,
+        },
+        null,
+        2,
+      ),
+    );
+  } catch (error) {
+    console.log(
+      JSON.stringify(
+        { start: { action: "failed", message: error.message }, stop },
+        null,
+        2,
+      ),
+    );
+    process.exitCode = 1;
+  }
 }
 
 /** Build the shared status report consumed by both `status` and `ax`. */
@@ -823,6 +926,75 @@ export function getAxPositionalArgs(argv = process.argv) {
 }
 
 /**
+ * `health` is the scriptable probe: one `/api/health` read, reported as text
+ * or JSON. Unlike `status` (local install state from pid files and config),
+ * it asks the running service itself — exit code 1 means nothing is
+ * answering, so scripts and CI can gate on it.
+ */
+async function healthCommand() {
+  const ctx = await resolveRuntimeContext();
+  const port = resolveDashboardPort(ctx.environment);
+  // The pid record of this home names the daemon it owns; without one the
+  // probe still asks the configured port, but the answer may belong to
+  // another install — report that provenance instead of hiding it.
+  const recorded = readDashboardState(ctx.astroHome, port);
+  const base = recorded?.url || `http://127.0.0.1:${port}`;
+  const result = await getDashboardHealth(base, HEALTH_PROBE_TIMEOUT_MS);
+  const service = pickHealthServiceFacts(result.health);
+  if (hasFlag("json")) {
+    console.log(
+      JSON.stringify(
+        {
+          healthy: result.ok,
+          url: result.url,
+          recordedPid: recorded?.pid ?? 0,
+          ...(result.ok
+            ? {
+                ...service,
+                dataRoot:
+                  typeof result.health.dataRoot === "string"
+                    ? result.health.dataRoot
+                    : "",
+                pid: Number.isFinite(result.health.pid) ? result.health.pid : 0,
+                restartCount: Number.isFinite(result.health.restartCount)
+                  ? result.health.restartCount
+                  : 0,
+              }
+            : { error: result.error || "no response" }),
+        },
+        null,
+        2,
+      ),
+    );
+  } else if (result.ok) {
+    console.log(`ASTROX HEALTH · v${getPackageVersion()} — OK ${result.url}`);
+    console.log(
+      `  pid            ${result.health.pid ?? 0}${recorded ? ` (record ${recorded.pid})` : " (no pid record)"}`,
+    );
+    console.log(`  uptime         ${((service?.uptimeMs ?? 0) / 1000).toFixed(0)}s`);
+    console.log(`  events         ${service?.eventCount ?? 0}`);
+    console.log(`  build          ${service?.build || "unknown"}`);
+    console.log(
+      `  data root      ${typeof result.health.dataRoot === "string" ? result.health.dataRoot : "unknown"}`,
+    );
+    console.log(`  restarts       ${result.health.restartCount ?? 0}`);
+  } else {
+    const detail = recorded
+      ? recorded.running
+        ? ` (pid ${recorded.pid} is recorded but not answering)`
+        : ` (stale pid file ${recorded.file})`
+      : "";
+    console.error(
+      `Service did not answer /api/health on ${result.url}${detail}: ${result.error || "no response"}`,
+    );
+    process.exitCode = 1;
+  }
+  if (!result.ok && hasFlag("json")) {
+    process.exitCode = 1;
+  }
+}
+
+/**
  * `ax` is the one-command quick start: bring the dashboard up (bootstrapping
  * the runtime when nothing is installed yet), register both global shorthands,
  * verify `/api/health`, then report service and integration readiness in one
@@ -898,13 +1070,14 @@ async function axCommand() {
     } else if (result.bundleStale && result.action === "already-running") {
       start.note = `Installed bundle is ${result.bundleVersion ? `v${result.bundleVersion}` : "unstamped"} but this CLI is v${result.cliVersion}; run "astrox restart".`;
     }
-    const health = await checkDashboardHealth(
+    const health = await getDashboardHealth(
       result.state.url ||
         `http://127.0.0.1:${resolveDashboardPort(ctx.environment)}`,
     );
     start.healthy = health.ok;
     start.healthUrl = health.url;
     start.elapsedMs = Date.now() - startedAtMs;
+    start.service = pickHealthServiceFacts(health.health);
     if (!health.ok) {
       const detail = `Service did not answer /api/health within ${HEALTH_TIMEOUT_MS}ms: ${health.error || "no response"}`;
       start.note = start.note ? `${start.note}; ${detail}` : detail;
@@ -937,6 +1110,11 @@ async function axCommand() {
           : `UNVERIFIED (${start.elapsedMs}ms)`
       }`,
     );
+    if (start.service) {
+      console.log(
+        `  events        ${start.service.eventCount} events (build ${start.service.build || "unknown"}, uptime ${(start.service.uptimeMs / 1000).toFixed(0)}s)`,
+      );
+    }
     console.log(
       `  service       ${
         report.dashboard.running
@@ -1111,6 +1289,46 @@ async function logsCommand() {
   for (const line of lines.slice(-Math.max(1, limit))) {
     console.log(line);
   }
+  if (!hasFlag("follow")) {
+    return;
+  }
+  // Tail -f: poll for appended bytes; a rewritten (truncated) log restarts
+  // from the beginning. SIGINT (Ctrl-C) exits cleanly instead of a stack.
+  let offset = statSync(logFile).size;
+  let remainder = "";
+  process.on("SIGINT", () => process.exit(0));
+  while (true) {
+    await sleep(LOG_FOLLOW_INTERVAL_MS);
+    let stats;
+    try {
+      stats = statSync(logFile);
+    } catch {
+      continue;
+    }
+    if (stats.size < offset) {
+      offset = 0;
+      remainder = "";
+    }
+    if (stats.size === offset) {
+      continue;
+    }
+    const chunk = Buffer.alloc(stats.size - offset);
+    const fd = openSync(logFile, "r");
+    try {
+      readSync(fd, chunk, 0, chunk.length, offset);
+    } finally {
+      closeSync(fd);
+    }
+    offset = stats.size;
+    remainder += chunk.toString("utf8");
+    const parts = remainder.split(/\r?\n/);
+    remainder = parts.pop() ?? "";
+    for (const line of parts) {
+      if (line) {
+        console.log(line);
+      }
+    }
+  }
 }
 
 async function pathCommand() {
@@ -1132,13 +1350,14 @@ Usage:
   astrox restart
   astrox up                      Restart if running, start if down (same port)
   astrox status [--json] [--deepseek-profile web]
+  astrox health [--json]         Probe the live dashboard (/api/health); exit 1 when down
   astrox info [--json]
   astrox update [--no-deepseek]
   astrox doctor [options]        Run the full astro-trace diagnostics
   astrox install [options]       Install or refresh hook integrations
   astrox migrate [FILE_OR_DIR]   Migrate legacy trace data
   astrox open                    Open the running dashboard in a browser
-  astrox logs [--lines N]        Tail the dashboard log
+  astrox logs [--lines N] [--follow]  Tail the log; --follow keeps streaming (Ctrl-C exits)
   astrox path                    Print ASTRO home, plugin dir, and CLI entry
   astrox ax [--json]             Quick start + service/integration status
   astrox --version               Print the CLI version
@@ -1148,6 +1367,8 @@ Notes:
   The ax launcher forwards every other astrox command directly, so
   "ax status", "ax stop" and "ax open" behave exactly like their
   astrox equivalents; bare "ax" is always the quick start.
+  stop, restart (and up) print one machine-readable JSON document
+  with --json instead of text.
   astrox start registers this entry as a global "astrox" command
   (${getGlobalBinDirs().join(", ")}).
   astrox stop terminates the dashboard process; no extra cleanup is performed.
@@ -1161,6 +1382,7 @@ Environment:
 const commands = {
   ax: axCommand,
   doctor: () => delegateCommand("doctor"),
+  health: healthCommand,
   help: printHelp,
   info: infoCommand,
   install: () => delegateCommand("install"),
@@ -1174,7 +1396,7 @@ const commands = {
   // dashboard is running, so the same path covers an offline service.
   up: restartCommand,
   status: statusCommand,
-  stop: stopCommand,
+  stop: stopAction,
   update: updateCommand,
   "--version": () => console.log(getPackageVersion()),
   "-v": () => console.log(getPackageVersion()),
