@@ -18,7 +18,14 @@ test("the overlay switches preview by atom type", () => {
   assert.match(overlay, /<QuestionPreview payload=\{payload as TracePayload\} \/>/);
   assert.match(overlay, /USER QUESTION/);
   assert.match(overlay, /dangerouslySetInnerHTML=\{\{ __html: preview\.html \}\}/);
-  assert.match(overlay, /<JsonViewer value=\{payload\} \/>/);
+});
+
+test("the global overlay is preview-only, never a raw JSON view", () => {
+  assert.doesNotMatch(overlay, /<JsonViewer/);
+  assert.doesNotMatch(overlay, /Code2/);
+  assert.doesNotMatch(overlay, /ToggleGroup/);
+  assert.doesNotMatch(overlay, /viewMode/);
+  assert.match(overlay, /原始载荷见检查器的 Raw 标签/);
 });
 
 test("the inspector passes the raw question payload for question atoms", () => {
@@ -45,8 +52,4 @@ test("the inspector passes the raw prompt payload so the overlay previews its co
     binding,
     /activeTab === "input" && promptEvent\s*\? promptEvent\.payload/,
   );
-});
-
-test("opening the overlay always shows the rendered preview, not a stale Code mode", () => {
-  assert.match(overlay, /if \(open\) \{\s*setViewMode\("preview"\);\s*\}/);
 });

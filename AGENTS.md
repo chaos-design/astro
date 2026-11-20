@@ -789,19 +789,20 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   `questions` list a numbered list with option bullets, and a captured result
   with no single text shows as readable field lines rather than a JSON dump —
   the inspector/overlay's `{ contract, captured }` wrapper previews only
-  `captured`, leaving the `contract` topology metadata to Code); Markdown parsing, syntax highlighting and HTML sanitizing
+  `captured`, leaving the `contract` topology metadata to the Raw tab); Markdown parsing, syntax highlighting and HTML sanitizing
   live only in `src/lib/markdown-preview.ts` (`renderMarkdownPreview`, with
   highlight.js registering only the languages captured payloads carry). The
   Input/Output/Raw tabs and the global expand layer share these two sources;
-  `src/components/payload-overlay.tsx` only renders them and owns the
-  Preview/Code switch — it must not grow a second conversion or sanitizer. The
-  expand control opens a Dialog (portaled to the document body) whose payload
-  always follows the current event and tab, never a global newest request.
-  Opening always resets the view to Preview so a stale Code mode cannot greet
-  the reader with raw JSON. Its Preview is type-aware: a user.question Input
-  tab passes the raw question
-  payload to `QuestionPreview` (the shared read-only question / option / answer
-  list) instead of the Markdown path; every other tab keeps the Markdown view.
+  `src/components/payload-overlay.tsx` only renders them — it must not grow a
+  second conversion or sanitizer. The expand control opens a Dialog (portaled
+  to the document body) whose payload always follows the current event and tab,
+  never a global newest request. The global layer is **preview-only**: there is
+  no Code / raw-JSON toggle, so a reader never sees a JSON dump where the
+  rendered prompt / output content belongs; the untouched payload stays in the
+  inspector's Raw tab. Its preview is type-aware: a user.question Input tab
+  passes the raw question payload to `QuestionPreview` (the shared read-only
+  question / option / answer list) instead of the Markdown path; every other
+  tab keeps the Markdown view.
   The docked answer form and the floating card share one Cancel / 提交 order and
   one button label, and the "N questions · one submit" hint lives above the
   question list rather than in the action bar.

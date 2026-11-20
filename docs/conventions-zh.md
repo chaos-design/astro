@@ -64,12 +64,13 @@
     等容器里的 `plan` 同样会被读出；JSON 结果用代码块包住以启用高亮；`answers`
     渲染成问题→Markdown 答案行，`questions` 渲染成带选项的列表，没有单一文本的
     捕获结果按可读字段行展示而不是 JSON 结构——检查器/浮层的 `{ contract,
-    captured }` 包装只预览 `captured`，`contract` 拓扑元数据留给 Code）；
+    captured }` 包装只预览 `captured`，`contract` 拓扑元数据留给 Raw 标签）；
     Markdown 的解析、代码语法高亮与 HTML 清理
     只在 `src/lib/markdown-preview.ts`（`renderMarkdownPreview`，highlight.js 只
     注册捕获载荷常见语言）。检查器的 Input/Output/Raw 与全局浮层共用这两个
-    单一来源，浮层组件 `src/components/payload-overlay.tsx` 只负责展示与
-    Preview/Code 切换，不再另写一份转换或消毒逻辑；
+    单一来源，浮层组件 `src/components/payload-overlay.tsx` 只负责展示、**只有
+    Preview、没有 Code/原始 JSON 切换**，不再另写一份转换或消毒逻辑；
+    未加工的载荷仍可在检查器的 Raw 标签查看；
   - 捕获答案的展示只在 `src/components/answer-rows.tsx`：悬浮卡结果、停靠检查器
     与历史 Answers 三处共用；选中选项由 `src/lib/question-panel-model.ts` 的
     `matchAnswerOptions` 从答案原文还原（只认与声明标签完全相同的逗号 token，

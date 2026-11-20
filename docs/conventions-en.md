@@ -76,14 +76,15 @@
     `questions` list a numbered list with option bullets, and a captured result
     with no single text shows as readable field lines rather than a JSON dump —
     the inspector/overlay's `{ contract, captured }` wrapper previews only
-    `captured`, leaving the `contract` topology metadata to Code);
+    `captured`, leaving the `contract` topology metadata to the Raw tab);
     Markdown parsing, code syntax highlighting and
     HTML sanitizing live only in `src/lib/markdown-preview.ts`
     (`renderMarkdownPreview`, with highlight.js registering only the languages
     captured payloads carry). The inspector's Input/Output/Raw tabs and the
     global overlay share these two single sources; `src/components/payload-overlay.tsx`
-    only renders them and owns the Preview/Code switch, never a second
-    conversion or sanitizer;
+    only renders them and is **preview-only, with no Code / raw-JSON toggle**,
+    never a second conversion or sanitizer — the untouched payload stays in
+    the inspector's Raw tab;
   - a captured answer has one rendering: `src/components/answer-rows.tsx`, shared
     by the floating card's result, the docked question surface and the
     inspector's historical Answers section. Selected options are reconstructed
