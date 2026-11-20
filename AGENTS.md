@@ -698,7 +698,10 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   the "latest atom" test, and the lane overview all depend on that order, so
   `orderTrajectoryNewestFirst` is the only place allowed to reverse — never
   sort the model in place.
-- The lane overview above the list remains a left-to-right timeline.
+- The lane overview above the list remains a left-to-right timeline. `normalizeSlotStatus`
+  maps `waiting` onto `active` (like `running`), so a blocked User Question slot
+  keeps the running pulse instead of decaying to `idle` — "executing" has one
+  meaning shared with `isLiveRunStatus`.
 
 ## Explicit Locate Requests
 

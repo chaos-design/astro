@@ -158,7 +158,11 @@ function normalizeSlotStatus(status: string): TrajectoryMapSlot["status"] {
   if (status === "failed") {
     return "failed";
   }
-  if (status === "active" || status === "running") {
+  // A run blocked on the user is still executing: a waiting User Question atom
+  // must light up in the lane overview instead of reading as idle. This matches
+  // `isLiveRunStatus`, so the trajectory, RUN HISTORY and the Live button agree
+  // on what "running now" means.
+  if (status === "active" || status === "running" || status === "waiting") {
     return "active";
   }
   if (status === "complete" || status === "completed") {
@@ -172,7 +176,7 @@ function normalizeSlotStatus(status: string): TrajectoryMapSlot["status"] {
  * The bucket is derived from the lane's own node count, so a lane with a few
  * nodes keeps one slot each while a 10k-node lane collapses into a readable
  * sequence of ranges. Status and tone come from the bucket's most severe node
- * (failed > running > waiting > complete), which keeps hot spots visible.
+ * (failed > running/waiting > complete > idle), which keeps hot spots visible.
  */
 export function buildTrajectoryMapSlots(
   nodes: readonly MapSlotNode[],

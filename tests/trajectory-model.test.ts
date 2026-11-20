@@ -210,6 +210,32 @@ test("aggregates a long lane overview into a bounded number of slots", () => {
   assert.equal(laneZero.at(-1)?.end, 998);
 });
 
+test("a waiting User Question slot reads as running in the lane overview", () => {
+  const waiting = {
+    id: "question",
+    data: {
+      index: 0,
+      meta: { lane: 0, tone: "question" },
+      status: "waiting",
+    },
+  };
+  const done = {
+    id: "answer",
+    data: {
+      index: 1,
+      meta: { lane: 0, tone: "tool" },
+      status: "complete",
+    },
+  };
+
+  assert.equal(buildTrajectoryMapSlots([waiting], 96)[0].status, "active");
+  // One bucket: the waiting question outranks its completed neighbour, so the
+  // slot keeps the pulse (`is-running`) and the question's tone.
+  const [slot] = buildTrajectoryMapSlots([waiting, done], 1);
+  assert.equal(slot.status, "active");
+  assert.equal(slot.tone, "question");
+});
+
 test("keeps one slot per node when the lane is already short", () => {
   const nodes = Array.from({ length: 5 }, (_, index) => ({
     data: { index, meta: { lane: 0, tone: "agent" }, status: "complete" },

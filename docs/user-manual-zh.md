@@ -864,7 +864,7 @@ console」。
 - Complete 数；
 - Failed 数。
 
-泳道概览把步骤映射到 Input、Model 和 Tools。下方列表按 Turn 分组，显示事件类型、摘要、时间、持续时间和状态。悬停某个区块（列表行或泳道色块）会弹出同一张小卡片，展示该区块的**类型（`TYPE`，如 SYSTEM / MODEL / TOOL）**、事件名、工具（有则附）、成对耗时（`PAIR`）、自身时长（`DURATION`，原子）或成对耗时合计（Turn 为 `PAIRS`）以及状态。LOG 行事件键前的 `TYPE` 徽标与这里的 `TYPE` 同源（同一个 `atomTypeLabel`），颜色也都是紫色。
+泳道概览把步骤映射到 Input、Model 和 Tools；`waiting`（例如等待答复的 User Question）与 `running` 一样算执行中，对应色块保持高亮脉冲，不会变成 idle。下方列表按 Turn 分组，显示事件类型、摘要、时间、持续时间和状态。悬停某个区块（列表行或泳道色块）会弹出同一张小卡片，展示该区块的**类型（`TYPE`，如 SYSTEM / MODEL / TOOL）**、事件名、工具（有则附）、成对耗时（`PAIR`）、自身时长（`DURATION`，原子）或成对耗时合计（Turn 为 `PAIRS`）以及状态。LOG 行事件键前的 `TYPE` 徽标与这里的 `TYPE` 同源（同一个 `atomTypeLabel`），颜色也都是紫色。
 
 悬停卡片用统一的三档字号（标题 / 字段值 / 字段标签），字段之间靠**颜色**而不是字号区分：`TYPE` 紫、`EVENT` 蓝、工具名琥珀、`PAIR` 编号紫（与行上标记一致）、耗时按时长色阶、状态按自身语义色。标题已经是工具名时（如泳道色块标题 `Read`），`EVENT` 行不再重复一遍该工具名。
 
