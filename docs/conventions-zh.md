@@ -68,9 +68,9 @@
     Markdown 的解析、代码语法高亮与 HTML 清理
     只在 `src/lib/markdown-preview.ts`（`renderMarkdownPreview`，highlight.js 只
     注册捕获载荷常见语言）。检查器的 Input/Output/Raw 与全局浮层共用这两个
-    单一来源，浮层组件 `src/components/payload-overlay.tsx` 只负责展示、**只有
-    Preview、没有 Code/原始 JSON 切换**，不再另写一份转换或消毒逻辑；
-    未加工的载荷仍可在检查器的 Raw 标签查看；
+    单一来源，浮层组件 `src/components/payload-overlay.tsx` 只负责展示，并用同一个
+    切换提供 `Preview`（渲染后的 Markdown：标题、GFM 任务列表、高亮代码、问题/选项/答案）
+    与 `Code`（未加工的原始 JSON）两种形态，不再另写一份转换或消毒逻辑；
   - 捕获答案的展示只在 `src/components/answer-rows.tsx`：悬浮卡结果、停靠检查器
     与历史 Answers 三处共用；选中选项由 `src/lib/question-panel-model.ts` 的
     `matchAnswerOptions` 从答案原文还原（只认与声明标签完全相同的逗号 token，

@@ -626,23 +626,23 @@ The inspector provides:
 - copy control for structured JSON;
 - an expand control in the inspector header, available on `Input` / `Output` /
   `Raw`, opens a **global overlay** that shows the same payload in a much larger
-  area. The overlay is **preview-only — there is no Code / raw-JSON switch**; it
-  always shows rendered content instead of a JSON structure. Its preview follows
-  the atom's type — a `user.question` Input tab shows the question / option /
+  area. The overlay has a `Preview` / `Code` switch: `Preview` follows the
+  atom's type — a `user.question` Input tab shows the question / option /
   answer list the reader saw, while every other payload turns into a Markdown
-  document rendered (headings, lists, code blocks) with highlight.js syntax
-  highlighting, after the same HTML sanitizer
+  document rendered (headings, GFM task lists, code blocks) with highlight.js
+  syntax highlighting, after the same HTML sanitizer
   strips acting markup. A tool result is unwrapped at any depth (`captured`,
   `tool_response`, `output`, `result`, a `plan` nested in `tool_input`, and their
   nested content) and rendered as the text it really is, so a Markdown result
-  becomes headings, lists and highlighted code rather than field labels and a
+  becomes headings, task lists and highlighted code rather than field labels and a
   JSON string; JSON results are fenced for the highlighter. A lone text field
   (message, output, plan text) is the document itself; a captured result with no
   single text shows as readable field lines rather than field labels plus fenced
   JSON. The inspector's `{ contract, captured }` wrapper previews only
-  `captured`, keeping topology metadata out of the layer. With nothing
-  previewable the overlay says so; the untouched payload stays in the
-  inspector's `Raw` tab. Escape or the scrim closes the layer. The layer is
+  `captured`, keeping topology metadata out of the layer. `Code` is the raw,
+  token-coloured JSON of the same payload, so both readings stay in one dialog;
+  with nothing previewable the overlay says so and `Code` still shows it.
+  Escape or the scrim closes the layer. The layer is
   global (portaled to the document body) but its content always follows the
   current event and tab — it never shows a different message.
 

@@ -20,12 +20,16 @@ test("the overlay switches preview by atom type", () => {
   assert.match(overlay, /dangerouslySetInnerHTML=\{\{ __html: preview\.html \}\}/);
 });
 
-test("the global overlay is preview-only, never a raw JSON view", () => {
-  assert.doesNotMatch(overlay, /<JsonViewer/);
-  assert.doesNotMatch(overlay, /Code2/);
-  assert.doesNotMatch(overlay, /ToggleGroup/);
-  assert.doesNotMatch(overlay, /viewMode/);
-  assert.match(overlay, /原始载荷见检查器的 Raw 标签/);
+test("the global overlay keeps both Preview and the raw JSON Code view", () => {
+  assert.match(overlay, /<JsonViewer value=\{payload\} \/>/);
+  assert.match(overlay, /Code2/);
+  assert.match(overlay, /ToggleGroup/);
+  assert.match(overlay, /viewMode/);
+  assert.match(overlay, /value="preview"/);
+  assert.match(overlay, /value="code"/);
+  // The rendered content leads; Code is the raw form one toggle away.
+  assert.ok(overlay.indexOf("viewMode === \"preview\"") < overlay.indexOf("payload-overlay__body--code"));
+  assert.match(overlay, /切到 Code 查看原始载荷/);
 });
 
 test("an answers-only question falls back to the markdown answer preview", () => {

@@ -5657,8 +5657,8 @@ pre,
 }
 
 /* Global payload layer: the same data as the inspector tab, but large enough
-   to read a whole tool result. Preview-only — the header stays put while the
-   body scrolls, so a long result never reflows the controls. */
+   to read a whole tool result. Header and mode switch stay put; only the body
+   scrolls, so toggling Preview / Code never reflows the controls. */
 .payload-overlay {
   display: flex;
   width: min(1040px, calc(100vw - 40px));
@@ -5726,6 +5726,12 @@ pre,
   overscroll-behavior: contain;
   scrollbar-width: thin;
   scrollbar-color: var(--line-bright) transparent;
+}
+
+.payload-overlay__body--code {
+  display: flex;
+  padding: 0;
+  overflow: hidden;
 }
 
 .payload-overlay__empty {

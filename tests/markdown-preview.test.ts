@@ -30,6 +30,17 @@ test("lists, quotes and tables survive the GFM pipeline", () => {
   assert.match(render.html, /<table>/);
 });
 
+test("GFM task lists render as checkboxes so a plan reads as a task list", () => {
+  const render = renderMarkdownPreview(
+    "### Plan\n\n- [x] inspect the trace\n- [ ] answer the question",
+  );
+  assert.equal(render.valid, true);
+  assert.match(render.html, /type="checkbox"/);
+  assert.match(render.html, /checked/);
+  assert.match(render.html, /inspect the trace/);
+  assert.match(render.html, /answer the question/);
+});
+
 test("an empty source is invalid so the caller falls back to raw text", () => {
   assert.equal(renderMarkdownPreview("").valid, false);
   assert.equal(renderMarkdownPreview("   \n\t ").valid, false);

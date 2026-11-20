@@ -796,16 +796,16 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   `src/components/payload-overlay.tsx` only renders them — it must not grow a
   second conversion or sanitizer. The expand control opens a Dialog (portaled
   to the document body) whose payload always follows the current event and tab,
-  never a global newest request. The global layer is **preview-only**: there is
-  no Code / raw-JSON toggle, so a reader never sees a JSON dump where the
-  rendered prompt / output content belongs; the untouched payload stays in the
-  inspector's Raw tab. Its preview is type-aware: a user.question Input tab
-  passes the raw question payload to `QuestionPreview` (the shared read-only
-  question / option / answer list) instead of the Markdown path — an
-  answers-only payload with no question / plan falls back to the Markdown
-  answer preview so the overlay is never blank; every other tab keeps the
-  Markdown view.
-  The docked answer form and the floating card share one Cancel / 提交 order and
+  never a global newest request. The layer keeps **both readings behind one
+  toggle**: `Preview` is the rendered content (Markdown headings, GFM task lists,
+  highlighted code, question/option/answer lists) and `Code` is the untouched
+  structured JSON, so a reader can check either shape without leaving the
+  dialog. Its preview is type-aware: a user.question Input tab passes the raw
+  question payload to `QuestionPreview` (the shared read-only question / option
+  / answer list) instead of the Markdown path — an answers-only payload with no
+  question / plan falls back to the Markdown answer preview so the overlay is
+  never blank; every other tab keeps the Markdown view.
+  The docked answer form and the floating card share one 提交 / Cancel order and
   one button label, and the "N questions · one submit" hint lives above the
   question list rather than in the action bar.
 - "What counts as a user question" lives only in `src/lib/trace-event-kind.ts`
