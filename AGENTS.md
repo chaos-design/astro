@@ -252,7 +252,12 @@ use Node.js ES modules or CommonJS according to their existing file extension.
 - A live message is marked on the row (status accent plus a `RUNNING` /
   `WAITING` capsule) and in the panel header (`N LIVE` chip that scrolls the
   first live row into view), so the executing message is findable without
-  scrolling.
+  scrolling. `isUserQuestionWaitingRun` (`run-history-state.ts`) is the one
+  presentation rule for a run blocked on a user question: the recorded status
+  stays `waiting` (long freshness window, IDLE stale wording) but RUN HISTORY
+  shows the RUNNING capsule, icon, STATUS and live accent. A rate-limit /
+  signal wait keeps its WAITING capsule; an answered question is `active` and
+  never reads as waiting.
 - Selection styling outranks the live accent; a selected live row keeps its
   selection border.
 - Executing runs are pinned to the top of the list, ordered by the **start of
@@ -806,7 +811,13 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   the same commit point as the canvas's `handleCanvasSelectNode`, so the overlay
   cannot highlight A while the canvas / LOG / inspector stay on B. The dialog
   only receives `atoms` / `selectedAtomId` / `onSelectAtom` and follows the main
-  selection reactively. The layer keeps **both readings behind one
+  selection reactively. The rail renders **newest first** (`[...atoms].reverse()`
+  in the dialog): the first-executed atom is at the bottom, matching RUN
+  HISTORY and LOG, while each row keeps its original pipeline sequence number.
+  Its rows borrow the LOG grammar — the shared `atomTypeLabel` TYPE badge, the
+  atom tone for hover / running / selected accents, a status dot and an event
+  count — and support Arrow/Home/End navigation; `payload-overlay.tsx` must not
+  grow a second type taxonomy or tone map. The layer keeps **both readings behind one
   toggle**: `Preview` is the rendered content (Markdown headings, GFM task lists,
   highlighted code, question/option/answer lists) and `Code` is the untouched
   structured JSON, so a reader can check either shape without leaving the
@@ -814,7 +825,11 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   question payload to `QuestionPreview` (the shared read-only question / option
   / answer list) instead of the Markdown path — an answers-only payload with no
   question / plan falls back to the Markdown answer preview so the overlay is
-  never blank; every other tab keeps the Markdown view.
+  never blank; every other tab keeps the Markdown view. The read-only question
+  list (`QuestionPreview` → `StaticQuestionContent`) leads with a question count
+  and a capture-order hint, numbers each question, marks answered ones, and
+  prints the selected labels on a dedicated line; captured selections use a
+  stronger selected-chip treatment than the live option buttons.
   The docked answer form and the floating card share one 提交 / Cancel order and
   one button label, and the "N questions · one submit" hint lives above the
   question list rather than in the action bar.

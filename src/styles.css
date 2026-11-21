@@ -5782,35 +5782,63 @@ pre,
   scrollbar-color: var(--line-bright) transparent;
 }
 
+/* The rail borrows the LOG row's visual grammar: one sequence column, one
+   tone dot, a violet TYPE hairline, and the same hover / running / selected
+   accents. Status colours still come from the atom's status, so a waiting
+   question keeps its amber dot while its tone stays the question tone. */
 .payload-overlay__atom {
+  --atom-tone: var(--muted-soft);
+
   display: grid;
   width: 100%;
-  grid-template-columns: 26px minmax(0, 1fr) 8px;
+  min-width: 0;
+  grid-template-columns: 24px 7px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 8px;
-  padding: 8px;
+  gap: 6px;
+  padding: 7px 6px;
   border: 1px solid transparent;
   border-radius: 6px;
   background: transparent;
-  color: var(--text);
+  color: var(--muted);
   text-align: left;
   cursor: pointer;
+  transition:
+    border-color 150ms ease,
+    background 150ms ease,
+    box-shadow 150ms ease;
 }
 
-.payload-overlay__atom:hover {
-  background: color-mix(in srgb, var(--selection-border) 10%, transparent);
+.payload-overlay__atom:hover,
+.payload-overlay__atom:focus-visible {
+  outline: none;
+  border-color: color-mix(in srgb, var(--atom-tone) 58%, var(--line));
+  background: color-mix(in srgb, var(--atom-tone) 7%, var(--panel-hover));
+  box-shadow: inset 2px 0 var(--atom-tone);
+  color: var(--text);
+}
+
+.payload-overlay__atom.is-running {
+  border-color: color-mix(in srgb, var(--atom-tone) 62%, var(--line-bright));
+  background: color-mix(in srgb, var(--atom-tone) 9%, var(--panel-raised));
+  box-shadow: inset 2px 0 var(--atom-tone);
+  color: var(--text);
 }
 
 .payload-overlay__atom.is-selected {
   border-color: var(--selection-border);
-  background: color-mix(in srgb, var(--selection-border) 18%, transparent);
-  color: var(--text-strong);
+  background: var(--selection-bg);
+  box-shadow:
+    inset 3px 0 var(--selection-border),
+    0 0 5px color-mix(in srgb, var(--selection-glow) 62%, transparent);
+  color: var(--selection-text);
 }
 
 .payload-overlay__atom-seq {
-  color: var(--muted-soft);
+  color: var(--muted);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--text-caption);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
 .payload-overlay__atom-copy {
@@ -5822,35 +5850,68 @@ pre,
 
 .payload-overlay__atom-label,
 .payload-overlay__atom-key {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .payload-overlay__atom-label {
-  font-size: 11px;
-  font-weight: 600;
+  color: var(--text);
+  font-size: var(--text-meta);
+  font-weight: var(--weight-medium);
 }
 
 .payload-overlay__atom-key {
   color: var(--muted-soft);
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: var(--text-overline);
+}
+
+/* Same violet hairline badge as the LOG row; TYPE comes from atom-types.ts. */
+.payload-overlay__atom-type {
+  flex: 0 0 auto;
+  padding: 0 3px;
+  border: 1px solid color-mix(in srgb, var(--violet) 45%, var(--line));
+  border-radius: 3px;
+  color: var(--violet);
+  background: color-mix(in srgb, var(--violet-deep) 12%, transparent);
+  font-family: var(--font-mono);
+  font-size: var(--text-overline);
+  font-weight: var(--weight-medium);
+  line-height: 1.5;
+}
+
+.payload-overlay__atom-count {
+  flex: 0 0 auto;
+  padding: 0 3px;
+  border-radius: 3px;
+  color: var(--atom-tone);
+  background: color-mix(in srgb, var(--atom-tone) 14%, transparent);
+  font-family: var(--font-mono);
+  font-size: var(--text-overline);
+  font-variant-numeric: tabular-nums;
 }
 
 .payload-overlay__atom-dot {
-  width: 7px;
-  height: 7px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: var(--muted-soft);
 }
 
-.payload-overlay__atom-dot[data-status="running"] {
+.payload-overlay__atom-dot[data-status="running"],
+.payload-overlay__atom-dot[data-status="active"] {
+  color: var(--status-running);
   background: var(--status-running);
-  box-shadow: 0 0 8px color-mix(in srgb, var(--status-running) 55%, transparent);
+  animation: dot-breathe 1.8s ease-in-out infinite;
 }
 
 .payload-overlay__atom-dot[data-status="waiting"] {
+  color: var(--status-waiting);
   background: var(--status-waiting);
 }
 
@@ -5860,6 +5921,30 @@ pre,
 
 .payload-overlay__atom-dot[data-status="failed"] {
   background: var(--status-failed);
+}
+
+.payload-overlay__atom.tone-prompt {
+  --atom-tone: var(--blue);
+}
+
+.payload-overlay__atom.tone-agent,
+.payload-overlay__atom.tone-complete,
+.payload-overlay__atom.tone-session {
+  --atom-tone: var(--teal);
+}
+
+.payload-overlay__atom.tone-reasoning,
+.payload-overlay__atom.tone-signal,
+.payload-overlay__atom.tone-gate {
+  --atom-tone: var(--violet);
+}
+
+.payload-overlay__atom.tone-tool {
+  --atom-tone: var(--amber);
+}
+
+.payload-overlay__atom.tone-failed {
+  --atom-tone: var(--red);
 }
 
 .payload-overlay__content {
@@ -8927,6 +9012,107 @@ pre,
   font-size: var(--text-caption);
 }
 
+/* Read-only preview hierarchy: one summary line, numbered question headings,
+   then the question body and its chips. The captured answer is a separate,
+   brighter line so a reader can find what was chosen without re-reading the
+   chips. */
+.question-preview__head {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 0 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.question-preview__count {
+  color: var(--text-strong);
+  font-size: var(--text-meta);
+  font-weight: var(--weight-medium, 600);
+}
+
+.question-preview__hint {
+  color: var(--muted-soft, var(--muted));
+  font-size: var(--text-caption);
+}
+
+.question-preview__list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.question-preview__heading {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 6px;
+}
+
+.question-preview__index {
+  flex: 0 0 auto;
+  padding: 1px 4px;
+  border: 1px solid color-mix(in srgb, var(--violet) 45%, var(--line));
+  border-radius: 3px;
+  color: var(--violet);
+  background: color-mix(in srgb, var(--violet-deep) 12%, transparent);
+  font-family: var(--font-mono);
+  font-size: var(--text-overline);
+  font-variant-numeric: tabular-nums;
+}
+
+.question-preview__heading h3 {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.question-preview__state {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted-soft, var(--muted));
+  background: color-mix(in srgb, var(--muted) 8%, transparent);
+  font-size: var(--text-overline);
+  font-weight: var(--weight-medium, 600);
+}
+
+.question-preview__state.is-answered {
+  border-color: color-mix(in srgb, var(--teal) 52%, transparent);
+  color: var(--teal);
+  background: color-mix(in srgb, var(--teal) 16%, transparent);
+}
+
+.question-preview__answers {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 8px 0 0;
+  padding: 6px 8px;
+  border-left: 2px solid var(--teal);
+  border-radius: 0 5px 5px 0;
+  background: color-mix(in srgb, var(--teal) 9%, transparent);
+  color: var(--muted);
+  font-size: var(--text-caption);
+}
+
+.question-preview__answers strong {
+  color: var(--text-strong);
+  font-size: var(--text-meta);
+  font-weight: var(--weight-medium, 600);
+}
+
+.question-surface__item.is-answered {
+  border: 1px solid color-mix(in srgb, var(--teal) 30%, var(--border));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--teal) 4%, var(--panel));
+}
+
 /* One chip row for both states: an open request's options are buttons, a
    captured one keeps the same chips as static spans so nothing looks
    clickable when there is no request left to answer. */
@@ -9010,6 +9196,16 @@ pre,
   border-style: dashed;
   color: var(--muted, inherit);
   cursor: default;
+}
+
+.question-options__option.is-static.is-selected {
+  border-style: solid;
+  border-color: var(--teal);
+  color: var(--text-strong);
+  background: color-mix(in srgb, var(--teal) 24%, var(--panel));
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--teal) 38%, transparent),
+    0 0 10px color-mix(in srgb, var(--teal) 22%, transparent);
 }
 
 .interaction-panel__footer {

@@ -84,6 +84,33 @@ test("the shared question preview is exported for the global overlay", () => {
   assert.match(surface, /<QuestionPreview payload=\{payload\} \/>/);
 });
 
+test("the read-only preview leads with a count and numbers each question", () => {
+  assert.match(surface, /question-preview__head/);
+  assert.match(surface, /question-preview__count/);
+  assert.match(surface, /question-preview__list/);
+  assert.match(surface, /question-preview__heading/);
+  assert.match(surface, /question-preview__index/);
+  assert.match(surface, /question-preview__state/);
+  assert.match(surface, /question-preview__answers/);
+  assert.match(surface, /selected\.length && "is-answered"/);
+  assert.match(styles, /\.question-preview__head \{/);
+  assert.match(styles, /\.question-preview__answers \{/);
+  assert.match(styles, /\.question-surface__item\.is-answered \{/);
+});
+
+test("a captured answer gets a stronger selected chip in the preview", () => {
+  assert.match(styles, /\.question-options__option\.is-static\.is-selected \{/);
+  const matches = [
+    ...styles.matchAll(
+      /\.question-options__option\.is-static\.is-selected \{([^}]*)\}/g,
+    ),
+  ];
+  const selected = matches.at(-1)?.[1] ?? "";
+  assert.match(selected, /border-style:\s*solid/);
+  assert.match(selected, /box-shadow:/);
+  assert.match(selected, /var\(--teal\) 24%/);
+});
+
 test("the submit bar is a sibling of the scroll area, not part of it", () => {
   const body = styles.match(/\.question-surface__body \{([^}]*)\}/)?.[1] ?? "";
   const footer = styles.match(/\.question-surface__footer \{([^}]*)\}/)?.[1] ?? "";

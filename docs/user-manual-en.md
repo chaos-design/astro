@@ -648,6 +648,11 @@ The inspector provides:
   with the canvas, LOG and inspector — selecting a row in the overlay also moves
   the main console to that atom, so the overlay can never highlight A while the
   canvas stays on B. The selected row is highlighted and marked `aria-current`.
+  The rail runs newest first: the last-executed atom sits at the top and the
+  first-executed one at the bottom, while each row keeps its pipeline sequence
+  number. Rows borrow the LOG grammar — the shared `atomTypeLabel` TYPE badge,
+  atom tone for hover / running / selection, a status dot and an event count —
+  and Arrow / Home / End move focus between rows.
   The layer is global (portaled to the document body), but the rail is scoped to
   the current run and its content always follows that one selection.
 
@@ -799,8 +804,10 @@ extras that a strict host schema could reject.
 
 Only an executing task is answerable: the floating card and the inspector's
 answer controls follow the *session* status the RUN HISTORY card on the left
-shows — `active` (running) or `waiting` (paused on the question). As long as
-that card still reads RUNNING or WAITING, drilling into an older message or
+shows — `active` (running) or `waiting` (paused on the question). A run blocked
+on a user question keeps its recorded `waiting` status (and the long freshness
+window) but the card reads RUNNING; a rate-limit wait still reads WAITING. As
+long as that card still reads RUNNING or WAITING, drilling into an older message or
 atom never freezes the question, so you can still submit. Once the session
 finishes (complete / failed / terminated), or you replay a captured snapshot,
 no card floats and the inspector question goes read-only: you can still read
@@ -824,8 +831,11 @@ switch and the fold:
 - **Code** shows the raw payload only — no options, no answer box, no submit bar.
 - **A closed or historical question** keeps the same chips as static, unclickable
   spans: you can still read what was asked and which options existed, but
-  nothing pretends to be answerable. Switching to a region layout expands the
-  full Q&A inside the inspector.
+  nothing pretends to be answerable. The read-only preview leads with a question
+  count and capture-order hint, numbers each question, marks answered ones and
+  prints the selected labels on their own line with a stronger selected-chip
+  highlight. Switching to a region layout expands the full Q&A inside the
+  inspector.
 
 Long question text wraps inside the inspector width and the body scrolls instead
 of widening the log column. The region-full / floating layouts are one shared

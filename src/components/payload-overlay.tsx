@@ -1,6 +1,7 @@
 import { Code2, Eye } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { JsonViewer } from "@/components/json-viewer";
+import { cn } from "@/lib/utils";
 import {
   Dialog,
   DialogContent,
@@ -26,6 +27,12 @@ export type PayloadOverlayAtom = {
   key: string;
   label: string;
   status: string;
+  /** Shared TYPE label (`atomTypeLabel`), shown as a LOG-style badge. */
+  type?: string;
+  /** Atom tone, mapped to the same colours the LOG row uses. */
+  tone?: string;
+  /** How many events the atom accumulated, when more than one. */
+  count?: number;
 };
 
 /**
@@ -63,6 +70,10 @@ export function PayloadOverlay({
   variant?: "default" | "question";
 }) {
   const [viewMode, setViewMode] = useState<PayloadViewMode>("preview");
+  // Reverse execution order: the newest / last atom sits at the top so the
+  // first step of the run is at the bottom, like RUN HISTORY and the LOG.
+  // The `index` badge keeps its original pipeline number.
+  const orderedAtoms = useMemo(() => [...atoms].reverse(), [atoms]);
   const markdown = useMemo(() => payloadToMarkdown(payload), [payload]);
   const preview = useMemo(() => renderMarkdownPreview(markdown), [markdown]);
   // An answers-only question has no question / plan for QuestionPreview to
@@ -78,6 +89,25 @@ export function PayloadOverlay({
   const showQuestion = Boolean(
     question && (question.prompts.length || question.message.trim() || question.plan.trim()),
   );
+  const atomRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const handleAtomKeyDown = (
+    keyEvent: KeyboardEvent<HTMLButtonElement>,
+    position: number,
+  ) => {
+    const step =
+      keyEvent.key === "ArrowDown" ? 1 : keyEvent.key === "ArrowUp" ? -1 : 0;
+    if (!step && keyEvent.key !== "Home" && keyEvent.key !== "End") {
+      return;
+    }
+    keyEvent.preventDefault();
+    const target =
+      keyEvent.key === "Home"
+        ? 0
+        : keyEvent.key === "End"
+          ? orderedAtoms.length - 1
+          : (position + step + orderedAtoms.length) % orderedAtoms.length;
+    atomRefs.current[target]?.focus();
+  };
 
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
@@ -124,37 +154,67 @@ export function PayloadOverlay({
                 ATOMS · {atoms.length}
               </div>
               <ul className="payload-overlay__atom-list">
-                {atoms.map((atom) => {
+                {orderedAtoms.map((atom, position) => {
                   const selected = atom.id === selectedAtomId;
+                  const running = atom.status === "running" || atom.status === "active";
+                  const details = [
+                    `TYPE ${atom.type || atom.key}`,
+                    `${atom.label} · ${atom.key}`,
+                    `STATUS ${atom.status}`,
+                    atom.count && atom.count > 1 ? `${atom.count} 个事件` : "",
+                  ]
+                    .filter(Boolean)
+                    .join("\n");
                   return (
                     <li key={atom.id}>
                       <button
                         aria-current={selected ? "true" : undefined}
-                        className={
-                          selected
-                            ? "payload-overlay__atom is-selected"
-                            : "payload-overlay__atom"
-                        }
+                        aria-label={`${atom.index} ${atom.label} · ${atom.key}`}
+                        className={cn(
+                          "payload-overlay__atom",
+                          `tone-${atom.tone || "unknown"}`,
+                          selected && "is-selected",
+                          running && !selected && "is-running",
+                        )}
                         onClick={() => onSelectAtom(atom.id)}
-                        title={`${atom.label} · ${atom.key}`}
+                        onKeyDown={(keyEvent) =>
+                          handleAtomKeyDown(keyEvent, position)
+                        }
+                        ref={(node) => {
+                          atomRefs.current[position] = node;
+                        }}
+                        title={details}
                         type="button"
                       >
                         <span className="payload-overlay__atom-seq">
                           {String(atom.index).padStart(2, "0")}
-                        </span>
-                        <span className="payload-overlay__atom-copy">
-                          <span className="payload-overlay__atom-label">
-                            {atom.label}
-                          </span>
-                          <span className="payload-overlay__atom-key">
-                            {atom.key}
-                          </span>
                         </span>
                         <span
                           aria-hidden="true"
                           className="payload-overlay__atom-dot"
                           data-status={atom.status}
                         />
+                        <span className="payload-overlay__atom-copy">
+                          <span className="payload-overlay__atom-label">
+                            {atom.type ? (
+                              <span className="payload-overlay__atom-type">
+                                {atom.type}
+                              </span>
+                            ) : null}
+                            {atom.label}
+                          </span>
+                          <span className="payload-overlay__atom-key">
+                            {atom.key}
+                          </span>
+                        </span>
+                        {atom.count && atom.count > 1 ? (
+                          <span
+                            aria-label={`${atom.count} 个事件`}
+                            className="payload-overlay__atom-count"
+                          >
+                            ×{atom.count}
+                          </span>
+                        ) : null}
                       </button>
                     </li>
                   );

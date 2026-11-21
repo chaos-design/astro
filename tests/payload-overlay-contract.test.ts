@@ -7,6 +7,14 @@ const overlay = readFileSync(
   "utf8",
 );
 const app = readFileSync(new URL("../src/app.tsx", import.meta.url), "utf8");
+const stylesForOverlay = readFileSync(
+  new URL("../src/styles.css", import.meta.url),
+  "utf8",
+);
+const bindingForOverlay = app.slice(
+  app.indexOf("const overlayAtoms"),
+  app.indexOf(");", app.indexOf("const overlayAtoms")),
+);
 
 /**
  * The global layer follows the atom's type: a user.question Input tab shows
@@ -73,12 +81,32 @@ test("the inspector passes the raw prompt payload so the overlay previews its co
  * second, overlay-local selection that could drift from the canvas / LOG.
  */
 test("the overlay renders a run-atom rail that commits through onSelectAtom", () => {
-  assert.match(overlay, /atoms\.map\(/);
+  assert.match(overlay, /orderedAtoms\.map\(/);
   assert.match(overlay, /payload-overlay__rail/);
   assert.match(overlay, /onClick=\{\(\) => onSelectAtom\(atom\.id\)\}/);
   assert.match(overlay, /aria-current=\{selected \? "true" : undefined\}/);
   assert.match(overlay, /const selected = atom\.id === selectedAtomId/);
   assert.match(overlay, /atoms\.length > 0 \?/);
+});
+
+test("the overlay rail reads like the LOG row and lists atoms newest first", () => {
+  // Reverse display order: the first-executed atom sits at the bottom while
+  // its `index` badge still reports the pipeline position.
+  assert.match(overlay, /\[\.\.\.atoms\]\.reverse\(\)/);
+  assert.match(overlay, /String\(atom\.index\)\.padStart\(2, "0"\)/);
+  // One TYPE definition, shared with LOG / trajectory; tone and count make
+  // the rail readable without leaving the dialog.
+  assert.match(overlay, /payload-overlay__atom-type/);
+  assert.match(overlay, /`tone-\$\{atom\.tone \|\| "unknown"\}`/);
+  assert.match(overlay, /payload-overlay__atom-count/);
+  assert.match(overlay, /handleAtomKeyDown/);
+  assert.match(stylesForOverlay, /\.payload-overlay__atom\.tone-tool \{/);
+  assert.match(
+    stylesForOverlay,
+    /\.payload-overlay__atom\.is-running \{[\s\S]*?box-shadow: inset 2px 0 var\(--atom-tone\)/,
+  );
+  assert.match(bindingForOverlay, /atomTypeLabel\(node\.data\.key, node\.data\.kind\)/);
+  assert.match(bindingForOverlay, /tone: node\.data\.meta\.tone/);
 });
 
 test("the inspector threads the atom list and selection handler into the overlay", () => {

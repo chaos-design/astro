@@ -59,7 +59,11 @@
   - error/exception classification lives only in
     `src/lib/exception-events.ts`;
   - RUN HISTORY liveness lives only in `src/lib/run-history-state.ts`
-    (`isLiveRunStatus` + `isFreshLiveRun` + `collectLiveRunKeys`);
+    (`isLiveRunStatus` + `isFreshLiveRun` + `collectLiveRunKeys`); the
+    presentation of a run blocked on a user question also lives there, in
+    `isUserQuestionWaitingRun`: the recorded status stays `waiting` (long
+    freshness window, IDLE stale wording) while RUN HISTORY shows RUNNING; a
+    rate-limit wait keeps its WAITING capsule;
   - the time window lives only in `src/lib/run-history-window.ts`;
   - the preview page's opened state lives only in `plugin/trace-recorder.cjs`
     (`readPreviewState` / `markPreviewOpened`, persisted as
@@ -90,7 +94,17 @@
     `handleOverlaySelectAtom` → `commitAtomSelection`, the same commit point as
     the canvas's `handleCanvasSelectNode`. The dialog holds no second selection:
     it only receives `atoms` / `selectedAtomId` / `onSelectAtom`, and its content
-    follows the main console selection reactively;
+    follows the main console selection reactively. The rail renders newest
+    first (`[...atoms].reverse()` inside the dialog), so the first-executed atom
+    sits at the bottom while each row keeps its pipeline sequence number. Its
+    rows borrow the LOG grammar — the shared `atomTypeLabel` TYPE badge, atom
+    tone for hover / running / selected accents, a status dot and an event
+    count — with Arrow / Home / End navigation; `payload-overlay.tsx` must not
+    grow a second taxonomy or tone map. The read-only question preview
+    (`QuestionPreview` → `StaticQuestionContent`) leads with a question count
+    and capture-order hint, numbers each question, marks answered ones and
+    prints the selected labels on their own line; static selected chips read
+    stronger than live option buttons;
   - a captured answer has one rendering: `src/components/answer-rows.tsx`, shared
     by the floating card's result, the docked question surface and the
     inspector's historical Answers section. Selected options are reconstructed

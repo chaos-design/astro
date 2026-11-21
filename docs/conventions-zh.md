@@ -51,7 +51,10 @@
 - 单一职责的单一定义：
   - 异常与错误判定只在 `src/lib/exception-events.ts`；
   - RUN HISTORY 的 live 判定只在 `src/lib/run-history-state.ts`（`isLiveRunStatus`
-    + `isFreshLiveRun` + `collectLiveRunKeys`）；
+    + `isFreshLiveRun` + `collectLiveRunKeys`）；等待用户提问的展示口径也只在
+    同文件的 `isUserQuestionWaitingRun`：底层 `status` 仍是 `waiting`（保留
+    长新鲜度窗口与 IDLE 文案），但 RUN HISTORY 以 RUNNING 呈现，限流等待仍显示
+    WAITING；
   - 时间窗口计算只在 `src/lib/run-history-window.ts`；
   - 预览页「是否打开过」的状态只在 `plugin/trace-recorder.cjs`
     （`readPreviewState` / `markPreviewOpened`，持久化为 `ASTRO_HOME` 下的
@@ -75,6 +78,13 @@
     `overlayAtoms` 提供，点选走 `handleOverlaySelectAtom` → `commitAtomSelection`，
     与画布的 `handleCanvasSelectNode` 共用同一个提交点；弹窗不持有第二份选中态，
     只接收 `atoms` / `selectedAtomId` / `onSelectAtom`，内容随主控制台选中态响应式更新；
+    左栏**倒序渲染**（弹窗内 `[...atoms].reverse()`），先执行的原子在下方，
+    序号仍保留流水线位置；行样式复用 LOG 的视觉语言（同一 `atomTypeLabel`
+    TYPE 徽标、tone 悬停/运行/选中强调、状态点、事件计数），方向键与 Home/End
+    可导航；
+    只读问题预览（`QuestionPreview` → `StaticQuestionContent`）先给问题数与
+    捕获顺序提示，再给编号题目、作答状态与单独的已选答案行，静态选中 chip
+    比实时选项更醒目；
   - 捕获答案的展示只在 `src/components/answer-rows.tsx`：悬浮卡结果、停靠检查器
     与历史 Answers 三处共用；选中选项由 `src/lib/question-panel-model.ts` 的
     `matchAnswerOptions` 从答案原文还原（只认与声明标签完全相同的逗号 token，

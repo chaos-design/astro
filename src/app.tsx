@@ -311,6 +311,7 @@ import {
   getRunHistoryTerminalInfo,
   isLiveRunStatus,
   isSparseRunHistoryList,
+  isUserQuestionWaitingRun,
   RUN_HISTORY_COARSE_REFRESH_MS,
   runTerminalReasonLabels,
   quantizeTimestamp,
@@ -1285,6 +1286,12 @@ type RunHistoryRowDetails = {
   source: string;
   start: number;
   status: "demo" | TraceSession["status"];
+  /**
+   * Status presented in the capsule / STATUS field. A run blocked on a user
+   * question reads as `active` (RUNNING) even though its recorded `status`
+   * stays `waiting` for the long freshness window.
+   */
+  runningStatus?: "demo" | TraceSession["status"];
   title: string;
   /** LLM model the prompt ran on, when a client recorded one. */
   model?: string;
@@ -1390,15 +1397,17 @@ function RunHistoryRowContent({
   live = false,
   model,
   reason,
+  runningStatus,
   staleFor,
   source,
   start,
   status,
   title,
 }: RunHistoryRowDetails) {
+  const presentedStatus = runningStatus ?? status;
   return (
     <>
-      <StatusIcon status={status} />
+      <StatusIcon status={presentedStatus} />
       <span className="run-history__copy">
         <strong>{title}</strong>
         <RunHistoryPath cwd={cwd} git={git} />
@@ -1411,7 +1420,7 @@ function RunHistoryRowContent({
                 waiting={status === "waiting"}
               />
             ) : (
-              <RunHistoryLiveTag status={status} />
+              <RunHistoryLiveTag status={presentedStatus} />
             )
           ) : null}
           <span>
@@ -1423,7 +1432,7 @@ function RunHistoryRowContent({
             </span>
           ) : null}
           <span>
-            STATUS <b>{status}</b>
+            STATUS <b>{presentedStatus}</b>
             {reason ? <em className="run-history__reason"> · {reason}</em> : null}
           </span>
           <span>
@@ -1448,6 +1457,7 @@ function RunHistoryDetailsCard({
   git,
   model,
   reason,
+  runningStatus,
   source,
   staleFor,
   start,
@@ -1468,9 +1478,10 @@ function RunHistoryDetailsCard({
     setTitleOverflows(el.scrollHeight > el.clientHeight + 1);
   }, [title, titleExpanded]);
   const toggleable = titleOverflows || titleExpanded;
+  const presentedStatus = runningStatus ?? status;
   const lines: Array<[string, string]> = [
     ["AGENT", source],
-    ["STATUS", reason ? `${status} · ${reason}` : status],
+    ["STATUS", reason ? `${presentedStatus} · ${reason}` : presentedStatus],
     ["DURATION", formatDuration(duration)],
     [extraLabel, String(extraValue)],
     ["WORKING DIR", path.full || "not recorded"],
@@ -1779,7 +1790,12 @@ const RunHistoryItem = memo(function RunHistoryItem({
   const parentSelected = session.key === activeKey && !hasPromptThread;
   const activeGroup = session.key === activeKey && hasPromptThread;
   const live = !isDemo && isLiveRunStatus(status);
-  const liveStatus = live ? status : undefined;
+  // A question-blocked run is presented as RUNNING everywhere on the row:
+  // capsule, icon, STATUS field and the live accent. The recorded status still
+  // drives freshness (IDLE) and the 60-minute live window.
+  const presentedStatus: TraceSession["status"] =
+    isUserQuestionWaitingRun(status, session.events) ? "active" : status;
+  const liveStatus = live ? presentedStatus : undefined;
   const promptListId = `run-prompts-${session.key.replace(
     /[^a-zA-Z0-9_-]+/g,
     "-",
@@ -1817,6 +1833,7 @@ const RunHistoryItem = memo(function RunHistoryItem({
     source: session.source,
     start: firstPromptRun?.start ?? session.start,
     status: isDemo ? "demo" : status,
+    runningStatus: isDemo ? "demo" : presentedStatus,
     title: session.title,
     // The session row is the only row for single-prompt runs, so it carries
     // the newest prompt's model; multi-prompt rows show it per sub-row.
@@ -1899,8 +1916,15 @@ const RunHistoryItem = memo(function RunHistoryItem({
                   ? "INITIAL"
                   : `FOLLOW-UP ${String(promptRun.index).padStart(2, "0")}`;
               const promptCode = `${roleLabel} · ${promptRun.prompt.id}`;
+              const presentedPromptStatus: TraceSession["status"] =
+                isUserQuestionWaitingRun(
+                  displayState.status,
+                  promptRun.events,
+                )
+                  ? "active"
+                  : displayState.status;
               const promptLiveStatus = promptLive
-                ? displayState.status
+                ? presentedPromptStatus
                 : undefined;
               const promptFreshness = getRunFreshness(
                 isDemo ? undefined : displayState.status,
@@ -1935,6 +1959,7 @@ const RunHistoryItem = memo(function RunHistoryItem({
                 source: promptRun.source,
                 start: promptRun.start,
                 status: isDemo ? "demo" : displayState.status,
+                runningStatus: isDemo ? "demo" : presentedPromptStatus,
                 title: promptRun.title,
                 model: promptRun.model,
               };
@@ -6877,6 +6902,11 @@ export default function App() {
         key: node.data.key,
         label: node.data.label,
         status: node.data.status,
+        // The TYPE badge reads the same atom-type definition as LOG and the
+        // trajectory hover card; tone/colour follows the LOG row's mapping.
+        type: atomTypeLabel(node.data.key, node.data.kind),
+        tone: node.data.meta.tone,
+        count: node.data.count,
       })),
     [harnessFlow.nodes],
   );

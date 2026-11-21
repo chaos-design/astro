@@ -363,37 +363,65 @@ function StaticQuestionContent({
     question: prompt.question,
     options: prompt.options,
   }));
+  const answeredCount = content.answers.filter((item) =>
+    content.prompts.some((prompt) => prompt.question === item.question),
+  ).length;
 
   return (
     <>
       {content.prompts.length ? (
-        content.prompts.map((prompt, index) => (
-          <StaticPrompt
-            answer={
-              content.answers.find((item) => item.question === prompt.question)
-                ?.answer
-            }
-            index={index}
-            key={`${prompt.title}-${index}`}
-            prompt={prompt}
-          />
-        ))
+        <div className="question-preview__head">
+          <span className="question-preview__count">
+            {`${content.prompts.length} 个问题`}
+          </span>
+          <span className="question-preview__hint">
+            {answeredCount
+              ? `已记录 ${answeredCount} 项答案 · 选中项已高亮`
+              : "按捕获顺序预览"}
+          </span>
+        </div>
+      ) : null}
+      {content.prompts.length ? (
+        <div className="question-preview__list">
+          {content.prompts.map((prompt, index) => (
+            <StaticPrompt
+              answer={
+                content.answers.find(
+                  (item) => item.question === prompt.question,
+                )?.answer
+              }
+              index={index}
+              key={`${prompt.title}-${index}`}
+              prompt={prompt}
+            />
+          ))}
+        </div>
       ) : content.message ? (
         <section className="question-surface__item">
-          <h3>Question</h3>
+          <div className="question-preview__heading">
+            <span className="question-preview__index">01</span>
+            <h3>Question</h3>
+          </div>
           <MarkdownView source={content.message} />
         </section>
       ) : content.plan ? (
         // Plan approval (ZCode/Claude ExitPlanMode) carries its question as a
         // Markdown plan rather than a question string or options.
         <section className="question-surface__item">
-          <h3>Plan</h3>
+          <div className="question-preview__heading">
+            <span className="question-preview__index">01</span>
+            <h3>Plan</h3>
+          </div>
           <MarkdownView source={content.plan} />
         </section>
       ) : null}
       {content.answers.length ? (
         <section className="question-surface__item">
-          <h3>Answers</h3>
+          <div className="question-preview__heading">
+            <span className="question-preview__index">ANS</span>
+            <h3>Answers</h3>
+            <span className="question-preview__state is-answered">已记录</span>
+          </div>
           <AnswerRows questions={descriptors} rows={content.answers} />
         </section>
       ) : null}
@@ -422,8 +450,26 @@ function StaticPrompt({
 }) {
   const selected = matchAnswerOptions(answer ?? "", prompt.options).labels;
   return (
-    <section className="question-surface__item">
-      <h3>{prompt.title || `Question ${index + 1}`}</h3>
+    <section
+      className={cn(
+        "question-surface__item",
+        selected.length && "is-answered",
+      )}
+    >
+      <div className="question-preview__heading">
+        <span className="question-preview__index">
+          {String(index + 1).padStart(2, "0")}
+        </span>
+        <h3>{prompt.title || `Question ${index + 1}`}</h3>
+        <span
+          className={cn(
+            "question-preview__state",
+            selected.length && "is-answered",
+          )}
+        >
+          {selected.length ? `已选 ${selected.length} 项` : "未作答"}
+        </span>
+      </div>
       <MarkdownView source={prompt.question} />
       {prompt.options.length ? (
         <div
@@ -454,6 +500,12 @@ function StaticPrompt({
             );
           })}
         </div>
+      ) : null}
+      {selected.length ? (
+        <p className="question-preview__answers">
+          <span>已选答案</span>
+          <strong>{selected.join("、")}</strong>
+        </p>
       ) : null}
     </section>
   );
