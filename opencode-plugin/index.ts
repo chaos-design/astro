@@ -3,13 +3,13 @@ import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { claimSession } from "./claim";
+import { claimSession } from "./claim.ts";
 import {
   isTerminalEventName,
   mapOpenCodeEvent,
   opencodeEventDirectory,
   type AstroPayload,
-} from "./mapping";
+} from "./mapping.ts";
 
 type AstroRecorder = {
   resolveAstroHome?: (environment?: NodeJS.ProcessEnv) => string;
