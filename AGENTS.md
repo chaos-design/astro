@@ -804,22 +804,41 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   `src/components/payload-overlay.tsx` only renders them — it must not grow a
   second conversion or sanitizer. The expand control opens a Dialog (portaled
   to the document body) whose payload always follows the current event and tab,
-  never a global newest request. Its left rail lists every atom of the current
-  run (`overlayAtoms`, mapped from `harnessFlow.nodes` in app.tsx) for quick
-  switching; it is a view of the **single** console selection, never a second
-  one — picking a row calls `handleOverlaySelectAtom` → `commitAtomSelection`,
-  the same commit point as the canvas's `handleCanvasSelectNode`, so the overlay
+  never a global newest request. Its left rail is the run's **message chain in
+  the LOG's own data standard**: every event of the run the LOG renders, from
+  the same `buildLogEntries(activeEvents, …)` result (`overlayAtoms` in
+  app.tsx), split by the same turn separators `buildTraceTurnIndex` produces —
+  the pipeline-atom rail (one row per platform atom, bound to each atom's
+  newest event) could not reproduce the chain, so a rail row is one *event*
+  with the harness atom id it commits to. It is a view of the **single**
+  console selection, never a second one — picking a row calls
+  `handleOverlaySelectEvent`, which writes the same state the LOG's select
+  handler writes (the picked event plus `getAtomIdForEvent`), so the overlay
   cannot highlight A while the canvas / LOG / inspector stay on B. The dialog
-  only receives `atoms` / `selectedAtomId` / `onSelectAtom` and follows the main
-  selection reactively. The rail renders **newest first** (`[...atoms].reverse()`
-  in the dialog): the first-executed atom is at the bottom, matching RUN
-  HISTORY and LOG, while each row keeps its original pipeline sequence number.
-  Its rows **reuse the LOG row itself** (`.atomic-log__row`): shared
-  `formatLogSequence` number, `atomTypeLabel` TYPE badge, tone colour,
-  timestamp and action / summary, with only narrow-rail column widths and a
-  recorded-status dot overridden locally; `payload-overlay.tsx` must not grow a
-  second row implementation, type taxonomy or tone map. Arrow/Home/End move
-  focus between rows. The layer keeps **both readings behind one
+  only receives `atoms` / `selectedEventId` / `onSelectAtom` and follows the
+  main selection reactively. The rail renders **newest first**
+  (`[...atoms].reverse()` in the dialog): the first-executed event is at the
+  bottom, matching RUN HISTORY and LOG, and turn separators are keyed by
+  position, never by the turn value. Its rows **reuse the LOG row itself**
+  (`.atomic-log__row`): shared `formatLogSequence` number, `atomTypeLabel` TYPE
+  badge, event-meta tone colour, timestamp, action / summary, the closed-pair
+  duration badge and the shared `PairLinkMarker` — the same `PairLinkMarker`
+  component the LOG and trajectory render, extracted to
+  `src/components/pair-link-marker.tsx`; `payload-overlay.tsx` must not grow a
+  second row implementation, type taxonomy or tone map. The rail-only CSS
+  overrides give the chain room to be read (wider rail, one step larger type,
+  wrapping key / two-line summary) — a name must never ellipsize into
+  `trajectory.pr…` again; their selectors carry the `.atomic-log__row` scope so
+  they out-rank the base row rules that follow later in the file. Arrow/Home/End
+  move focus between rows. The rail header carries a **跟随 toggle** that
+  mirrors the console's live following: availability keys off the *session*
+  status the RUN HISTORY card shows (`getRunHistoryDisplayState`), never the
+  selected prompt run — drilling into an older message must not freeze the
+  control while the task executes; arming rides the session's newest prompt run
+  with no explicit atom selection (like the footer Live jump) and then only
+  *scrolls* the selected row into view as new events land — never a selection
+  change, or Live following dies mid-question; picking any row disarms.
+  The layer keeps **both readings behind one
   toggle**: `Preview` is the rendered content (Markdown headings, GFM task lists,
   highlighted code, question/option/answer lists) and `Code` is the untouched
   structured JSON, so a reader can check either shape without leaving the
@@ -827,8 +846,11 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   (Markdown / highlighted code, or the question list) and the related data
   (timestamps, paths, ids, annotations / explanations). The split lives only
   in `src/lib/payload-preview.ts`; the dialog caches a prepared preview per
-  atom id via `payloadForAtom` / `variantForAtom`, so switching atoms in the
-  rail is a lookup, never a repeated Markdown parse. Its preview is type-aware:
+  event id, **scoped by the inspector tab** (`cacheScope`), via
+  `payloadForAtom(atomId, eventId)` / `variantForAtom(atomId, eventId)` — a
+  picked row resolves its *own* event's payload (one atom aggregates many
+  events), so switching rows in the rail is a lookup, never a repeated Markdown
+  parse. Its preview is type-aware:
   a user.question Input tab passes the raw
   question payload to `QuestionPreview` (the shared read-only question / option
   / answer list) instead of the Markdown path — an answers-only payload with no

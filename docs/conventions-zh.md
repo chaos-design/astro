@@ -77,17 +77,33 @@
     `Preview` 分两块区域：「原子内容」（真实文本，代码/JSON 高亮、Markdown 渲染）
     与「相关数据」（时间戳、路径、ID、注释/说明；注释优先），拆分口径唯一定义在
     `src/lib/payload-preview.ts`（`splitPayloadPreview` / `contentToMarkdown`）；
-    每个原子的预览在浮层内按原子 ID 缓存一次（`payloadForAtom` / `variantForAtom`
-    解析任意原子的载荷与类型），切换左侧列表是查表而非重新解析 Markdown；
-    浮层左侧的「当前运行原子」列表由 app.tsx 从 `harnessFlow.nodes` 映射出的
-    `overlayAtoms` 提供，点选走 `handleOverlaySelectAtom` → `commitAtomSelection`，
-    与画布的 `handleCanvasSelectNode` 共用同一个提交点；弹窗不持有第二份选中态，
-    只接收 `atoms` / `selectedAtomId` / `onSelectAtom`，内容随主控制台选中态响应式更新；
-    左栏**倒序渲染**（弹窗内 `[...atoms].reverse()`），先执行的原子在下方，
-    序号仍保留流水线位置；行直接复用 LOG 行组件（`.atomic-log__row`）——
-    同一 `formatLogSequence` 序号、`atomTypeLabel` TYPE 徽标、tone 色、
-    时间与动作/摘要，仅覆盖窄栏列宽与记录状态点；方向键与 Home/End 可导航，
+    每个原子的预览在浮层内按事件 ID 缓存一次，并**按检查器标签页分域**
+    （`cacheScope`；`payloadForAtom(atomId, eventId)` / `variantForAtom` 解析
+    任意行的载荷与类型，选中的行优先解析它**自己的事件**——一个原子聚合多个
+    事件，读者点的是链路里的一步，不是原子的最新一步），切换左侧列表是查表
+    而非重新解析 Markdown；浮层左侧的「运行消息链路」由 app.tsx 用 LOG 同源的
+    `buildLogEntries(activeEvents, …)` 结果映射出的 `overlayAtoms` 提供——
+    **每行一个事件**（附它提交到的 harness 原子 id），并按
+    `buildTraceTurnIndex` 的轮次分隔符分组；旧的流水线原子列表（每个平台原子
+    一行、只绑定其最新事件）无法复现消息链路，不得回退；
+    点选走 `handleOverlaySelectEvent`，写入与 LOG 行点选同一份状态
+    （选中事件 + `getAtomIdForEvent` 映射的原子），与画布 / LOG / 检查器共用
+    同一个选中态；弹窗不持有第二份选中态，只接收 `atoms` / `selectedEventId` /
+    `onSelectAtom`，内容随主控制台选中态响应式更新；左栏**倒序渲染**
+    （弹窗内 `[...atoms].reverse()`），先执行的事件在下方，轮次分隔符按位置
+    取 key、绝不按轮次值；行直接复用 LOG 行组件（`.atomic-log__row`）——
+    同一 `formatLogSequence` 序号、`atomTypeLabel` TYPE 徽标、事件元 tone 色、
+    时间、动作/摘要、成对耗时徽标与成对跳转标记（`PairLinkMarker`，与 LOG、
+    轨迹共用 `src/components/pair-link-marker.tsx` 里的同一个组件）；浮层独有的
+    CSS 覆盖只做「可读性」：更宽的栏、大一档字号、事件键换行、摘要两行截断——
+    名称不得再被省略号截断，且覆盖选择器必须带上 `.atomic-log__row` 作用域，
+    否则会被文件后方的基础行规则按源顺序压回；方向键与 Home/End 可导航，
     弹窗不得另写一份行实现、类型表或 tone 映射；
+    栏头有**跟随开关**，镜像控制台的实时跟随：可用性键在 RUN HISTORY 卡片显示的
+    **会话**状态上（`getRunHistoryDisplayState`），不是选中的 prompt run——查看
+    旧消息不得冻结控件；启用时骑到会话最新的 prompt run 并清空原子选中
+    （同页脚 Live 跳转），之后新事件到达只做**滚动跟随**（把选中行滚进视口），
+    绝不代替读者改选中态；点任意行即解除跟随；
     只读问题预览（`QuestionPreview` → `StaticQuestionContent`）先给问题数与
     捕获顺序提示，再给编号题目、作答状态与单独的已选答案行，静态选中 chip
     比实时选项更醒目；

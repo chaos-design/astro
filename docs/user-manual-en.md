@@ -631,8 +631,9 @@ The inspector provides:
   `user.question` Input tab shows the question / option / answer list the
   reader saw, other payloads render as Markdown, and code / JSON is highlighted)
   and "Related data" (timestamps, paths, ids and annotations / explanations,
-  annotations first). Each atom's preview is prepared once and cached by atom
-  id, so switching rows in the atom rail is a lookup rather than a repeated
+  annotations first). Each row's preview is prepared once and cached by event
+  id (scoped by the tab the layer was opened from), so switching rows in the
+  rail is a lookup rather than a repeated
   Markdown parse. Rendering uses highlight.js
   syntax highlighting, after the same HTML sanitizer
   strips acting markup. A tool result is unwrapped at any depth (`captured`,
@@ -646,18 +647,25 @@ The inspector provides:
   `captured`, keeping topology metadata out of the layer. `Code` is the raw,
   token-coloured JSON of the same payload, so both readings stay in one dialog;
   with nothing previewable the overlay says so and `Code` still shows it.
-  Escape or the scrim closes the layer. A left rail lists every message atom of
-  the current run (sequence, label, kind key and a status dot); picking a row
-  jumps to that atom's payload. The rail shares the single console selection
+  Escape or the scrim closes the layer. A left rail shows the current run's
+  **message chain in the LOG's own data standard**: every event of the run,
+  newest first, split by the same turn separators the LOG prints, with the row
+  number the LOG prints for that event. Picking a row jumps to that step's
+  payload and moves the whole console with it. The rail shares the single
+  console selection
   with the canvas, LOG and inspector — selecting a row in the overlay also moves
-  the main console to that atom, so the overlay can never highlight A while the
+  the main console to that event, so the overlay can never highlight A while the
   canvas stays on B. The selected row is highlighted and marked `aria-current`.
-  The rail runs newest first: the last-executed atom sits at the top and the
-  first-executed one at the bottom, while each row keeps its pipeline sequence
-  number. Each row is the same LOG row: sequence number, TYPE badge, event
-  key, timestamp and the action / summary line, with the selected row carrying
-  the same highlight; the recorded status still colours its dot. Arrow /
-  Home / End move focus between rows.
+  Each row is the same LOG row: sequence number, TYPE badge, display key,
+  timestamp (date + clock), the action / summary line, the closed tool call's
+  duration badge and the pair marker that names the other half's row — so the
+  chain of what happened when, and how long it took, is reproducible without
+  leaving the dialog. Arrow /
+  Home / End move focus between rows. The rail header carries a 跟随 (follow)
+  toggle while the task is still executing: armed, the chain keeps riding the
+  executing message — new events appear and the selected row stays in view;
+  picking any row pins the payload where it is. On a finished run (or the Demo
+  sample) the toggle reads disabled.
   The layer is global (portaled to the document body), but the rail is scoped to
   the current run and its content always follows that one selection.
 

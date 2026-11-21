@@ -89,19 +89,42 @@
     only renders them, with one toggle between `Preview` (rendered Markdown —
     headings, GFM task lists, highlighted code — and question/option/answer
     lists) and `Code` (the untouched structured JSON), never a second conversion
-    or sanitizer. The overlay's left rail is fed by `overlayAtoms`, mapped from
-    `harnessFlow.nodes` in app.tsx; picking a row goes through
-    `handleOverlaySelectAtom` → `commitAtomSelection`, the same commit point as
-    the canvas's `handleCanvasSelectNode`. The dialog holds no second selection:
-    it only receives `atoms` / `selectedAtomId` / `onSelectAtom`, and its content
-    follows the main console selection reactively. The rail renders newest
-    first (`[...atoms].reverse()` inside the dialog), so the first-executed atom
-    sits at the bottom while each row keeps its pipeline sequence number. Its
-    rows reuse the LOG row itself (`.atomic-log__row`) — shared sequence,
-    `atomTypeLabel` TYPE badge, tone, timestamp and action / summary — with
-    only narrow-rail column widths and a recorded-status dot overridden
-    locally; Arrow / Home / End move focus, and `payload-overlay.tsx` must not
-    grow a second row implementation, taxonomy or tone map. The read-only question preview
+    or sanitizer. The overlay's left rail is the run's **message chain in the
+    LOG's own data standard**, fed by `overlayAtoms`, mapped from the same
+    `buildLogEntries(activeEvents, …)` result the LOG list prints (app.tsx):
+    one row per **event** (carrying the harness atom id it commits to), split
+    by the same turn separators `buildTraceTurnIndex` produces. The old
+    pipeline-atom rail (one row per platform atom, bound to each atom's newest
+    event) could not reproduce the chain and must not come back. Per-row
+    previews are cached by event id, **scoped by the inspector tab**
+    (`cacheScope`); `payloadForAtom(atomId, eventId)` resolves the picked row's
+    *own* event's payload — an atom aggregates many events, and the reader
+    picked one step of the chain. Picking a row goes through
+    `handleOverlaySelectEvent`, which writes the same state the LOG's select
+    handler writes (the event plus `getAtomIdForEvent`); the dialog holds no
+    second selection: it only receives `atoms` / `selectedEventId` /
+    `onSelectAtom`, and its content follows the main console selection
+    reactively. The rail renders newest first (`[...atoms].reverse()` inside
+    the dialog), so the first-executed event sits at the bottom, and turn
+    separators are keyed by position, never by the turn value. Its rows reuse
+    the LOG row itself (`.atomic-log__row`) — shared sequence, `atomTypeLabel`
+    TYPE badge, event-meta tone, timestamp, action / summary, the closed-pair
+    duration badge and the pair link marker (the shared `PairLinkMarker`
+    component extracted to `src/components/pair-link-marker.tsx`, also rendered
+    by the LOG and the trajectory) — with rail-only CSS overrides that exist
+    for readability: a wider rail, one step larger type, a wrapping key and a
+    two-line summary; a name must never ellipsize again, and the override
+    selectors carry the `.atomic-log__row` scope so they out-rank the base row
+    rules that follow later in the file. Arrow / Home / End move focus, and
+    `payload-overlay.tsx` must not grow a second row implementation, taxonomy
+    or tone map. The rail header carries a **跟随 toggle** mirroring the
+    console's live following: availability keys off the *session* status the
+    RUN HISTORY card shows (`getRunHistoryDisplayState`), never the selected
+    prompt run — reading an older message must not freeze the control while the
+    task executes; arming rides the session's newest prompt run with no explicit
+    atom selection (like the footer Live jump) and then only *scrolls* the
+    selected row into view as new events land — never a selection change;
+    picking any row disarms. The read-only question preview
     (`QuestionPreview` → `StaticQuestionContent`) leads with a question count
     and capture-order hint, numbers each question, marks answered ones and
     prints the selected labels on their own line; static selected chips read
