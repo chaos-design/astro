@@ -3343,6 +3343,7 @@ function TraceInspector({
   overlayRunningEventId,
   overlayFollowing,
   overlayFollowAvailable,
+  overlaySearchEvent,
   onOverlayFollowingChange,
   onOverlaySelectEvent,
   overlayPayloadForAtom,
@@ -3374,6 +3375,8 @@ function TraceInspector({
   overlayFollowing: boolean;
   /** Whether the open run is executing at all (the follow toggle's gate). */
   overlayFollowAvailable: boolean;
+  /** Deep payload match for the rail's search (shared per-event haystacks). */
+  overlaySearchEvent: (eventId: string, needle: string) => boolean;
   onOverlayFollowingChange: (following: boolean) => void;
   onOverlaySelectEvent: (atomId: string, eventId: string) => void;
   overlayPayloadForAtom: (atomId: string, eventId?: string) => unknown;
@@ -3649,6 +3652,7 @@ function TraceInspector({
         payloadForAtom={overlayPayloadForAtom}
         variantForAtom={overlayVariantForAtom}
         runningEventId={overlayRunningEventId}
+        searchEvent={overlaySearchEvent}
         selectedEventId={overlaySelectedEventId}
         payload={
           activeTab === "input" && questionEvent
@@ -7169,6 +7173,35 @@ export default function App() {
     replayMode,
     isDemo,
   });
+  // The rail's Live toggle keys off the *recorded* status — the RUNNING
+  // capsule the RUN HISTORY card keeps printing, STALE marker included — not
+  // the freshness-terminated display: a run gone quiet past its freshness
+  // window is still the executing message until a terminal event lands, and
+  // the row's STALE marker already tells the reader the recorder went quiet.
+  // A finished run (recorded terminal status) has nothing to follow.
+  const sessionRecordedStatus = activeSession
+    ? getRunHistoryDisplayStatus(activeSession.status, activePromptRuns)
+    : undefined;
+  const overlayFollowAvailable =
+    Boolean(activeSession) &&
+    !isDemo &&
+    !replayMode &&
+    isLiveRunStatus(sessionRecordedStatus);
+  // Armed = the follow posture: no explicit atom selection, so a genuinely
+  // executing message keeps advancing the selection to its newest atom. A run
+  // that is only recorded-running (STALE) lands on its newest event and
+  // resumes following the moment it produces an event again.
+  const overlayFollowing =
+    overlayFollowAvailable && selectedAtomId === undefined;
+  // The rail's search matches payload content too, through the shared
+  // per-event haystacks the LOG warms for the same run.
+  const overlaySearchEvent = useCallback(
+    (eventId: string, needle: string) => {
+      const event = overlayEventById.get(eventId);
+      return event ? matchesEventQuery(event, needle) : false;
+    },
+    [overlayEventById],
+  );
   // After a refresh the SSE interaction frames are gone (the service never
   // replays them), so `interactions.requests` is empty and the waiting
   // question would read as read-only. Recover the *original* request from the
@@ -8552,13 +8585,9 @@ export default function App() {
                 overlayRunningEventId={
                   executingLive && pendingEvent ? pendingEvent.id : ""
                 }
-                overlayFollowing={followingLive}
-                overlayFollowAvailable={
-                  activeSession
-                    ? isPromptExecuting(activeSessionDisplayStatus, isDemo) &&
-                      !replayMode
-                    : false
-                }
+                overlayFollowing={overlayFollowing}
+                overlayFollowAvailable={overlayFollowAvailable}
+                overlaySearchEvent={overlaySearchEvent}
                 onOverlayFollowingChange={handleOverlayFollowingChange}
                 onOverlaySelectEvent={handleOverlaySelectEvent}
                 overlayPayloadForAtom={overlayPayloadForAtom}

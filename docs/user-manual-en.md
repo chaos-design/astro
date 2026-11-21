@@ -663,22 +663,28 @@ The inspector provides:
   names the other half's row — so the
   chain of what happened when, and how long it took, is reproducible without
   leaving the dialog. Arrow /
-  Home / End move focus between rows. The rail carries its own search box
-  (rail-local state): a keyword filters the chain over the rows' display
-  fields, and a turn whose rows all miss disappears with its separator.
-  The rail header carries a **Live** follow
-  toggle while the task is still executing: armed (with a breathing halo), the
-  chain keeps riding the
-  executing message — new events appear and the selected row stays in view;
-  picking any row pins the payload where it is. On a finished run (or the Demo
-  sample) the toggle reads disabled.
+  Home / End move focus between rows. The head is one row: the run counter, a
+  search box with a clear button, and the Live toggle. The rail carries its
+  own search box (rail-local state): a keyword filters the chain over the
+  rows' display fields AND the payload content, and a turn whose rows all miss
+  disappears with its separator.
+  While the run's status still reads RUNNING (the STALE marker included), the
+  header's **Live** toggle stays clickable: clicking lands on the message's
+  newest event and enters the follow posture — a genuinely executing message
+  keeps following its newest atom (new events appear and the selected row
+  stays in view, the toggle breathing); picking any row pins the payload
+  where it is. On a finished run (or the Demo sample) the toggle reads
+  disabled.
   The layer is global (portaled to the document body), but the rail is scoped to
   the current run and its content always follows that one selection. After
-  picking a row, the content pane shows **that row's own event**: a tool-call
-  row its arguments, a result row its response, a prompt row its text;
-  Markdown lists and highlighted code render by data type, and a payload with
-  no prose (arguments, structured results) falls back to its highlighted JSON —
-  switching rows always changes the content.
+  picking a row, the content pane shows the **core information of that row's
+  own event**: a tool-call row its arguments, a result row the real result (an
+  Edit-style change renders as a highlighted diff), a prompt row its text;
+  Markdown lists, code and option lists render and highlight by data type; a
+  payload with no readable prose falls back to its highlighted JSON —
+  switching rows always changes the content. The two pane titles (atom
+  content / related data) stay pinned at the top of their panes while the
+  bodies scroll beneath them.
 
 Selecting a topology atom additionally exposes the atom contract, input/output ports, gate state, and bound event.
 The right panel state is stored in `ASTROX_CONSOLE_OPEN`.

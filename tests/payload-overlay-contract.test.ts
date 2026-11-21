@@ -231,7 +231,9 @@ test("the rail and the LOG share one event-selection commit", () => {
 test("the rail's follow toggle mirrors the console's live following", () => {
   assert.match(overlay, /aria-pressed=\{following\}/);
   assert.match(overlay, /onFollowingChange\(!following\)/);
-  assert.match(overlay, /disabled=\{!followAvailable && !following\}/);
+  // The recorded status decides availability, so the toggle is never dead on
+  // a run whose capsule still reads RUNNING.
+  assert.match(overlay, /disabled=\{!followAvailable\}/);
   // Armed, the rail keeps the selected row in view as new events land —
   // scroll only, never a selection change.
   assert.match(
@@ -252,13 +254,28 @@ test("the rail's follow toggle mirrors the console's live following", () => {
   );
   assert.match(
     app,
-    /overlayFollowing=\{followingLive\}/,
+    /overlayFollowing=\{overlayFollowing\}/,
   );
-  // Availability keys off the *session* status the RUN HISTORY card shows —
-  // drilling into an older message must not freeze the follow control.
   assert.match(
     app,
-    /overlayFollowAvailable=\{\s*\n\s*activeSession\s*\n\s*\? isPromptExecuting\(activeSessionDisplayStatus, isDemo\) &&/,
+    /overlayFollowAvailable=\{overlayFollowAvailable\}/,
+  );
+  // Availability keys off the *recorded* status (the RUNNING capsule the RUN
+  // HISTORY card keeps printing, STALE included) — a finished run has nothing
+  // to follow; a silent-but-recorded-running run stays clickable.
+  assert.match(
+    app,
+    /const sessionRecordedStatus = activeSession\s*\n\s*\? getRunHistoryDisplayStatus\(activeSession\.status, activePromptRuns\)/,
+  );
+  assert.match(
+    app,
+    /overlayFollowAvailable =\s*\n\s*Boolean\(activeSession\) &&\s*\n\s*!isDemo &&\s*\n\s*!replayMode &&\s*\n\s*isLiveRunStatus\(sessionRecordedStatus\)/,
+  );
+  // Armed is the follow posture: no explicit atom selection, so a genuinely
+  // executing message keeps advancing to its newest atom.
+  assert.match(
+    app,
+    /const overlayFollowing =\s*\n\s*overlayFollowAvailable && selectedAtomId === undefined;/,
   );
   // Arming rides the session's newest prompt run, like the footer Live jump.
   assert.match(
@@ -321,13 +338,71 @@ test("the overlay's duration badge keeps exact milliseconds", () => {
 
 /**
  * The rail has its own search box: rail-local state filtering the chain over
- * the rows' display fields, with the same deferred-needle pattern the LOG
- * uses, so a keystroke re-renders only the rail.
+ * the rows' display fields AND the row event's payload content (deep match
+ * through the shared per-event haystacks the LOG warms), with the same
+ * deferred-needle pattern the LOG uses, so a keystroke re-renders only the
+ * rail. The head is one row — counter, growing search input with a clear
+ * button, Live toggle.
  */
 test("the rail filters its chain through a local search box", () => {
   assert.match(overlay, /const \[query, setQuery\] = useState\(""\)/);
   assert.match(overlay, /useDeferredValue\(query\)/);
-  assert.match(overlay, /payload-overlay__rail-search/);
   assert.match(overlay, /placeholder="搜索事件或内容"/);
   assert.match(overlay, /没有匹配的事件/);
+  // Deep content match rides the caller's callback.
+  assert.match(overlay, /searchEvent\?\.\(atom\.id, needle\)/);
+  assert.match(
+    app,
+    /const overlaySearchEvent = useCallback\(\s*\n\s*\(eventId: string, needle: string\) => \{\s*\n\s*const event = overlayEventById\.get\(eventId\);\s*\n\s*return event \? matchesEventQuery\(event, needle\) : false;/,
+  );
+  assert.match(overlayBinding, /searchEvent=\{overlaySearchEvent\}/);
+  // One row: the search box lives inside the head, with a clear button.
+  assert.match(overlay, /className="payload-overlay__rail-head">/);
+  assert.ok(
+    overlay.indexOf('className="payload-overlay__rail-search"') <
+      overlay.indexOf("payload-overlay__follow"),
+    "the search box sits between the counter and the Live toggle",
+  );
+  assert.match(overlay, /aria-label="清空搜索"/);
+  assert.match(stylesForOverlay, /\.payload-overlay__rail-search \{\s*\n\s*flex: 1;\s*\n\s*min-width: 0;/);
+});
+
+/**
+ * The two preview panes keep their titles pinned: 「原子内容」 / 「相关数据」
+ * stay put while their bodies scroll under them.
+ */
+test("the pane titles stay pinned while their bodies scroll", () => {
+  assert.match(
+    stylesForOverlay,
+    /\.payload-overlay__pane \{[\s\S]*?overflow: hidden/,
+  );
+  assert.match(
+    stylesForOverlay,
+    /\.payload-overlay__pane \.payload-overlay__body \{[\s\S]*?overflow: auto/,
+  );
+  // The related pane wraps its fields in the same scrolling body.
+  assert.match(
+    overlay,
+    /payload-overlay__pane-title">相关数据<\/h4>\s*\n\s*<div className="payload-overlay__body">/,
+  );
+});
+
+/**
+ * The content pane previews the payload's *core* information — the tool
+ * result, the prompt, the message content — rendered by its type (Markdown
+ * lists, highlighted code, a structured patch as a diff), never the raw
+ * envelope. The core extractor is the shared `payloadToMarkdown`, which now
+ * also reads the camel `toolResponse` spelling and renders a structured patch
+ * as a highlighted diff.
+ */
+test("the content pane extracts the payload's core information", () => {
+  assert.match(overlay, /payloadToMarkdown\(payload\) \|\| fallbackPayloadMarkdown\(payload\)/);
+  const markdown = readFileSync(
+    new URL("../src/lib/payload-markdown.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(markdown, /"toolResponse",/);
+  assert.match(markdown, /function structuredPatchToMarkdown/);
+  assert.match(markdown, /Fenced as `diff`/);
+  assert.match(markdown, /findPatchMarkdown\(value, depth, new WeakSet\(\)\)/);
 });

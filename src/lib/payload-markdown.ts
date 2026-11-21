@@ -33,11 +33,14 @@ const TEXT_KEYS = [
  * generic key/value view at any depth, so a tool response wrapped next to ids
  * and status still previews its Markdown body instead of a JSON blob. The
  * global overlay passes `{ contract, captured }` for an atom tab; `captured`
- * is the actual captured output and leads the list.
+ * is the actual captured output and leads the list. Both the snake and the
+ * camel spellings are listed because clients write either (the ZCode adapter
+ * writes `toolResponse`, hook payloads write `tool_response`).
  */
 const RESULT_KEYS = [
   "captured",
   "tool_response",
+  "toolResponse",
   "toolResult",
   "tool_result",
   "result",
@@ -283,6 +286,67 @@ function findStructured(value: unknown, depth: number, seen: WeakSet<object>): s
   return "";
 }
 
+/**
+ * An Edit-style tool result carries its change as a structured patch: an
+ * array of `{ oldStart, oldLines, newStart, newLines, lines }` whose `lines`
+ * are diff rows (`+` / `-` / context). Fenced as `diff` so the renderer's
+ * highlighter colours the change — the patch is the *result* the reader came
+ * to see, not metadata for the generic view.
+ */
+function structuredPatchToMarkdown(patch: unknown[]): string {
+  const lines: string[] = [];
+  for (const item of patch) {
+    if (isRecord(item) && Array.isArray(item.lines)) {
+      for (const line of item.lines) {
+        if (typeof line === "string") {
+          lines.push(line);
+        }
+      }
+    }
+  }
+  if (!lines.length) {
+    return "";
+  }
+  return `\`\`\`diff\n${lines.join("\n")}\n\`\`\``;
+}
+
+/**
+ * Find a change (a structured patch array or a plain `patch` string) anywhere
+ * in a captured payload, so an Edit-style result previews as the diff it is.
+ */
+function findPatchMarkdown(value: unknown, depth: number, seen: WeakSet<object>): string {
+  if (depth > MAX_DEPTH || value === null || typeof value !== "object" || seen.has(value)) {
+    return "";
+  }
+  seen.add(value);
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = findPatchMarkdown(item, depth + 1, seen);
+      if (found) {
+        return found;
+      }
+    }
+    return "";
+  }
+  const record = value as UnknownRecord;
+  if (Array.isArray(record.structuredPatch)) {
+    const markdown = structuredPatchToMarkdown(record.structuredPatch);
+    if (markdown) {
+      return markdown;
+    }
+  }
+  if (typeof record.patch === "string" && record.patch.trim()) {
+    return `\`\`\`diff\n${record.patch.trimEnd()}\n\`\`\``;
+  }
+  for (const child of Object.values(record)) {
+    const found = findPatchMarkdown(child, depth + 1, seen);
+    if (found) {
+      return found;
+    }
+  }
+  return "";
+}
+
 function arrayToMarkdown(value: unknown[], depth: number, seen: WeakSet<object>): string {
   const items = value
     .map((item) => payloadToMarkdown(item, depth + 1, seen))
@@ -418,6 +482,14 @@ export function payloadToMarkdown(
   const structured = findStructured(value, depth, new WeakSet());
   if (structured) {
     return structured;
+  }
+
+  // An Edit-style change is its own result: the structured patch (or a plain
+  // patch string) previews as a highlighted diff before the generic result
+  // walk, so the reader sees the change instead of the envelope.
+  const patch = findPatchMarkdown(value, depth, new WeakSet());
+  if (patch) {
+    return patch;
   }
 
   // A captured result wins over its metadata, wherever it sits in the payload.

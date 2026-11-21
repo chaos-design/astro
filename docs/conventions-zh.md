@@ -81,16 +81,21 @@
     （`cacheScope`；`payloadForAtom(atomId, eventId)` / `variantForAtom` 解析
     任意行的载荷与类型，选中的行**以它自己的事件为准**——工具调用行读自己的
     `tool_input`、结果行读 `tool_response`、提示词行读自己的 payload；拆分后
-    没有正文的载荷回退为高亮 JSON（`payload-preview.ts` 的
-    `fallbackPayloadMarkdown`，`captured` 包装只倾倒 captured 半边）——切换行
-    必须改变内容，面板不得停留在同一个空态），切换左侧列表是查表
-    而非重新解析 Markdown；浮层左侧的「运行消息链路」由 app.tsx 用 LOG 同源的
-    `buildLogEntries(activeEvents, …)` 结果映射出的 `overlayAtoms` 提供——
-    **每行一个事件**（附它提交到的 harness 原子 id），并按
+    没有正文的载荷走共享的核心内容抽取 `payload-markdown.ts` 的
+    `payloadToMarkdown`（读 camel `toolResponse`、把 `structuredPatch` 渲染成
+    高亮 diff——预览的是载荷的**核心信息**：tool result 的结果、prompt input、
+    message content，而不是原始信封），仍无内容才回退为高亮 JSON
+    （`payload-preview.ts` 的 `fallbackPayloadMarkdown`，`captured` 包装只倾倒
+    captured 半边）——切换行必须改变内容，面板不得停留在同一个空态），切换
+    左侧列表是查表而非重新解析 Markdown；浮层左侧的「运行消息链路」由 app.tsx
+    用 LOG 同源的 `buildLogEntries(activeEvents, …)` 结果映射出的 `overlayAtoms`
+    提供——**每行一个事件**（附它提交到的 harness 原子 id），并按
     `buildTraceTurnIndex` 的轮次分隔符分组；旧的流水线原子列表（每个平台原子
     一行、只绑定其最新事件）无法复现消息链路，不得回退；
-    栏自带**搜索框**（栏内局部状态，LOG 的 deferred-needle 模式，按行的展示
-    字段过滤；某轮全部未命中时该轮分隔符随行一起消失）；
+    栏头是**一行**：计数 + 自带搜索框 + Live 开关；搜索框（栏内局部状态，LOG
+    的 deferred-needle 模式）匹配行的展示字段**与事件载荷内容**
+    （`searchEvent` → `matchesEventQuery`，共享 LOG 已预热的逐事件 haystack），
+    自带清空按钮；某轮全部未命中时该轮分隔符随行一起消失；
     点选走 `handleOverlaySelectEvent`，写入与 LOG 行点选同一份状态
     （选中事件 + `getAtomIdForEvent` 映射的原子），与画布 / LOG / 检查器共用
     同一个选中态；弹窗不持有第二份选中态，只接收 `atoms` / `selectedEventId` /
@@ -108,11 +113,15 @@
     `.atomic-log__row` 作用域，否则会被文件后方的基础行规则压回；方向键与
     Home/End 可导航，弹窗不得另写一份行实现、类型表或 tone 映射；
     栏头有**跟随开关（Live）**，镜像控制台的实时跟随：可用性键在 RUN HISTORY
-    卡片显示的**会话**状态上（`getRunHistoryDisplayState`），不是选中的
-    prompt run——查看旧消息不得冻结控件；启用时骑到会话最新的 prompt run 并
-    清空原子选中（同页脚 Live 跳转），之后新事件到达只做**滚动跟随**（把选中
-    行滚进视口），绝不代替读者改选中态；点任意行即解除跟随；armed 呼吸灯；
-    预览正文与相关数据字号各大一档，正文区分 Markdown 列表与高亮代码；
+    卡片仍打印的**记录状态**上（`getRunHistoryDisplayStatus`，含 STALE 标记），
+    不是被新鲜度终止的展示状态——静默中的运行保持可点，直到终止事件落地；
+    完成的运行（记录态终止）不可用；启用时骑到会话最新的 prompt run 并清空
+    原子选中（同页脚 Live 跳转），armed 即跟随位姿：真正执行中的消息持续
+    跟随最新原子，仅记录态运行的落在最新事件上并在再次产出事件时恢复跟随；
+    之后新事件到达只做**滚动跟随**（把选中行滚进视口），绝不代替读者改选中态；
+    点任意行即解除跟随；armed 呼吸灯；
+    预览正文与相关数据字号各大一档，两个窗格的标题（原子内容 / 相关数据）
+    钉住不动、正文在标题下滚动；
     只读问题预览（`QuestionPreview` → `StaticQuestionContent`）先给问题数与
     捕获顺序提示，再给编号题目、作答状态与单独的已选答案行，静态选中 chip
     比实时选项更醒目；

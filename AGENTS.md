@@ -834,21 +834,29 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   running / pair-partner rows keep their own state, which the base `:hover`
   rule would otherwise out-rank), and the selected row is one more step of type
   with a brighter selection treatment — the step being inspected must be
-  unmistakable at a glance. Arrow/Home/End move focus between rows. The rail
-  has its **own search box** (rail-local state, the LOG's deferred-needle
-  pattern, filtering the rows' display fields — a turn whose rows all miss
-  disappears with its separator). Its duration badge keeps the **exact
+  unmistakable at a glance. Arrow/Home/End move focus between rows. The head
+  is **one row** — run counter, a growing search box, the Live toggle — and
+  the rail has its **own search box** (rail-local state, the LOG's
+  deferred-needle pattern, matching the rows' display fields AND the row
+  event's payload content through the shared per-event haystacks
+  `searchEvent` → `matchesEventQuery`; the input carries a clear button, and a
+  turn whose rows all miss disappears with its separator). Its duration badge
+  keeps the **exact
   milliseconds** (`formatDurationMsExact` — the layer exists to inspect ONE
   step's latency, where the lists' stepped units would round away the digits
   being inspected; the LOG and trajectory keep `formatDurationMs`). The rail
   header carries a **Live toggle** that
-  mirrors the console's live following: availability keys off the *session*
-  status the RUN HISTORY card shows (`getRunHistoryDisplayState`), never the
-  selected prompt run — drilling into an older message must not freeze the
-  control while the task executes; arming rides the session's newest prompt run
+  mirrors the console's live following: availability keys off the *recorded*
+  status (`getRunHistoryDisplayStatus` — the RUNNING capsule the RUN HISTORY
+  card keeps printing, STALE marker included), never the freshness-terminated
+  display, so a run that went silent stays clickable until a terminal event
+  lands; arming rides the session's newest prompt run
   with no explicit atom selection (like the footer Live jump) and then only
   *scrolls* the selected row into view as new events land — never a selection
   change, or Live following dies mid-question; picking any row disarms. Armed
+  is the follow posture (selection cleared): a genuinely executing message
+  keeps advancing to its newest atom, a STALE one lands on its newest event
+  and resumes following the moment it produces an event again. Armed
   it breathes (a `payload-follow-breathe` halo); the label is the console's
   own Live mark.
   The layer keeps **both readings behind one
@@ -857,15 +865,20 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   structured JSON, so a reader can check either shape without leaving the
   dialog. `Preview` is split into two panes — the atom's real content
   (Markdown / highlighted code, or the question list) and the related data
-  (timestamps, paths, ids, annotations / explanations). The split lives only
+  (timestamps, paths, ids, annotations / explanations) — and the pane titles
+  stay **pinned** while their bodies scroll under them. The split lives only
   in `src/lib/payload-preview.ts`; the dialog caches a prepared preview per
   event id, **scoped by the inspector tab** (`cacheScope`), via
   `payloadForAtom(atomId, eventId)` / `variantForAtom(atomId, eventId)` — a
   picked row resolves its *own* event's payload (one atom aggregates many
   events, so the resolver is row-event-first: a tool-call row reads its own
   `tool_input`, a result row its `tool_response`, a prompt row its payload),
-  and a split with no prose falls back to the payload's highlighted JSON
-  (`fallbackPayloadMarkdown` in the same module — switching rows must always
+  and the pane previews the payload's **core information**, never the raw
+  envelope: a split with prose renders as Markdown, one without falls to the
+  shared core extractor `payloadToMarkdown` (which reads the camel
+  `toolResponse` spelling and renders a `structuredPatch` as a highlighted
+  diff), and only a payload with nothing to say falls back to highlighted
+  JSON (`fallbackPayloadMarkdown` — switching rows must always
   change the pane, never sit empty). Switching rows in the rail is a lookup,
   never a repeated Markdown parse. Its preview is type-aware:
   a user.question Input tab passes the raw

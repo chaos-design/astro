@@ -1,4 +1,4 @@
-import { Code2, Eye, Radio, Search } from "lucide-react";
+import { Code2, Eye, Radio, Search, X } from "lucide-react";
 import { useDeferredValue, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { JsonViewer } from "@/components/json-viewer";
 import { PairLinkMarker } from "@/components/pair-link-marker";
@@ -16,6 +16,7 @@ import {
 import {
   InputGroup,
   InputGroupAddon,
+  InputGroupButton,
   InputGroupInput,
 } from "@/components/ui/input-group";
 import { QuestionPreview } from "@/components/question-content";
@@ -26,6 +27,7 @@ import {
   orderRelated,
   splitPayloadPreview,
 } from "@/lib/payload-preview";
+import { payloadToMarkdown } from "@/lib/payload-markdown";
 import { parseUserQuestionContent } from "@/lib/user-question-content";
 import type { TracePairLink } from "@/lib/trace-model";
 import type { TracePayload } from "@/types/trace";
@@ -87,9 +89,12 @@ type PreparedPreview = {
  * Prepare one row's preview exactly once. Markdown rendering (parsing plus a
  * DOM sanitizer pass) is the expensive part of switching rows in the global
  * layer; the cache lives in the dialog instance so going back to a row is a
- * lookup, not a re-render of the same Markdown. A payload whose split has no
- * prose (arguments, structured results) falls back to its highlighted JSON —
- * the pane must never sit empty while the row carried data.
+ * lookup, not a re-render of the same Markdown. The pane shows the payload's
+ * *core* information, not its envelope: a split with prose renders as Markdown
+ * (lists, fenced code — highlighted by data type), one without falls to the
+ * shared core extractor (`payloadToMarkdown` — the tool result, prompt,
+ * message content, a structured patch as a diff), and only a payload with
+ * nothing to say falls back to highlighted JSON.
  */
 function preparePreview(
   payload: unknown,
@@ -98,7 +103,7 @@ function preparePreview(
   const split = splitPayloadPreview(payload);
   const source = split.content.trim()
     ? contentToMarkdown(split.content)
-    : fallbackPayloadMarkdown(payload);
+    : payloadToMarkdown(payload) || fallbackPayloadMarkdown(payload);
   const rendered = renderMarkdownPreview(source);
   const question =
     variant === "question"
@@ -151,6 +156,7 @@ export function PayloadOverlay({
   payload,
   payloadForAtom,
   runningEventId = "",
+  searchEvent,
   selectedEventId,
   variant = "default",
   variantForAtom,
@@ -177,6 +183,13 @@ export function PayloadOverlay({
   payloadForAtom?: (atomId: string, eventId: string) => unknown;
   /** The event the LOG marks as executing right now (its START row). */
   runningEventId?: string;
+  /**
+   * Deep content match for the rail's search: the caller resolves the row's
+   * event against the shared per-event search haystacks (the LOG warms the
+   * same cache), so a keyword matches payload content and not just the row's
+   * own display fields.
+   */
+  searchEvent?: (eventId: string, needle: string) => boolean;
   /** The console's selected event — the rail highlights and previews that row. */
   selectedEventId: string;
   variant?: "default" | "question";
@@ -185,8 +198,9 @@ export function PayloadOverlay({
 }) {
   const [viewMode, setViewMode] = useState<PayloadViewMode>("preview");
   // The rail's search box is rail-local state (the LOG's own search pattern):
-  // a keystroke re-renders only the rail, not the studio. The needle filters
-  // the chain over the rows' display fields; a surviving row keeps its turn
+  // a keystroke re-renders only the rail, not the studio. The needle matches
+  // the rows' display fields AND the row event's payload content (the caller
+  // resolves the shared per-event haystacks); a surviving row keeps its turn
   // separator, and a turn whose rows all miss simply disappears.
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
@@ -197,10 +211,12 @@ export function PayloadOverlay({
   const railItems = useMemo<PayloadOverlayRailItem[]>(() => {
     const needle = deferredQuery.trim().toLowerCase();
     const source = needle
-      ? atoms.filter((atom) =>
-          `${atom.sequence} T${atom.turn} ${atom.key} ${atom.eventName} ${atom.action} ${atom.summary}`
-            .toLowerCase()
-            .includes(needle),
+      ? atoms.filter(
+          (atom) =>
+            `${atom.sequence} T${atom.turn} ${atom.key} ${atom.eventName} ${atom.action} ${atom.summary}`
+              .toLowerCase()
+              .includes(needle) ||
+            (searchEvent?.(atom.id, needle) ?? false),
         )
       : atoms;
     const items: PayloadOverlayRailItem[] = [];
@@ -336,33 +352,9 @@ export function PayloadOverlay({
                 <span className="payload-overlay__rail-title">
                   LOG · {atoms.length}
                 </span>
-                {onFollowingChange ? (
-                  <button
-                    aria-pressed={following}
-                    className={cn(
-                      "payload-overlay__follow",
-                      following && "is-armed",
-                    )}
-                    disabled={!followAvailable && !following}
-                    onClick={() => onFollowingChange(!following)}
-                    title={
-                      following
-                        ? "正在实时跟随执行中的消息，点击暂停跟随"
-                        : followAvailable
-                          ? "跟随执行中的最新消息"
-                          : "运行结束后无可跟随的实时消息"
-                    }
-                    type="button"
-                  >
-                    <Radio aria-hidden="true" />
-                    Live
-                  </button>
-                ) : null}
-              </header>
-              <div className="payload-overlay__rail-search">
                 <InputGroup
+                  className="payload-overlay__rail-search"
                   aria-label="搜索消息链路"
-                  className="payload-overlay__rail-search-input"
                 >
                   <InputGroupInput
                     onChange={(event) => setQuery(event.target.value)}
@@ -372,8 +364,40 @@ export function PayloadOverlay({
                   <InputGroupAddon align="inline-start">
                     <Search aria-hidden="true" />
                   </InputGroupAddon>
+                  {query ? (
+                    <InputGroupAddon align="inline-end">
+                      <InputGroupButton
+                        aria-label="清空搜索"
+                        onClick={() => setQuery("")}
+                      >
+                        <X aria-hidden="true" />
+                      </InputGroupButton>
+                    </InputGroupAddon>
+                  ) : null}
                 </InputGroup>
-              </div>
+                {onFollowingChange ? (
+                  <button
+                    aria-pressed={following}
+                    className={cn(
+                      "payload-overlay__follow",
+                      following && "is-armed",
+                    )}
+                    disabled={!followAvailable}
+                    onClick={() => onFollowingChange(!following)}
+                    title={
+                      following
+                        ? "正在实时跟随执行中的消息，点击暂停跟随"
+                        : followAvailable
+                          ? "跳到最新事件并跟随执行中的消息"
+                          : "运行结束后无可跟随的实时消息"
+                    }
+                    type="button"
+                  >
+                    <Radio aria-hidden="true" />
+                    Live
+                  </button>
+                ) : null}
+              </header>
               <ul className="payload-overlay__atom-list">
                 {railItems.length === 0 ? (
                   <output className="payload-overlay__rail-empty">
@@ -491,38 +515,42 @@ export function PayloadOverlay({
                 ) : (
                   <section className="payload-overlay__pane payload-overlay__pane--content">
                     <h4 className="payload-overlay__pane-title">原子内容</h4>
-                    {preview.hasContent ? (
-                      <div
-                        className="markdown-preview"
-                        dangerouslySetInnerHTML={{ __html: preview.contentHtml }}
-                      />
-                    ) : (
-                      <p className="payload-overlay__empty">
-                        没有可预览的文本。切到 Code 查看原始载荷。
-                      </p>
-                    )}
+                    <div className="payload-overlay__body">
+                      {preview.hasContent ? (
+                        <div
+                          className="markdown-preview"
+                          dangerouslySetInnerHTML={{ __html: preview.contentHtml }}
+                        />
+                      ) : (
+                        <p className="payload-overlay__empty">
+                          没有可预览的文本。切到 Code 查看原始载荷。
+                        </p>
+                      )}
+                    </div>
                   </section>
                 )}
                 <section className="payload-overlay__pane payload-overlay__pane--related">
                   <h4 className="payload-overlay__pane-title">相关数据</h4>
-                  {preview.related.length ? (
-                    <dl className="payload-overlay__fields">
-                      {preview.related.map((field) => (
-                        <div
-                          className={cn(
-                            "payload-overlay__field",
-                            field.annotation && "is-annotation",
-                          )}
-                          key={field.key}
-                        >
-                          <dt title={field.key}>{field.label}</dt>
-                          <dd>{field.value}</dd>
-                        </div>
-                      ))}
-                    </dl>
-                  ) : (
-                    <p className="payload-overlay__empty">没有关联数据。</p>
-                  )}
+                  <div className="payload-overlay__body">
+                    {preview.related.length ? (
+                      <dl className="payload-overlay__fields">
+                        {preview.related.map((field) => (
+                          <div
+                            className={cn(
+                              "payload-overlay__field",
+                              field.annotation && "is-annotation",
+                            )}
+                            key={field.key}
+                          >
+                            <dt title={field.key}>{field.label}</dt>
+                            <dd>{field.value}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                    ) : (
+                      <p className="payload-overlay__empty">没有关联数据。</p>
+                    )}
+                  </div>
                 </section>
               </div>
             ) : (

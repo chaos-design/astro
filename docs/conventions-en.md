@@ -100,12 +100,20 @@
     (`cacheScope`); `payloadForAtom(atomId, eventId)` resolves the picked row's
     *own* event's payload, row-event-first — a tool-call row reads its own
     `tool_input`, a result row its `tool_response`, a prompt row its payload —
-    and a split with no prose falls back to the payload's highlighted JSON
-    (`fallbackPayloadMarkdown` in the same module, dumping only the `captured`
-    half of a `{ contract, captured }` wrapper), so switching rows always
+    and the pane previews the payload's **core information**, never the raw
+    envelope: a split with prose renders as Markdown (lists, highlighted code
+    by data type), one without falls to the shared core extractor
+    `payloadToMarkdown` (which reads the camel `toolResponse` spelling and
+    renders a `structuredPatch` as a highlighted diff), and only a payload
+    with nothing to say falls back to highlighted JSON
+    (`fallbackPayloadMarkdown`, dumping only the `captured` half of a
+    `{ contract, captured }` wrapper) — switching rows always
     changes the pane instead of sitting on one shared empty state. The rail
-    has its **own search box** (rail-local state, the LOG's deferred-needle
-    pattern over the rows' display fields; a turn whose rows all miss
+    head is **one row** — counter, search box, Live toggle — and the rail has
+    its **own search box** (rail-local state, the LOG's deferred-needle
+    pattern over the rows' display fields AND the row event's payload content
+    via `searchEvent` → `matchesEventQuery`, the shared per-event haystacks the
+    LOG warms; the input carries a clear button; a turn whose rows all miss
     disappears with its separator). Picking a row goes through
     `handleOverlaySelectEvent`, which writes the same state the LOG's select
     handler writes (the event plus `getAtomIdForEvent`); the dialog holds no
@@ -130,15 +138,21 @@
     later in the file. Arrow / Home / End move focus, and
     `payload-overlay.tsx` must not grow a second row implementation, taxonomy
     or tone map. The rail header carries a **Live toggle** mirroring the
-    console's live following: availability keys off the *session* status the
-    RUN HISTORY card shows (`getRunHistoryDisplayState`), never the selected
-    prompt run — reading an older message must not freeze the control while the
-    task executes; arming rides the session's newest prompt run with no explicit
+    console's live following: availability keys off the *recorded* status
+    (`getRunHistoryDisplayStatus` — the RUNNING capsule the RUN HISTORY card
+    keeps printing, STALE marker included), never the freshness-terminated
+    display, so a run that went silent stays clickable until a terminal event
+    lands; a finished run (recorded terminal status) has nothing to follow.
+    Arming rides the session's newest prompt run with no explicit
     atom selection (like the footer Live jump) and then only *scrolls* the
     selected row into view as new events land — never a selection change;
-    picking any row disarms. Armed it breathes (a `payload-follow-breathe`
-    halo); the label is the console's own Live mark. The preview and related
-    panes read one step larger than the inspector's. The read-only question preview
+    picking any row disarms. Armed is the follow posture: a genuinely executing
+    message keeps advancing to its newest atom, a STALE one lands on its newest
+    event and resumes following the moment it produces an event again. Armed it
+    breathes (a `payload-follow-breathe` halo); the label is the console's own
+    Live mark. The preview and related panes read one step larger than the
+    inspector's, and their titles stay pinned while their bodies scroll. The
+    read-only question preview
     (`QuestionPreview` → `StaticQuestionContent`) leads with a question count
     and capture-order hint, numbers each question, marks answered ones and
     prints the selected labels on their own line; static selected chips read

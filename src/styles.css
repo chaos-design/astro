@@ -5750,15 +5750,14 @@ pre,
   grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
 }
 
+/* The pane's title stays pinned while its body scrolls: the section header
+   (「原子内容」 / 「相关数据」) must not drift away with the content. */
 .payload-overlay__pane {
   display: flex;
   min-height: 0;
   min-width: 0;
   flex-direction: column;
-  overflow: auto;
-  overscroll-behavior: contain;
-  scrollbar-width: thin;
-  scrollbar-color: var(--line-bright) transparent;
+  overflow: hidden;
 }
 
 .payload-overlay__pane--content {
@@ -5784,8 +5783,12 @@ pre,
 
 .payload-overlay__pane .payload-overlay__body {
   flex: 1;
+  min-height: 0;
   padding: 0;
-  overflow: visible;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-bright) transparent;
 }
 
 /* Related data reads as a compact definition list: one label/value pair per
@@ -5886,16 +5889,19 @@ pre,
   background: color-mix(in srgb, var(--panel) 92%, transparent);
 }
 
+/* The head is one row: run counter, the search box (which grows), and the
+   Live toggle — the chain's controls never stack into two rows that resize
+   as the query changes. */
 .payload-overlay__rail-head {
   display: flex;
   flex: none;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
-  padding: 12px 14px 8px;
+  padding: 10px 12px 10px;
 }
 
 .payload-overlay__rail-title {
+  flex: none;
   color: var(--muted);
   font-family: var(--font-mono);
   font-size: 9px;
@@ -5903,16 +5909,12 @@ pre,
 }
 
 /* The rail's own search box (rail-local state, like the LOG's): a keystroke
-   filters the chain without re-rendering the studio. It sits on its own row
-   under the head so the Live toggle never resizes with the query. */
+   filters the chain without re-rendering the studio. It sits between the
+   counter and the Live toggle and carries its own clear button. */
 .payload-overlay__rail-search {
-  display: flex;
-  flex: none;
-  padding: 0 10px 8px;
-}
-
-.payload-overlay__rail-search-input {
-  inline-size: 100%;
+  flex: 1;
+  min-width: 0;
+  inline-size: auto;
 }
 
 .payload-overlay__rail-empty {
