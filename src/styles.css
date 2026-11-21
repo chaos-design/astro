@@ -5801,11 +5801,11 @@ pre,
 .payload-overlay__field {
   display: grid;
   min-width: 0;
-  grid-template-columns: minmax(92px, 0.9fr) minmax(0, 1.4fr);
+  grid-template-columns: minmax(96px, 0.9fr) minmax(0, 1.4fr);
   gap: 10px;
-  padding: 6px 0;
+  padding: 7px 0;
   border-bottom: 1px solid var(--line);
-  font-size: var(--text-caption);
+  font-size: var(--text-meta);
 }
 
 .payload-overlay__field dt {
@@ -5850,6 +5850,18 @@ pre,
   font-size: 11px;
 }
 
+/* The global layer is the reading surface: one step larger than the
+   inspector's preview, so a long tool result, a Markdown list or highlighted
+   code stays readable in the wide pane. */
+.payload-overlay .markdown-preview {
+  font-size: var(--text-label);
+}
+
+.payload-overlay .markdown-preview code,
+.payload-overlay .markdown-preview pre code {
+  font-size: var(--text-body);
+}
+
 /* The rail is the run's message chain in the LOG's own data standard: every
    event, newest first, split by the LOG's turn separators. It is a view of the
    single console selection: picking a row commits through the LOG's own select
@@ -5880,7 +5892,7 @@ pre,
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 12px 14px 10px;
+  padding: 12px 14px 8px;
 }
 
 .payload-overlay__rail-title {
@@ -5890,10 +5902,31 @@ pre,
   letter-spacing: 0.14em;
 }
 
+/* The rail's own search box (rail-local state, like the LOG's): a keystroke
+   filters the chain without re-rendering the studio. It sits on its own row
+   under the head so the Live toggle never resizes with the query. */
+.payload-overlay__rail-search {
+  display: flex;
+  flex: none;
+  padding: 0 10px 8px;
+}
+
+.payload-overlay__rail-search-input {
+  inline-size: 100%;
+}
+
+.payload-overlay__rail-empty {
+  margin: 4px 6px;
+  color: var(--muted-soft);
+  font-size: var(--text-meta);
+  text-align: center;
+}
+
 /* The 跟随 toggle mirrors the console's live following from inside the
-   overlay: armed it reads as the live pill (running tint over the panel),
-   disarmed it stays a quiet outlined control. Disabled only when the open run
-   is not executing at all — a finished run has nothing to follow. */
+   overlay: armed it reads as the live pill (running tint over the panel) with
+   a breathing halo, disarmed it stays a quiet outlined control. Disabled only
+   when the open run is not executing at all — a finished run has nothing to
+   follow. The label is the console's own Live mark. */
 .payload-overlay__follow {
   display: inline-flex;
   flex: none;
@@ -5906,7 +5939,8 @@ pre,
   cursor: pointer;
   font-family: var(--font-mono);
   font-size: var(--text-overline);
-  letter-spacing: 0.06em;
+  font-variant: all-small-caps;
+  letter-spacing: 0.08em;
   background: transparent;
 }
 
@@ -5924,6 +5958,17 @@ pre,
   border-color: color-mix(in srgb, var(--status-running) 52%, transparent);
   color: color-mix(in srgb, var(--status-running) 78%, var(--text-strong));
   background: color-mix(in srgb, var(--status-running) 20%, var(--bg));
+  animation: payload-follow-breathe 1.8s ease-in-out infinite;
+}
+
+@keyframes payload-follow-breathe {
+  0%,
+  100% {
+    box-shadow: 0 0 4px color-mix(in srgb, var(--status-running) 26%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 11px color-mix(in srgb, var(--status-running) 58%, transparent);
+  }
 }
 
 .payload-overlay__follow:disabled {
@@ -6014,6 +6059,34 @@ pre,
 
 .payload-overlay__turn:first-child {
   margin-top: 4px;
+}
+
+/* Rail rows deliberately carry no hover styling: a list the reader scans for
+   one selected step reads calmer when sweeping the pointer changes nothing,
+   and the selection — not the pointer — is the state that matters here.
+   Selected / running / partner rows keep their state under the pointer
+   (the base :hover rule would otherwise out-rank their own class). */
+.payload-overlay__rail
+  .atomic-log__row:hover:not(.is-selected):not(.is-running):not(.is-pair-partner) {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+/* The selected row is the reason the reader opened the layer: one more step
+   of type than the neighbouring rows and a clearly brighter selection
+   treatment, so the step being inspected is unmistakable at a glance. */
+.payload-overlay__rail .atomic-log__row.is-selected {
+  border-color: var(--selection-border);
+  background: var(--selection-bg);
+  box-shadow:
+    inset 3px 0 var(--selection-border),
+    0 0 10px color-mix(in srgb, var(--selection-glow) 82%, transparent);
+}
+
+.payload-overlay__rail .atomic-log__row.is-selected strong.atomic-log__name {
+  color: var(--text-strong);
+  font-size: 12px;
 }
 
 /* Same tone map as the LOG row, so a tool atom and a question atom keep their

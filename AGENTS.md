@@ -829,15 +829,28 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   overrides give the chain room to be read (wider rail, one step larger type,
   wrapping key / two-line summary) — a name must never ellipsize into
   `trajectory.pr…` again; their selectors carry the `.atomic-log__row` scope so
-  they out-rank the base row rules that follow later in the file. Arrow/Home/End
-  move focus between rows. The rail header carries a **跟随 toggle** that
+  they out-rank the base row rules that follow later in the file. Rail rows
+  carry **no hover styling** (sweeping the pointer changes nothing; selected /
+  running / pair-partner rows keep their own state, which the base `:hover`
+  rule would otherwise out-rank), and the selected row is one more step of type
+  with a brighter selection treatment — the step being inspected must be
+  unmistakable at a glance. Arrow/Home/End move focus between rows. The rail
+  has its **own search box** (rail-local state, the LOG's deferred-needle
+  pattern, filtering the rows' display fields — a turn whose rows all miss
+  disappears with its separator). Its duration badge keeps the **exact
+  milliseconds** (`formatDurationMsExact` — the layer exists to inspect ONE
+  step's latency, where the lists' stepped units would round away the digits
+  being inspected; the LOG and trajectory keep `formatDurationMs`). The rail
+  header carries a **Live toggle** that
   mirrors the console's live following: availability keys off the *session*
   status the RUN HISTORY card shows (`getRunHistoryDisplayState`), never the
   selected prompt run — drilling into an older message must not freeze the
   control while the task executes; arming rides the session's newest prompt run
   with no explicit atom selection (like the footer Live jump) and then only
   *scrolls* the selected row into view as new events land — never a selection
-  change, or Live following dies mid-question; picking any row disarms.
+  change, or Live following dies mid-question; picking any row disarms. Armed
+  it breathes (a `payload-follow-breathe` halo); the label is the console's
+  own Live mark.
   The layer keeps **both readings behind one
   toggle**: `Preview` is the rendered content (Markdown headings, GFM task lists,
   highlighted code, question/option/answer lists) and `Code` is the untouched
@@ -849,8 +862,12 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   event id, **scoped by the inspector tab** (`cacheScope`), via
   `payloadForAtom(atomId, eventId)` / `variantForAtom(atomId, eventId)` — a
   picked row resolves its *own* event's payload (one atom aggregates many
-  events), so switching rows in the rail is a lookup, never a repeated Markdown
-  parse. Its preview is type-aware:
+  events, so the resolver is row-event-first: a tool-call row reads its own
+  `tool_input`, a result row its `tool_response`, a prompt row its payload),
+  and a split with no prose falls back to the payload's highlighted JSON
+  (`fallbackPayloadMarkdown` in the same module — switching rows must always
+  change the pane, never sit empty). Switching rows in the rail is a lookup,
+  never a repeated Markdown parse. Its preview is type-aware:
   a user.question Input tab passes the raw
   question payload to `QuestionPreview` (the shared read-only question / option
   / answer list) instead of the Markdown path — an answers-only payload with no

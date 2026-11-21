@@ -125,7 +125,9 @@ test("the rail splits the chain by turn with position-keyed separators", () => {
 });
 
 test("the rail renders newest first with each row keeping its LOG number", () => {
-  assert.match(overlay, /\[\.\.\.atoms\]\.reverse\(\)/);
+  // The newest-first reversal runs over the (optionally search-filtered)
+  // source list, so a filtered chain keeps its order.
+  assert.match(overlay, /\[\.\.\.source\]\.reverse\(\)/);
   assert.match(overlay, /<span className="log-sequence">\{atom\.sequence\}<\/span>/);
 });
 
@@ -263,4 +265,69 @@ test("the rail's follow toggle mirrors the console's live following", () => {
     app,
     /handleOverlayFollowingChange[\s\S]*?latestPromptRun\.key !== activePromptRunKey[\s\S]*?setActivePromptRunKey\(latestPromptRun\.key\)/,
   );
+});
+
+test("the follow toggle reads as the console's Live mark with a breathing halo", () => {
+  assert.match(overlay, />\s*Live\s*<\/button>/);
+  assert.match(stylesForOverlay, /\.payload-overlay__follow\.is-armed \{[\s\S]*?animation: payload-follow-breathe/);
+  assert.match(stylesForOverlay, /@keyframes payload-follow-breathe/);
+});
+
+/**
+ * Rail rows carry no hover styling: the list is scanned for one selected step,
+ * and sweeping the pointer must not repaint rows (selected / running / pair
+ * partner rows keep their own state, which the base :hover rule would
+ * otherwise out-rank).
+ */
+test("rail rows keep no hover styling but the selected row reads strongly", () => {
+  assert.match(
+    stylesForOverlay,
+    /\.payload-overlay__rail\s*\n\s*\.atomic-log__row:hover:not\(\.is-selected\):not\(\.is-running\):not\(\.is-pair-partner\)/,
+  );
+  assert.match(
+    stylesForOverlay,
+    /\.payload-overlay__rail \.atomic-log__row\.is-selected strong\.atomic-log__name \{[\s\S]*?font-size: 12px/,
+  );
+});
+
+/**
+ * A payload whose split has no prose (arguments, contract envelopes,
+ * structured results) still renders: its JSON is dumped as a highlighted code
+ * block instead of an empty pane, so switching rows always changes the
+ * content the reader sees.
+ */
+test("a payload without prose falls back to highlighted JSON", () => {
+  assert.match(overlay, /split\.content\.trim\(\)/);
+  assert.match(overlay, /fallbackPayloadMarkdown\(payload\)/);
+  // The fallback lives in the one preview-definition module the overlay
+  // imports from; no second dump heuristic grows in the component.
+  assert.match(
+    overlay,
+    /import \{\s*\n\s*contentToMarkdown,\s*\n\s*fallbackPayloadMarkdown,/,
+  );
+});
+
+/**
+ * The overlay's duration badge keeps the exact milliseconds: the global layer
+ * exists to inspect ONE step's latency, where the lists' stepped units would
+ * round away the digits being inspected. The LOG and trajectory badges keep
+ * their stepped `formatDurationMs`.
+ */
+test("the overlay's duration badge keeps exact milliseconds", () => {
+  assert.match(app, /function formatDurationMsExact\(milliseconds: number\)/);
+  assert.match(railBinding, /formatDurationMsExact\(pairDuration\)/);
+  assert.match(app, /function formatDurationMs\(milliseconds: number\)/);
+});
+
+/**
+ * The rail has its own search box: rail-local state filtering the chain over
+ * the rows' display fields, with the same deferred-needle pattern the LOG
+ * uses, so a keystroke re-renders only the rail.
+ */
+test("the rail filters its chain through a local search box", () => {
+  assert.match(overlay, /const \[query, setQuery\] = useState\(""\)/);
+  assert.match(overlay, /useDeferredValue\(query\)/);
+  assert.match(overlay, /payload-overlay__rail-search/);
+  assert.match(overlay, /placeholder="搜索事件或内容"/);
+  assert.match(overlay, /没有匹配的事件/);
 });

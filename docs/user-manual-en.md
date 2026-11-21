@@ -655,19 +655,30 @@ The inspector provides:
   console selection
   with the canvas, LOG and inspector — selecting a row in the overlay also moves
   the main console to that event, so the overlay can never highlight A while the
-  canvas stays on B. The selected row is highlighted and marked `aria-current`.
+  canvas stays on B. The selected row is highlighted (a larger type and a
+  brighter selection treatment) and marked `aria-current`.
   Each row is the same LOG row: sequence number, TYPE badge, display key,
   timestamp (date + clock), the action / summary line, the closed tool call's
-  duration badge and the pair marker that names the other half's row — so the
+  duration badge (exact milliseconds, e.g. `12500ms`) and the pair marker that
+  names the other half's row — so the
   chain of what happened when, and how long it took, is reproducible without
   leaving the dialog. Arrow /
-  Home / End move focus between rows. The rail header carries a 跟随 (follow)
-  toggle while the task is still executing: armed, the chain keeps riding the
+  Home / End move focus between rows. The rail carries its own search box
+  (rail-local state): a keyword filters the chain over the rows' display
+  fields, and a turn whose rows all miss disappears with its separator.
+  The rail header carries a **Live** follow
+  toggle while the task is still executing: armed (with a breathing halo), the
+  chain keeps riding the
   executing message — new events appear and the selected row stays in view;
   picking any row pins the payload where it is. On a finished run (or the Demo
   sample) the toggle reads disabled.
   The layer is global (portaled to the document body), but the rail is scoped to
-  the current run and its content always follows that one selection.
+  the current run and its content always follows that one selection. After
+  picking a row, the content pane shows **that row's own event**: a tool-call
+  row its arguments, a result row its response, a prompt row its text;
+  Markdown lists and highlighted code render by data type, and a payload with
+  no prose (arguments, structured results) falls back to its highlighted JSON —
+  switching rows always changes the content.
 
 Selecting a topology atom additionally exposes the atom contract, input/output ports, gate state, and bound event.
 The right panel state is stored in `ASTROX_CONSOLE_OPEN`.

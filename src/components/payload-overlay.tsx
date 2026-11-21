@@ -1,5 +1,5 @@
-import { Code2, Eye, Radio } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { Code2, Eye, Radio, Search } from "lucide-react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { JsonViewer } from "@/components/json-viewer";
 import { PairLinkMarker } from "@/components/pair-link-marker";
 import { cn } from "@/lib/utils";
@@ -13,9 +13,19 @@ import {
   ToggleGroup,
   ToggleGroupItem,
 } from "@/components/ui/toggle-group";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from "@/components/ui/input-group";
 import { QuestionPreview } from "@/components/question-content";
 import { renderMarkdownPreview } from "@/lib/markdown-preview";
-import { contentToMarkdown, orderRelated, splitPayloadPreview } from "@/lib/payload-preview";
+import {
+  contentToMarkdown,
+  fallbackPayloadMarkdown,
+  orderRelated,
+  splitPayloadPreview,
+} from "@/lib/payload-preview";
 import { parseUserQuestionContent } from "@/lib/user-question-content";
 import type { TracePairLink } from "@/lib/trace-model";
 import type { TracePayload } from "@/types/trace";
@@ -77,14 +87,19 @@ type PreparedPreview = {
  * Prepare one row's preview exactly once. Markdown rendering (parsing plus a
  * DOM sanitizer pass) is the expensive part of switching rows in the global
  * layer; the cache lives in the dialog instance so going back to a row is a
- * lookup, not a re-render of the same Markdown.
+ * lookup, not a re-render of the same Markdown. A payload whose split has no
+ * prose (arguments, structured results) falls back to its highlighted JSON —
+ * the pane must never sit empty while the row carried data.
  */
 function preparePreview(
   payload: unknown,
   variant: "default" | "question",
 ): PreparedPreview {
   const split = splitPayloadPreview(payload);
-  const rendered = renderMarkdownPreview(contentToMarkdown(split.content));
+  const source = split.content.trim()
+    ? contentToMarkdown(split.content)
+    : fallbackPayloadMarkdown(payload);
+  const rendered = renderMarkdownPreview(source);
   const question =
     variant === "question"
       ? parseUserQuestionContent(payload as TracePayload)
@@ -169,15 +184,29 @@ export function PayloadOverlay({
   variantForAtom?: (atomId: string, eventId: string) => "default" | "question";
 }) {
   const [viewMode, setViewMode] = useState<PayloadViewMode>("preview");
+  // The rail's search box is rail-local state (the LOG's own search pattern):
+  // a keystroke re-renders only the rail, not the studio. The needle filters
+  // the chain over the rows' display fields; a surviving row keeps its turn
+  // separator, and a turn whose rows all miss simply disappears.
+  const [query, setQuery] = useState("");
+  const deferredQuery = useDeferredValue(query);
   // Reverse execution order: the newest / last event sits at the top so the
   // first step of the run is at the bottom, like RUN HISTORY and the LOG.
   // Turn separators split the flat list wherever the turn changes — newest
   // first means the separators run high-to-low, mirroring the LOG's groups.
   const railItems = useMemo<PayloadOverlayRailItem[]>(() => {
+    const needle = deferredQuery.trim().toLowerCase();
+    const source = needle
+      ? atoms.filter((atom) =>
+          `${atom.sequence} T${atom.turn} ${atom.key} ${atom.eventName} ${atom.action} ${atom.summary}`
+            .toLowerCase()
+            .includes(needle),
+        )
+      : atoms;
     const items: PayloadOverlayRailItem[] = [];
     let previousTurn: number | null = null;
     let row = 0;
-    for (const atom of [...atoms].reverse()) {
+    for (const atom of [...source].reverse()) {
       if (atom.turn !== previousTurn) {
         previousTurn = atom.turn;
         items.push({ kind: "turn", turn: atom.turn });
@@ -186,7 +215,7 @@ export function PayloadOverlay({
       row += 1;
     }
     return items;
-  }, [atoms]);
+  }, [atoms, deferredQuery]);
   // Preview cache keyed by the selected event id. Switching rows in the rail —
   // the action that used to stall the dialog — now reuses an already-prepared
   // preview. The cache is scoped to the dialog instance; payloads are
@@ -326,11 +355,31 @@ export function PayloadOverlay({
                     type="button"
                   >
                     <Radio aria-hidden="true" />
-                    {following ? "跟随中" : "跟随"}
+                    Live
                   </button>
                 ) : null}
               </header>
+              <div className="payload-overlay__rail-search">
+                <InputGroup
+                  aria-label="搜索消息链路"
+                  className="payload-overlay__rail-search-input"
+                >
+                  <InputGroupInput
+                    onChange={(event) => setQuery(event.target.value)}
+                    placeholder="搜索事件或内容"
+                    value={query}
+                  />
+                  <InputGroupAddon align="inline-start">
+                    <Search aria-hidden="true" />
+                  </InputGroupAddon>
+                </InputGroup>
+              </div>
               <ul className="payload-overlay__atom-list">
+                {railItems.length === 0 ? (
+                  <output className="payload-overlay__rail-empty">
+                    没有匹配的事件
+                  </output>
+                ) : null}
                 {railItems.map((item, railIndex) => {
                   if (item.kind === "turn") {
                     // Key by position, never by the turn value: two groups can

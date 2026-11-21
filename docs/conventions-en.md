@@ -98,33 +98,47 @@
     event) could not reproduce the chain and must not come back. Per-row
     previews are cached by event id, **scoped by the inspector tab**
     (`cacheScope`); `payloadForAtom(atomId, eventId)` resolves the picked row's
-    *own* event's payload — an atom aggregates many events, and the reader
-    picked one step of the chain. Picking a row goes through
+    *own* event's payload, row-event-first — a tool-call row reads its own
+    `tool_input`, a result row its `tool_response`, a prompt row its payload —
+    and a split with no prose falls back to the payload's highlighted JSON
+    (`fallbackPayloadMarkdown` in the same module, dumping only the `captured`
+    half of a `{ contract, captured }` wrapper), so switching rows always
+    changes the pane instead of sitting on one shared empty state. The rail
+    has its **own search box** (rail-local state, the LOG's deferred-needle
+    pattern over the rows' display fields; a turn whose rows all miss
+    disappears with its separator). Picking a row goes through
     `handleOverlaySelectEvent`, which writes the same state the LOG's select
     handler writes (the event plus `getAtomIdForEvent`); the dialog holds no
     second selection: it only receives `atoms` / `selectedEventId` /
     `onSelectAtom`, and its content follows the main console selection
-    reactively. The rail renders newest first (`[...atoms].reverse()` inside
+    reactively. The rail renders newest first (`[...source].reverse()` inside
     the dialog), so the first-executed event sits at the bottom, and turn
     separators are keyed by position, never by the turn value. Its rows reuse
     the LOG row itself (`.atomic-log__row`) — shared sequence, `atomTypeLabel`
     TYPE badge, event-meta tone, timestamp, action / summary, the closed-pair
-    duration badge and the pair link marker (the shared `PairLinkMarker`
+    duration badge (exact milliseconds, `formatDurationMsExact` — the layer
+    inspects ONE step's latency, while the lists keep the stepped
+    `formatDurationMs`) and the pair link marker (the shared `PairLinkMarker`
     component extracted to `src/components/pair-link-marker.tsx`, also rendered
     by the LOG and the trajectory) — with rail-only CSS overrides that exist
     for readability: a wider rail, one step larger type, a wrapping key and a
-    two-line summary; a name must never ellipsize again, and the override
-    selectors carry the `.atomic-log__row` scope so they out-rank the base row
-    rules that follow later in the file. Arrow / Home / End move focus, and
+    two-line summary, a selected row one step larger again with a brighter
+    treatment, and **no hover styling on rows** (selected / running / partner
+    rows keep their own state against the base `:hover` rule); a name must
+    never ellipsize again, and the override selectors carry the
+    `.atomic-log__row` scope so they out-rank the base row rules that follow
+    later in the file. Arrow / Home / End move focus, and
     `payload-overlay.tsx` must not grow a second row implementation, taxonomy
-    or tone map. The rail header carries a **跟随 toggle** mirroring the
+    or tone map. The rail header carries a **Live toggle** mirroring the
     console's live following: availability keys off the *session* status the
     RUN HISTORY card shows (`getRunHistoryDisplayState`), never the selected
     prompt run — reading an older message must not freeze the control while the
     task executes; arming rides the session's newest prompt run with no explicit
     atom selection (like the footer Live jump) and then only *scrolls* the
     selected row into view as new events land — never a selection change;
-    picking any row disarms. The read-only question preview
+    picking any row disarms. Armed it breathes (a `payload-follow-breathe`
+    halo); the label is the console's own Live mark. The preview and related
+    panes read one step larger than the inspector's. The read-only question preview
     (`QuestionPreview` → `StaticQuestionContent`) leads with a question count
     and capture-order hint, numbers each question, marks answered ones and
     prints the selected labels on their own line; static selected chips read

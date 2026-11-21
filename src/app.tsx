@@ -500,6 +500,20 @@ function formatDurationMs(milliseconds: number) {
 }
 
 /**
+ * The overlay rail's duration label keeps the exact milliseconds. The global
+ * layer exists to inspect ONE step's latency, where the list surfaces' stepped
+ * units (<10s, <1m, … — see `formatDurationMs`) would round away the very
+ * digits being inspected; the LOG and trajectory keep their stepped badges so
+ * a long history stays scannable.
+ */
+function formatDurationMsExact(milliseconds: number) {
+  if (!Number.isFinite(milliseconds) || milliseconds < 0) {
+    return "--";
+  }
+  return `${Math.round(milliseconds)}ms`;
+}
+
+/**
  * The duration colour spec, a single source for how a span's magnitude is
  * coloured. It is a heat scale, not a status colour: a fast tool call reads
  * calm (completed), a slow one warms to amber, and a long one reads failed-red
@@ -6909,7 +6923,7 @@ export default function App() {
       buildLogEntries(activeEvents, platformId).map(
         ({ event, index, atomType, pairDuration, pairLink, turn }) => {
           const durationLabel =
-            pairDuration === null ? null : formatDurationMs(pairDuration);
+            pairDuration === null ? null : formatDurationMsExact(pairDuration);
           return {
             id: event.id,
             atomId: getAtomIdForEvent(event, platformId),
@@ -6964,8 +6978,10 @@ export default function App() {
       if (!node) {
         return null;
       }
-      // The picked row's own event wins: one atom can aggregate many events,
-      // and the reader picked a step of the chain, not the atom's newest one.
+      // The picked row's own event wins — and it decides the payload, not the
+      // atom's start event. One atom aggregates many events, so resolving
+      // every row from `startEvent` made the pane show the same content (or
+      // the same empty one) no matter which step of the chain was picked.
       const rowEvent = eventId ? overlayEventById.get(eventId) ?? null : null;
       const boundEvent = rowEvent ?? node.data.event ?? node.data.startEvent;
       if (!boundEvent) {
@@ -6979,10 +6995,24 @@ export default function App() {
         ) {
           return boundEvent.payload;
         }
-        const start = node.data.startEvent;
-        if (start?.eventName === "UserPromptSubmit") {
-          return start.payload;
+        // A row is what the chain carried at that step: a tool call row reads
+        // its own arguments, a prompt row its own prompt, anything else its
+        // captured payload. The atom start stays only as the last fallback
+        // for a row without one.
+        if (boundEvent.eventName === "UserPromptSubmit") {
+          return boundEvent.payload;
         }
+        if (boundEvent.eventName === "PreToolUse") {
+          return (
+            boundEvent.payload.tool_input ||
+            boundEvent.payload.toolInput ||
+            boundEvent.payload
+          );
+        }
+        if (rowEvent) {
+          return boundEvent.payload;
+        }
+        const start = node.data.startEvent;
         return (
           start?.payload?.tool_input || {
             prompt: start?.payload?.prompt,
@@ -6992,6 +7022,33 @@ export default function App() {
         );
       }
       if (inspectorTab === "output") {
+        if (rowEvent) {
+          // The step's own result: a tool result row reads its response, a
+          // reply row its message; anything else falls back to the atom's
+          // closed result and then to the row payload itself.
+          if (boundEvent.eventName === "PostToolUse" || boundEvent.eventName === "PostToolUseFailure") {
+            return (
+              boundEvent.payload.tool_response ||
+              boundEvent.payload.toolResponse ||
+              boundEvent.payload
+            );
+          }
+          if (boundEvent.payload.tool_response) {
+            return boundEvent.payload.tool_response;
+          }
+          if (
+            typeof boundEvent.payload.message === "string" ||
+            typeof boundEvent.payload.last_assistant_message === "string" ||
+            typeof boundEvent.payload.text === "string"
+          ) {
+            return {
+              message:
+                boundEvent.payload.last_assistant_message ||
+                boundEvent.payload.message ||
+                boundEvent.payload.text,
+            };
+          }
+        }
         return (
           node.data.endEvent?.payload?.tool_response || {
             message:

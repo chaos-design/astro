@@ -274,6 +274,36 @@ export function contentToMarkdown(content: string): string {
   return text;
 }
 
+/**
+ * The content pane's last resort: a payload whose split produced no prose
+ * (arguments, contract envelopes, structured results) still has something to
+ * say. Dump it as highlighted JSON instead of an empty pane — a reader
+ * switching rows must always see the row's own data change. A `{ captured }`
+ * wrapper dumps only its captured half (the contract topology metadata stays
+ * on the Raw tab); everything else dumps the payload as-is. Returns "" only
+ * for a truly empty payload, so the caller's empty state stays truthful.
+ */
+export function fallbackPayloadMarkdown(payload: unknown): string {
+  if (payload === null || payload === undefined) {
+    return "";
+  }
+  if (typeof payload === "string") {
+    return contentToMarkdown(payload);
+  }
+  if (typeof payload !== "object") {
+    return contentToMarkdown(String(payload));
+  }
+  const record = payload as Record<string, unknown>;
+  const inner =
+    "captured" in record && record.captured !== null && record.captured !== undefined
+      ? record.captured
+      : payload;
+  if (!Array.isArray(inner) && Object.keys(inner as object).length === 0) {
+    return "";
+  }
+  return contentToMarkdown(JSON.stringify(inner, null, 2));
+}
+
 /** Related fields sorted so annotations lead, then timestamps / paths / ids. */
 export function orderRelated(fields: readonly RelatedField[]): RelatedField[] {
   return [...fields].sort((a, b) => {
