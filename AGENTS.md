@@ -879,8 +879,16 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   `toolResponse` spelling and renders a `structuredPatch` as a highlighted
   diff), and only a payload with nothing to say falls back to highlighted
   JSON (`fallbackPayloadMarkdown` — switching rows must always
-  change the pane, never sit empty). Switching rows in the rail is a lookup,
-  never a repeated Markdown parse. Its preview is type-aware:
+  change the pane, never sit empty). The generic view is **content-only**:
+  metadata keys stay out (they are labelled in the related-data pane),
+  field-name headings are not printed, and a string value is fenced with its
+  inferred language (`inferCodeLanguage` / `fenceCode` — json / diff / xml /
+  typescript / python / bash; a wrong guess colours prose into noise, so weak
+  signals additionally require code punctuation or a multi-line body). The
+  related-data pane **folds by default**: its body is capped (200px) with an
+  展开 / 收起 toggle in the pane head that expands it downward, and the two
+  pane titles stay pinned while their bodies scroll. Switching rows in the
+  rail is a lookup, never a repeated Markdown parse. Its preview is type-aware:
   a user.question Input tab passes the raw
   question payload to `QuestionPreview` (the shared read-only question / option
   / answer list) instead of the Markdown path — an answers-only payload with no

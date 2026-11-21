@@ -5781,6 +5781,53 @@ pre,
   text-transform: uppercase;
 }
 
+/* The related pane's head row carries the title and its fold toggle; the
+   title keeps its spacing through the wrapper instead. */
+.payload-overlay__pane-head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 10px;
+}
+
+.payload-overlay__pane-head .payload-overlay__pane-title {
+  margin: 0;
+}
+
+.payload-overlay__related-toggle {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  border: 1px solid color-mix(in srgb, var(--line-bright) 70%, transparent);
+  border-radius: 4px;
+  color: var(--muted);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: var(--text-overline);
+  background: transparent;
+}
+
+.payload-overlay__related-toggle svg {
+  width: 9px;
+  height: 9px;
+}
+
+.payload-overlay__related-toggle:hover {
+  border-color: color-mix(in srgb, var(--violet) 45%, var(--line));
+  color: var(--text);
+}
+
+/* Folded, the related body caps its height so the content pane keeps the
+   room; expanding removes the cap and the fields grow downward inside the
+   pane (which still scrolls if the run's related data outruns it). */
+.payload-overlay__related-body.is-folded {
+  max-height: 200px;
+}
+
 .payload-overlay__pane .payload-overlay__body {
   flex: 1;
   min-height: 0;

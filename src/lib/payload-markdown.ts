@@ -7,11 +7,20 @@
  * Known structured payloads get a shape that reads like their meaning:
  * answers become question → Markdown-answer rows, questions become a list with
  * their options, and tool content arrays are flattened to their text. Anything
- * else keeps the generic key/value + fenced JSON form.
+ * else keeps a content-only generic view — metadata keys stay out (they are
+ * labelled in the related-data pane) and the remaining values render with
+ * inferred-language code fences, without field-name headings.
  *
  * This is presentation only — the Code surface shows the untouched payload,
  * and nothing here is written back to a captured event.
  */
+
+import {
+  fenceCode,
+  inferCodeLanguage,
+  isPayloadContainerKey,
+  isPayloadMetaKey,
+} from "./payload-preview.ts";
 
 const TEXT_KEYS = [
   "message",
@@ -360,19 +369,35 @@ function arrayToMarkdown(value: unknown[], depth: number, seen: WeakSet<object>)
   return items.join("\n\n---\n\n");
 }
 
+/**
+ * The generic view is content-only: a preview pane shows what the payload
+ * carried, not a field-name index. Metadata keys stay out (the related-data
+ * pane labels them), plain numbers/booleans are metadata values and drop, a
+ * string is fenced with its inferred language so code arrives highlighted
+ * (prose that infers nothing stays prose), and a nested object fences as
+ * highlighted JSON.
+ */
 function objectToMarkdown(value: UnknownRecord, depth: number, seen: WeakSet<object>): string {
   const blocks: string[] = [];
   for (const [key, item] of Object.entries(value)) {
-    const label = escapeInline(key);
+    // A container key (tool_input / payload / …) hides the content one level
+    // down and is never metadata; other metadata keys stay beside the preview.
+    const container = item !== null && typeof item === "object" && isPayloadContainerKey(key);
+    if (!container && isPayloadMetaKey(key)) {
+      continue;
+    }
     if (typeof item === "string") {
       if (!item.trim()) {
         continue;
       }
-      blocks.push(`### ${label}\n\n${item}`);
-    } else if (item === null || item === undefined || typeof item !== "object") {
-      blocks.push(`- **${label}**: \`${safeJson(item)}\``);
-    } else {
-      blocks.push(`### ${label}\n\n\`\`\`json\n${safeJson(item)}\n\`\`\``);
+      const language = inferCodeLanguage(item);
+      blocks.push(language ? fenceCode(item, language) : item);
+    } else if (item !== null && item !== undefined && typeof item === "object") {
+      if (container) {
+        blocks.push(payloadToMarkdown(item, depth + 1, seen));
+      } else {
+        blocks.push(fenceCode(safeJson(item), "json"));
+      }
     }
   }
   return blocks.join("\n\n");
@@ -380,10 +405,11 @@ function objectToMarkdown(value: UnknownRecord, depth: number, seen: WeakSet<obj
 
 /**
  * A captured result with no single display text is still content, not
- * metadata: render its fields as readable lines instead of a JSON dump. Plain
- * nested objects become indented lines and arrays become bullet lists, so a
- * small structured result reads as its values rather than as field labels and
- * fenced JSON.
+ * metadata: render its field VALUES as readable lines instead of a JSON dump.
+ * Metadata keys stay out (they are labelled in the related-data pane) and the
+ * remaining values keep their nesting — plain arrays become bullet lists, a
+ * nested object indents under its value — so a small structured result reads
+ * as its values rather than as field labels and fenced JSON.
  */
 function readableFields(value: unknown, depth: number, seen: WeakSet<object>): string {
   if (!isRecord(value) || depth > MAX_DEPTH || seen.has(value)) {
@@ -392,10 +418,13 @@ function readableFields(value: unknown, depth: number, seen: WeakSet<object>): s
   seen.add(value);
   const lines: string[] = [];
   for (const [key, item] of Object.entries(value)) {
+    const container = item !== null && typeof item === "object" && isPayloadContainerKey(key);
+    if (!container && isPayloadMetaKey(key)) {
+      continue;
+    }
     if (item === null || item === undefined) {
       continue;
     }
-    const label = escapeInline(key);
     if (Array.isArray(item)) {
       const children = item
         .map((entry) =>
@@ -404,19 +433,18 @@ function readableFields(value: unknown, depth: number, seen: WeakSet<object>): s
             : `  - \`${escapeInline(safeJson(entry))}\``,
         )
         .join("\n");
-      lines.push(`- **${label}**${children ? `:\n${children}` : ""}`);
+      if (children) {
+        lines.push(children);
+      }
     } else if (isRecord(item)) {
+      // Without field-name labels there is no header to nest under: the
+      // container's own values join the list directly.
       const nested = readableFields(item, depth + 1, new WeakSet());
       if (nested) {
-        lines.push(
-          `- **${label}**:\n${nested
-            .split("\n")
-            .map((line) => `  ${line}`)
-            .join("\n")}`,
-        );
+        lines.push(nested);
       }
     } else {
-      lines.push(`- **${label}**: \`${escapeInline(String(item))}\``);
+      lines.push(`- ${escapeInline(String(item))}`);
     }
   }
   return lines.join("\n");

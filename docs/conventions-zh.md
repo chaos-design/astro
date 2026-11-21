@@ -84,10 +84,15 @@
     没有正文的载荷走共享的核心内容抽取 `payload-markdown.ts` 的
     `payloadToMarkdown`（读 camel `toolResponse`、把 `structuredPatch` 渲染成
     高亮 diff——预览的是载荷的**核心信息**：tool result 的结果、prompt input、
-    message content，而不是原始信封），仍无内容才回退为高亮 JSON
-    （`payload-preview.ts` 的 `fallbackPayloadMarkdown`，`captured` 包装只倾倒
-    captured 半边）——切换行必须改变内容，面板不得停留在同一个空态），切换
-    左侧列表是查表而非重新解析 Markdown；浮层左侧的「运行消息链路」由 app.tsx
+    message content，而不是原始信封）；通用视图是**纯内容的**——metadata 键
+    不进正文（`isPayloadMetaKey`，容器键 `tool_input`/`toolResponse` 除外，
+    它们递归展开），字段名标签不打印，字符串值按推断语言围栏高亮
+    （`inferCodeLanguage` / `fenceCode`：json / diff / xml / typescript /
+    python / bash；弱信号必须另有代码标点或多行才围栏，防止把散文误染色），
+    仍无内容才回退为高亮 JSON（`payload-preview.ts` 的
+    `fallbackPayloadMarkdown`，倾倒前同样剥掉 metadata 键，`captured` 包装只
+    倾倒 captured 半边）——切换行必须改变内容，面板不得停留在同一个空态），
+    切换左侧列表是查表而非重新解析 Markdown；浮层左侧的「运行消息链路」由 app.tsx
     用 LOG 同源的 `buildLogEntries(activeEvents, …)` 结果映射出的 `overlayAtoms`
     提供——**每行一个事件**（附它提交到的 harness 原子 id），并按
     `buildTraceTurnIndex` 的轮次分隔符分组；旧的流水线原子列表（每个平台原子
@@ -121,7 +126,8 @@
     之后新事件到达只做**滚动跟随**（把选中行滚进视口），绝不代替读者改选中态；
     点任意行即解除跟随；armed 呼吸灯；
     预览正文与相关数据字号各大一档，两个窗格的标题（原子内容 / 相关数据）
-    钉住不动、正文在标题下滚动；
+    钉住不动、正文在标题下滚动；「相关数据」默认**折叠**（正文上限 200px，
+    标题行带「展开 / 收起」开关，向下展开、可再次收起）；
     只读问题预览（`QuestionPreview` → `StaticQuestionContent`）先给问题数与
     捕获顺序提示，再给编号题目、作答状态与单独的已选答案行，静态选中 chip
     比实时选项更醒目；

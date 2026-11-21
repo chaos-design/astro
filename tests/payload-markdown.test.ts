@@ -12,25 +12,40 @@ test("a single text field is unwrapped instead of gaining a redundant heading", 
   assert.equal(payloadToMarkdown({ output: "hello" }), "hello");
 });
 
-test("multiple fields keep their structure and stringify structured values as JSON", () => {
+test("the generic view is content-only: metadata keys and scalars stay out", () => {
   const markdown = payloadToMarkdown({
     message: "Here is the plan",
     meta: { turns: 2 },
     count: 3,
     ok: true,
   });
-  assert.match(markdown, /### message\n\nHere is the plan/);
-  assert.match(markdown, /### meta\n\n```json\n/);
-  assert.match(markdown, /"turns": 2/);
-  assert.match(markdown, /- \*\*count\*\*: `3`/);
-  assert.match(markdown, /- \*\*ok\*\*: `true`/);
+  // The message is the content; the field-name heading, the metadata object
+  // and the plain scalar values do not belong in the preview pane.
+  assert.equal(markdown, "Here is the plan");
+  assert.doesNotMatch(markdown, /###|turns|count|`3`|`true`/);
 });
 
 test("arrays of plain values render as a list and other scalars stay readable", () => {
   assert.equal(payloadToMarkdown(["one", "two"]), "- one\n- two");
   assert.equal(payloadToMarkdown(42), "42");
   assert.equal(payloadToMarkdown(null), "");
-  assert.equal(payloadToMarkdown({ blank: "", kept: "yes" }), "### kept\n\nyes");
+  assert.equal(payloadToMarkdown({ blank: "", kept: "yes" }), "yes");
+});
+
+test("a code string in an unnamed field is fenced with its inferred language", () => {
+  const markdown = payloadToMarkdown({
+    tool_input: {
+      file_path: "/tmp/project/file.test.tsx",
+      old_string: 'import { IMPERIAL_EXAM_LADDER } from "./ladder";',
+      new_string: 'import { EXAM_STAGES } from "./ladder";',
+      replace_all: false,
+    },
+  });
+  // Metadata (file_path, replace_all) stays out; the two code strings are
+  // highlighted fences, with no field-name headings.
+  assert.match(markdown, /```typescript\nimport \{ IMPERIAL_EXAM_LADDER \}/);
+  assert.match(markdown, /```typescript\nimport \{ EXAM_STAGES \}/);
+  assert.doesNotMatch(markdown, /###|file_path|replace_all/);
 });
 
 test("an answers map becomes question rows with Markdown answers", () => {
@@ -112,7 +127,7 @@ test("the inspector wrapper previews the captured content, not the contract meta
   assert.doesNotMatch(markdown, /contract|captured|```json/);
 });
 
-test("a structured captured result reads as fields instead of a JSON dump", () => {
+test("a structured captured result reads as its values instead of a JSON dump", () => {
   const markdown = payloadToMarkdown({
     contract: { label: "tool.result", output: {} },
     captured: {
@@ -121,10 +136,10 @@ test("a structured captured result reads as fields instead of a JSON dump", () =
       tool_response: { status: "ok", bytes: 18420 },
     },
   });
-  assert.match(markdown, /\*\*tool\\_response\*\*:/);
-  assert.match(markdown, /\*\*status\*\*: `ok`/);
-  assert.match(markdown, /\*\*bytes\*\*: `18420`/);
-  assert.doesNotMatch(markdown, /```json/);
+  // Values only — the metadata keys (tool_use_id, tool_name, status) are
+  // labelled in the related-data pane, not in the preview.
+  assert.equal(markdown, "- 18420");
+  assert.doesNotMatch(markdown, /\*\*status\*\*|\*\*bytes\*\*|```json|tool_use_id|tool_name|ok/);
 });
 
 test("a nested tool_input plan previews as markdown, not field labels", () => {

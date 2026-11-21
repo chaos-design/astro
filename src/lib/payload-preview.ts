@@ -47,6 +47,7 @@ const META_KEY_HINTS = [
   "trace",
   "turn",
   "turnid",
+  "meta",
   "model",
   "provider",
   "source",
@@ -107,6 +108,26 @@ function isMeta(key: string): boolean {
     META_KEY_HINTS.some((hint) => name.includes(hint)) ||
     /^(?:[A-Za-z_]+_)?(?:at|on|from|to)$/.test(name)
   );
+}
+
+/**
+ * Whether a field name describes *when* / *where* / *how* rather than what was
+ * said. Shared with the core extractor (`payload-markdown.ts`), whose generic
+ * view keeps only content fields — metadata stays beside the preview, in the
+ * related-data pane. Container keys (a `tool_input` / `toolResponse` hiding
+ * the content one level down) are never metadata.
+ */
+export function isPayloadMetaKey(key: string): boolean {
+  return isMeta(key);
+}
+
+/**
+ * Whether a field name is one of the containers that hide the real content
+ * one level down. Always walked before the metadata check — `tool_response`
+ * contains "tool", but it is a container, not metadata.
+ */
+export function isPayloadContainerKey(key: string): boolean {
+  return CONTAINER_KEYS.includes(normalized(key));
 }
 
 /** Flatten a scalar / small array value into one readable line. */
@@ -253,9 +274,88 @@ function mergeRelated(fields: RelatedField[]): RelatedField[] {
 }
 
 /**
+ * Conservative code-language inference for a captured text. Only strong
+ * signals count — a wrong guess colours prose into noise, so everything here
+ * requires a structural marker (a fence language the renderer has registered:
+ * json / diff / xml / typescript / python / bash / yaml).
+ */
+export function inferCodeLanguage(text: string): string | null {
+  const body = text.trim();
+  if (!body || body.includes("\u0000")) {
+    return null;
+  }
+  // Structural formats self-identify; everything else is a weak signal that
+  // prose can trip ("git status shows changes" is a sentence), so a weak
+  // candidate additionally requires code punctuation or a multi-line body.
+  const structural = inferStructuralLanguage(body);
+  if (structural) {
+    return structural;
+  }
+  const candidate = inferKeywordLanguage(body);
+  if (!candidate) {
+    return null;
+  }
+  const looksLikeCode = /[{};=<>[\]]/.test(body) || body.includes("\n");
+  return looksLikeCode ? candidate : null;
+}
+
+function inferStructuralLanguage(body: string): string | null {
+  if (body.startsWith("{") || body.startsWith("[")) {
+    try {
+      JSON.parse(body);
+      return "json";
+    } catch {
+      // Not JSON after all — keep looking.
+    }
+  }
+  if (/^diff --git\b/m.test(body) || /^@@ -\d+(?:,\d+)? [+-]\d+/m.test(body)) {
+    return "diff";
+  }
+  if (/^\s*<\?xml\b/i.test(body) || /^\s*<(?:!doctype|html|head|body|div|span|p|section|template|svg|table|ul|li)\b/i.test(body)) {
+    return "xml";
+  }
+  return null;
+}
+
+function inferKeywordLanguage(body: string): string | null {
+  if (
+    /^\s*(?:import|export)\s[\w"'{*]/m.test(body) ||
+    /^\s*(?:const|let|var|function|class|interface|type)\s+\w/m.test(body) ||
+    /=>\s*\{/.test(body)
+  ) {
+    return "typescript";
+  }
+  if (
+    /^\s*(?:def|class)\s+\w+\s*\(?\s*[:a-zA-Z]/m.test(body) ||
+    /^\s*print\(/m.test(body) ||
+    /^\s*from\s+[\w.]+\s+import\b/m.test(body)
+  ) {
+    return "python";
+  }
+  if (
+    /^\s*(?:ls|cat|wc|head|tail|grep|find|sed|awk|chmod|chown|mkdir|touch|rm|cp|mv|ln|curl|wget|git|npm|pnpm|yarn|npx|node|python3?|pip3?|docker|make|brew|sudo|ssh|scp|tar)\s+\S/m.test(body)
+  ) {
+    return "bash";
+  }
+  return null;
+}
+
+/**
+ * Wrap a text in a fenced code block, optionally with a language, so the
+ * Markdown renderer highlights it. A `null` language still fences — the
+ * renderer falls back to an escaped, monospace block — which is how the
+ * generic view keeps multi-line values intact without markdown mangling.
+ */
+export function fenceCode(text: string, language?: string | null): string {
+  return `\`\`\`${language ?? ""}\n${text.trimEnd()}\n\`\`\``;
+}
+
+/**
  * Fence a content that is itself code so the Markdown renderer highlights it.
  * Plain Markdown and prose pass through unchanged — the renderer already
- * handles inline and fenced code, headings and lists.
+ * handles inline and fenced code, headings and lists. A text that is code in
+ * an unnamed field (an `import` line, a diff, a shell command) is fenced with
+ * its inferred language instead of being rendered as mangled prose.
  */
 export function contentToMarkdown(content: string): string {
   const text = content.trim();
@@ -263,25 +363,53 @@ export function contentToMarkdown(content: string): string {
     return "";
   }
   const trimmed = text.trim();
-  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
-    try {
-      JSON.parse(trimmed);
-      return `\`\`\`json\n${trimmed}\n\`\`\``;
-    } catch {
-      // Not JSON — keep the original text.
-    }
+  const language = inferCodeLanguage(trimmed);
+  if (language) {
+    return fenceCode(trimmed, language);
   }
-  return text;
+  return trimmed;
+}
+
+/**
+ * Drop metadata fields from a JSON dump so the fallback shows the content
+ * fields, not the envelope. A container that ends up empty after the strip is
+ * omitted entirely.
+ */
+function stripMetaKeys(value: unknown, depth = 0): unknown {
+  if (depth > 6) {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => stripMetaKeys(item, depth + 1));
+  }
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [key, item] of Object.entries(value)) {
+      if (isPayloadMetaKey(key)) {
+        continue;
+      }
+      const stripped = stripMetaKeys(item, depth + 1);
+      if (
+        stripped !== undefined &&
+        !(typeof stripped === "object" && stripped !== null && !Array.isArray(stripped) && Object.keys(stripped).length === 0)
+      ) {
+        out[key] = stripped;
+      }
+    }
+    return Object.keys(out).length ? out : undefined;
+  }
+  return value;
 }
 
 /**
  * The content pane's last resort: a payload whose split produced no prose
  * (arguments, contract envelopes, structured results) still has something to
- * say. Dump it as highlighted JSON instead of an empty pane — a reader
- * switching rows must always see the row's own data change. A `{ captured }`
- * wrapper dumps only its captured half (the contract topology metadata stays
- * on the Raw tab); everything else dumps the payload as-is. Returns "" only
- * for a truly empty payload, so the caller's empty state stays truthful.
+ * say. Dump it as highlighted JSON — with metadata keys stripped, so the dump
+ * carries the content fields and not the envelope — instead of an empty pane;
+ * a reader switching rows must always see the row's own data change. A
+ * `{ captured }` wrapper dumps only its captured half (the contract topology
+ * metadata stays on the Raw tab). Returns "" only for a payload with nothing
+ * left to show, so the caller's empty state stays truthful.
  */
 export function fallbackPayloadMarkdown(payload: unknown): string {
   if (payload === null || payload === undefined) {
@@ -301,7 +429,14 @@ export function fallbackPayloadMarkdown(payload: unknown): string {
   if (!Array.isArray(inner) && Object.keys(inner as object).length === 0) {
     return "";
   }
-  return contentToMarkdown(JSON.stringify(inner, null, 2));
+  const stripped = stripMetaKeys(inner);
+  if (
+    stripped === undefined ||
+    (typeof stripped === "object" && stripped !== null && !Array.isArray(stripped) && Object.keys(stripped).length === 0)
+  ) {
+    return "";
+  }
+  return contentToMarkdown(JSON.stringify(stripped, null, 2));
 }
 
 /** Related fields sorted so annotations lead, then timestamps / paths / ids. */

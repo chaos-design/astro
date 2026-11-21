@@ -369,7 +369,8 @@ test("the rail filters its chain through a local search box", () => {
 
 /**
  * The two preview panes keep their titles pinned: 「原子内容」 / 「相关数据」
- * stay put while their bodies scroll under them.
+ * stay put while their bodies scroll under them. The related pane's head also
+ * carries its fold toggle.
  */
 test("the pane titles stay pinned while their bodies scroll", () => {
   assert.match(
@@ -380,11 +381,35 @@ test("the pane titles stay pinned while their bodies scroll", () => {
     stylesForOverlay,
     /\.payload-overlay__pane \.payload-overlay__body \{[\s\S]*?overflow: auto/,
   );
-  // The related pane wraps its fields in the same scrolling body.
+  // The related pane wraps its fields in the same scrolling body, under a
+  // head that carries the fold toggle.
   assert.match(
     overlay,
-    /payload-overlay__pane-title">相关数据<\/h4>\s*\n\s*<div className="payload-overlay__body">/,
+    /payload-overlay__pane-head">\s*\n\s*<h4 className="payload-overlay__pane-title">相关数据<\/h4>/,
   );
+  assert.match(
+    overlay,
+    /payload-overlay__pane-title">相关数据<\/h4>[\s\S]*?<div\s*\n?\s*className=\{cn\(\s*\n\s*"payload-overlay__body payload-overlay__related-body"/,
+  );
+});
+
+/**
+ * The related pane folds by default: its body is capped so the content pane
+ * keeps the room, and one toggle expands it downward (and collapses again).
+ */
+test("the related data folds behind an expand toggle", () => {
+  assert.match(overlay, /const \[relatedExpanded, setRelatedExpanded\] = useState\(false\)/);
+  assert.match(overlay, /aria-expanded=\{relatedExpanded\}/);
+  assert.match(overlay, /\{relatedExpanded \? "收起" : "展开"\}/);
+  assert.match(
+    overlay,
+    /!relatedExpanded && preview\.related\.length > 0 && "is-folded"/,
+  );
+  assert.match(
+    stylesForOverlay,
+    /\.payload-overlay__related-body\.is-folded \{\s*\n\s*max-height: 200px;/,
+  );
+  assert.match(stylesForOverlay, /\.payload-overlay__related-toggle \{/);
 });
 
 /**

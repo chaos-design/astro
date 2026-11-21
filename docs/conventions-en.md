@@ -108,7 +108,17 @@
     with nothing to say falls back to highlighted JSON
     (`fallbackPayloadMarkdown`, dumping only the `captured` half of a
     `{ contract, captured }` wrapper) — switching rows always
-    changes the pane instead of sitting on one shared empty state. The rail
+    changes the pane instead of sitting on one shared empty state. The
+    generic view is **content-only**: metadata keys stay out
+    (`isPayloadMetaKey`; container keys like `tool_input` / `toolResponse`
+    recurse instead), field-name headings are not printed, and a string value
+    is fenced with its inferred language (`inferCodeLanguage` / `fenceCode` —
+    json / diff / xml / typescript / python / bash; weak signals additionally
+    require code punctuation or a multi-line body so prose never gets
+    colourised). The related pane **folds by default**: its body is capped
+    (200px) with an 展开 / 收起 toggle in the pane head that expands it
+    downward, and the two pane titles stay pinned while their bodies scroll.
+    The rail
     head is **one row** — counter, search box, Live toggle — and the rail has
     its **own search box** (rail-local state, the LOG's deferred-needle
     pattern over the rows' display fields AND the row event's payload content

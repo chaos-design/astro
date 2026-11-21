@@ -680,11 +680,16 @@ The inspector provides:
   picking a row, the content pane shows the **core information of that row's
   own event**: a tool-call row its arguments, a result row the real result (an
   Edit-style change renders as a highlighted diff), a prompt row its text;
-  Markdown lists, code and option lists render and highlight by data type; a
-  payload with no readable prose falls back to its highlighted JSON —
-  switching rows always changes the content. The two pane titles (atom
-  content / related data) stay pinned at the top of their panes while the
-  bodies scroll beneath them.
+  Markdown lists, code and option lists render and highlight by data type,
+  code strings are fenced with their inferred language (json / diff / xml /
+  typescript / python / bash), and field-name labels stay out of the body; a
+  payload with no readable prose falls back to its highlighted JSON with the
+  metadata keys stripped —
+  switching rows always changes the content. The related-data pane folds by
+  default (its body capped at ~200px, with an 展开 / 收起 toggle in the pane
+  head that expands it downward and collapses it again), and the two pane
+  titles (atom content / related data) stay pinned at the top of their panes
+  while the bodies scroll beneath them.
 
 Selecting a topology atom additionally exposes the atom contract, input/output ports, gate state, and bound event.
 The right panel state is stored in `ASTROX_CONSOLE_OPEN`.
