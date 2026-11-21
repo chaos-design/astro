@@ -24,7 +24,7 @@ const projectDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 const validDocument = {
   schemaVersion: 1,
-  session: { id: "s-1", source: "codex", workspaceId: "w", cwd: "/repo" },
+  session: { id: "s-1", source: "chatgpt", workspaceId: "w", cwd: "/repo" },
   events: [
     { offsetMs: -1_000, eventName: "SessionStart", payload: {} },
     { offsetMs: 0, eventName: "Stop", payload: {} },

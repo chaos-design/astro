@@ -17,7 +17,7 @@ ASTRO 用于在本机采集、查看和回放编码智能体的运行事件。�
 - 从执行拓扑理解工具调用、观察结果、记忆、质量门禁和输出提交之间的关系；
 - 检查某个工具调用的输入、输出、耗时和原始载荷；
 - 回放历史会话，定位失败发生前后的状态变化；
-- 在 Trae、Claude Code、Codex、DeepSeek Harness、WorkBuddy 和浏览器客户端之间使用统一事件格式；
+- 在 Trae、Claude Code、ChatGPT、DeepSeek Harness、WorkBuddy 和浏览器客户端之间使用统一事件格式；
 - 导入、导出和分享单次运行的 JSONL Trace。
 
 ![ASTRO 桌面界面](assets/astro-desktop.png)
@@ -102,11 +102,11 @@ pnpm dev
 pnpm build:native-plugins
 ```
 
-然后通过当前仓库的 marketplace 安装 Codex 插件：
+然后通过当前仓库的 marketplace 安装 ChatGPT 插件：
 
 ```bash
-codex plugin marketplace add /absolute/path/to/astro
-codex plugin add astro@astro-local
+chatgpt plugin marketplace add /absolute/path/to/astro
+chatgpt plugin add astro@astro-local
 ```
 
 Claude Code 可以直接加载原生插件：
@@ -125,25 +125,25 @@ claude plugin install astro@astro-local --scope user
 以下各节介绍直接写入 Hook 配置的兼容安装方式，适用于 Trae 或不支持原生插件的
 运行环境。
 
-#### 4.2.1 Codex
+#### 4.2.1 ChatGPT
 
-将当前用户的 Hook 安装到 `$CODEX_HOME/hooks.json`：
+将当前用户的 Hook 安装到 `$CHATGPT_HOME/hooks.json`：
 
 ```bash
-pnpm install-plugins -- --clients=codex
+pnpm install-plugins -- --clients=chatgpt
 ```
 
-使用非默认 Codex Home：
+使用非默认 ChatGPT Home：
 
 ```bash
-pnpm install-plugins -- --clients=codex --codex-home=/path/to/.codex
+pnpm install-plugins -- --clients=chatgpt --chatgpt-home=/path/to/.chatgpt
 ```
 
-安装后重启 Codex，在需要观测的项目中执行 `codex` 并新建会话。实时事件写入
-`~/.astrox/codex/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl`。如需导入已有的活动和归档 rollout：
+安装后重启 ChatGPT，在需要观测的项目中执行 `chatgpt` 并新建会话。实时事件写入
+`~/.astrox/chatgpt/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl`。如需导入已有的活动和归档 rollout：
 
 ```bash
-pnpm import-codex
+pnpm import-chatgpt
 ```
 
 #### 4.2.2 Claude Code
@@ -321,7 +321,10 @@ JSONL，服务通过 SSE 推送给页面，RUN HISTORY、拓扑与轨迹实时�
 - 设置图标（齿轮）：打开设置，配置默认时间范围和 Live 筛选。
 - 主题：浅色、深色、跟随系统；选择保存在 `ASTROX_THEME`。
 - 服务状态胶囊（显示本地服务运行时长）：点开是本地服务卡片，列出控制台/服务版本、
-  进程信息、会话计数、数据目录和「重启本地服务」。运行时长跟随同步暂停：同步按
+  进程信息、会话计数、数据目录和「重启本地服务」。服务还活着时该按钮走
+`POST /api/restart` 原地重启；服务不可达时按钮改为「复制启动命令」，复制
+`pnpm service:up --port=<当前端口>`——浏览器不能在本机拉起进程，这条命令是脱离
+HTTP 的带外启动入口。运行时长跟随同步暂停：同步按
   上限停止（`paused`）时这里也停止计时，恢复同步后从暂停时的读数继续，重启本地
   服务则从新进程重新计时。数据目录右侧的「更改」可以填入
   另一个已存在的绝对路径（支持 `~/`），「保存并重启」会把它写入安装运行时的
@@ -374,7 +377,9 @@ LOG 都不会先闪一次「空」。
 保持稳定（不会随事件到达来回跳动），只有当某条消息发出新 prompt 时，它才会升到最上面。
 别的智能体正在执行的消息不会出现在这个列表里；它们由顶部的智能体下拉框提示：正在运行的
 智能体名称右侧有一个呼吸圆点，切过去就能看到那条消息。切换智能体时，画布、LOG 与列表一起落到
-新智能体的最新消息，不会继续停在原来那条运行上。
+新智能体的运行上：如果它此刻有正在执行的消息，就定位到那条 Live 消息（底部 Live 按钮
+默认高亮），而不是最新完成的消息——恢复运行的会话可能几天前才发出第一条 prompt；没有
+Live 消息时才落到最新一条。底部 Live 按钮从非实时状态点击时也走同一选择逻辑。
 
 面板头部右侧的 `N LIVE` 胶囊是一个可切换的 Live 筛选：
 
@@ -428,7 +433,7 @@ deepseek 的 `AgentMessage` 携带结构化 `model`/`provider`，opencode 的 st
 通知携带 `model`（更早的数据从消息文本解析），ZCode 在 `SessionStart` 上报
 会话所用模型（会话中途切换模型时，后续消息显示的仍是会话起始模型）；
 一条运行内切换过模型时显示最后一次。未上报模型的客户端（如 claude、
-codex 的 Hook）不显示该标签，与「没有模型」不加区分。一个 Prompt 子运行从对应
+chatgpt 的 Hook）不显示该标签，与「没有模型」不加区分。一个 Prompt 子运行从对应
 `UserPromptSubmit` 开始，到下一条 Prompt 之前结束。
 
 点击子行会把它设为当前诊断范围；点击父行会选择最新 Prompt。界面同时只展开一个
@@ -447,7 +452,7 @@ codex 的 Hook）不显示该标签，与「没有模型」不加区分。一个
 
 工具栏功能：
 
-- 平台语义：Codex、Claude Code、Trae，以及其他已配置的智能体，外加末尾的
+- 平台语义：ChatGPT、Claude Code、Trae，以及其他已配置的智能体，外加末尾的
   **Others** 兜底项；
 - 拓扑/轨迹切换；
 - 原子与连线指南；
@@ -504,17 +509,192 @@ codex 的 Hook）不显示该标签，与「没有模型」不加区分。一个
   `AskUserQuestion`、`Notification` 提问）提供 `Preview` / `Code` 两种视图：
   `Preview` 把问题内容按真实渲染效果显示——markdown 源先经过校验再渲染为富文本
   （标题、列表、代码块等），并去除可执行内容；校验失败或空内容回退为原文显示，
-  结构化问题还会把捕获到的选项渲染成选项列表；  计划批准（如 ZCode 的
+  结构化问题还会把捕获到的选项渲染成选项列表；计划批准（如 ZCode 的
   `PermissionRequest` + `ExitPlanMode`）没有 questions 数组，此时 `Preview` 会把
   `tool_input.plan` 的 Markdown 计划渲染为 `Plan` 段落；计划批准对应的
   `Pre/PostToolUse` 工具行也按内容识别显示 Plan 预览，但显示键仍是
   `tool.call` / `tool.result`，不改变投影、等待态与拓扑计数；`Code` 显示原始载荷；
 - `Output`：工具结果或回复；
 - `Raw`：完整标准化事件；
-- JSON 复制按钮：复制当前结构化数据。
+- JSON 复制按钮：复制当前结构化数据；
+- 放大按钮：选中 `Input` / `Output` / `Raw` 时，检查器头部右侧的放大图标打开**全局浮层**，在更大的区域展示同一份载荷。浮层顶部有 `Preview` / `Code` 切换：`Preview` 拆成**两块区域**——左侧「原子内容」是该原子真正携带的文本（`user.question` 显示与客户端一致的问题、选项与答案列表；其余载荷按 Markdown 渲染），右侧「相关数据」列出与该原子关联的时间戳、路径、会话/工具 ID 以及注释、说明等字段（注释优先显示）；内容是代码（含 JSON）时用 highlight.js 做代码高亮，Markdown 则按标题/列表/任务清单渲染，渲染前经过 HTML 清理去除可执行内容；每行的预览准备一次后按事件 ID 缓存（按打开浮层的标签页分域），在左侧列表间切换为查表，不再重复解析 Markdown。工具返回值会先在任意层级找出真正的捕获结果（`captured`、`tool_response`、`output`、`result`、`tool_input` 里的 `plan` 及其嵌套内容）并直接按文本渲染，因此 Markdown 结果是真正的标题/列表/任务清单/代码块而不是字段名与 JSON 串；JSON 结果放进代码块以启用高亮。孤立文本字段（消息、输出、计划原文）直接作为 Markdown 显示；没有单一文本的结构化结果按可读字段行展示；检查器包装的 `{ contract, captured }` 只预览 `captured`，拓扑元数据不进入浮层。`Code` 则是带类型着色的原始 JSON，与检查器内一致；没有可预览文本时给出提示，可切到 `Code` 查看原始载荷。Escape 或点击遮罩关闭浮层。浮层左侧是本次运行的**消息链路**，与 LOG 列表同一数据规范：本次运行 LOG 里的每一个事件一行，按 LOG 的轮次分隔符分组、倒序渲染（最新在最上、最早的在最下），每行带着它在 LOG 里的行号；点选任一行即跳到那一步的载荷。列表与画布、LOG、检查器共用同一个选中态——在弹窗里点选后，主控制台也会切到该事件，不会出现弹窗高亮 A、画布停在 B 的错位。当前选中的行在列表中高亮并带 `aria-current`。每一行就是 LOG 行本身——`#序号`、紫色 TYPE 徽标、事件键（完整显示，不截断）、时间（日期 + 时钟）、动作与摘要、成对工具调用的耗时徽标（**保留精确毫秒**，如 `12500ms`），以及指向另一半行号的成对标记——什么时候做了什么、做了多久，在弹窗内即可完整复现；方向键与 Home/End 可以在行间移动焦点。栏头是**一行**：运行计数、搜索框与 Live 开关。列表有自己的搜索框（栏内局部状态，带清空按钮）：输入关键字按事件键、动作、摘要**以及载荷内容**过滤链路，某轮全部未命中时该轮分隔符随之消失；扫过指针不改变行样式，选中行以更大的字号和更亮的选中底色标出。运行状态仍为 RUNNING（含 STALE 静默标记）时，栏头的 **Live** 开关保持可点：点击跳到该消息的最新事件并进入跟随位姿——真正执行中的消息会持续跟随最新原子（新事件出现时选中行保持在视口内，开关带呼吸灯）；点任意行即固定当前载荷不再前进。已结束的运行（或示例数据）开关呈禁用态并说明原因。浮层是全局的（渲染到 document body），但列表范围仅限当前运行，且内容始终跟随那一个选中态。点选一行后，右侧「原子内容」展示**该行自己事件的核心信息**——工具调用行显示参数、结果行显示真正的结果（Edit 类改动渲染为高亮 diff）、提示词行显示原文；Markdown 列表、代码、选项列表按数据类型渲染并高亮，代码字符串按推断语言（json / diff / xml / ts / python / bash）围栏高亮，字段名标签不出现在正文里；没有可直接预览正文的载荷以剥掉元数据键的高亮 JSON 兜底，切换行时内容随之更新。右侧「相关数据」默认折叠（正文最多显示约 200px，标题行有「展开 / 收起」开关，向下展开、可再次收起）；两个窗格的标题（原子内容 / 相关数据）钉在窗格顶部，正文在标题下滚动。
 
 选择拓扑原子时，检查器会额外显示原子契约、输入端口、输出端口、门禁状态和绑定事件。
 右侧面板展开状态写入 `ASTROX_CONSOLE_OPEN`。
+
+### 5.5.1 自动同意用户提问（可选）
+
+自动同意由**宿主侧独立决策 Hook**完成（`scripts/auto-approve-question-hook.mjs`），
+不属于 ASTRO 采集链路：记录器仍只读、fail-open，控制台照常记录 `PermissionRequest`
+与 `PostToolUse`。启用后宿主直接批准 `AskUserQuestion` 与 `ExitPlanMode` 计划批准，
+无需切回 Agent App 确认。功能**默认不安装**，只有显式执行 `--apply` 才注册。
+
+**启用**（先预览再写入）：
+
+```bash
+pnpm install:auto-approve -- --client=claude
+pnpm install:auto-approve -- --client=claude --apply
+```
+
+安装器合并一个 matcher 为 `AskUserQuestion|ExitPlanMode` 的分组，保留已有 hooks
+与顶层键，重复执行幂等，写入前备份目标文件。`--client` 支持 `claude`、
+`codebuddy`、`zcode`；ZCode 会同时设置 `hooks.enabled: true` 并写入 `hooks.events`。
+
+**宿主差异**：Claude Code 用 `/hooks` 确认注册；ZCode 项目级 hooks 被忽略、配置在
+会话启动时快照，必须**新开会话**，失败查 `~/.zcode/cli/log/zcode-<date>.jsonl`；
+CodeBuddy 用 `--event=PreToolUse` 并设置
+`ASTRO_AUTO_APPROVE_INPUT_FIELD=modifiedInput`；ChatGPT / OpenCode / Pi / DeepSeek
+Harness 没有命令 Hook 决策通道，只能用宿主原生权限模式。
+
+**参数**：`ASTRO_AUTO_APPROVE_EVENTS` / `TOOLS` / `ANSWER`（`first` / `last` /
+`all`，`all` 会把全部选项逗号连接以适配多选）/
+`ANSWERS`（按问题原文指定答案的 JSON 映射，值为字符串或数组，优先于自动选项）/ `INPUT_FIELD`，
+均由宿主 Hook 进程继承，全表见部署指南「环境变量全表」。
+
+**风险与限制**：自动同意扩大权限面，matcher 不要放宽到 `Bash` 等工具；多 hook
+聚合为 `deny > ask > allow`，显式 deny 规则、计划模式写禁和硬工具限制仍不可被
+`allow` 绕过；`answers` 是 Hook 注入的工具输入，不是 Agent 产生的事实。Hook 超时、
+输出非法 JSON 或 payload 不完整时会回退到正常权限弹窗。
+
+**禁用与卸载**：删除 settings 中该 hook 分组即可；或执行
+`pnpm install:auto-approve -- --client=claude --remove --apply`（卸载同样默认
+dry-run，先预览再 `--apply`），只移除本工具的分组，其他 hooks 保留。无需清理
+ASTRO 数据。
+
+**验证**：① 用 `PermissionRequest(AskUserQuestion)` 载荷管道喂
+`node scripts/auto-approve-question-hook.mjs`，应输出含 `answers` 的 allow 决策，
+非提问事件应空输出；② `node --test tests/auto-approve-hook.test.mjs`；③ 在宿主触发
+一次提问或计划批准，确认无弹窗且会话继续，再禁用确认弹窗恢复；④ 在控制台确认
+`PermissionRequest` 仍被记录、Input/Preview 能看到自动填写的答案。
+
+英文完整说明见 `docs/plugin-installation.md` 的
+「Optional: auto-approve user questions」。
+
+### 5.5.2 在控制台回答用户提问（可选）
+
+交互 Hook 让 Agent 把 `AskUserQuestion` 与 `ExitPlanMode` 提问交给控制台：中央
+工作区右下角浮出交互面板，点选项或输入文本后答案直接回传宿主，无需切回 Agent
+App。它与自动同意是**两个独立的可选 Hook**，采集记录器仍只读；两者不要安装在
+同一个事件上（自动同意会立即 `allow`，交互面板就失去意义）。
+
+**启用**（先预览再写入）：
+
+```bash
+pnpm install:interaction -- --client=claude
+pnpm install:interaction -- --client=claude --apply
+```
+
+`--client` 支持 `claude`、`codebuddy`、`zcode`；默认只挂 `PermissionRequest`，
+CodeBuddy / WorkBuddy 因 `modifiedInput` 只用于工具执行前而默认挂 `PreToolUse`，
+其他宿主需要拦截工具执行前的提问时加 `--events=PreToolUse`。安装器与自动同意共用
+合并、校验与卸载逻辑：保留已有 hooks 和顶层键、重复执行幂等、写入前备份，`--remove
+--apply` 只移除自己的分组。
+
+WorkBuddy / CodeBuddy Code 当前版本会把 `tool_input.questions` 写进 Hook stdin，
+交互 Hook 用它注册与控制台同源的请求，答案经 `PreToolUse` 的 `modifiedInput`
+回传；因此带选项的 `AskUserQuestion` 也能直接从 Flow 检查器作答。权限提示通知本身
+仍不可作答，它的存在只是让画布停在提问原子上，等真正的提问到达后接管。新装的
+Hook 要在**新开一个 WorkBuddy 会话**后才生效。
+
+**时间窗**：Hook 是同步阻塞的，作答窗口 = 安装器写入的 Hook 注册超时
+（`--timeout`，默认 600 秒，`ttlMs = 超时 - 500ms`），控制台页面连着流的整段窗口
+都能作答；没有任何控制台连接时，服务在注册瞬间就把请求关闭为 `cancelled`，Hook
+立即空输出退出 0，原生弹窗马上出现——不会让无人值守的 Agent 干等。超时、取消或
+服务未启动时同样空输出退出 0 回落原生弹窗；答案只在窗口内有效，不会补发。
+
+**面板行为**：选项点击只高亮当前选择，不单独发送；多选按选项原顺序逗号连接；
+输入框直接写答案，提交时以输入框内容为准，不再需要 `Set`；必答题全部有答案才能
+提交，底部的「提交」把整批答案一次送回；`Esc` 或取消结束请求并回退原生弹窗；
+「N 个问题 · 一次提交」的批量提示放在问题列表上方，浮层卡片与检查器停靠面一致；
+已由其他设备回答时面板转为只读。浮层卡片支持键盘作答：打开时焦点落在第一个选项，
+数字键 `1`–`9` 高亮第一个问题的对应选项，`Enter` 在必答题填完后提交整批，`Esc` 取消；
+拨号快捷键只在卡片内部生效，输入框里的数字仍是文本、回车用于提交。卡片顶边有一条按
+Hook 真实窗口推进的倒计时线，主机超时后不会回卷。卡片跟随问题生命周期：请求打开时带动画自动展开，头部右侧的箭头按钮
+可把卡片折叠成一行摘要（画布让出来，新问题到达会自动重新展开）；问题本身不再可折叠，
+列表按窗口高度限制最大滚动高度，滚动条贴在卡片右边缘（整卡不再留内边距，问题行自己带
+左右留白），提交/取消栏始终吸附在卡片底部，按钮顺序统一为「提交 / 取消」；键盘快捷键提示挪到卡片头部摘要与状态之间
+（长说明放在悬停 title 里），底部因此只留「提交 / 取消」两个按钮。卡片只是两种
+布局里的「悬浮」那一档：未手动切换时布局跟随运行状态——提问仍可作答（会话 RUNNING / WAITING）
+默认浮层，已结束或历史提问默认「区域全屏」；手动点过布局切换后以你的选择为准，且只有手动
+切换才记进偏好，不会把派生默认值固化到下次加载。浮层里每个选项独占一行方便快速点选；切到「区域全屏」后，
+同一份问答面移到检查器 Tab 以下的详情区并铺满高度、行距更紧以显示更多正文，画布上不再浮出卡片；
+EVENTS 列收起时区域布局无处落脚，会临时退回悬浮卡片，保证同步窗口内仍能作答。请求被回答、取消或超时后，卡片先显示结果
+（ANSWERED / CANCELLED 等）约两秒，再自动滑出消失；区域布局则在同一位置把结果留在
+作答区里，提交是否送达一眼可见。
+`ExitPlanMode` 显示为「Approve this plan?」二选一，只有 Approve
+会回传决策，计划原文原样回显。浮层卡片只绑定**当前消息与当前原子**：提问事件必须属于
+当前消息、解析到当前原子，会话和来源也要一致；切换 Agent 或消息后旧卡片立即消失，
+不会替别的会话作答。请求在当前正在看的运行上打开时，画布还会闪一下对应的提问原子。
+CodeBuddy / WorkBuddy 的 `PreToolUse.modifiedInput` 只携带决策与答案字段，不会附带
+通知文案，避免宿主严格校验拒绝整条决策。
+
+**只有执行中的任务才可作答**：浮层卡片与检查器的作答控件，跟随左侧 RUN HISTORY 卡片显示
+的那个**会话**状态（`active` 运行中或 `waiting` 等待答复）——只要左侧卡片还在 RUNNING / WAITING（等待用户提问的运行虽然底层仍是 `waiting`，卡片以 RUNNING 呈现，仍算执行中；限流等其他等待仍显示 WAITING），
+翻到更早的消息或原子都不会让提问被冻结，仍能提交。会话一旦结束（完成 / 失败 / 终止），或你正在
+回放历史快照，卡片就不再浮出，检查器里的提问也只读——仍可阅读问题与答案，但选项、输入框、
+提交 / Cancel 都禁用，不会让你替一个已经结束的运行作答。区域全屏布局下仍能展开历史提问阅读，
+同样只是只读。
+
+**刷新后继续作答**：交互事件不随快照重放，但刷新页面后，只要该提问仍在执行中且宿主还在等待，
+控制台会按当前捕获事件的会话 ID、工具调用 ID 与工具名，从本地服务取回**原始**交互请求并还原作答状态。
+服务按宿主 hook 计算出的确定性 requestId 索引，因此答案会写回宿主正在轮询的同一个结果文件；
+重新创建一个新的请求无法送达。若请求已超时或宿主已回退原生弹窗，则没有可恢复的请求，提问只读。
+RUN TRAJECTORY 中处于 `running` / `waiting` 的轮次在每次快照到达后自动展开，无需手动寻找正在等待的原子。
+
+**从 Flow 原子作答**：点击画布上的 `User Question` 原子，右侧检查器会绑定该提问
+的开始事件（不是回答事件），Overview 显示问题原文与事件详情。问答面只有一处：区域
+布局下是 Tab 以下的停靠面板，悬浮布局下是 Input 页，两者是同一个组件，顶部一行工具条
+只负责「Preview / Code」与两档落位（区域全屏 / 悬浮）；问题本身不可折叠，工具条上没有折叠按钮。
+
+- **Preview**：展示问题与选项。这条提问仍有未关闭的交互请求时，选项是可点的按钮
+  （单选与 Plan 批准的 Approve/Reject 都是点一下即高亮，多选题逐个点选/取消，草稿按
+  声明顺序用逗号连接），输入框内容在提交时覆盖选项值，没有 `Set`；底部「提交 / 取消」
+  是滚动区之外的兄弟节点，始终吸附在面板底部，内容再多也点得到；「N 个问题 · 一次提交」
+  的批量提示位于选项列表上方，不占底部动作栏。
+- **Code**：只展示原始 payload，不出现选项、作答框和提交栏。
+- **已关闭 / 历史提问**：没有活跃请求时，同一排选项退化为不可点的静态 chip，仍然看得见
+  当时问了什么、有哪些选项，但不会假装可以作答；静态预览先列出问题总数与捕获顺序，
+  每题带编号和「已选 N 项 / 未作答」状态，已选答案单独成行并以更亮的边框、底色和高亮
+  chip 标出，切到区域全屏即可在检查器里展开完整问答内容。
+
+长问题文本在检查器宽度内换行，正文区域自己滚动，不会把右侧日志列撑宽。提交被拒绝
+（并发、已关闭、他处已答）时会保留草稿并给出提示，不会把输入静默清空。一条
+`AskUserQuestion` 带多个问题时，面板把所有问题逐条列出，每条各有选项/输入框，底部
+一个「提交」把整批答案一次性回传：宿主在第一次 submit 就关闭请求，逐条发送会把
+剩下的问题留在已关闭的请求里。选中 `ExitPlanMode` 的工具行（预览同一个计划）也能绑
+到同一条请求，但同样要求当前消息、当前原子、会话与来源全部匹配。问答面与浮层面板
+共享同一份交互状态，已关闭或已被其他设备回答时自动转为只读。
+Flow 原子只绑定最后一条提问开始事件，状态仍由最后一条匹配事件决定，因此已回答
+的问题依旧显示为完成。
+
+**只有带参数的提问才阻塞**：`PermissionRequest` 或权限提示通知必须带着非空的
+`questions`（或计划批准的 `plan`），运行才进入等待态、`User Question` 原子才出现
+作答区，你才能在 Flow 中键入参数值。没有参数的是宿主的**系统授权**——例如
+ZCode 的 `Bash` / `Edit` 权限请求，或 WorkBuddy 那条
+`notification_type: "permission_prompt"`、正文点名 `AskUserQuestion` 的通知。
+它们显示为 `permission.request`、不阻塞运行也没有作答入口。裸
+`PermissionRequest(Bash/Edit)` 落在 Action Gate；WorkBuddy 那条权限通知仍留在
+User Question 原子（delta），所以真正的 `questions` 随后续 `PreToolUse` 落盘时，
+画布已经在这个原子上，带选项的提问会接管它并能点开查看。普通
+`idle_prompt` / `auth_success` 通知仍只是运行信号。
+
+**参数**：`ASTRO_INTERACTION_SERVICE`（默认 `http://127.0.0.1:5678`）、
+`ASTRO_INTERACTION_TIMEOUT_MS`（默认取安装器 `--timeout`，5000 为无配置缺省）、
+`ASTRO_INTERACTION_POLL_MS`（默认
+100）、`ASTRO_INTERACTION_SOURCE`、`ASTRO_INTERACTION_EVENTS` / `TOOLS` /
+`INPUT_FIELD`，由宿主 Hook 进程继承。
+
+**记录方式**：提问行仍由 recorder 写入；关闭请求时服务额外写一条既有事件名
+`Notification`，只含回答数量、设备与耗时，不含答案值；答案本身由宿主写在
+`PostToolUse` 的 `tool_input.answers` 里，控制台的 Answers 段只做展示解析。
+
+**验证**：`node --test tests/interaction-hook.test.mjs`、
+`node --test tests/interaction-integration.test.mjs`；在宿主触发一次提问，确认
+面板出现、回答后 Agent 继续、LOG 只有一行提问与一行回答。
+
+完整契约与边界见 `docs/interaction-hooks-zh.md`；英文安装说明见
+`docs/plugin-installation.md` 的「Optional: answer user questions from the
+console」。
 
 ### 5.6 会话状态
 
@@ -555,8 +735,12 @@ codex 的 Hook）不显示该标签，与「没有模型」不加区分。一个
 ### 5.8 设置
 
 顶栏的齿轮图标打开设置弹窗。弹窗是一个两栏卡片：左侧分区栏列出外观、运行历史、
-画布、面板、性能、关于，右侧只显示当前分区的配置；每一条都是浏览器本地偏好，改完立即
-生效，底部的「完成」只关闭弹窗，不需要「应用」。
+布局、性能、通知、关于，右侧只显示当前分区的配置；每一条都是浏览器本地偏好，改完立即
+生效，底部的「完成」只关闭弹窗，不需要「应用」。「布局」一个入口管完观看方式，
+里面再分「画布」与「面板」两组，避免同一个问题的两个开关散在两个菜单里。
+所有选择按钮（主题、时间范围、画布、面板、音色、提示音试听）共用同一条平分规则：
+一行几个选项就各占几等份——三个各占三分之一、四个各占四分之一，同类控件同宽；
+音色试听同样按三等份排布。底部「恢复默认」与「完成」在动作栏里保持等宽。
 
 **外观**
 
@@ -578,15 +762,26 @@ codex 的 Hook）不显示该标签，与「没有模型」不加区分。一个
   时的读数继续，重启后重新计时）。改动本项立即生效：计时器按新上限重挂；若此时
   处于 `paused` 且新上限仍有剩余（含 `不限制`），会自动恢复同步而无需再点一次。
 
-**画布**
+**布局**
 
-- **默认视图**：执行拓扑 / 运行轨迹（`ASTROX_ACTIVE_VIEW`）。
-- **仅显示运行时原子**：拓扑图只保留运行时路径（`ASTROX_DEEP_VIEW`）。
+一个分区、两组设置：**画布**决定画布怎么画，**面板**决定画布周围留多少地方、提问面板停在哪里。
+两组都只影响展示，不改动已采集的事件。
 
-**面板**
+*画布*
+
+- **默认视图**：执行拓扑 / 运行轨迹（`ASTROX_ACTIVE_VIEW`）。只决定打开一条消息时先显示哪种
+  画布，顶栏的两个图标仍可随时切换。
+- **仅显示运行时原子**：拓扑图只保留运行时路径（`ASTROX_DEEP_VIEW`）；关闭后显示完整的
+  原子定义。
+
+*面板*
 
 - **展开 RUN HISTORY**、**展开 EVENTS**：左右两列的展开状态
-  （`ASTROX_HISTORY_OPEN` / `ASTROX_CONSOLE_OPEN`）。
+  （`ASTROX_HISTORY_OPEN` / `ASTROX_CONSOLE_OPEN`）；收起后各留一条竖排文字，点箭头随时展开。
+- **问题面板布局**（`ASTROX_QUESTION_PANEL_MODE`）：作答面板停在哪里——
+  `区域全屏`（铺满检查器 Tab 以下整个详情区）、`悬浮`（浮在画布上，只在高亮的
+  提问原子上出现）。默认跟随运行状态：可作答时悬浮、否则区域全屏；手动选择后即固定为该项
+  （只有手动选择才写入偏好）。与面板头部的两个图标是同一份偏好。
 
 **性能**
 
@@ -595,6 +790,19 @@ codex 的 Hook）不显示该标签，与「没有模型」不加区分。一个
   跨次保留。早前的 `?perf=1` 参数已退役——存过该参数的浏览器首次加载时仍会按
   开启处理一次，之后改由这个开关管理。详见下文「页面性能面板」一节。
 
+**通知**
+
+- **任务完成提示音**：某条运行进入完成、失败或终止状态时，播放一段简短提示音，
+  默认开启（`ASTROX_TASK_COMPLETION_CHIME`），想安静可在设置里关闭。三种状态的音调
+  不同：完成上行，失败下行，终止是不带起伏的中性双击——听声音就能区分
+  这次结束是成功、出错还是被停止。声音在浏览器本地
+  用 Web Audio 生成，不加载任何音频文件。只有在这台控制台打开期间“看着它结束”的运行才会响：页面加载时
+  就已经结束的历史保持安静；会话收到新消息重新运行后，再次完成会重新提示。示例数据
+  永远不会响。浏览器通常在首次与页面交互后才允许播放声音。
+- **提示音音色**（`ASTROX_CHIME_STYLE`）：提示音可选「清脆」「柔和」「脉冲」三种
+  音色，只改变音色与节奏，不改变完成/失败/终止的状态区分；默认「清脆」。下方的
+  试听按钮用当前音色各播放一次完成、失败、终止音，可以先听再选。
+
 **关于**
 
 - 当前控制台版本（`v<appVersion>`，即 `src/config/app-config.ts` 里的值，在「关于」
@@ -602,9 +810,10 @@ codex 的 Hook）不显示该标签，与「没有模型」不加区分。一个
   「设置只影响展示、不写回事件」的说明。
 
 偏好分别写入 `ASTROX_HISTORY_RANGE`、`ASTROX_RUN_HISTORY_LIVE_VIEW`、
-`ASTROX_MAX_SYNC` 与 `ASTROX_PERF_HUD` 等键；「恢复默认」把这些分区的值一起还原
+`ASTROX_MAX_SYNC`、`ASTROX_PERF_HUD` 与 `ASTROX_TASK_COMPLETION_CHIME` 等键；
+「恢复默认」把这些分区的值一起还原
 （3 小时、Live 关闭、最长同步 8 小时、深色、拓扑、仅运行时原子、按窗口宽度决定
-左右面板是否展开、性能面板关闭）。
+左右面板是否展开、性能面板关闭、任务完成提示音开启）。
 
 ## 6. 执行拓扑操作
 
@@ -662,7 +871,7 @@ codex 的 Hook）不显示该标签，与「没有模型」不加区分。一个
 - Complete 数；
 - Failed 数。
 
-泳道概览把步骤映射到 Input、Model 和 Tools。下方列表按 Turn 分组，显示事件类型、摘要、时间、持续时间和状态。悬停某个区块（列表行或泳道色块）会弹出同一张小卡片，展示该区块的**类型（`TYPE`，如 SYSTEM / MODEL / TOOL）**、事件名、工具（有则附）、成对耗时（`PAIR`）、自身时长（`DURATION`，原子）或成对耗时合计（Turn 为 `PAIRS`）以及状态。LOG 行事件键前的 `TYPE` 徽标与这里的 `TYPE` 同源（同一个 `atomTypeLabel`），颜色也都是紫色。
+泳道概览把步骤映射到 Input、Model 和 Tools；`waiting`（例如等待答复的 User Question）与 `running` 一样算执行中，对应色块保持高亮脉冲，不会变成 idle。下方列表按 Turn 分组，显示事件类型、摘要、时间、持续时间和状态。悬停某个区块（列表行或泳道色块）会弹出同一张小卡片，展示该区块的**类型（`TYPE`，如 SYSTEM / MODEL / TOOL）**、事件名、工具（有则附）、成对耗时（`PAIR`）、自身时长（`DURATION`，原子）或成对耗时合计（Turn 为 `PAIRS`）以及状态。LOG 行事件键前的 `TYPE` 徽标与这里的 `TYPE` 同源（同一个 `atomTypeLabel`），颜色也都是紫色。
 
 悬停卡片用统一的三档字号（标题 / 字段值 / 字段标签），字段之间靠**颜色**而不是字号区分：`TYPE` 紫、`EVENT` 蓝、工具名琥珀、`PAIR` 编号紫（与行上标记一致）、耗时按时长色阶、状态按自身语义色。标题已经是工具名时（如泳道色块标题 `Read`），`EVENT` 行不再重复一遍该工具名。
 
@@ -742,31 +951,35 @@ astro-<source>-<sessionId>-prompt-<number>.jsonl
 页面会把当前定位写入查询参数：
 
 ```text
-?agent=codex&session=<sessionId>&event=<eventId>
+?agent=chatgpt&session=<sessionId>&event=<eventId>
 ```
 
 `agent` 与下拉选择保持一致（已配置的智能体 ID 或 `others`）。打开该 URL 时，
 页面会优先选择匹配的智能体、会话、包含该事件的 Prompt 子运行并定位事件。
+切换智能体时旧的 `session` / `event` 立即丢弃；如果新智能体的筛选条件下有数据，
+画布自动定位到它的最新一条消息，地址栏同步写回这条新会话；没有数据时才只留下
+`agent`。这样下次刷新不会拿旧智能体的深链把下拉框拉回去。`?api=` 等与服务连接
+有关的参数保持不变。
 深链依赖目标环境中已存在对应 Trace 数据，旧的 `?source=` 链接仍然可用。
 
-## 11. 导入 Codex 历史
+## 11. 导入 ChatGPT 历史
 
-导入默认 Codex 目录下所有活动和归档会话：
+导入默认 ChatGPT 目录下所有活动和归档会话：
 
 ```bash
-pnpm import-codex
+pnpm import-chatgpt
 ```
 
 导入指定 rollout 文件：
 
 ```bash
-node bin/astro.mjs import-codex /path/to/rollout.jsonl
+node bin/astro.mjs import-chatgpt /path/to/rollout.jsonl
 ```
 
-指定 Codex Home：
+指定 ChatGPT Home：
 
 ```bash
-node bin/astro.mjs import-codex --codex-home=/path/to/.codex
+node bin/astro.mjs import-chatgpt --chatgpt-home=/path/to/.chatgpt
 ```
 
 导入器生成确定性事件 ID，因此同一文件重复导入时不会产生重复事件。
@@ -774,12 +987,14 @@ node bin/astro.mjs import-codex --codex-home=/path/to/.codex
 ## 12. CLI
 
 ```text
+pnpm service:up [--port N] [--home DIR]       # 服务在跑就原地重启，没跑就启动
+pnpm service:start|restart|status             # 单动作快捷方式
 astro-trace serve
-astro-trace install [--target DIR] [--clients trae,claude,codex,deepseek,workbuddy] [--scope user|project]
+astro-trace install [--target DIR] [--clients trae,claude,chatgpt,deepseek,workbuddy] [--scope user|project]
 astro-trace update [--no-deepseek]
 astro-trace doctor [--target DIR] [--scope user|project] [--deepseek-profile NAME]
 astro-trace migrate [FILE_OR_DIR] [--astro-home DIR]
-astro-trace import-codex [FILE ...] [--codex-home DIR]
+astro-trace import-chatgpt [FILE ...] [--chatgpt-home DIR]
 astro-trace ingest [FILE] [--source NAME]
 ```
 
@@ -811,6 +1026,7 @@ printf '%s\n' \
 astrox start [--port N] [--host H] [--open] [--no-global] [--bin-dir DIR]
 astrox stop
 astrox restart
+astrox up                     # 在跑就重启、没跑就启动，端口与 --port/ASTRO_PORT 一致
 astrox status [--json] [--deepseek-profile web]
 astrox info [--json]
 astrox update [--no-deepseek]
@@ -825,8 +1041,8 @@ astrox path                   打印 ASTRO home、插件目录与 CLI 入口
 - `start` 启动仪表盘守护进程（默认 `127.0.0.1:5678`）。它会同时把当前入口注册为全局 `astrox` 命令——在 Unix 下软链到 `/usr/local/bin`、`~/.local/bin` 或 `~/bin` 中第一个可写目录，在 Windows 下写入 `%USERPROFILE%\.astrox\bin\astrox.cmd`。已存在的同名软链若指向本入口则复用，指向其他文件则保留不动。`--no-global` 跳过注册，`--bin-dir DIR` 指定候选目录，`--open` 在启动后自动打开浏览器。
 - 守护进程启动后写入 `<ASTRO_HOME>/dashboard-<port>.pid`（含 `pid` 与 `url`），运行日志落在 `<ASTRO_HOME>/dashboard.log`。`logs [--lines N]` 默认查看末尾 40 行。
 - `stop` 向守护进程发送 `SIGTERM`（必要时 `SIGKILL`）并结束进程，不触发额外清理；`restart` 等价于先 `stop` 再 `start`。
-- `status` 汇总插件配置（config.yaml / .env 的 OK、WARN、MISSING）、global cli 状态、仪表盘运行状态，以及各客户端 Hook 集成（codex、claude、workbuddy、trae、deepseek）。`--json` 输出机器可读报告。
-- `info` 列出每个来源（claude、codex、copilot、cursor、deepseek、gemini、iflow、llama、opencode、pi、qwen、trae、workbuddy、zcode 等）的 trace 文件数与字节数及合计，并展示 trace 根目录、插件目录与全局 CLI 路径。`--json` 同效。
+- `status` 汇总插件配置（config.yaml / .env 的 OK、WARN、MISSING）、global cli 状态、仪表盘运行状态，以及各客户端 Hook 集成（chatgpt、claude、workbuddy、trae、deepseek）。`--json` 输出机器可读报告。
+- `info` 列出每个来源（claude、chatgpt、copilot、cursor、deepseek、gemini、iflow、llama、opencode、pi、qwen、trae、workbuddy、zcode 等）的 trace 文件数与字节数及合计，并展示 trace 根目录、插件目录与全局 CLI 路径。`--json` 同效。
 - `update` 原地刷新已安装的插件运行时（等价于 `astro-trace update`），`--no-deepseek` 跳过 DeepSeek 插件包。
 
 > 控制命令依赖已安装的插件运行时；首次使用请先执行 `astrox install`（或 `astro-trace install`）。
@@ -887,12 +1103,13 @@ curl -X POST http://127.0.0.1:5678/api/events \
 
 ```text
 GET /api/events
-GET /api/events?source=codex&session=<sessionId>
+GET /api/events?source=chatgpt&session=<sessionId>
 GET /api/events/<eventId>
 GET /api/search?q=<query>
-GET /api/search?q=<query>&source=codex&session=<sessionId>
+GET /api/search?q=<query>&source=chatgpt&session=<sessionId>
 GET /api/stream
 GET /api/demo-events
+GET /api/interactions/<requestId>    读取待答交互 {request, events, result}
 ```
 
 注意：服务端 `/api/search` 可跨嵌套字段搜索；当前 UI 的 LOG 搜索只过滤选中的
@@ -905,6 +1122,18 @@ Prompt 子运行，无 Prompt 时才回退到完整会话，不直接调用服�
 文件缺失 404、非法 500；`/api/health` 的 `corsOrigins` 字段报告当前跨域允许列表。
 两者都供「部署预览页面」使用：部署页默认连接 `http://127.0.0.1:5678`，允许列表
 见第 4.3 节。
+
+交互通道（可选 Hook 使用，见 5.5.2）：
+
+```text
+POST /api/interactions                      注册待答请求
+POST /api/interactions/<requestId>/events   追加作答事件（seq 递增）
+POST /api/interactions/<requestId>/close    关闭并生成结果
+GET  /api/interactions/<requestId>          晚到页面读取请求与结果
+```
+
+`/api/stream` 另发 `interaction.open` / `interaction.update` /
+`interaction.close` 三帧；交互只存在内存与结果文件中，`reset` 后不补播。
 
 ### 13.5 服务管理
 
@@ -1004,7 +1233,7 @@ astro-trace doctor
 | 键 | 值 | 说明 |
 | --- | --- | --- |
 | `ASTROX_THEME` | `light` / `dark` / `system` | 主题 |
-| `ASTROX_PLATFORM` | 如 `codex` / `claude` / `deepseek` / `trae` / `workbuddy` | 平台上下文 |
+| `ASTROX_PLATFORM` | 如 `chatgpt` / `claude` / `deepseek` / `trae` / `workbuddy` | 平台上下文 |
 | `ASTROX_HISTORY_OPEN` | `true` / `false` | 左侧 History 展开状态 |
 | `ASTROX_CONSOLE_OPEN` | `true` / `false` | 右侧 Events/Inspector 展开状态 |
 | `ASTROX_HISTORY_RANGE` | `1h` / `3h` / `6h` / `12h` / `1d` / `3d` / `5d` / `7d` | 默认时间范围，默认 `3h` |
@@ -1013,6 +1242,8 @@ astro-trace doctor
 | `ASTROX_ACTIVE_VIEW` | `topology` / `trajectory` | 上次使用的画布视图 |
 | `ASTROX_DEEP_VIEW` | `true` / `false` | 拓扑是否只显示运行时原子 |
 | `ASTROX_PERF_HUD` | `true` / `false` | 性能面板是否开启，默认 `false` |
+| `ASTROX_TASK_COMPLETION_CHIME` | `true` / `false` | 任务完成提示音是否开启，默认 `true` |
+| `ASTROX_CHIME_STYLE` | `bright` / `soft` / `pulse` | 提示音音色（清脆/柔和/脉冲），默认 `bright` |
 
 旧 `astro-theme`、`astro-platform` 与 `astro:perf-hud` 会在对应新键写入后删除：
 前两者自动迁移，`astro:perf-hud` 是早版 `?perf=1` 参数留下的开启标记（值为 `1`），
@@ -1181,7 +1412,7 @@ JSONL 后服务才会推送），以及页面是否处于暂停同步状态（�
 4. SSE 重连后首先收到包含完整事件列表的 `reset`；
 5. 修改 Hook 配置后已重载工作区或重启客户端。
 
-### Codex 导入后重复
+### ChatGPT 导入后重复
 
 同一文件正常不会重复。若文件路径、行顺序或原始行内容变化，确定性 ID 也会变化，可能被视为新事件。
 

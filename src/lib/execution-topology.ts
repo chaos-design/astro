@@ -3,6 +3,7 @@ import {
   topologyGeometry,
 } from "../config/atom-platforms.ts";
 import {
+  isBlockingUserQuestionStartEvent,
   isUserQuestionEvent,
   isUserQuestionStartEvent,
   isUserQuestionToolEvent,
@@ -178,7 +179,15 @@ function createBaseNodes(
   }));
 
   for (const event of events) {
-    const question = isUserQuestionEvent(event);
+    // A bare permission gate belongs to Action Gate. A permission notification
+    // that names a question tool stays on the question atom: WorkBuddy's real
+    // `questions` arrive later, and the reader should already be at User
+    // Question when they do.
+    const question =
+      isUserQuestionEvent(event) &&
+      (!isUserQuestionStartEvent(event) ||
+        isBlockingUserQuestionStartEvent(event) ||
+        event.eventName === "Notification");
     const excluded = isUserQuestionToolEvent(event);
     for (const state of accumulators) {
       // Precedence mirrors `atomMatchesEvent`: a positive user-question match
@@ -210,11 +219,28 @@ function createBaseNodes(
   return accumulators.map((state, index) => {
     const atom = state.atom;
     const matchingEvents = state.matching;
-    const event = matchingEvents.at(-1) || null;
+    const latestEvent = matchingEvents.at(-1) || null;
     const endEvent =
       atom.id === "tool-call" || atom.id === "tool-execute"
         ? state.lastToolResult
         : null;
+    // A user.question atom collects both halves of a question lifecycle. The
+    // last match is usually the answer (ElicitationResult / PermissionDenied /
+    // PostToolUse), whose payload does not carry the question text. Bind the
+    // atom to the newest *start* event — the actual user question — so the
+    // inspector and its answer action read the right payload. Completion is
+    // still judged from the newest match, so an answered question stays
+    // `complete`; `endEvent` stays null so node selection keeps the question.
+    const questionStart =
+      atom.id === "user-question"
+        ? (matchingEvents.findLast((candidate) =>
+            isUserQuestionStartEvent(candidate) &&
+            isBlockingUserQuestionStartEvent(candidate),
+          ) ?? null)
+        : null;
+    const event = questionStart ?? latestEvent;
+    const statusEvent =
+      atom.id === "user-question" ? (latestEvent ?? event) : (endEvent || event);
 
     return {
       id: `harness-${atom.id}`,
@@ -228,7 +254,7 @@ function createBaseNodes(
         platform: platform.id,
         actor: event?.source?.toUpperCase() || "SYSTEM",
         status: getAtomStatus(
-          endEvent || event,
+          statusEvent,
           events,
           complete,
           platform.waitingEvents,
@@ -395,7 +421,7 @@ function getRouteKind(
 
 export function buildExecutionTopology(
   events: TraceEvent[],
-  platformId = "codex",
+  platformId = "chatgpt",
 ): ExecutionTopology {
   const platform = getAtomPlatformConfig(platformId);
   const subagentRuns = buildSubagentRuns(events);

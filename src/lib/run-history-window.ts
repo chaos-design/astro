@@ -224,6 +224,26 @@ export function nextRunHistoryVisibleHours(
  * source string; {@link OTHERS_AGENT_ID} keeps only sessions whose source is
  * not a configured agent.
  */
+/**
+ * The run to open when a scope changes (agent switch, footer Live jump).
+ *
+ * A live message wins over the newest finished run: a resumed session can
+ * start days ago and still be the one executing now, while `sessions[0]` only
+ * sorts by start. The live candidates use the same ordering as the pinned
+ * RUN HISTORY rows (newest message start first), so every entry point lands on
+ * the same message the `N LIVE` chip points at. With no live run in scope the
+ * fallback is the newest run of that scope.
+ */
+export function selectScopeFallbackRun<
+  T extends { key: string; start: number; end: number },
+>(
+  scopedSessions: readonly T[],
+  liveKeys: ReadonlySet<string>,
+  orderKey?: (session: T) => number,
+): T | undefined {
+  return selectLiveRunHistory(scopedSessions, liveKeys, orderKey)[0] ?? scopedSessions[0];
+}
+
 export function filterSessionsByAgent(
   sessions: readonly TraceSession[],
   agentId: string,

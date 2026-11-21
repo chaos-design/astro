@@ -8,7 +8,7 @@
       "name": "astro",
       "source": {
         "source": "local",
-        "path": "./codex-plugin"
+        "path": "./chatgpt-plugin"
       },
       "policy": {
         "installation": "AVAILABLE",

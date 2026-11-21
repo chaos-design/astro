@@ -17,13 +17,27 @@ import type { TracePayload } from "../types/trace";
  * the `tool_input` object the input tab resolves to.
  */
 
+export interface UserQuestionOption {
+  /** The verbatim option label — also the answer token the host records. */
+  label: string;
+  /** The client's explanation, when it captured one. */
+  description?: string;
+}
+
 export interface UserQuestionPrompt {
   /** Section title: the client's header, or "Question N" when none is given. */
   title: string;
   /** The question text itself, a markdown source. */
   question: string;
-  /** Choice labels, when the client captured options for the question. */
-  options: string[];
+  /** Choices, when the client captured options for the question. */
+  options: UserQuestionOption[];
+}
+
+export interface UserQuestionAnswer {
+  /** The exact question text used as the answer key. */
+  question: string;
+  /** The chosen option label(s); multi-select answers are comma-joined. */
+  answer: string;
 }
 
 export interface UserQuestionContent {
@@ -32,6 +46,8 @@ export interface UserQuestionContent {
   message: string;
   /** Markdown plan for approval tools (plan approval / ExitPlanMode). */
   plan: string;
+  /** Answers injected by a host decision hook, never produced by the agent. */
+  answers: UserQuestionAnswer[];
   /** True when anything displayable was found in the payload. */
   hasContent: boolean;
 }
@@ -42,21 +58,33 @@ function asRecord(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
-function optionLabel(option: unknown): string {
+function optionInfo(option: unknown): UserQuestionOption | null {
   if (typeof option === "string") {
-    return option.trim();
+    const label = option.trim();
+    return label ? { label } : null;
   }
   const record = asRecord(option);
   if (!record) {
-    return "";
+    return null;
   }
+  let label = "";
   for (const key of ["label", "name", "value", "title", "header"]) {
     const value = record[key];
     if (typeof value === "string" && value.trim()) {
-      return value.trim();
+      label = value.trim();
+      break;
     }
   }
-  return "";
+  if (!label) {
+    return null;
+  }
+  for (const key of ["description", "desc", "detail", "help"]) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim()) {
+      return { label, description: value.trim() };
+    }
+  }
+  return { label };
 }
 
 function questionText(record: Record<string, unknown>): string {
@@ -93,7 +121,9 @@ function extractQuestions(source: unknown): UserQuestionPrompt[] {
       title:
         typeof header === "string" && header.trim() ? header.trim() : "",
       question,
-      options: rawOptions.map(optionLabel).filter(Boolean),
+      options: rawOptions
+        .map(optionInfo)
+        .filter((option): option is UserQuestionOption => Boolean(option)),
     });
   }
   return prompts;
@@ -107,6 +137,34 @@ function freeFormText(record: Record<string, unknown>): string {
     }
   }
   return "";
+}
+
+/**
+ * An auto-approve decision hook answers by injecting `answers` into the tool
+ * input (question text -> option label). The same map may be echoed back in
+ * `tool_response`. It is display-only evidence: the persisted event is not
+ * rewritten and no run state is derived from it.
+ */
+function extractAnswers(sources: readonly unknown[]): UserQuestionAnswer[] {
+  for (const source of sources) {
+    const record = asRecord(source);
+    if (!record) {
+      continue;
+    }
+    const answers = Object.entries(record)
+      .filter(
+        ([question, answer]) =>
+          question.trim() && typeof answer === "string" && answer.trim(),
+      )
+      .map(([question, answer]) => ({
+        question: question.trim(),
+        answer: String(answer).trim(),
+      }));
+    if (answers.length) {
+      return answers;
+    }
+  }
+  return [];
 }
 
 function planText(record: Record<string, unknown>): string {
@@ -129,6 +187,34 @@ export function hasPlanContent(
   payload: TracePayload | null | undefined,
 ): boolean {
   return Boolean(parseUserQuestionContent(payload).plan);
+}
+
+/**
+ * The single line the console shows for a user.question: the question text(s)
+ * themselves, not the tool name that carried them. Structured questions are
+ * joined in capture order; free-form text is used as-is; a Markdown plan
+ * contributes its first non-empty line so a plan approval stays readable in a
+ * LOG row. Empty means the payload has no displayable question at all.
+ */
+export function userQuestionSummary(
+  payload: TracePayload | null | undefined,
+): string {
+  const content = parseUserQuestionContent(payload);
+  const prompts = content.prompts
+    .map((prompt) => prompt.question.trim())
+    .filter(Boolean);
+  if (prompts.length) {
+    return prompts.join(" · ");
+  }
+  if (content.message.trim()) {
+    return content.message.trim();
+  }
+  return (
+    content.plan
+      .split("\n")
+      .map((line) => line.trim())
+      .find(Boolean) || ""
+  );
 }
 
 export function parseUserQuestionContent(
@@ -170,11 +256,23 @@ export function parseUserQuestionContent(
       (toolInput ? planText(toolInput) : "") ||
       (toolResponse ? planText(toolResponse) : "") ||
       (nested ? planText(nested) : "");
+  // Answers are independent of the question text: a completed question tool
+  // may carry only the auto-filled answers, which is still worth showing.
+  const answers = extractAnswers([
+    record.answers,
+    toolInput?.answers,
+    toolResponse?.answers,
+    nested?.answers,
+  ]);
   return {
     prompts,
     message,
     plan,
+    answers,
     hasContent:
-      prompts.length > 0 || Boolean(message.trim()) || Boolean(plan.trim()),
+      prompts.length > 0 ||
+      Boolean(message.trim()) ||
+      Boolean(plan.trim()) ||
+      answers.length > 0,
   };
 }

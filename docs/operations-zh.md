@@ -18,7 +18,7 @@ ASTRO 由三个彼此解耦的部分组成：
 | --- | --- | --- | --- |
 | 源码生产模式 | 本仓库本地使用和开发后验收 | 当前仓库 `dist` 与 `server` | `~/.astrox` |
 | 开发模式 | 修改 React、服务端或协议 | Vite + Node 服务 | `~/.astrox` 或显式覆盖 |
-| 原生 Codex 插件 | Codex 支持 marketplace/plugin | `codex-plugin` 内置副本 | `~/.astrox` |
+| 原生 ChatGPT 插件 | ChatGPT 支持 marketplace/plugin | `chatgpt-plugin` 内置副本 | `~/.astrox` |
 | 原生 Claude Code 插件 | Claude Code plugin | `claude-plugin` 内置副本 | `~/.astrox` |
 | 原生 WorkBuddy 插件 | CodeBuddy Code plugin | `workbuddy-plugin` 内置副本 | `~/.astrox` |
 | DeepSeek Harness bundle | `dsh` profile 插件 | `deepseek-plugin` 内置副本 | `~/.astrox` |
@@ -85,7 +85,7 @@ ASTRO_PORT=4320 pnpm dev
   dashboard-5678.pid
   trae/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
   claude/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
-  codex/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
+  chatgpt/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
   deepseek/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
   workbuddy/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
   browser/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
@@ -104,7 +104,7 @@ ASTRO_PORT=4320 pnpm dev
 - 创建、读取和删除 `dashboard-<port>.pid`；
 - 读取 `~/.astrox/plugins/astro` 中的独立运行时。
 
-Codex 直接 Hook 安装还需要写入 `$CODEX_HOME/hooks.json`，默认是 `~/.codex/hooks.json`。Claude 用户级安装需要写入 `~/.claude/settings.json`。Trae 项目级安装需要写入目标工作区的 `.trae/hooks.json`。DeepSeek 安装通过 `dsh plugin` 更新 `$DSH_HOME/profiles/<profile>`，默认 `$DSH_HOME=~/.dsh`。
+ChatGPT 直接 Hook 安装还需要写入 `$CHATGPT_HOME/hooks.json`，默认是 `~/.chatgpt/hooks.json`。Claude 用户级安装需要写入 `~/.claude/settings.json`。Trae 项目级安装需要写入目标工作区的 `.trae/hooks.json`。DeepSeek 安装通过 `dsh plugin` 更新 `$DSH_HOME/profiles/<profile>`，默认 `$DSH_HOME=~/.dsh`。
 
 在带文件系统沙箱的 IDE 中，应将实际 `ASTRO_HOME` 和对应客户端配置目录加入写权限范围。不要把 `ASTRO_HOME` 指向一个只读项目副本。
 
@@ -131,7 +131,7 @@ find "$HOME/.astrox" -type f -name events.jsonl -print
 | `ASTRO_AUTO_OPEN` | `1` | 安装或 Agent 触发时自动启动控制台。 |
 | `ASTRO_CORS_ORIGINS` | 未设置（关闭跨域） | 允许读取本机 API 的部署页来源，等价配置项 `server.corsOrigins`。 |
 | `ASTRO_DEMO_EVENTS` | 未设置 | 示例数据集（`GET /api/demo-events`）路径覆盖。 |
-| `CODEX_HOME` | `~/.codex` | Codex 配置、活动和归档历史目录。 |
+| `CHATGPT_HOME` | `~/.chatgpt` | ChatGPT 配置、活动和归档历史目录。 |
 
 全量参考（含 `ASTRO_PID_FILE`、`ASTRO_OPEN_BROWSER`、`ASTRO_TAKEOVER` 等内部变量）
 见 [部署指南](deployment-zh.md) §2.4。
@@ -282,7 +282,7 @@ SSE 首先应出现 `reset`，随后是 `ready`。新事件产生后出现 `trac
 
 ### 7.3 CLI doctor
 
-`astro-trace doctor` 会检查独立运行时、控制台、Codex/Claude 的原生插件或直接
+`astro-trace doctor` 会检查独立运行时、控制台、ChatGPT/Claude 的原生插件或直接
 Hook、DeepSeek Harness profile bundle，以及各来源按会话分目录后的实际文件数和
 总字节数。`DATA` 表示至少存在一个非空 `events.jsonl`；仍可使用
 `/api/health.traceFiles` 核对当前服务实际加载的文件清单。
@@ -433,10 +433,11 @@ astrox restart         # 重启守护进程，加载新 server 与 dist
 | 键 | 值 | 说明 |
 | --- | --- | --- |
 | `ASTROX_THEME` | `light` / `dark` / `system` | 主题。 |
-| `ASTROX_PLATFORM` | `codex` / `claude` / `deepseek` / `trae` / `workbuddy` | 拓扑平台上下文。 |
+| `ASTROX_PLATFORM` | `chatgpt` / `claude` / `deepseek` / `trae` / `workbuddy` | 拓扑平台上下文。 |
 | `ASTROX_HISTORY_OPEN` | boolean string | 左侧 History 展开状态。 |
 | `ASTROX_CONSOLE_OPEN` | boolean string | 右侧 Events/Inspector 展开状态。 |
 | `ASTROX_PERF_HUD` | boolean string | 性能面板开关，默认关。 |
+| `ASTROX_TASK_COMPLETION_CHIME` | boolean string | 任务完成提示音开关，默认开。 |
 
 旧 `astro-theme`、`astro-platform` 与 `astro:perf-hud`（早版 `?perf=1` 遗留的开启标记）
 会在对应新键写入时删除；前两者自动迁移，`astro:perf-hud` 首读保留一次。localStorage
@@ -456,6 +457,7 @@ astrox restart         # 重启守护进程，加载新 server 与 dist
 | 页面打不开 | 进程、端口、`dist/index.html` | 手动启动服务，读取终端实际 URL。 |
 | 状态为 offline | `/api/stream`、Vite 代理端口 | 统一 `ASTRO_HOST/PORT`，恢复 SSE。 |
 | 第一轮有记录，后续轮次缺失 | Hook 是否仍加载、JSONL 是否继续增长 | 重载客户端配置；检查 `Stop` 后 Hook 配置没有被移除。 |
+| 决策 Hook 不生效，仍弹出确认 | 安装器是否 `--apply`、`hooks.enabled`、是否新会话、matcher、宿主日志 | 重跑 `pnpm install:auto-approve -- --client=... --apply`；ZCode 确认写在用户级 `~/.zcode/cli/config.json` 并**新开会话**，查 `~/.zcode/cli/log/zcode-<date>.jsonl`；matcher 保持 `AskUserQuestion\|ExitPlanMode`；超时或 stdout 非 JSON 会回退正常弹窗；用 `--remove --apply` 卸载。 |
 | JSONL 有事件，页面没有 | `health.dataRoot`、`traceFiles`、SSE reset | 统一数据根目录；重连 SSE 或重启服务。 |
 | 后续 Prompt 已写入但列表未出现 | Prompt 层级与当前会话 | 展开会话父行；确认每条 `UserPromptSubmit` 有唯一事件 ID。 |
 | Hook 报未记录 | `ASTRO_HOME` 权限和磁盘状态 | 修复写权限/空间后重新触发；历史来源可再导入。 |

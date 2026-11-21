@@ -113,8 +113,8 @@ test("migrates legacy trace data into source-specific ASTRO directories", () => 
         payload: {},
       },
       {
-        id: "codex-event",
-        source: "codex",
+        id: "chatgpt-event",
+        source: "chatgpt",
         sessionId: "session-2",
         eventName: "AgentMessage",
         capturedAt: "2026-09-08T08:01:00.000Z",
@@ -135,16 +135,16 @@ test("migrates legacy trace data into source-specific ASTRO directories", () => 
   const traeOutput = first.outputs.find((file) =>
     file.startsWith(join(astroHome, "trae")),
   );
-  const codexOutput = first.outputs.find((file) =>
-    file.startsWith(join(astroHome, "codex")),
+  const chatgptOutput = first.outputs.find((file) =>
+    file.startsWith(join(astroHome, "chatgpt")),
   );
   assert.equal(
     JSON.parse(readFileSync(traeOutput, "utf8")).id,
     "trae-event",
   );
   assert.equal(
-    JSON.parse(readFileSync(codexOutput, "utf8")).id,
-    "codex-event",
+    JSON.parse(readFileSync(chatgptOutput, "utf8")).id,
+    "chatgpt-event",
   );
 
   rmSync(root, { recursive: true, force: true });
@@ -154,7 +154,7 @@ test("migrates every source from a legacy .aot root", () => {
   const root = mkdtempSync(join(tmpdir(), "astro-aot-migrate-"));
   const legacyAotHome = join(root, ".aot");
   const astroHome = join(root, ".astrox");
-  for (const source of ["claude", "codex"]) {
+  for (const source of ["claude", "chatgpt"]) {
     const sourceDir = join(legacyAotHome, source);
     mkdirSync(sourceDir, { recursive: true });
     writeFileSync(

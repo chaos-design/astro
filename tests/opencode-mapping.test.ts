@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   isTerminalEventName,
   mapOpenCodeEvent,
+  opencodeEventDirectory,
 } from "../opencode-plugin/mapping.ts";
 
 const session = "ses_test";
@@ -146,6 +147,27 @@ test("a finished step ends the run, a tool-call step does not", () => {
     }),
     [{ eventName: "StopFailure", status: "failed" }],
   );
+});
+
+test("durable events resolve their location from every host spelling", () => {
+  // session.text.* / session.step.* carry no location envelope: losing this
+  // fallback dropped the main agent's text when the plugin loaded late.
+  assert.equal(
+    opencodeEventDirectory({ data: { info: { location: { directory: "/work" } } } }),
+    "/work",
+  );
+  assert.equal(
+    opencodeEventDirectory(
+      { data: { sessionID: session } },
+      "/remembered",
+    ),
+    "/remembered",
+  );
+  assert.equal(
+    opencodeEventDirectory({ location: { directory: "/envelope" } }, "/old"),
+    "/envelope",
+  );
+  assert.equal(opencodeEventDirectory({ data: {} }), "");
 });
 
 test("stream deltas and usage updates are not traceable events", () => {

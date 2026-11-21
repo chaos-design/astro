@@ -67,7 +67,7 @@ test("only marks explicitly ended or interrupted sessions as terminated", () => 
   assert.equal(sessions.find((session) => session.id === "new")?.status, "terminated");
 });
 
-test("classifies permission and rate-limit hooks as waiting", () => {
+test("classifies question and rate-limit hooks as waiting, authorization as active", () => {
   const base = {
     source: "claude",
     workspaceId: "workspace",
@@ -93,7 +93,14 @@ test("classifies permission and rate-limit hooks as waiting", () => {
   const sessions = buildSessions([
     ...session("permission", {
       eventName: "PermissionRequest",
-      payload: { tool_name: "Bash" },
+      payload: {
+        tool_name: "AskUserQuestion",
+        tool_input: { questions: [{ question: "A or B?" }] },
+      },
+    }),
+    ...session("authorization", {
+      eventName: "PermissionRequest",
+      payload: { tool_name: "Bash", tool_input: { command: "ls" } },
     }),
     ...session("rate-limit", {
       eventName: "StopFailure",
@@ -110,6 +117,10 @@ test("classifies permission and rate-limit hooks as waiting", () => {
   assert.equal(
     sessions.find((item) => item.id === "permission")?.status,
     "waiting",
+  );
+  assert.equal(
+    sessions.find((item) => item.id === "authorization")?.status,
+    "active",
   );
   assert.equal(
     sessions.find((item) => item.id === "rate-limit")?.status,
@@ -536,7 +547,7 @@ test("prompt runs without a recorded model show none", () => {
       ])[0],
     )[0]?.model;
 
-  // Clients that do not report a model (claude/codex hooks) leave it out.
+  // Clients that do not report a model (claude/chatgpt hooks) leave it out.
   assert.equal(runModel({ message: "done" }), undefined);
   // An "unknown" placeholder is the same as nothing recorded.
   assert.equal(runModel({ message: "step started (unknown)" }), undefined);
@@ -856,7 +867,7 @@ test("keeps identical native session IDs separate across sources", () => {
   };
   const sessions = buildSessions([
     { ...base, id: "claude-event", source: "claude" },
-    { ...base, id: "codex-event", source: "codex" },
+    { ...base, id: "chatgpt-event", source: "chatgpt" },
   ]);
 
   assert.equal(sessions.length, 2);
@@ -869,7 +880,7 @@ test("searches nested payload content and returns an atomic event match", () => 
 
   assert.equal(results.length, 1);
   assert.equal(results[0].path, "payload.tool_response.changedLines");
-  assert.match(results[0].locator, /^trace:\/\/codex\//);
+  assert.match(results[0].locator, /^trace:\/\/chatgpt\//);
 });
 
 test("maps a tool result back to its paired flow node", () => {
@@ -995,23 +1006,23 @@ test("does not count child tool events as main-agent tool calls", () => {
 
 test("keeps atom semantics stable across platform configurations", () => {
   const events = createDemoEvents(2_000_000_000_000);
-  const codex = buildHarnessFlow(events, "codex");
+  const chatgpt = buildHarnessFlow(events, "chatgpt");
   const claude = buildHarnessFlow(events, "claude");
   const deepseek = buildHarnessFlow(events, "deepseek");
   const trae = buildHarnessFlow(events, "trae");
   const workbuddy = buildHarnessFlow(events, "workbuddy");
   const labels = (flow) => flow.nodes.map((node) => node.data.label);
 
-  assert.deepEqual(labels(codex), labels(claude));
-  assert.deepEqual(labels(codex), labels(deepseek));
-  assert.deepEqual(labels(codex), labels(trae));
-  assert.deepEqual(labels(codex), labels(workbuddy));
-  assert.equal(codex.platform.id, "codex");
+  assert.deepEqual(labels(chatgpt), labels(claude));
+  assert.deepEqual(labels(chatgpt), labels(deepseek));
+  assert.deepEqual(labels(chatgpt), labels(trae));
+  assert.deepEqual(labels(chatgpt), labels(workbuddy));
+  assert.equal(chatgpt.platform.id, "chatgpt");
   assert.equal(claude.platform.id, "claude");
   assert.equal(deepseek.platform.id, "deepseek");
   assert.equal(trae.platform.id, "trae");
   assert.equal(workbuddy.platform.id, "workbuddy");
-  assert.ok(codex.edges.every((edge) => edge.data.active === false));
+  assert.ok(chatgpt.edges.every((edge) => edge.data.active === false));
   assert.ok(claude.nodes.every((node) => node.data.platform === "claude"));
   assert.ok(
     deepseek.nodes.every((node) => node.data.platform === "deepseek"),

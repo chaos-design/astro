@@ -18,9 +18,9 @@ test("aggregates and persists events across agent data directories", async () =>
 
   const events = [
     {
-      id: "codex-event",
-      source: "codex",
-      sessionId: "codex-session",
+      id: "chatgpt-event",
+      source: "chatgpt",
+      sessionId: "chatgpt-session",
       eventName: "SessionStart",
       capturedAt: "2026-09-08T08:00:00.000Z",
       payload: {},
@@ -38,13 +38,13 @@ test("aggregates and persists events across agent data directories", async () =>
   assert.equal((await repository.append(events)).length, 2);
   assert.deepEqual(
     repository.getEvents().map((event) => event.id),
-    ["codex-event", "trae-event"],
+    ["chatgpt-event", "trae-event"],
   );
   assert.deepEqual(repository.getTraceFiles(), [
     join(
       root,
-      "codex",
-      ...formatSessionPath(new Date(events[0].capturedAt), "codex-session"),
+      "chatgpt",
+      ...formatSessionPath(new Date(events[0].capturedAt), "chatgpt-session"),
       "events.jsonl",
     ),
     join(
@@ -128,7 +128,7 @@ test("snapshot key identifies the history and changes with it", async () => {
 
   const event = (id) => ({
     id,
-    source: "codex",
+    source: "chatgpt",
     sessionId: "session",
     eventName: "SessionStart",
     capturedAt: "2026-11-01T08:00:00.000Z",

@@ -21,8 +21,8 @@ const packageMetadata = JSON.parse(
 
 const pluginDefinitions = [
   {
-    directory: "codex-plugin",
-    manifest: join(".codex-plugin", "plugin.json"),
+    directory: "chatgpt-plugin",
+    manifest: join(".chatgpt-plugin", "plugin.json"),
   },
   {
     directory: "claude-plugin",
@@ -47,6 +47,7 @@ const runtimeFiles = [
   "runtime-config.cjs",
   "storage-paths.cjs",
   "trace-recorder.cjs",
+  "interaction-contract.mjs",
 ];
 const templateFiles = ["config.example.yaml", ".env.example"];
 const runtimeDependencies = ["dotenv", "yaml"];

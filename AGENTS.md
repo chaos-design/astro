@@ -18,7 +18,12 @@ use Node.js ES modules or CommonJS according to their existing file extension.
 - `opencode-plugin/`: zero-dependency OpenCode plugin installed globally by
   `scripts/install-opencode-plugin.mjs`; `mapping.ts` maps OpenCode server
   events onto canonical event names, `claim.ts` guarantees one recorder per
-  session.
+  session. Durable events carry no location envelope, so
+  `opencodeEventDirectory` keeps every host spelling plus a per-session
+  remembered directory — dropping that fallback lost the main agent's text.
+  `session.text.delta` is accumulated into throttled `AgentMessage` snapshots so
+  content is visible while the agent executes; the claim is taken only once an
+  event actually maps to a trace, never on an unmapped event.
 - `pi-plugin/`: zero-dependency Pi extension installed globally by
   `scripts/install-pi-plugin.mjs`; `mapping.ts` maps Pi extension events onto
   canonical event names, and `claim.ts` stores the owning pid so resumable Pi
@@ -227,21 +232,32 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   selected agent's sessions. RUN HISTORY only ever consumes the intersection.
   The dropdown is the *outer* filter — agent first, then the time window — so a
   neighbour's live run must not be merged into this list. It used to be, which
-  put the Claude message that was executing at the top of the Codex history.
+  put the Claude message that was executing at the top of the ChatGPT history.
 - A neighbouring agent that is running is signalled by a live dot in the agent
   picker (`scopeLiveRunIndex().sources` → `AgentSelect liveAgents`). Cross-agent
   messages are reached by switching the dropdown, never by adding their rows to
   the open agent's history.
 - Switching agent clears the open selection (`activeSessionKey`,
-  `activePromptRunKey`, `selectedEventId`, `selectedAtomId`) so the canvas, the
-  log and the list all land on the new agent's newest message; the fallback run
-  is `filteredSessions[0]`, never `sessions[0]`. A `?session=` deep link that
-  names another agent's run moves the dropdown to that agent instead of leaving
-  the canvas on a run the list cannot show.
+  `activePromptRunKey`, `selectedEventId`, `selectedAtomId`). When the new scope
+  has a message executing now, `selectScopeFallbackRun` (`run-history-window.ts`)
+  lands on that live message instead of the newest finished one — a resumed run
+  can start days ago, and opening the finished row leaves the footer Live button
+  dark. The same helper drives the footer Live jump, so both entry points land
+  on the message the pinned list and `N LIVE` name. Without a live run the
+  fallback is the newest run of the scope (`filteredSessions[0]`), never
+  `sessions[0]`. The first paint uses the same live-first fallback, so `N LIVE`
+  never names a run the canvas did not open; an explicit `?session=` deep link
+  still wins and moves the dropdown to that agent instead of leaving the canvas
+  on a run the list cannot show.
 - A live message is marked on the row (status accent plus a `RUNNING` /
   `WAITING` capsule) and in the panel header (`N LIVE` chip that scrolls the
   first live row into view), so the executing message is findable without
-  scrolling.
+  scrolling. `isUserQuestionWaitingRun` (`run-history-state.ts`) is the one
+  presentation rule for a run blocked on a user question: the recorded status
+  stays `waiting` (long freshness window, IDLE stale wording) but RUN HISTORY
+  shows the RUNNING capsule, icon, STATUS and live accent. A rate-limit /
+  signal wait keeps its WAITING capsule; an answered question is `active` and
+  never reads as waiting.
 - Selection styling outranks the live accent; a selected live row keeps its
   selection border.
 - Executing runs are pinned to the top of the list, ordered by the **start of
@@ -385,13 +401,48 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   from an effect keyed on that flag, and `resolvePerfHudInitial` honours the
   retired `?perf=1` legacy flag (`astro:perf-hud` = `"1"`) once — the first
   write of `ASTROX_PERF_HUD` removes the legacy key.
-- The dialog is a two-pane card: `.settings-nav` (外观 / 运行历史 / 画布 / 面板 /
-  性能 / 关于) beside a `.settings-pane` that renders only the active section,
+- `appDefaults.taskCompletionChime` is the single default of the task-completion
+  chime (Settings → 通知, **on by default** so the notification works without
+  hunting for a switch). That switch is its only off control: the
+  sound is generated locally with the Web Audio API in
+  `src/lib/task-completion-chime.ts` — no audio asset, so a deployed console under
+  a project path needs no `assetUrl()` call. The tone is keyed by the recorded
+  terminal status in that same module (`getChimeTone`): complete ascends, failed
+  descends, terminated is a neutral double tap. A style
+  (`appDefaults.chimeStyle`, options in `chimeStyleOptions` in the same config
+  file, `ASTROX_CHIME_STYLE`) picks the timbre — waveform, loudness and note
+  patterns in the chime module's style table — and the status contour rule holds
+  within every style; the settings dialog previews the current style with one
+  button per terminal status. A batch plays one sound, chosen
+  by `resolveChimeStatus` (failed > terminated > complete) — a batch that also
+  failed must not be announced with the success chime. The terminal transition
+  itself is detected by `collectTerminalTransitions` from the **recorded** status
+  (`getRunHistoryDisplayStatus`), never the freshness/timeout display status, so
+  a live run that merely *looks* terminated does not chime. The effect in
+  `app.tsx` seeds its known-terminal set from the first real snapshot (already
+  finished history stays silent), removes a key while the run is live so a
+  resumed run can chime again, and skips Demo entirely. Refs hold this state, not
+  React state, so a streamed batch never re-renders the studio just to record a
+  completion.
+- The dialog is a two-pane card: `.settings-nav` (外观 / 运行历史 / 布局 / 性能 /
+  通知 / 关于) beside a `.settings-pane` that renders only the active section,
   carried by
   a vertical Radix `Tabs` so arrow keys work. A single stacked column scrolled the
   whole dialog or squeezed the controls on a short window. Header and footer are
   fixed and only the pane scrolls; Done merely closes it. A preference that also
   has an inline control in the header or toolbar is listed here as well.
+  **Layout is one section, not two**: the canvas default view / runtime-atoms
+  switch and the two panel switches would otherwise be two menus for one
+  question, so they live in one section as two labelled `SettingsGroup`s
+  (画布 / 面板) with their own descriptions. The question panel's placement is
+  listed there too (`ASTROX_QUESTION_PANEL_MODE`), next to the panel switches
+  it belongs to.
+- Every choice / preview button group in the dialog divides its row equally:
+  `.settings-options` and `.settings-chime-preview` share one grid rule,
+  `repeat(var(--settings-columns, 4), minmax(0, 1fr))`, so three options fill
+  three equal thirds and four fill four quarters. The chime previews set the
+  same token to 3 instead of growing a separate column rule. The two footer
+  actions keep their own equal `min-width` in the action bar.
 - 关于 names the console version, where preferences live (`localStorage`, the
   `ASTROX_` prefix), and that settings never write back to captured events.
 - The footer actions carry their own ink and surface. The app-level
@@ -495,6 +546,15 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   source that is not a configured agent". Sources without an agent definition
   (browser, generic, custom HTTP collectors) must not become pseudo-agent
   entries of their own.
+- Query-parameter writes for the current position live only in
+  `src/lib/console-location.ts`. Switching agent rewrites `agent` immediately
+  and replaces `session` / `event` with the new agent's newest run when its
+  filter has data (the canvas lands on the same message); only an empty filter
+  leaves the old deep link gone. That way a `?session=` of the agent just left
+  can never win over the dropdown on the next reload (deep links outrank the
+  filter). Connection parameters such
+  as `?api=` are preserved, and the legacy `?source=` is replaced, never
+  accumulated.
 
 ## Header Chrome
 
@@ -509,7 +569,10 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   the nav collapses on narrow screens.
 - Brand glyphs are inline SVG components (`src/components/repo-link.tsx`).
   Lucide no longer ships brand icons, and a single path is not worth a
-  dependency.
+  dependency. The agent marks in `src/components/agent-icons.tsx` are built by
+  a local `createBrandIcon` factory with a keyed element per path node — do not
+  switch them back to lucide's `createLucideIcon`, which renders its path nodes
+  without keys and warns on every multi-path mark.
 - Every icon control keeps an `aria-label`; a **tooltip is opt-in**. Add one
   only when the glyph cannot carry the meaning on its own (the chevrons that
   say *which* panel collapses, the action menu, the topology/trajectory
@@ -529,6 +592,22 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   installer copies no package manifest), so an installed service can report its
   release instead of `unknown`. A mismatch is called out, and an unreadable
   manifest renders "未上报" with the reason — never a bare `unknown`.
+- The card's restart button is honest about the browser boundary. With a live
+  health response it posts `/api/restart` and waits for the new pid; with no
+  service it does **not** fetch a dead port — it copies
+  `buildServiceCliCommands(apiBase, origin)` (repo: `pnpm service:up --port=N`,
+  installed bundle: `ASTRO_PORT=N astro-trace serve`) and the notice states
+  exactly whether the clipboard succeeded. A same-origin page takes its port
+  from `window.location`, not the default 5678. `scripts/service-cli.mjs` is the
+  out-of-band control surface: `up` restarts a running service or starts a
+  downed one on the same port (installed runtime wins, checkout server is the
+  fallback), `status` / `start` / `stop` are the single actions; `restart` on a
+  downed service starts it rather than waiting for a dead health endpoint. The
+  global CLI has the same start-or-restart alias, `astrox up`, so installed
+  bundles do not need the repository scripts. A
+  handover waits for a **new pid**, never reports the old process as ready.
+  A static page cannot spawn a local process; pretending otherwise would leave
+  the reader staring at an offline card with a dead button.
 
 
 ## First Paint, Rendering, Feedback
@@ -607,6 +686,13 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   and an unreachable edge is a `disabled` button (dimmed ink, `cursor:
   default`, no hover cues), never an unmount — reserving the width stops the
   sibling search input from resizing on every streamed event.
+- The virtualized LOG measures its row / turn heights **without depending on
+  the metrics it writes**: `AtomicLog` reads them from a ref, so the layout
+  effect runs only when the entries change. Measuring on `metrics` itself made
+  each `setMetrics` mount a new slice whose first row had a different height,
+  looping until React threw error #185 on the deployed console. The estimate is
+  the *tallest* mounted row of each kind, so a sliding window cannot clip a
+  wrapped row or flip the height by swapping the first row.
 
 ## Run Trajectory Order
 
@@ -617,7 +703,10 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   the "latest atom" test, and the lane overview all depend on that order, so
   `orderTrajectoryNewestFirst` is the only place allowed to reverse — never
   sort the model in place.
-- The lane overview above the list remains a left-to-right timeline.
+- The lane overview above the list remains a left-to-right timeline. `normalizeSlotStatus`
+  maps `waiting` onto `active` (like `running`), so a blocked User Question slot
+  keeps the running pulse instead of decaying to `idle` — "executing" has one
+  meaning shared with `isLiveRunStatus`.
 
 ## Explicit Locate Requests
 
@@ -685,13 +774,255 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   `tool_input.plan` (no `questions` array and no `message`), which the preview
   renders as a `Plan` section. Do not synthesize a `message` for that shape in
   an adapter or the recorder. The preview decision must not use
-  `isUserQuestionStartEvent`: that predicate drives run state and deliberately
-  excludes `Notification`.
+  `isUserQuestionStartEvent`: that predicate drives run state (question starts,
+  not answers), while the preview follows the display key, so an answer row
+  still previews its payload.
+- A captured answer has one rendering: `src/components/answer-rows.tsx`, used
+  by the floating card's result, the docked question surface and the inspector's
+  historical Answers section. It reconstructs selected options through
+  `matchAnswerOptions` in `src/lib/question-panel-model.ts` (whole comma tokens
+  matching a declared label, so "Paris, France" never lights a "France" chip),
+  paints them as highlighted chips, and renders any remaining free text as
+  Markdown. `QuestionResultList` keeps the request's answer order through
+  `resultAnswerRows`; do not re-derive answers from drafts after the result
+  arrives — the app clears drafts on close, which is why historical selections
+  used to lose their highlight.
+- Turning an inspector payload into a Markdown preview document lives only in
+  `src/lib/payload-markdown.ts` (`payloadToMarkdown`: a captured result is found
+  at any depth — `captured`, `tool_response`, `output`, `result` and their nested
+  content arrays — and returned as its real text, so a tool result renders as
+  the Markdown it is instead of a wall of field labels and fenced JSON; a `plan`
+  nested in `tool_input` is read the same way; a JSON result is fenced for the
+  highlighter; an `answers` map becomes question → Markdown-answer rows, a
+  `questions` list a numbered list with option bullets, and a captured result
+  with no single text shows as readable field lines rather than a JSON dump —
+  the inspector/overlay's `{ contract, captured }` wrapper previews only
+  `captured`, leaving the `contract` topology metadata to the Raw tab); Markdown parsing, syntax highlighting and HTML sanitizing
+  live only in `src/lib/markdown-preview.ts` (`renderMarkdownPreview`, with
+  highlight.js registering only the languages captured payloads carry). The
+  Input/Output/Raw tabs and the global expand layer share these two sources;
+  `src/components/payload-overlay.tsx` only renders them — it must not grow a
+  second conversion or sanitizer. The expand control opens a Dialog (portaled
+  to the document body) whose payload always follows the current event and tab,
+  never a global newest request. Its left rail is the run's **message chain in
+  the LOG's own data standard**: every event of the run the LOG renders, from
+  the same `buildLogEntries(activeEvents, …)` result (`overlayAtoms` in
+  app.tsx), split by the same turn separators `buildTraceTurnIndex` produces —
+  the pipeline-atom rail (one row per platform atom, bound to each atom's
+  newest event) could not reproduce the chain, so a rail row is one *event*
+  with the harness atom id it commits to. It is a view of the **single**
+  console selection, never a second one — picking a row calls
+  `handleOverlaySelectEvent`, which writes the same state the LOG's select
+  handler writes (the picked event plus `getAtomIdForEvent`), so the overlay
+  cannot highlight A while the canvas / LOG / inspector stay on B. The dialog
+  only receives `atoms` / `selectedEventId` / `onSelectAtom` and follows the
+  main selection reactively. The rail renders **newest first**
+  (`[...atoms].reverse()` in the dialog): the first-executed event is at the
+  bottom, matching RUN HISTORY and LOG, and turn separators are keyed by
+  position, never by the turn value. Its rows **reuse the LOG row itself**
+  (`.atomic-log__row`): shared `formatLogSequence` number, `atomTypeLabel` TYPE
+  badge, event-meta tone colour, timestamp, action / summary, the closed-pair
+  duration badge and the shared `PairLinkMarker` — the same `PairLinkMarker`
+  component the LOG and trajectory render, extracted to
+  `src/components/pair-link-marker.tsx`; `payload-overlay.tsx` must not grow a
+  second row implementation, type taxonomy or tone map. The rail-only CSS
+  overrides give the chain room to be read (wider rail, one step larger type,
+  wrapping key / two-line summary) — a name must never ellipsize into
+  `trajectory.pr…` again; their selectors carry the `.atomic-log__row` scope so
+  they out-rank the base row rules that follow later in the file. Rail rows
+  carry **no hover styling** (sweeping the pointer changes nothing; selected /
+  running / pair-partner rows keep their own state, which the base `:hover`
+  rule would otherwise out-rank), and the selected row is one more step of type
+  with a brighter selection treatment — the step being inspected must be
+  unmistakable at a glance. Arrow/Home/End move focus between rows. The head
+  is **one row** — run counter, a growing search box, the Live toggle — and
+  the rail has its **own search box** (rail-local state, the LOG's
+  deferred-needle pattern, matching the rows' display fields AND the row
+  event's payload content through the shared per-event haystacks
+  `searchEvent` → `matchesEventQuery`; the input carries a clear button, and a
+  turn whose rows all miss disappears with its separator). Its duration badge
+  keeps the **exact
+  milliseconds** (`formatDurationMsExact` — the layer exists to inspect ONE
+  step's latency, where the lists' stepped units would round away the digits
+  being inspected; the LOG and trajectory keep `formatDurationMs`). The rail
+  header carries a **Live toggle** that
+  mirrors the console's live following: availability keys off the *recorded*
+  status (`getRunHistoryDisplayStatus` — the RUNNING capsule the RUN HISTORY
+  card keeps printing, STALE marker included), never the freshness-terminated
+  display, so a run that went silent stays clickable until a terminal event
+  lands; arming rides the session's newest prompt run
+  with no explicit atom selection (like the footer Live jump) and then only
+  *scrolls* the selected row into view as new events land — never a selection
+  change, or Live following dies mid-question; picking any row disarms. Armed
+  is the follow posture (selection cleared): a genuinely executing message
+  keeps advancing to its newest atom, a STALE one lands on its newest event
+  and resumes following the moment it produces an event again. Armed
+  it breathes (a `payload-follow-breathe` halo); the label is the console's
+  own Live mark.
+  The layer keeps **both readings behind one
+  toggle**: `Preview` is the rendered content (Markdown headings, GFM task lists,
+  highlighted code, question/option/answer lists) and `Code` is the untouched
+  structured JSON, so a reader can check either shape without leaving the
+  dialog. `Preview` is split into two panes — the atom's real content
+  (Markdown / highlighted code, or the question list) and the related data
+  (timestamps, paths, ids, annotations / explanations) — and the pane titles
+  stay **pinned** while their bodies scroll under them. The split lives only
+  in `src/lib/payload-preview.ts`; the dialog caches a prepared preview per
+  event id, **scoped by the inspector tab** (`cacheScope`), via
+  `payloadForAtom(atomId, eventId)` / `variantForAtom(atomId, eventId)` — a
+  picked row resolves its *own* event's payload (one atom aggregates many
+  events, so the resolver is row-event-first: a tool-call row reads its own
+  `tool_input`, a result row its `tool_response`, a prompt row its payload),
+  and the pane previews the payload's **core information**, never the raw
+  envelope: a split with prose renders as Markdown, one without falls to the
+  shared core extractor `payloadToMarkdown` (which reads the camel
+  `toolResponse` spelling and renders a `structuredPatch` as a highlighted
+  diff), and only a payload with nothing to say falls back to highlighted
+  JSON (`fallbackPayloadMarkdown` — switching rows must always
+  change the pane, never sit empty). The generic view is **content-only**:
+  metadata keys stay out (they are labelled in the related-data pane),
+  field-name headings are not printed, and a string value is fenced with its
+  inferred language (`inferCodeLanguage` / `fenceCode` — json / diff / xml /
+  typescript / python / bash; a wrong guess colours prose into noise, so weak
+  signals additionally require code punctuation or a multi-line body). The
+  related-data pane **folds by default**: its body is capped (200px) with an
+  展开 / 收起 toggle in the pane head that expands it downward, and the two
+  pane titles stay pinned while their bodies scroll. Switching rows in the
+  rail is a lookup, never a repeated Markdown parse. Its preview is type-aware:
+  a user.question Input tab passes the raw
+  question payload to `QuestionPreview` (the shared read-only question / option
+  / answer list) instead of the Markdown path — an answers-only payload with no
+  question / plan falls back to the Markdown answer preview so the overlay is
+  never blank; every other tab keeps the Markdown view. The read-only question
+  list (`QuestionPreview` → `StaticQuestionContent`) leads with a question count
+  and a capture-order hint, numbers each question, marks answered ones, and
+  prints the selected labels on a dedicated line; captured selections use a
+  stronger selected-chip treatment than the live option buttons.
+  The docked answer form and the floating card share one 提交 / Cancel order and
+  one button label, and the "N questions · one submit" hint lives above the
+  question list rather than in the action bar.
+- "What counts as a user question" lives only in `src/lib/trace-event-kind.ts`
+  (`isUserQuestionEvent` / `isUserQuestionStartEvent`): question-named events,
+  a `Pre/PostToolUse` naming the question tool, plus a
+  `notification_type=permission_prompt` `Notification` whose text or tool field
+  names `AskUserQuestion`. Generic `idle_prompt` / `auth_success` notifications
+  and permission prompts for other tools (Bash, DeferExecuteTool) stay runtime
+  signals. **Whether it blocks is a separate decision** in the same module:
+  `isBlockingUserQuestionStartEvent` requires answerable parameters (a non-empty
+  `questions` or `plan`). A parameterless `PermissionRequest` / permission
+  notification is host **system authorization**: it displays as
+  `permission.request` and never puts the run in `waiting` or mounts an answer
+  box. A bare `PermissionRequest(Bash/Edit)` projects onto
+  `harness-action-gate`; a permission notification naming a question tool stays
+  on `harness-user-question` in the `delta` phase so the canvas is already there
+  when WorkBuddy's real `questions` arrive with a later `PreToolUse` — the
+  parameterized question then takes over the same atom and is reachable. An
+  explicit question event (Elicitation, a question-named event, a question-tool
+  lifecycle row) blocks without the parameter check.
 - `PreToolUse` / `PostToolUse` of `ExitPlanMode` keep their `tool.call` /
   `tool.result` display keys. `hasPlanContent()` in the same extractor lets the
   inspector preview their plan without adding `exitplanmode` to the
   user-question classifier, which would change projection, waiting state and
   topology counts.
+- The harness `user-question` atom binds the newest question **start** event
+  (the actual user question) in `src/lib/execution-topology.ts`; the answer
+  event only closes its status. Binding the last matched event made the
+  inspector read the answer payload instead of the question. `userQuestionSummary()`
+  in `src/lib/user-question-content.ts` is the one display text for a question
+  — LOG summaries, the atomic projection and the inspector overview all read
+  it; a question row must never fall back to the tool name.
+- When the displayed question has a live `InteractionRequest`, the question
+  surface (`src/components/question-content.tsx`) becomes answerable — the dock
+  below the inspector tabs and the Input tab render that one component, and
+  Overview no longer mounts a second answer box. One toolbar row owns only the
+  view switch (Preview / Code) and the placement switch — the question itself is
+  never foldable, so there is no collapse button; Preview shows the question list
+  with option chips, Code shows the raw payload only — no options and no answer
+  bar. While a request is open the options are buttons and the
+  Submit / Cancel bar is a sibling of the scrolling body, pinned to the bottom
+  of whichever container holds the surface; once it closes (or for a captured
+  question with no request) the same chips render as static `spans`, so nothing
+  looks answerable when there is nothing to answer. `src/lib/question-interaction.ts` owns
+  the one match rule (tool id first, then session + verbatim question text,
+  then — for the textless plan approval — the session's newest open
+  ExitPlanMode request). When a view scope is supplied, `questionMatchesCurrentView()`
+  first requires the question event inside the selected prompt run, an atom id
+  that resolves from that same event, and a matching session/source; the
+  floating card and the inspector both use it. Switching agent or message
+  therefore removes the answer surface instead of answering a stale request.
+  `answerInteractionQuestions()` in
+  `src/lib/interaction-client.ts` is the one batch sender: every question gets a
+  `text` event with increasing seq, then a single `submit` carrying the full
+  answer map; `answerInteractionQuestion()` is only its one-element wrapper.
+  The answer key is always the descriptor's verbatim question text — never a
+  row index or the selected log event. The host closes a request on the first
+  submit, so a multi-descriptor AskUserQuestion must be answered in one batch,
+  not one question at a time. Single-select descriptors render one-click quick
+  answer buttons above the free-text row (a plan approval is an Approve/Reject
+  pair); multi-select options are toggles whose draft is kept in declared option
+  order, with typed text as the submitted value (no separate Set action).
+  Every option click — single or multi — only fills its draft and highlights
+  the choice; the single Submit button sends the batch once all required
+  questions are answered. `src/lib/question-panel-model.ts` is the one builder
+  for those answer maps. The inspector grid item must keep `min-width: 0`: the
+  surface wraps long question text inside the panel width and scrolls its body
+  under a pinned submit bar, so an AskUserQuestion can never widen the 320px
+  log column. A blocked/rejected submit keeps the draft and raises
+  a notice — clearing it would make a failed answer look sent. A close result
+  only splits comma-joined answers for multi-select descriptors; free text such
+  as "Paris, France" stays one answer. The
+  inspector's question binding mirrors the display fallback: a plan-content
+  tool row answers like the question atom.
+  The floating interaction panel uses the same strict current-message/current-atom
+  binding as the inspector, never a global newest request. It is a live answer
+  affordance only: `isQuestionActionable()` in `src/lib/question-interaction.ts`
+  (delegating to `isPromptExecuting`, so both `active`/running and `waiting`
+  count) gates the floating card and the inspector's answer controls. The gate
+  keys off the *session* status the RUN HISTORY card shows (`getRunHistoryDisplayState`
+  over the active session), not the selected prompt run — drilling into an older
+  message or atom must not freeze the question while the task is still
+  executing. Once the session reaches a terminal state, or the reader replays a
+  captured snapshot, no card floats and the inspector question goes read-only —
+  the event stays a preview, never an answerable request. It follows the
+  question lifecycle: the card enters with an animation when its bound request
+  opens, the header chevron collapses it to a one-line summary (a new request
+  remounts the card via its `requestId` key and re-expands), the question list
+  has a mode-dependent maximum scroll height while the footer stays pinned to
+  the card's bottom edge, and when the request closes the app keeps the card
+  mounted (`--settling`, `INTERACTION_SETTLE_MS`) so the result stays readable
+  ~2.4s before it slides away. A stream reset that wiped the record dismisses
+  it at once instead of showing a stale question. `dock-full` / `float`
+  (`src/lib/question-panel-model.ts`, which also normalizes the retired
+  `dock-half` / `half` / `bottom` / `side` values) are the one shared placement
+  of both surfaces: `dock-full` renders that same question surface under the
+  inspector tabs and fills the detail area, and only `float` puts the card over
+  the canvas, so the card still requires the highlighted atom to be the
+  question. Until the reader switches layouts by hand, the mode follows the run
+  state (`autoQuestionPanelMode`: an answerable question floats so it stays next
+  to the run it blocks, a finished or captured one docks full); only an explicit
+  switch is persisted, so a derived default is not frozen across reloads. The
+  docked layout expands a historical question the reader selected, which is how
+  a closed request is re-opened for reading, and uses tighter rows so more of the
+  question fits; the floating card puts one option per full-width row for quick
+  answering. A collapsed EVENTS column has no region to dock into, so
+  `questionDocked` in `app.tsx` falls back to the card for the synchronous
+  window. Questions inside the card are never foldable (only the whole card
+  collapses from its header), its question list scrolls edge to edge — the card
+  carries no outer padding, the rows carry the gutters — so the scrollbar rides
+  the card border, and the keyboard shortcut legend sits in the card header
+  between the summary and the status so the footer keeps only the Submit / Cancel
+  buttons, in that order (the docked footer matches). The
+  dock keeps the closed result (`QuestionResultList`) where the answer box was,
+  mirroring the card's settle window.
+  For faster answering the floating card focuses its first option and binds
+  digit keys to the first question's options, Enter to submit, Escape to
+  cancel; `resolvePanelKey` in `src/lib/interaction-panel-model.ts` is the one
+  decision source and refuses every shortcut while the card is read-only. The
+  listener lives on the card, never on `document`, so search and dialogs keep
+  their keys; text fields handle Enter as a one-batch submit and otherwise own
+  their keystrokes.
+  The countdown bar is one CSS animation from the request's own timestamps;
+  `interactionTimeLeft` is the pure ratio for any numeric display of it.
 - `PreCompact` / `PostCompact` cover context compaction for every client that
   reports it; streaming compaction deltas are never recorded.
 
@@ -731,8 +1062,24 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   and workspace when the (empty) payload omits them. Both `workbuddy-plugin/hooks/hooks.json`
   and the `workbuddy` client in `scripts/install-plugins.mjs` must keep the
   flag synchronized with their registered event lists.
-- Tool inputs, outputs, and prompts are not delivered for WorkBuddy, so
-  WorkBuddy traces carry named lifecycle events without tool payload detail.
+- Older WorkBuddy builds omitted the payload entirely, so the recorder falls
+  back to hook-environment session/workspace and those traces carry named
+  lifecycle events without tool detail. Current WorkBuddy builds **do** write
+  `tool_input` (including AskUserQuestion `questions`) to hook stdin: the
+  captured `PreToolUse` carries them, and the opt-in interaction hook parses the
+  same payload to register an answerable request. Do not assume the empty-payload
+  shape or drop the env fallback — both spellings must keep working.
+- WorkBuddy has no `PermissionRequest` hook. While the host asks permission to
+  call `AskUserQuestion` the only signal is
+  `Notification { notification_type: "permission_prompt", message: "needs your
+  permission to use AskUserQuestion" }`; the tool's real `questions` arrive with
+  a later `PreToolUse`. That notification is a system authorization (see Event
+  Labels): recognise only permission prompts naming a question tool, never let
+  the parameterless shape block the run, and keep it on the User Question atom
+  so the later parameterized question is reachable from the same spot. That
+  follow-up `PreToolUse` is answerable from the console when the interaction
+  hook is installed for `--client=codebuddy` (it registers on `PreToolUse` and
+  returns the answer in `modifiedInput`); the recorder still writes the event.
 
 ## Pi Capture
 
@@ -749,6 +1096,111 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   Pi process takes a session over only after the previous owner exits.
 - The extension reads event shapes defensively (Pi adds fields across
   releases) and must never block the agent loop; recording failures fail open.
+
+## Optional Decision Hook (auto-approve user questions)
+
+- ASTRO's capture hooks stay read-only. `scripts/auto-approve-question-hook.mjs`
+  is a **separate host-side handler**, never installed by
+  `install-plugins.mjs` and off by default. It reads hook stdin and returns
+  `hookSpecificOutput` with `allow` plus a full `updatedInput` (`answers` for
+  `AskUserQuestion`, echoed `plan` for `ExitPlanMode`). Unmatched or broken
+  input yields empty stdout and exit 0, so the normal prompt returns.
+- `scripts/install-auto-approve-hook.mjs` is dry-run by default; `--apply`
+  merges one matcher-limited group (`AskUserQuestion|ExitPlanMode`) into user
+  settings, preserves unrelated keys/hooks, is idempotent, and backs up the
+  file. ZCode needs `hooks.enabled: true` in `~/.zcode/cli/config.json` and a
+  new session. Never reuse a recorder's `--source=` for the decision hook:
+  `isInstalled()` would overwrite it on the next installer run.
+- Keep the decision hook out of `plugin/` and `*-plugin/`. Changing recorder
+  stdout would break fail-open, the six mirrored `trace-recorder.cjs` files and
+  every stdout assertion. Explicit deny rules, plan-mode write bans and hard
+  tool limits still win over an `allow`; keep recorders `--quiet` so their
+  stdout does not join the `deny > ask > allow` aggregation.
+- Protocol and installer behavior is pinned by `tests/auto-approve-hook.test.mjs`;
+  host configuration and verification live in `docs/plugin-installation.md`
+  ("Optional: auto-approve user questions").
+
+## AskUserQuestion Interaction Hook
+
+- `docs/interaction-hooks-{zh,en}.md` is the **contract source** for the
+  observation / decision / interaction channel model: five message shapes
+  (`QuestionDescriptor`, `InteractionRequest`, `InteractionEvent`,
+  `InteractionResult`, `AgentNotification`), the SSE frames, TraceEvent
+  projection and Agent notification channels. Change it before changing the
+  implementation.
+- One implementation lives in `plugin/interaction-contract.mjs` (+ `.d.mts`);
+  `src/lib/interaction-contract.ts` and `src/lib/agent-notification.ts` are typed
+  facades. The installed runtime copies only `plugin/`, `server/` and `dist/`,
+  so the contract must never move under `src/`.
+- Capture stays read-only. The interaction hook (`scripts/interaction-hook.mjs`)
+  is a separate opt-in hook: it registers at `POST /api/interactions`, polls
+  `<ASTRO_HOME>/interactions/<id>.json` inside `ttlMs = timeout - 500`, and
+  returns `allow` with `updatedInput.answers` only for an `answered` result.
+  Cancelled, timed out or unreachable service → empty stdout + exit 0. The
+  hook parses every host payload spelling — ZCode's camelCase `toolCallId`
+  included — so a plan approval's request always carries the tool id the
+  console matches on.
+- It does **not** write a `PermissionRequest` TraceEvent: the recorder already
+  captures the same host event, and a second write produced two identical
+  question rows in the LOG. Records of the outcome are the recorder's
+  `PostToolUse` (`tool_input.answers`) plus one `Notification` written by the
+  service on close (counts and device only, never an answer value).
+- The service keeps interactions in memory and writes exactly one result file
+  per request (tmp + rename). Routes: `POST /api/interactions`,
+  `POST /api/interactions/:id/events`, `POST /api/interactions/:id/close`,
+  `GET /api/interactions/:id`; `/api/stream` adds `interaction.open` /
+  `update` / `close` and clears them on `reset` / `reset-same`. Writing an
+  answer back is the `close` route plus the result file — never
+  `POST /api/events`. When the **last** stream client leaves, a one-second grace
+  absorbs an EventSource reconnect; if no client returns, `cancelOrphaned()`
+  finishes every open request as `cancelled/service` through the same `finish()`
+  path. The frames are never replayed, so a disconnected reader must not hold
+  the host for the rest of its window, but a one-second blip must not throw away
+  a live question either. Creating a new record removes any old result file for
+  the same deterministic id before the hook can poll it.
+- `Notification` hooks have no decision control; never wrap an answer as
+  `UserPromptSubmit`. `additionalContext` / `systemMessage` /
+  `permissionDecisionReason` are capped at 10,000 characters and only
+  `PreToolUse` can carry the first two (ZCode's strict stdout schema rejects
+  extra keys on `PermissionRequest`). The CodeBuddy / WorkBuddy `modifiedInput`
+  channel is stricter still: `preToolUseOutput` drops `additionalContext` and
+  `systemMessage` whenever `inputField === "modifiedInput"`, leaving only the
+  decision, reason and modified input — exactly the shape the auto-approve hook
+  emits. The console may flash the question atom on `interaction.open`, but only
+  through `shouldLocateInteractionRequest` (same session and source, reader
+  following live), and only as a locate pulse: never change the selection, or
+  Live following dies mid-question.
+- A hook is synchronous: the answer window **is** the hook's registered
+  timeout, written by the installer (`--timeout`, seconds, default 600) into
+  both the host's hook configuration and the hook's `--timeout` argument, so
+  the request's TTL can never outlive the host's wait — never block past it,
+  `exit 2` or emit `continue: false`. While a console page is attached to
+  `/api/stream` the whole window is answerable; with no console connected the
+  service closes the request as `cancelled` at once (interaction frames are
+  never replayed on reconnect, so nobody could answer it) and the host's
+  native prompt returns immediately. The contract validates a configured
+  window against `maxHookTimeoutMs` (1 h), with `hookTimeoutMs` (5 s) staying
+  the no-flag default.
+- Cancel / Escape applies the close result **locally** as soon as the POST
+  succeeds: `cancelInteraction` dispatches `close` from the response (the service
+  wraps it as `{ requestId, result, duplicate }`), and the SSE close frame stays
+  authoritative for other devices. Relying on the frame alone left a card still
+  answerable after a 200 close whenever the frame was lost to a reconnect or the
+  request had already been closed by the service. The reducer's "already closed"
+  guard makes the second close a no-op.
+- `scripts/install-interaction-hook.mjs` reuses the merge / validate / remove
+  helpers of `install-auto-approve-hook.mjs` (parameterized by `hookMarker`,
+  `events`, `hookArgs`). Dry-run by default, backup on `--apply`, `--remove`
+  keeps recorder and decision groups. Default event is `PermissionRequest`;
+  `--events=` widens it. Do not install both hooks on the same event:
+  auto-approve answers immediately and makes the panel pointless.
+- Catalog entries for these docs live in `docs/index.md` and
+  `site/src/docs.ts` (`sectionBySlug` + `readingOrder`).
+- `plans/planing/03-ask-user-question-implementation-breakdown.md` is the
+  executable backlog (32 tasks, A1–F5). 31 are ticked; F3 (real Claude / ZCode
+  host acceptance) is blocked because this machine has no host binary, so the
+  plan is not archived. Do not write "host acceptance passed" anywhere before
+  F3 is done.
 
 ## Validation
 

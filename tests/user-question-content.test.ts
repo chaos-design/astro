@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   hasPlanContent,
   parseUserQuestionContent,
+  userQuestionSummary,
 } from "../src/lib/user-question-content.ts";
 import type { TracePayload } from "../src/types/trace.ts";
 
@@ -26,7 +27,10 @@ test("structured AskUserQuestion payloads render per question with options", () 
   assert.equal(content.prompts.length, 1);
   assert.equal(content.prompts[0].title, "Deploy");
   assert.equal(content.prompts[0].question, "Deploy **tonight**?");
-  assert.deepEqual(content.prompts[0].options, ["Yes", "No"]);
+  assert.deepEqual(content.prompts[0].options, [
+    { label: "Yes", description: "ship it" },
+    { label: "No", description: "wait for CI" },
+  ]);
   // The structured shape replaces the free-form message, not stacks with it.
   assert.equal(content.message, "");
 });
@@ -45,7 +49,10 @@ test("questions sitting directly on the payload resolve the same way", () => {
   assert.equal(content.prompts.length, 1);
   // No header: the component titles the section "Question 1".
   assert.equal(content.prompts[0].title, "");
-  assert.deepEqual(content.prompts[0].options, ["Allow", "Deny"]);
+  assert.deepEqual(content.prompts[0].options, [
+    { label: "Allow" },
+    { label: "Deny" },
+  ]);
 });
 
 test("free-form payloads fall back to the message field", () => {
@@ -84,7 +91,10 @@ test("string options and unrecognized option shapes keep the labels they have", 
   } as unknown as TracePayload);
   // Plain strings and value-shaped objects become labels; everything else
   // drops instead of rendering "[object Object]".
-  assert.deepEqual(content.prompts[0].options, ["alpha", "beta"]);
+  assert.deepEqual(content.prompts[0].options, [
+    { label: "alpha" },
+    { label: "beta" },
+  ]);
 });
 
 // ZCode (and Claude Code) report plan approval as PermissionRequest with
@@ -164,4 +174,78 @@ test("hasPlanContent widens the preview only for plan-shaped payloads", () => {
   assert.equal(hasPlanContent({ message: "Agent completed." } as TracePayload), false);
   assert.equal(hasPlanContent({}), false);
   assert.equal(hasPlanContent(null), false);
+});
+
+test("an auto-approve hook's answers are visible beside the question", () => {
+  const content = parseUserQuestionContent({
+    tool_input: {
+      questions: [
+        { question: "Which framework?", options: ["React", "Vue"] },
+      ],
+      answers: { "Which framework?": "React" },
+    },
+  } as unknown as TracePayload);
+  assert.equal(content.prompts.length, 1);
+  assert.equal(content.hasContent, true);
+  assert.deepEqual(content.answers, [
+    { question: "Which framework?", answer: "React" },
+  ]);
+});
+
+test("an answers-only tool result stays displayable", () => {
+  const content = parseUserQuestionContent({
+    eventName: "PostToolUse",
+    tool_response: { answers: { "Deploy tonight?": "Yes, No" } },
+  } as unknown as TracePayload);
+  assert.equal(content.hasContent, true);
+  assert.deepEqual(content.prompts, []);
+  assert.equal(content.message, "");
+  assert.equal(content.plan, "");
+  assert.deepEqual(content.answers, [
+    { question: "Deploy tonight?", answer: "Yes, No" },
+  ]);
+});
+
+test("camelCase answers resolve and non-string values are ignored", () => {
+  const content = parseUserQuestionContent({
+    toolInput: {
+      answers: { "Pick one": "alpha", "Bad: number": 42, "Bad: null": null },
+    },
+    toolResponse: ["not an object"],
+  } as unknown as TracePayload);
+  assert.deepEqual(content.answers, [{ question: "Pick one", answer: "alpha" }]);
+  assert.equal(content.hasContent, true);
+});
+
+test("the display summary names the question, not its tool", () => {
+  assert.equal(
+    userQuestionSummary({
+      tool_name: "AskUserQuestion",
+      tool_input: {
+        questions: [
+          { question: "Which framework?" },
+          { question: "Which database?" },
+        ],
+      },
+    } as unknown as TracePayload),
+    "Which framework? · Which database?",
+  );
+  assert.equal(
+    userQuestionSummary({ message: "Need a decision on rollout" } as unknown as TracePayload),
+    "Need a decision on rollout",
+  );
+  assert.equal(
+    userQuestionSummary({ tool_input: { plan: "# Plan\n\nShip it" } } as unknown as TracePayload),
+    "# Plan",
+  );
+  assert.equal(userQuestionSummary({ tool_name: "AskUserQuestion" } as unknown as TracePayload), "");
+});
+
+test("answers are independent of plan detection", () => {
+  const content = parseUserQuestionContent({
+    tool_input: { plan: "# Plan", answers: { "Approve?": "Yes" } },
+  } as unknown as TracePayload);
+  assert.equal(content.plan, "# Plan");
+  assert.deepEqual(content.answers, [{ question: "Approve?", answer: "Yes" }]);
+  assert.equal(hasPlanContent({ tool_input: { plan: "# Plan" } } as unknown as TracePayload), true);
 });

@@ -1,0 +1,23 @@
+{
+  "hooks": {
+    "enabled": true,
+    "events": {
+      "PermissionRequest": [
+        {
+          "matcher": "AskUserQuestion|ExitPlanMode",
+          "hooks": [
+            {
+              "type": "process",
+              "command": "node",
+              "args": [
+                "/absolute/path/to/astro/scripts/auto-approve-question-hook.mjs"
+              ],
+              "enabled": true,
+              "timeoutMs": 5000
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

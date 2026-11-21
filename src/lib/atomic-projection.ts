@@ -9,6 +9,7 @@ import type {
 import { getAtomPlatformConfig } from "../config/atom-platforms.ts";
 import type { PlatformId, TraceEvent } from "../types/trace.ts";
 import {
+  isBlockingUserQuestionStartEvent,
   isUserQuestionEvent,
   isUserQuestionStartEvent,
 } from "./trace-event-kind.ts";
@@ -79,7 +80,9 @@ const EVENT_PROJECTIONS: Readonly<Record<string, readonly ProjectionStep[]>> = {
     { atomId: "observation", phase: "error" },
     { atomId: "checkpoint", phase: "end" },
   ],
-  PermissionRequest: [{ atomId: "user-question", phase: "start" }],
+  // The answerable case is projected by `userQuestionProjection` below; this
+  // branch is the system-authorization gate (no questions / plan).
+  PermissionRequest: [{ atomId: "action-gate", phase: "start" }],
   Elicitation: [{ atomId: "user-question", phase: "start" }],
   ElicitationResult: [{ atomId: "user-question", phase: "end" }],
   Notification: [{ atomId: "trace-append", phase: "end" }],
@@ -168,7 +171,12 @@ export function projectTraceEvents(
     );
     if (traceEvent.eventName === "UserPromptSubmit") activeModelByContext.delete(context);
     const fallbackAtomId = config.eventAtomMap[traceEvent.eventName] ?? "trace-append";
-    const steps: readonly ProjectionStep[] = isUserQuestionEvent(traceEvent)
+    const answerableQuestion =
+      isUserQuestionEvent(traceEvent) &&
+      (!isUserQuestionStartEvent(traceEvent) ||
+        isBlockingUserQuestionStartEvent(traceEvent) ||
+        traceEvent.eventName === "Notification");
+    const steps: readonly ProjectionStep[] = answerableQuestion
       ? userQuestionProjection(traceEvent)
       : isWaitingTraceEvent(traceEvent, config.waitingEvents)
         ? waitingProjection(traceEvent)
@@ -267,7 +275,9 @@ function userQuestionProjection(
     (event.eventName === "PermissionDenied" && event.payload.retry !== true)
       ? "error"
       : isUserQuestionStartEvent(event)
-        ? "waiting"
+        ? isBlockingUserQuestionStartEvent(event)
+          ? "waiting"
+          : "delta"
         : "end";
   return [
     {

@@ -10,7 +10,7 @@
 | TraceEvent | ASTRO 的最小持久化事实单元。所有客户端信号都归一化为该结构后落盘。 |
 | Session（会话） | 同一来源内一次连续的智能体执行上下文，以 `sessionId` 标识。 |
 | 工作区（Workspace） | 事件的空间隔离维度，以 `workspaceId` 标识。 |
-| 来源（Source） | 产生事件的客户端类型，如 `claude`、`codex`、`workbuddy`。 |
+| 来源（Source） | 产生事件的客户端类型，如 `claude`、`chatgpt`、`workbuddy`。 |
 | Prompt 子运行 | 控制台从每条 `UserPromptSubmit` 派生的读取时区间，包含该提示词到下一条提示词之前的全部事件。 |
 | 执行域（Execution Domain） | 控制台为会话内每个执行主体（主智能体或子智能体）动态划分的分组。 |
 | 原子（Atom） | 拓扑图上的最小执行节点，由原子事件或配对的工具事件折叠而成。 |
@@ -40,7 +40,7 @@
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `schemaVersion` | number | 是 | 写入协议版本；读取端归一化旧格式。 |
-| `id` | string | 是 | 事件唯一 ID。实时采集为 UUID；Codex 历史导入为确定性哈希。 |
+| `id` | string | 是 | 事件唯一 ID。实时采集为 UUID；ChatGPT 历史导入为确定性哈希。 |
 | `capturedAt` | ISO 8601 string | 是 | 来源时间或采集时间。 |
 | `source` | string | 是 | 归一化来源名。 |
 | `sourceVersion` | string \| null | 是 | 来源客户端版本，未知为 `null`。 |
@@ -73,7 +73,7 @@
 | 输入包含 | 标准来源 |
 | --- | --- |
 | `claude` | `claude` |
-| `codex` 或 `openai` | `codex` |
+| `chatgpt` 或 `openai` | `chatgpt` |
 | `deepseek` 或精确的 `dsh` | `deepseek` |
 | `workbuddy` 或 `codebuddy` | `workbuddy` |
 | `trae` | `trae` |

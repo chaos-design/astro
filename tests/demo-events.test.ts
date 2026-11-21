@@ -41,7 +41,7 @@ test("ships one multi-turn sample run as a local dataset document", () => {
   // console has nothing to fall back to, so the file itself is under test.
   const dataset = readDemoDataset();
   assert.equal(dataset.session.id, "demo-runtime-7f31");
-  assert.equal(dataset.session.source, "codex");
+  assert.equal(dataset.session.source, "chatgpt");
   assert.equal(dataset.session.cwd, "/workspace/astro");
   assert.equal(dataset.events.length, 16);
 
@@ -50,7 +50,7 @@ test("ships one multi-turn sample run as a local dataset document", () => {
   assert.equal(events[0].eventName, "SessionStart");
   assert.equal(events.at(-1)?.eventName, "Stop");
   assert.equal(events[0].sessionId, "demo-runtime-7f31");
-  assert.equal(events[0].source, "codex");
+  assert.equal(events[0].source, "chatgpt");
   assert.equal(events[0].workspaceId, "demo-workspace");
   // 9.2s from SessionStart to Stop, the span the old hardcoded run asserted.
   assert.equal(
@@ -71,7 +71,7 @@ test("anchors offsets at load time so the sample stays inside the window", () =>
 
 test("orders events by offset so a hand-edited file still runs chronologically", () => {
   const dataset: DemoDataset = {
-    session: { id: "s", source: "codex", workspaceId: "w", cwd: null },
+    session: { id: "s", source: "chatgpt", workspaceId: "w", cwd: null },
     events: [
       { offsetMs: 1_000, eventName: "Stop", payload: {} },
       { offsetMs: -1_000, eventName: "SessionStart", payload: {} },
@@ -118,7 +118,7 @@ test("carries the session identity into every event payload", () => {
 test("reads the service envelope and the bare static document alike", () => {
   const document = {
     schemaVersion: 1,
-    session: { id: "s", source: "codex" },
+    session: { id: "s", source: "chatgpt" },
     events: [{ offsetMs: 0, eventName: "SessionStart", payload: {} }],
   };
   const fromFile = parseDemoDataset(document);
@@ -133,20 +133,20 @@ test("rejects a malformed dataset by naming the field at fault", () => {
   const cases: Array<[unknown, RegExp]> = [
     [null, /JSON 对象/],
     [{}, /session/],
-    [{ session: { id: "", source: "codex" }, events: [] }, /session\.id/],
+    [{ session: { id: "", source: "chatgpt" }, events: [] }, /session\.id/],
     [{ session: { id: "s", source: " " }, events: [] }, /session\.source/],
-    [{ session: { id: "s", source: "codex" } }, /events/],
+    [{ session: { id: "s", source: "chatgpt" } }, /events/],
     [
-      { session: { id: "s", source: "codex" }, events: [{ eventName: "Stop" }] },
+      { session: { id: "s", source: "chatgpt" }, events: [{ eventName: "Stop" }] },
       /events\[0\]\.offsetMs/,
     ],
     [
-      { session: { id: "s", source: "codex" }, events: [{ offsetMs: 0 }] },
+      { session: { id: "s", source: "chatgpt" }, events: [{ offsetMs: 0 }] },
       /events\[0\]\.eventName/,
     ],
     [
       {
-        session: { id: "s", source: "codex" },
+        session: { id: "s", source: "chatgpt" },
         events: [{ offsetMs: 0, eventName: "Stop", payload: [] }],
       },
       /events\[0\]\.payload/,
@@ -193,7 +193,7 @@ test("treats an empty dataset as empty instead of an error", async () => {
   const { impl } = fakeFetch({
     "/api/demo-events": () =>
       jsonResponse({
-        dataset: { schemaVersion: 1, session: { id: "s", source: "codex" }, events: [] },
+        dataset: { schemaVersion: 1, session: { id: "s", source: "chatgpt" }, events: [] },
       }),
   });
   const result = await loadDemoEvents({ fetchImpl: impl, now: NOW });

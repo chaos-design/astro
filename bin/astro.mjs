@@ -8,7 +8,7 @@ import {
 } from "node:fs";
 import { homedir } from "node:os";
 import { extname, join, resolve } from "node:path";
-import codexAdapter from "../plugin/codex-adapter.cjs";
+import chatgptAdapter from "../plugin/chatgpt-adapter.cjs";
 import recorder from "../plugin/trace-recorder.cjs";
 import runtimeConfigLoader from "../plugin/runtime-config.cjs";
 import storagePaths from "../plugin/storage-paths.cjs";
@@ -55,7 +55,7 @@ function getPositionalArguments() {
     "--source",
     "--target",
     "--clients",
-    "--codex-home",
+    "--chatgpt-home",
     "--claude-home",
     "--workbuddy-home",
     "--dsh-home",
@@ -129,27 +129,27 @@ function readStdin() {
   });
 }
 
-async function importCodex() {
+async function importChatGPT() {
   const requestedFiles = getPositionalArguments().map((file) => resolve(expandHome(file)));
-  const codexHome = resolve(
+  const chatgptHome = resolve(
     expandHome(
-      getOption("codex-home") ||
-        getEnvironment().CODEX_HOME ||
-        join(homedir(), ".codex"),
+      getOption("chatgpt-home") ||
+        getEnvironment().CHATGPT_HOME ||
+        join(homedir(), ".chatgpt"),
     ),
   );
   const files = requestedFiles.length
     ? requestedFiles
     : [
-        ...walkJsonlFiles(join(codexHome, "sessions")),
-        ...walkJsonlFiles(join(codexHome, "archived_sessions")),
+        ...walkJsonlFiles(join(chatgptHome, "sessions")),
+        ...walkJsonlFiles(join(chatgptHome, "archived_sessions")),
       ];
   const readableFiles = files.filter(
     (file) => existsSync(file) && statSync(file).isFile(),
   );
-  const events = codexAdapter.importCodexFiles(readableFiles, getEnvironment());
+  const events = chatgptAdapter.importChatGPTFiles(readableFiles, getEnvironment());
   console.log(
-    `Imported ${events.length} new events from ${readableFiles.length} Codex session files.`,
+    `Imported ${events.length} new events from ${readableFiles.length} ChatGPT session files.`,
   );
 }
 
@@ -168,7 +168,7 @@ async function ingest() {
 }
 
 function install() {
-  const clients = (getOption("clients") || "trae,claude,codex")
+  const clients = (getOption("clients") || "trae,claude,chatgpt")
     .split(",")
     .map((client) => client.trim().toLowerCase())
     .filter(Boolean);
@@ -182,7 +182,7 @@ function install() {
   const installed = installClients({
     targetDir,
     clients,
-    codexHome: getOption("codex-home") || undefined,
+    chatgptHome: getOption("chatgpt-home") || undefined,
     claudeHome: getOption("claude-home") || undefined,
     workbuddyHome: getOption("workbuddy-home") || undefined,
     dshHome: getOption("dsh-home") || undefined,
@@ -328,11 +328,11 @@ function doctor() {
   const environment = runtimeConfig.environment;
   const astroHome = resolveAstroHome(environment);
   const scope = getOption("scope") === "project" ? "project" : "user";
-  const codexHome = resolve(
+  const chatgptHome = resolve(
     expandHome(
-      getOption("codex-home") ||
-      environment.CODEX_HOME ||
-      join(homedir(), ".codex"),
+      getOption("chatgpt-home") ||
+      environment.CHATGPT_HOME ||
+      join(homedir(), ".chatgpt"),
     ),
   );
   const claudeHome = resolve(
@@ -362,15 +362,15 @@ function doctor() {
     environment.DSH_COMMAND ||
     "dsh";
   const runtime = getInstalledRuntimePaths(astroHome);
-  const codexCli = inspectExecutable("codex");
+  const chatgptCli = inspectExecutable("chatgpt");
   const claudeCli = inspectExecutable("claude");
   const workbuddyCli = inspectExecutable(
     environment.CODEBUDDY_COMMAND || "codebuddy",
   );
   const deepseekCli = inspectExecutable(deepseekCommand);
-  const codexDirect = hasInstalledHook(
-    join(codexHome, "hooks.json"),
-    "codex",
+  const chatgptDirect = hasInstalledHook(
+    join(chatgptHome, "hooks.json"),
+    "chatgpt",
   );
   const claudeConfig =
     scope === "user"
@@ -387,8 +387,8 @@ function doctor() {
   );
   const traeConfig = join(targetDir, ".trae", "hooks.json");
   const traeDirect = hasInstalledHook(traeConfig, "trae");
-  const codexNative = codexCli.available
-    ? inspectNativePlugin("codex")
+  const chatgptNative = chatgptCli.available
+    ? inspectNativePlugin("chatgpt")
     : { installed: false, detail: "" };
   const claudeNative = claudeCli.available
     ? inspectNativePlugin("claude")
@@ -442,15 +442,15 @@ function doctor() {
       path: runtime.dashboardFile,
     },
     {
-      label: "codex CLI",
-      ok: codexCli.available,
-      path: codexCli.version || "not found on PATH",
+      label: "chatgpt CLI",
+      ok: chatgptCli.available,
+      path: chatgptCli.version || "not found on PATH",
     },
     integrationCheck(
-      "codex integration",
-      codexDirect,
-      codexNative.installed,
-      join(codexHome, "hooks.json"),
+      "chatgpt integration",
+      chatgptDirect,
+      chatgptNative.installed,
+      join(chatgptHome, "hooks.json"),
     ),
     {
       label: "claude CLI",
@@ -499,7 +499,7 @@ function doctor() {
     );
   }
   for (const source of [
-    "codex",
+    "chatgpt",
     "claude",
     "deepseek",
     "trae",
@@ -516,12 +516,12 @@ function printHelp() {
   console.log(`ASTRO - Agent State Trace & Runtime Observations
 
 Usage:
-  astro-trace install [--clients trae,claude,codex,deepseek,workbuddy] [--scope user|project]
+  astro-trace install [--clients trae,claude,chatgpt,deepseek,workbuddy] [--scope user|project]
   astro-trace update [--no-deepseek]
   astro-trace serve
   astro-trace doctor [--scope user|project] [--deepseek-profile web]
   astro-trace migrate [FILE_OR_DIR]
-  astro-trace import-codex [FILE ...] [--codex-home DIR]
+  astro-trace import-chatgpt [FILE ...] [--chatgpt-home DIR]
   astro-trace ingest [FILE] [--source NAME]
 
 Configuration:
@@ -563,8 +563,8 @@ if (command === "help" || command === "--help" || command === "-h") {
   doctor();
 } else if (command === "migrate") {
   migrate();
-} else if (command === "import-codex") {
-  await importCodex();
+} else if (command === "import-chatgpt") {
+  await importChatGPT();
 } else if (command === "ingest") {
   await ingest();
 } else {

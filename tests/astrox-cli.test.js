@@ -72,6 +72,7 @@ test("help documents the plugin command set", (t) => {
     "start",
     "stop",
     "restart",
+    "up",
     "status",
     "info",
     "update",
@@ -90,6 +91,15 @@ test("unknown commands fail with usage output", (t) => {
   const result = runCli(["nope"], environment);
   assert.equal(result.status, 1);
   assert.match(result.stderr, /Unknown astrox command: nope/);
+});
+
+test("up is a known start-or-restart command", (t) => {
+  const { environment, root } = fixture(t);
+  const result = runCli(["up", "--bin-dir", join(root, "bin")], environment);
+  assert.doesNotMatch(result.stderr, /Unknown astrox command/);
+  // Without an installed runtime it fails with the explicit install hint,
+  // never with the "unknown command" path.
+  assert.match(result.stderr, /No installed ASTRO plugin found|Dashboard/);
 });
 
 test("status reports an uninstalled plugin runtime", (t) => {

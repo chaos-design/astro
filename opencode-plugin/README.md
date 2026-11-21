@@ -1,7 +1,7 @@
 # ASTRO OpenCode Plugin
 
 Records OpenCode sessions into the local ASTRO trace store so they show up in the
-ASTRO dashboard next to Claude Code, Codex, Trae, CodeBuddy and DeepSeek runs.
+ASTRO dashboard next to Claude Code, ChatGPT, Trae, CodeBuddy and DeepSeek runs.
 
 ## Install
 
@@ -45,8 +45,13 @@ OpenCode events onto ASTRO's canonical event names:
 | `session.execution.interrupted` | `Interrupt` |
 | `session.deleted` | `SessionEnd` |
 
-Stream deltas, tool progress and usage updates are intentionally dropped: they
-carry no trajectory meaning and would dominate the store.
+Stream deltas, tool progress and usage updates are not mapped as standalone
+trace events: they carry no trajectory meaning and would dominate the store.
+Assistant text is the exception — `session.text.delta` is accumulated per message
+and written as throttled `AgentMessage` snapshots (marked `streamed: true`) so the
+console can show what the main agent is saying while it is still executing;
+`session.text.ended` still writes the complete value. Reasoning, tool progress and
+usage deltas remain unmapped.
 
 ## Design notes
 
@@ -55,7 +60,14 @@ carry no trajectory meaning and would dominate the store.
   The first instance to create `~/.astrox/opencode/.claims/<session>.claim`
   records that session; the others stay silent. A claim failure other than an
   existing claim fails open, because a duplicated trace is cheaper than a lost
-  one. See `claim.ts`.
+  one. A session is claimed only when an event actually maps to a trace — an
+  unmapped event must not lock the session away from the instance that will
+  record it. See `claim.ts`.
+- **Location.** Durable events (`session.text.*`, `session.step.*`) have no
+  location envelope. `opencodeEventDirectory` reads every host spelling
+  (`location.directory`, `data.location.directory`, `data.info.location.directory`)
+  and remembers it per session, so text from a main session created before the
+  plugin loaded is not dropped by the location gate.
 - **Tool names.** `session.tool.called` and `session.tool.success` omit the tool
   name; only `session.tool.input.started` carries it, so the plugin remembers it
   per call id and attaches it to the tool events.

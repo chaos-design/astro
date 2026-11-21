@@ -16,10 +16,10 @@ import {
   FileInput,
   Focus,
   Folder,
-  Link2,
   ListTree,
   LocateFixed,
   Loader2,
+  Maximize2,
   Menu,
   Network,
   Pause,
@@ -46,6 +46,7 @@ import {
   useEffect,
   useLayoutEffect,
   useMemo,
+  useReducer,
   useRef,
   startTransition,
   useState,
@@ -67,7 +68,16 @@ import {
   type NoticeTone,
 } from "./components/console-notices";
 import { PromptContent } from "./components/prompt-content";
-import { QuestionContent } from "./components/question-content";
+import {
+  QuestionContent,
+  type QuestionAnswerBinding,
+} from "./components/question-content";
+import { InteractionPanel } from "./components/interaction-panel";
+import { PairLinkMarker } from "./components/pair-link-marker";
+import {
+  PayloadOverlay,
+  type PayloadOverlayAtom,
+} from "./components/payload-overlay";
 import { RepositoryLink } from "./components/repo-link";
 import { RuntimeCanvas } from "./components/runtime-canvas";
 import { SettingsDialog } from "./components/settings-dialog";
@@ -134,6 +144,7 @@ import {
   getHistoryRangeOption,
   getMaxSyncHours,
   getMaxSyncLabel,
+  isChimeStyleId,
   isHistoryRangeId,
   isMaxSyncId,
   legacyStorageKeys,
@@ -148,8 +159,10 @@ import {
   themeOptions,
   trajectoryLanes,
   type ActiveView,
+  type ChimeStyleId,
   type HistoryRangeId,
   type MaxSyncId,
+  type QuestionPanelMode,
   type Theme,
 } from "./config/app-config";
 import {
@@ -217,6 +230,7 @@ import {
   pinLiveRunHistory,
   scopeLiveRunIndex,
   selectLiveRunHistory,
+  selectScopeFallbackRun,
   selectVisibleRunHistory,
 } from "./lib/run-history-window";
 import {
@@ -255,9 +269,39 @@ import {
   isPromptExecuting,
   resolveLocateAtomId,
   resolveSelectedAtomId,
-  toggleAtomSelection,
 } from "./lib/atom-selection";
 import { isSameEventSequence } from "./lib/event-snapshot";
+import {
+  answerInteractionQuestions,
+  cancelInteraction,
+  consoleDeviceId,
+  fetchOpenInteractions,
+  type InteractionSendResult,
+} from "./lib/interaction-client";
+import {
+  autoQuestionPanelMode,
+  isDockedQuestionPanelMode,
+  isQuestionPanelMode,
+  normalizeQuestionPanelMode,
+} from "./lib/question-panel-model";
+import {
+  interactionIdentityFromEvent,
+  isQuestionActionable,
+  matchQuestionInteraction,
+  questionMatchesCurrentView,
+  shouldLocateInteractionRequest,
+  type MatchedQuestionInteraction,
+} from "./lib/question-interaction";
+import {
+  initialInteractionState,
+  interactionReducer,
+  type InteractionDraft,
+} from "./lib/interaction-reducer";
+import type {
+  InteractionEvent,
+  InteractionRequest,
+  InteractionResult,
+} from "./lib/interaction-contract";
 import {
   collectLiveRunKeys,
   ensureExpandedRun,
@@ -265,14 +309,21 @@ import {
   getRunDisplayState,
   getRunFreshness,
   getRunHistoryDisplayState,
+  getRunHistoryDisplayStatus,
   getRunHistoryTerminalInfo,
   isLiveRunStatus,
   isSparseRunHistoryList,
+  isUserQuestionWaitingRun,
   RUN_HISTORY_COARSE_REFRESH_MS,
   runTerminalReasonLabels,
   quantizeTimestamp,
   toggleExpandedRun,
 } from "./lib/run-history-state";
+import {
+  collectTerminalTransitions,
+  playTaskCompletionChime,
+  resolveChimeStatus,
+} from "./lib/task-completion-chime";
 import {
   attachScrollFpsTracker,
   getPerfSnapshot,
@@ -285,7 +336,13 @@ import {
   isUserQuestionEvent,
   isUserQuestionStartEvent,
 } from "./lib/trace-event-kind";
-import { hasPlanContent } from "./lib/user-question-content";
+import { hasPlanContent, userQuestionSummary } from "./lib/user-question-content";
+import { buildConsoleLocationSearch } from "./lib/console-location";
+import {
+  buildServiceCliCommands,
+  offlineRestartNotice,
+  serviceCardHint,
+} from "./lib/service-cli-command";
 import type {
   HarnessNode,
   HarnessNodeData,
@@ -369,6 +426,15 @@ function scrollRowWithinContainer(
  */
 const headerNavMenuId = "studio-header-nav-menu";
 
+/**
+ * How long the floating interaction card stays readable after its request
+ * closes (ANSWERED / CANCELLED / TIMED OUT) before it slides away. Aligned
+ * with `.interaction-panel--settling` in styles.css: the CSS leave animation
+ * starts at 2100ms and runs 260ms, so this unmounts just after the card has
+ * gone invisible.
+ */
+const INTERACTION_SETTLE_MS = 2400;
+
 // Reused Intl formatters: constructing one per call is expensive, and these
 // run for every log/trajectory row on every render.
 const clockFormatter = new Intl.DateTimeFormat(undefined, {
@@ -431,6 +497,20 @@ function formatDurationMs(milliseconds: number) {
     return `${Math.round(h)}h`;
   }
   return `${Math.round(d)}d`;
+}
+
+/**
+ * The overlay rail's duration label keeps the exact milliseconds. The global
+ * layer exists to inspect ONE step's latency, where the list surfaces' stepped
+ * units (<10s, <1m, … — see `formatDurationMs`) would round away the very
+ * digits being inspected; the LOG and trajectory keep their stepped badges so
+ * a long history stays scannable.
+ */
+function formatDurationMsExact(milliseconds: number) {
+  if (!Number.isFinite(milliseconds) || milliseconds < 0) {
+    return "--";
+  }
+  return `${Math.round(milliseconds)}ms`;
 }
 
 /**
@@ -1177,9 +1257,7 @@ function ServiceStatus({
         <div className="service-card__footer">
           {error ? <p className="service-card__error">{error}</p> : null}
           <p className="service-card__hint">
-            {syncPaused
-              ? "已按「最长同步时长」停止接收新事件；重启服务、点击顶部 paused 标记，或在设置中调高「最长同步时长」，都可以继续同步。"
-              : "重启会保留当前端口，页面与事件流会自动重连。"}
+            {serviceCardHint(syncPaused, Boolean(error) || !service)}
           </p>
           <Button
             type="button"
@@ -1193,7 +1271,11 @@ function ServiceStatus({
               data-icon="inline-start"
               className={restarting ? "animate-spin" : ""}
             />
-            {restarting ? "正在重启…" : "重启本地服务"}
+            {restarting
+              ? "正在重启…"
+              : error || !service
+                ? "复制启动命令"
+                : "重启本地服务"}
           </Button>
         </div>
       </PopoverContent>
@@ -1220,6 +1302,12 @@ type RunHistoryRowDetails = {
   source: string;
   start: number;
   status: "demo" | TraceSession["status"];
+  /**
+   * Status presented in the capsule / STATUS field. A run blocked on a user
+   * question reads as `active` (RUNNING) even though its recorded `status`
+   * stays `waiting` for the long freshness window.
+   */
+  runningStatus?: "demo" | TraceSession["status"];
   title: string;
   /** LLM model the prompt ran on, when a client recorded one. */
   model?: string;
@@ -1325,15 +1413,17 @@ function RunHistoryRowContent({
   live = false,
   model,
   reason,
+  runningStatus,
   staleFor,
   source,
   start,
   status,
   title,
 }: RunHistoryRowDetails) {
+  const presentedStatus = runningStatus ?? status;
   return (
     <>
-      <StatusIcon status={status} />
+      <StatusIcon status={presentedStatus} />
       <span className="run-history__copy">
         <strong>{title}</strong>
         <RunHistoryPath cwd={cwd} git={git} />
@@ -1346,7 +1436,7 @@ function RunHistoryRowContent({
                 waiting={status === "waiting"}
               />
             ) : (
-              <RunHistoryLiveTag status={status} />
+              <RunHistoryLiveTag status={presentedStatus} />
             )
           ) : null}
           <span>
@@ -1358,7 +1448,7 @@ function RunHistoryRowContent({
             </span>
           ) : null}
           <span>
-            STATUS <b>{status}</b>
+            STATUS <b>{presentedStatus}</b>
             {reason ? <em className="run-history__reason"> · {reason}</em> : null}
           </span>
           <span>
@@ -1383,6 +1473,7 @@ function RunHistoryDetailsCard({
   git,
   model,
   reason,
+  runningStatus,
   source,
   staleFor,
   start,
@@ -1403,9 +1494,10 @@ function RunHistoryDetailsCard({
     setTitleOverflows(el.scrollHeight > el.clientHeight + 1);
   }, [title, titleExpanded]);
   const toggleable = titleOverflows || titleExpanded;
+  const presentedStatus = runningStatus ?? status;
   const lines: Array<[string, string]> = [
     ["AGENT", source],
-    ["STATUS", reason ? `${status} · ${reason}` : status],
+    ["STATUS", reason ? `${presentedStatus} · ${reason}` : presentedStatus],
     ["DURATION", formatDuration(duration)],
     [extraLabel, String(extraValue)],
     ["WORKING DIR", path.full || "not recorded"],
@@ -1714,7 +1806,12 @@ const RunHistoryItem = memo(function RunHistoryItem({
   const parentSelected = session.key === activeKey && !hasPromptThread;
   const activeGroup = session.key === activeKey && hasPromptThread;
   const live = !isDemo && isLiveRunStatus(status);
-  const liveStatus = live ? status : undefined;
+  // A question-blocked run is presented as RUNNING everywhere on the row:
+  // capsule, icon, STATUS field and the live accent. The recorded status still
+  // drives freshness (IDLE) and the 60-minute live window.
+  const presentedStatus: TraceSession["status"] =
+    isUserQuestionWaitingRun(status, session.events) ? "active" : status;
+  const liveStatus = live ? presentedStatus : undefined;
   const promptListId = `run-prompts-${session.key.replace(
     /[^a-zA-Z0-9_-]+/g,
     "-",
@@ -1752,6 +1849,7 @@ const RunHistoryItem = memo(function RunHistoryItem({
     source: session.source,
     start: firstPromptRun?.start ?? session.start,
     status: isDemo ? "demo" : status,
+    runningStatus: isDemo ? "demo" : presentedStatus,
     title: session.title,
     // The session row is the only row for single-prompt runs, so it carries
     // the newest prompt's model; multi-prompt rows show it per sub-row.
@@ -1834,8 +1932,15 @@ const RunHistoryItem = memo(function RunHistoryItem({
                   ? "INITIAL"
                   : `FOLLOW-UP ${String(promptRun.index).padStart(2, "0")}`;
               const promptCode = `${roleLabel} · ${promptRun.prompt.id}`;
+              const presentedPromptStatus: TraceSession["status"] =
+                isUserQuestionWaitingRun(
+                  displayState.status,
+                  promptRun.events,
+                )
+                  ? "active"
+                  : displayState.status;
               const promptLiveStatus = promptLive
-                ? displayState.status
+                ? presentedPromptStatus
                 : undefined;
               const promptFreshness = getRunFreshness(
                 isDemo ? undefined : displayState.status,
@@ -1870,6 +1975,7 @@ const RunHistoryItem = memo(function RunHistoryItem({
                 source: promptRun.source,
                 start: promptRun.start,
                 status: isDemo ? "demo" : displayState.status,
+                runningStatus: isDemo ? "demo" : presentedPromptStatus,
                 title: promptRun.title,
                 model: promptRun.model,
               };
@@ -2597,52 +2703,6 @@ const RunHistory = memo(function RunHistory({
 });
 
 /**
- * The single marker shared by LOG rows and trajectory atoms. Its `#number` is
- * the *other half's* LOG row, not a pair ordinal: a pair made of `#027` and
- * `#029` reads `#029` on `#027` and `#027` on `#029`. The two halves
- * cross-reference each other, so "who is paired with whom" is visible without
- * hovering, and clicking jumps straight to that numbered row. The turn and the
- * pair's order stay in the tooltip and the accessible name — the chip itself
- * keeps only the row number. Kept as a real button so keyboard users get the
- * same jump, and it stops propagation so the jump never doubles as a plain row
- * selection.
- */
-function PairLinkMarker({
-  link,
-  onLocate,
-}: {
-  link: TracePairLink;
-  onLocate: (eventId: string) => void;
-}) {
-  const roleLabel = link.role === "start" ? "起始" : "结果";
-  const targetLabel = link.role === "start" ? "结果" : "起始";
-  const targetRow = formatLogSequence(link.partnerIndex);
-  const pairHint = `${link.label} · 第 ${link.turn} 轮第 ${link.ordinal} 对 · ${link.rows} · #号是另一半的 LOG 行号`;
-  return (
-    <button
-      type="button"
-      className={`pair-link-marker is-${link.role}`}
-      title={`${pairHint}，成对${roleLabel}，点击定位${targetLabel}事件 ${targetRow}`}
-      aria-label={`${pairHint}，成对${roleLabel}，定位${targetLabel}事件 ${targetRow}`}
-      onClick={(clickEvent) => {
-        clickEvent.stopPropagation();
-        onLocate(link.partnerId);
-      }}
-      onKeyDown={(keyEvent) => {
-        if (keyEvent.key === "Enter" || keyEvent.key === " ") {
-          keyEvent.preventDefault();
-          keyEvent.stopPropagation();
-          onLocate(link.partnerId);
-        }
-      }}
-    >
-      <Link2 aria-hidden="true" />
-      <span className="pair-link-marker__target">{targetRow}</span>
-    </button>
-  );
-}
-
-/**
  * `buildLogEntries` rebuilds every pair link when a streamed batch appends an
  * event, so the row memo cannot compare links by identity. Compare the fields
  * the row and its tooltip render instead: a batch that leaves a pair unchanged
@@ -2743,7 +2803,7 @@ const AtomicLogRow = memo(function AtomicLogRow({
       <span className="log-sequence">{formatLogSequence(index + 1)}</span>
       <i className="phase-dot" />
       <strong className="atomic-log__name">
-        {atomType ? (
+        {atomType?.label.trim() ? (
           <span
             className="atomic-log__type"
             title={`原子类型 ${atomType.label} · ${atomType.key} / ${atomType.kind}`}
@@ -2833,6 +2893,12 @@ const AtomicLog = memo(function AtomicLog({
     row: LOG_ROW_ESTIMATE,
     turn: LOG_TURN_ESTIMATE,
   });
+  // The measurement effect reads the latest metrics without depending on them.
+  // Depending on `metrics` made every `setMetrics` re-run the measurement; when
+  // the newly mounted slice started with a different row, its height differed
+  // and the loop repeated until React threw "Maximum update depth exceeded".
+  const metricsRef = useRef(metrics);
+  metricsRef.current = metrics;
   const [viewport, setViewport] = useState({ height: 0, top: 0 });
   const [scrollPosition, setScrollPosition] = useState({
     canScrollDown: false,
@@ -2937,23 +3003,35 @@ const AtomicLog = memo(function AtomicLog({
     };
   }, []);
 
-  // Measure the real row and separator heights once they are in the DOM.
+  // Measure real row and separator heights once they are in the DOM. Take the
+  // tallest mounted item of each kind: the layout assumes one uniform height,
+  // so an estimate that clips a wrapped row is worse than one that over-shots,
+  // and the maximum stays stable as the mounted window slides.
+  //
+  // `metrics` is deliberately NOT a dependency. It is read from a ref so a
+  // measurement only follows a change in the entries, never its own result —
+  // reporting the new height as state re-renders the slice, which would mount
+  // a different first row and start a feedback loop (React error #185).
   useLayoutEffect(() => {
     const list = listRef.current;
     if (!list) {
       return;
     }
-    const row = list.querySelector<HTMLElement>(".atomic-log__row");
-    const turn = list.querySelector<HTMLElement>(".atomic-log__turn");
+    const current = metricsRef.current;
+    const tallest = (selector: string) =>
+      [...list.querySelectorAll<HTMLElement>(selector)].reduce(
+        (max, element) => Math.max(max, element.offsetHeight),
+        0,
+      );
     const next = {
-      gap: metrics.gap,
-      row: row?.offsetHeight || metrics.row,
-      turn: turn?.offsetHeight || metrics.turn,
+      gap: current.gap,
+      row: tallest(".atomic-log__row") || current.row,
+      turn: tallest(".atomic-log__turn") || current.turn,
     };
-    if (next.row !== metrics.row || next.turn !== metrics.turn) {
+    if (next.row !== current.row || next.turn !== current.turn) {
       setMetrics(next);
     }
-  }, [metrics, visibleEntries]);
+  }, [visibleEntries]);
 
   const handleScroll = useCallback(() => {
     if (scrollFrameRef.current) {
@@ -3179,6 +3257,14 @@ function InspectorOverview({
   const tone = atom?.tone || data?.meta?.tone || "unknown";
   const status = atom?.status || data?.status || "idle";
   const title = atom?.label || event?.eventName || "Event";
+  // A question atom's overview describes the question the reader was asked,
+  // not the atom's static harness description. One text source keeps the LOG,
+  // projection and inspector in agreement.
+  const questionText =
+    event &&
+    (atom?.key === "user.question" || getTraceEventKey(event) === "user.question")
+      ? userQuestionSummary(event.payload)
+      : "";
   const details = atom
     ? [
         ["Section", atom.section],
@@ -3229,7 +3315,8 @@ function InspectorOverview({
         </span>
       </div>
       <p className="inspector-overview__summary">
-        {atom?.description ||
+        {questionText ||
+          atom?.description ||
           (event ? getEventSummary(event) : "No event is bound to this atom yet.")}
       </p>
       <dl className="detail-list">
@@ -3251,6 +3338,26 @@ function TraceInspector({
   index,
   node,
   onActiveTabChange,
+  overlayAtoms,
+  overlaySelectedEventId,
+  overlayRunningEventId,
+  overlayFollowing,
+  overlayFollowAvailable,
+  overlaySearchEvent,
+  onOverlayFollowingChange,
+  onOverlaySelectEvent,
+  overlayPayloadForAtom,
+  overlayVariantForAtom,
+  matchedQuestion,
+  answerDrafts,
+  onAnswerDraftChange,
+  onAnswerQuestion,
+  onCancelQuestion,
+  questionActionable,
+  questionPanelMode,
+  onQuestionPanelModeChange,
+  questionDocked,
+  settledQuestion,
 }: {
   activeTab: string;
   atom: HarnessNodeData | null;
@@ -3258,7 +3365,48 @@ function TraceInspector({
   index: number;
   node: TraceNodeType | null;
   onActiveTabChange: (tab: string) => void;
+  /** The run's message chain (LOG-standard rows) for the overlay's left rail. */
+  overlayAtoms: PayloadOverlayAtom[];
+  /** The console's selected event — the rail highlights and previews it. */
+  overlaySelectedEventId: string;
+  /** The event the LOG marks as executing (its START row), for the rail marker. */
+  overlayRunningEventId: string;
+  /** Whether the console is live-following the executing run. */
+  overlayFollowing: boolean;
+  /** Whether the open run is executing at all (the follow toggle's gate). */
+  overlayFollowAvailable: boolean;
+  /** Deep payload match for the rail's search (shared per-event haystacks). */
+  overlaySearchEvent: (eventId: string, needle: string) => boolean;
+  onOverlayFollowingChange: (following: boolean) => void;
+  onOverlaySelectEvent: (atomId: string, eventId: string) => void;
+  overlayPayloadForAtom: (atomId: string, eventId?: string) => unknown;
+  overlayVariantForAtom: (atomId: string, eventId?: string) => "default" | "question";
+  matchedQuestion: MatchedQuestionInteraction | null;
+  answerDrafts: Readonly<Record<string, string>>;
+  onAnswerDraftChange: (question: string, text: string) => void;
+  onAnswerQuestion: (
+    matched: MatchedQuestionInteraction,
+    answers: Record<string, string>,
+  ) => void;
+  onCancelQuestion: (requestId: string) => void;
+  /** Live answer affordance: false for a finished run or a replayed preview. */
+  questionActionable: boolean;
+  questionPanelMode: QuestionPanelMode;
+  onQuestionPanelModeChange: (mode: QuestionPanelMode) => void;
+  /**
+   * Whether the question surface is docked below these tabs instead of
+   * floating over the canvas. Resolved by the app: the dock needs the EVENTS
+   * column, so a collapsed column falls back to the floating card.
+   */
+  questionDocked: boolean;
+  /** The request that just closed, kept for the settle window. */
+  settledQuestion: InteractionDraft | null;
 }) {
+  // The wide payload layer is opened from the Input / Output / Raw tabs. The
+  // hook has to sit above the empty-state return so the component keeps a
+  // stable hook order when the selection changes.
+  const [overlayOpen, setOverlayOpen] = useState(false);
+
   if ((!node || !event) && !atom) {
     return (
       <section className="message-inspector message-inspector--empty flex min-h-0 flex-col items-center justify-center gap-[7px] p-[22px] text-center">
@@ -3348,6 +3496,34 @@ function TraceInspector({
   const executionInstruction = event
     ? getExecutionInstruction(event, node?.data.startEvent)
     : atom?.label || inspectorTitle;
+  // The question surface answers the open request, and keeps the just-closed
+  // one for the settle window so a submit does not make the form vanish.
+  const questionDraft = matchedQuestion?.draft ?? settledQuestion;
+  const questionBinding: QuestionAnswerBinding | null = questionDraft
+    ? {
+        questions: questionDraft.request.questions,
+        drafts: answerDrafts,
+        onDraftChange: onAnswerDraftChange,
+        onSend: (answers) => {
+          if (matchedQuestion) {
+            onAnswerQuestion(matchedQuestion, answers);
+          }
+        },
+        onCancel: () => onCancelQuestion(questionDraft.request.requestId),
+        pending: Boolean(questionDraft.pending),
+        readOnly:
+          !questionActionable ||
+          Boolean(questionDraft.result) ||
+          Boolean(
+            questionDraft.lockedBy && questionDraft.lockedBy !== consoleDeviceId,
+          ),
+        result: questionDraft.result,
+      }
+    : null;
+  // Docked layouts move the question surface out of the Input tab and give it
+  // the bottom of the detail area — half of it, or all of it. The tab then
+  // shows the raw payload, so one question is never rendered twice.
+  const dockedQuestion = questionDocked ? questionEvent : null;
 
   return (
     <section className="message-inspector grid min-h-0 grid-rows-[minmax(56px,auto)_minmax(0,1fr)]">
@@ -3376,6 +3552,18 @@ function TraceInspector({
           <CornerUpRight data-icon="inline-start" />
           <span className="min-w-0 truncate">{inspectorTitle}</span>
         </Badge>
+        {activeTab !== "overview" ? (
+          <Button
+            aria-label="放大查看完整内容"
+            className="inspector-header__expand"
+            onClick={() => setOverlayOpen(true)}
+            size="console-icon"
+            type="button"
+            variant="console"
+          >
+            <Maximize2 />
+          </Button>
+        ) : null}
       </header>
       <Tabs
         value={activeTab}
@@ -3388,33 +3576,95 @@ function TraceInspector({
           <TabsTrigger value="output">Output</TabsTrigger>
           <TabsTrigger value="raw">Raw</TabsTrigger>
         </TabsList>
-        <TabsContent
-          value="overview"
-          className="inspector-tabs__content m-0 min-h-0 overflow-auto"
+        <div
+          className={cn(
+            "inspector-detail",
+            dockedQuestion && "is-question-docked",
+          )}
         >
-          <InspectorOverview node={node} atom={atom} event={event} />
-        </TabsContent>
-        {(["input", "output", "raw"] as InspectorTab[]).map((tab) => (
-          <TabsContent
-            key={tab}
-            value={tab}
-            className={cn(
-              "inspector-tabs__content m-0 min-h-0",
-              tab === "input" && (promptEvent || questionEvent)
-                ? "inspector-tabs__content--prompt overflow-hidden"
-                : "inspector-tabs__content--json overflow-hidden",
-            )}
-          >
-            {tab === "input" && promptEvent ? (
-              <PromptContent key={promptEvent.id} payload={promptEvent.payload} />
-            ) : tab === "input" && questionEvent ? (
-              <QuestionContent key={questionEvent.id} payload={questionEvent.payload} />
-            ) : (
-              <JsonViewer value={payloadByTab[tab]} />
-            )}
-          </TabsContent>
-        ))}
+          <div className="inspector-detail__content">
+            <TabsContent
+              value="overview"
+              className="inspector-tabs__content m-0 min-h-0 overflow-auto"
+            >
+              <InspectorOverview atom={atom} event={event} node={node} />
+            </TabsContent>
+            {(["input", "output", "raw"] as InspectorTab[]).map((tab) => (
+              <TabsContent
+                key={tab}
+                value={tab}
+                className={cn(
+                  "inspector-tabs__content m-0 min-h-0",
+                  tab === "input" && (promptEvent || questionEvent)
+                    ? "inspector-tabs__content--prompt overflow-hidden"
+                    : "inspector-tabs__content--json overflow-hidden",
+                )}
+              >
+                {tab === "input" && promptEvent ? (
+                  <PromptContent
+                    key={promptEvent.id}
+                    payload={promptEvent.payload}
+                  />
+                ) : tab === "input" && questionEvent && !dockedQuestion ? (
+                  <div
+                    className="inspector-question-stack"
+                    data-mode={questionPanelMode}
+                  >
+                    <QuestionContent
+                      answer={questionBinding}
+                      key={questionEvent.id}
+                      panelMode={questionPanelMode}
+                      onPanelModeChange={onQuestionPanelModeChange}
+                      payload={questionEvent.payload}
+                    />
+                  </div>
+                ) : (
+                  <JsonViewer value={payloadByTab[tab]} />
+                )}
+              </TabsContent>
+            ))}
+          </div>
+          {dockedQuestion ? (
+            // The dock is the one question surface in these layouts: preview,
+            // mode switch and (when a request is still open) the answer box.
+            <div aria-label="Question dock" className="inspector-question-dock">
+              <QuestionContent
+                answer={questionBinding}
+                key={dockedQuestion.id}
+                panelMode={questionPanelMode}
+                onPanelModeChange={onQuestionPanelModeChange}
+                payload={dockedQuestion.payload}
+              />
+            </div>
+          ) : null}
+        </div>
       </Tabs>
+      <PayloadOverlay
+        atoms={overlayAtoms}
+        cacheScope={activeTab}
+        followAvailable={overlayFollowAvailable}
+        following={overlayFollowing}
+        label={`${inspectorTitle} · ${activeTab === "input" ? "INPUT" : activeTab === "output" ? "OUTPUT" : "RAW"}`}
+        onFollowingChange={onOverlayFollowingChange}
+        onOpenChange={setOverlayOpen}
+        onSelectAtom={onOverlaySelectEvent}
+        open={overlayOpen}
+        payloadForAtom={overlayPayloadForAtom}
+        variantForAtom={overlayVariantForAtom}
+        runningEventId={overlayRunningEventId}
+        searchEvent={overlaySearchEvent}
+        selectedEventId={overlaySelectedEventId}
+        payload={
+          activeTab === "input" && questionEvent
+            ? questionEvent.payload
+            : activeTab === "input" && promptEvent
+              ? promptEvent.payload
+              : activeTab === "input" || activeTab === "output" || activeTab === "raw"
+                ? payloadByTab[activeTab]
+                : null
+        }
+        variant={activeTab === "input" && questionEvent ? "question" : "default"}
+      />
     </section>
   );
 }
@@ -3831,8 +4081,26 @@ const TrajectoryView = memo(function TrajectoryView({
   // right now are the first rows, so following a live run never means scrolling
   // past its start. The lane overview above stays a left-to-right timeline.
   const display = useMemo(() => orderTrajectoryNewestFirst(model), [model]);
+  // A turn that is executing (`running`) or blocked on a question (`waiting`)
+  // must read open the moment it appears — the reader came here to see the
+  // atom that needs attention, not to expand it by hand. `defaultExpandedTurns`
+  // is derived from the model on every rebuild (including a fresh snapshot
+  // after refresh), so the open state survives a reload without persisting a
+  // UI-only Set to storage. Manual toggles still work: they live in the
+  // overlay `expandedTurns` seeded by the effect below.
+  const liveTurnsKey = model.turns
+    .filter((turn) => turn.status === "running" || turn.status === "waiting")
+    .map((turn) => turn.turn)
+    .join("|");
+  const defaultExpandedTurns = useMemo(
+    () => new Set(liveTurnsKey ? liveTurnsKey.split("|").map(Number) : []),
+    [liveTurnsKey],
+  );
   const [expandedTurns, setExpandedTurns] = useState<Set<number>>(
-    () => new Set(model.turns.at(-1) ? [model.turns.at(-1)!.turn] : []),
+    () =>
+      new Set(
+        model.turns.at(-1) ? [model.turns.at(-1)!.turn] : [],
+      ),
   );
   const listRef = useRef<HTMLDivElement | null>(null);
   const locateRequestRef = useRef(locateRequest);
@@ -4053,8 +4321,16 @@ const TrajectoryView = memo(function TrajectoryView({
 
   useEffect(() => {
     const latestTurn = model.turns.at(-1)?.turn;
-    setExpandedTurns(latestTurn ? new Set([latestTurn]) : new Set());
-  }, [events[0]?.sessionId, turnKey]);
+    const next = new Set<number>(defaultExpandedTurns);
+    if (latestTurn !== undefined) {
+      next.add(latestTurn);
+    }
+    setExpandedTurns(next);
+    // Reset on a new session / turn set: a fresh run starts from the honest
+    // default (open the executing and blocked turns) rather than inheriting a
+    // previous run's manual collapses. The stable key means a waiting atom
+    // that appears mid-stream opens its turn without re-running on every batch.
+  }, [events[0]?.sessionId, turnKey, liveTurnsKey]);
 
   useEffect(() => {
     if (!selectedTrajectoryAtomId) {
@@ -5029,6 +5305,89 @@ export default function App() {
     },
     [],
   );
+  /*
+   * Interaction fast path (AskUserQuestion / ExitPlanMode). The host hook that
+   * asked the question is blocked for at most 4.5 s, so every click is applied
+   * optimistically and rolled back when the service rejects it. The service
+   * does not replay interactions on a reconnect: an open request is only
+   * meaningful inside that window, and the run log is the durable record.
+   */
+  const [interactions, dispatchInteraction] = useReducer(
+    interactionReducer,
+    initialInteractionState,
+  );
+  const interactionsRef = useRef(interactions);
+  interactionsRef.current = interactions;
+  // The stream effect registers once per connection; reading these through
+  // refs keeps an interaction frame from re-subscribing the whole stream.
+  const activeSessionRef = useRef<{ id: string; source: string } | null>(null);
+  const followingLiveRef = useRef(false);
+  // The Flow atom inspector keeps one draft per question of the matched
+  // request. AskUserQuestion can carry several descriptors, all answered with
+  // a single submit; drafts survive tab switches and reset with the question.
+  const [questionAnswerDrafts, setQuestionAnswerDrafts] = useState<
+    Record<string, string>
+  >({});
+  const reportInteractionResult = useCallback(
+    (result: InteractionSendResult) => {
+      if (result.ok || result.blocked) {
+        return;
+      }
+      pushNotice("error", "交互提交失败", result.error);
+    },
+    [pushNotice],
+  );
+  const handleInteractionAnswers = useCallback(
+    (requestId: string, answers: Record<string, string>) => {
+      const draft = interactionsRef.current.requests[requestId];
+      if (!draft) {
+        return;
+      }
+      void answerInteractionQuestions(
+        draft,
+        answers,
+        dispatchInteraction,
+        { apiBase },
+      ).then(reportInteractionResult);
+    },
+    [apiBase, reportInteractionResult],
+  );
+  const handleInteractionCancel = useCallback(
+    (requestId: string) => {
+      const draft = interactionsRef.current.requests[requestId];
+      if (!draft) {
+        return;
+      }
+      void cancelInteraction(draft, dispatchInteraction, { apiBase }).then(
+        reportInteractionResult,
+      );
+    },
+    [apiBase, reportInteractionResult],
+  );
+  // The inspector's one-click answer: text + submit are sent as one chain
+  // against the snapshot matched to the atom's question, never against a
+  // possibly stale React render of the floating panel.
+  const handleQuestionAnswer = useCallback(
+    (matched: MatchedQuestionInteraction, answers: Record<string, string>) => {
+      void answerInteractionQuestions(
+        matched.draft,
+        answers,
+        dispatchInteraction,
+        { apiBase },
+      ).then((result) => {
+        reportInteractionResult(result);
+        if (result.ok) {
+          setQuestionAnswerDrafts({});
+        } else if (result.blocked) {
+          // A guard rejected the click (busy, closed, answered elsewhere).
+          // Keep what was typed and say why — silently dropping the draft
+          // makes a failed answer look like it was sent.
+          pushNotice("error", "回答未发送", result.error || "该提问已不可作答");
+        }
+      });
+    },
+    [apiBase, pushNotice, reportInteractionResult],
+  );
   const [connected, setConnected] = useState(false);
   /**
    * Whether the stream has ever reported `ready`. Until it has, "not
@@ -5110,6 +5469,25 @@ export default function App() {
   const [perfHud, setPerfHud] = useState<boolean>(() =>
     resolvePerfHudInitial(window.localStorage),
   );
+  // Task-completion chime: a switch in Settings → 通知, on by default so the
+  // notification works without hunting for a switch. One preference drives
+  // both the persisted value and the terminal-transition effect below. The
+  // style picks the timbre; the status contour rule holds in every style.
+  const [taskCompletionChime, setTaskCompletionChime] = useState<boolean>(() =>
+    readStorageBoolean(
+      window.localStorage,
+      storageKeys.taskCompletionChime,
+      appDefaults.taskCompletionChime,
+    ),
+  );
+  const [chimeStyle, setChimeStyle] = useState<ChimeStyleId>(() => {
+    const stored = readStorageValue(
+      window.localStorage,
+      storageKeys.chimeStyle,
+      appDefaults.chimeStyle,
+    );
+    return isChimeStyleId(stored) ? stored : appDefaults.chimeStyle;
+  });
   const [guideOpen, setGuideOpen] = useState<boolean>(appDefaults.guideOpen);
   const [historySearchOpen, setHistorySearchOpen] = useState(false);
   // The dialog chunk is requested on idle; the component is mounted the first
@@ -5249,6 +5627,22 @@ export default function App() {
       "overview",
     ),
   );
+  // The floating card and the inspector share one layout. Until the reader
+  // switches it by hand, the mode follows the run state (float while the
+  // question is answerable, dock-full for a finished or captured one). A stored
+  // value is the mark of a manual choice, so a derived default is deliberately
+  // NOT written back — that keeps "follow the run" as the real default.
+  const questionPanelModeManualRef = useRef(false);
+  const [questionPanelMode, setQuestionPanelMode] =
+    useState<QuestionPanelMode>(() => {
+      const stored = readStorageValue(
+        window.localStorage,
+        storageKeys.questionPanelMode,
+        "",
+      );
+      questionPanelModeManualRef.current = isQuestionPanelMode(stored);
+      return normalizeQuestionPanelMode(stored);
+    });
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const preserveAtomSelectionRef = useRef(false);
   const previousAtomRef = useRef("");
@@ -5310,6 +5704,15 @@ export default function App() {
     writeStorageValue(window.localStorage, storageKeys.inspectorTab, inspectorTab);
   }, [inspectorTab]);
 
+  // Only an explicit layout switch is persisted. The state-driven default is
+  // re-derived on every load, so a finished question never inherits a stale
+  // "float" from a run that ended days ago.
+  const changeQuestionPanelMode = useCallback((mode: QuestionPanelMode) => {
+    questionPanelModeManualRef.current = true;
+    setQuestionPanelMode(mode);
+    writeStorageValue(window.localStorage, storageKeys.questionPanelMode, mode);
+  }, []);
+
   useEffect(() => {
     writeStorageValue(window.localStorage, storageKeys.activeView, activeView);
   }, [activeView]);
@@ -5329,6 +5732,18 @@ export default function App() {
       legacyStorageKeys.perfHud,
     );
   }, [perfHud]);
+
+  useEffect(() => {
+    writeStorageValue(
+      window.localStorage,
+      storageKeys.taskCompletionChime,
+      taskCompletionChime,
+    );
+  }, [taskCompletionChime]);
+
+  useEffect(() => {
+    writeStorageValue(window.localStorage, storageKeys.chimeStyle, chimeStyle);
+  }, [chimeStyle]);
 
   // The HUD is pure DOM outside the React tree (the tool that measures must
   // never enter the render path); React only decides *whether* it exists.
@@ -5661,6 +6076,7 @@ export default function App() {
     // sessions, the flows and the list are all still valid, so the reload ends
     // without touching a single event.
     source.addEventListener("reset-same", (message: MessageEvent<string>) => {
+      dispatchInteraction({ type: "reset" });
       const payload = JSON.parse(message.data) as {
         eventCount?: number;
         totalEventCount?: number;
@@ -5688,6 +6104,9 @@ export default function App() {
       });
     });
     source.addEventListener("reset", (message: MessageEvent<string>) => {
+      // A rebuilt stream has no interaction history; any card still mounted
+      // belongs to the previous connection.
+      dispatchInteraction({ type: "reset" });
       const payload = JSON.parse(message.data) as {
         events: TraceEvent[];
         git?: Record<string, { repo: string; branch: string }>;
@@ -5762,6 +6181,38 @@ export default function App() {
         setEventsLoaded(true);
         reloadingRef.current = false;
         setReloadingEvents(false);
+      });
+    });
+    // Interaction frames share the stream with traces. `open` carries one
+    // request, `update` one event, `close` the single result. The service
+    // never replays them, so a reconnect resets the set instead of pretending
+    // an old request is still answerable.
+    source.addEventListener("interaction.open", (message: MessageEvent<string>) => {
+      const request = JSON.parse(message.data) as InteractionRequest;
+      dispatchInteraction({ type: "open", request });
+      // A question that just opened in the run the reader is watching is easy
+      // to miss while the canvas is wide. Flash the question atom without
+      // changing the selection: Live must keep following the executing run.
+      if (
+        shouldLocateInteractionRequest(
+          request,
+          activeSessionRef.current,
+          followingLiveRef.current,
+        )
+      ) {
+        setLocateRequest((current) => current + 1);
+      }
+    });
+    source.addEventListener("interaction.update", (message: MessageEvent<string>) => {
+      dispatchInteraction({
+        type: "update",
+        event: JSON.parse(message.data) as InteractionEvent,
+      });
+    });
+    source.addEventListener("interaction.close", (message: MessageEvent<string>) => {
+      dispatchInteraction({
+        type: "close",
+        result: JSON.parse(message.data) as InteractionResult,
       });
     });
     source.onerror = () => {
@@ -5892,6 +6343,52 @@ export default function App() {
       ),
     [sessions],
   );
+  // Terminal-transition bookkeeping for the optional completion chime. Kept in
+  // refs, not state: a streamed event batch must not re-render the studio just
+  // to record that a run finished. The set is seeded once from the first real
+  // snapshot, so history that was already terminal on load stays silent.
+  const knownTerminalKeysRef = useRef<ReadonlySet<string>>(new Set());
+  const chimeBaselineSeededRef = useRef(false);
+  useEffect(() => {
+    // Demo traces are synthetic and never live; they must never make a sound or
+    // pollute the baseline that real runs are judged against.
+    if (!eventsLoaded || isDemo || sessions.length === 0) {
+      return;
+    }
+    const runs = sessions.map((session) => ({
+      key: session.key,
+      // The recorded status, not the display one: a live run that only *looks*
+      // terminated because the freshness/timeout gate fired did not actually
+      // finish, and must not chime.
+      status: getRunHistoryDisplayStatus(
+        session.status,
+        promptRunsBySession.get(session.key) ?? [],
+      ),
+    }));
+    const { newlyTerminal, nextKnown } = collectTerminalTransitions(
+      runs,
+      knownTerminalKeysRef.current,
+      !chimeBaselineSeededRef.current,
+    );
+    knownTerminalKeysRef.current = nextKnown;
+    chimeBaselineSeededRef.current = true;
+    if (taskCompletionChime && newlyTerminal.length > 0) {
+      // One chime per batch: the tone announces the most important outcome
+      // (failed > terminated > complete), so a batch that also failed is not
+      // announced with the success chime.
+      playTaskCompletionChime(
+        resolveChimeStatus(newlyTerminal.map((entry) => entry.status)),
+        chimeStyle,
+      );
+    }
+  }, [
+    chimeStyle,
+    eventsLoaded,
+    isDemo,
+    promptRunsBySession,
+    sessions,
+    taskCompletionChime,
+  ]);
   const configuredSources = useMemo(
     () => new Set(atomPlatformOptions.map((platform) => platform.source)),
     [],
@@ -5929,7 +6426,7 @@ export default function App() {
    *
    * Scoped by the dropdown, not machine-wide. Counting or pinning a live run of
    * another agent put that row at the top of every agent's history, which is
-   * how a Codex view ended up showing the Claude message that was executing at
+   * how a ChatGPT view ended up showing the Claude message that was executing at
    * the time. The neighbour's run stays discoverable through
    * {@link scopeLiveRunIndex}'s `sources` — the picker marks those agents — so
    * nothing is lost by keeping this list honest.
@@ -6078,7 +6575,7 @@ export default function App() {
     // The dropdown owns the fallback pool: arriving without a session — or
     // switching agents — opens the selected agent's newest run. The previous
     // version fell back to `sessions[0]`, the newest run on the machine, which
-    // is how a Codex view kept a Claude run on the canvas with no row beside
+    // is how a ChatGPT view kept a Claude run on the canvas with no row beside
     // it. An agent with nothing recorded leaves the pool empty and the canvas
     // empty; borrowing another agent's run is exactly the leak this prevents.
     const fallbackPool = filteredSessions;
@@ -6098,7 +6595,16 @@ export default function App() {
     const currentSession = sessions.find(
       (session) => session.key === activeSessionKey,
     );
-    const nextSession = currentSession || deepLinkedSession || fallbackPool[0];
+    // A first paint (or a scope change after the open run vanished) uses the
+    // same live-first fallback as the agent picker and the footer Live button:
+    // an executing message outranks a newer finished one, so `N LIVE` does not
+    // show a run the canvas never opened. An explicit deep link still wins.
+    const nextSession =
+      currentSession ||
+      deepLinkedSession ||
+      selectScopeFallbackRun(fallbackPool, liveSessionKeys, (session) =>
+        promptRunsBySession.get(session.key)?.at(-1)?.start ?? session.start,
+      );
     if (!nextSession) {
       setInitialLocation(null);
       return;
@@ -6156,6 +6662,7 @@ export default function App() {
     eventsLoaded,
     filteredSessions,
     initialLocation,
+    liveSessionKeys,
     platformId,
     promptRunsBySession,
     sessions,
@@ -6203,6 +6710,10 @@ export default function App() {
     promptExecuting,
   );
   const followingLive = followingSessionLive;
+  activeSessionRef.current = activeSession
+    ? { id: activeSession.id, source: activeSession.source }
+    : null;
+  followingLiveRef.current = followingLive;
   const executingLive = promptExecuting && !replayMode;
   // Live rides the newest executed atom: the pulse and the Live button stay
   // active only while the selection has not fallen behind the newest event.
@@ -6313,28 +6824,25 @@ export default function App() {
   }, [activeEvents, replayCursor, replayMode]);
 
   useEffect(() => {
-    if (!activeSession || initialLocation !== null) {
+    if (initialLocation !== null) {
       return;
     }
-    const params = new URLSearchParams(window.location.search);
-    // `agent` mirrors the dropdown filter, not the open run: a shared link may
-    // name a run of another agent (and still lands on it), so the two
-    // parameters are written independently.
-    params.set("agent", agentId);
-    // The renamed parameter replaces the legacy one instead of accumulating.
-    params.delete("source");
-    params.set("session", activeSession.id);
-    if (selectedEventId) {
-      params.set("event", selectedEventId);
-    } else {
-      params.delete("event");
+    // `agent` is always written; session/event describe only an open run. On
+    // an agent switch the selection is cleared first, so the stale deep link
+    // is removed instead of surviving until a new run happens to be picked —
+    // a `?session=` of another agent would drag the dropdown back on reload.
+    const search = buildConsoleLocationSearch({
+      search: window.location.search,
+      agentId,
+      sessionId: activeSession?.id,
+      eventId: selectedEventId,
+      eventIds: new Set(activeEvents.map((event) => event.id)),
+    });
+    if (search === window.location.search) {
+      return;
     }
-    window.history.replaceState(
-      null,
-      "",
-      `${window.location.pathname}?${params}`,
-    );
-  }, [activeSession, agentId, initialLocation, selectedEventId]);
+    window.history.replaceState(null, "", `${window.location.pathname}${search}`);
+  }, [activeEvents, activeSession, agentId, initialLocation, selectedEventId]);
 
   const displayedEvents = replayMode
     ? activeEvents.slice(0, replayCursor + 1)
@@ -6404,6 +6912,402 @@ export default function App() {
     harnessFlow.nodes.find((node) => node.id === currentAtomId)?.data || null;
   const selectedEventIndex =
     activeEvents.findIndex((event) => event.id === selectedEventId);
+  // The payload overlay's left rail is the run's message chain in the LOG's
+  // own data standard: every event of the run the LOG renders, with the same
+  // `buildLogEntries` result the LOG row prints — sequence number, TYPE badge,
+  // turn, pair duration and pair link — plus the harness atom id the event
+  // commits to. It is a view of this one selection, never a second one:
+  // picking a row lands on the same state the LOG's own select handler writes.
+  // Store only display fields here so the overlay needs no knowledge of
+  // TraceEvent / HarnessNodeData. (The LOG computes the same builder inside
+  // AtomicLog; two O(n) passes per batch keep both readers on one definition
+  // without widening the LOG's contract.)
+  const overlayAtoms = useMemo<PayloadOverlayAtom[]>(
+    () =>
+      buildLogEntries(activeEvents, platformId).map(
+        ({ event, index, atomType, pairDuration, pairLink, turn }) => {
+          const durationLabel =
+            pairDuration === null ? null : formatDurationMsExact(pairDuration);
+          return {
+            id: event.id,
+            atomId: getAtomIdForEvent(event, platformId),
+            index: index + 1,
+            key: getTraceEventKey(event),
+            eventName: event.eventName,
+            status: event.status || "complete",
+            sequence: formatLogSequence(index + 1),
+            turn,
+            timestamp: event.capturedAt,
+            dateLabel: formatDate(event.capturedAt),
+            clockLabel: formatClock(event.capturedAt),
+            action: getEventAction(event),
+            summary: getEventSummary(event),
+            // The TYPE badge and row tone read the same sources as the LOG
+            // row: the projection atom's label, the event meta's tone.
+            type: atomType?.label ?? "",
+            tone: eventMeta[event.eventName]?.tone || "unknown",
+            pairDuration,
+            durationLabel,
+            durationHeat:
+              pairDuration === null ? null : durationHeatClass(pairDuration),
+            pairLink,
+          };
+        },
+      ),
+    [activeEvents, platformId],
+  );
+  // Resolve any overlay row's payload for the active tab without rebuilding
+  // the inspector's whole tab model. The dialog caches each prepared preview
+  // by event id, so switching rows in its rail is a lookup, not a re-render of
+  // this tree — the source of the old switch lag. A stable Set of question
+  // atom ids keeps the question variant scoped to the atom that is actually
+  // being previewed; a row whose own event carries the question display key
+  // (or a plan) previews as a question even when its atom aggregates more.
+  const questionAtomIds = useMemo(
+    () =>
+      new Set(
+        harnessFlow.nodes
+          .filter((node) => node.data.key === "user.question")
+          .map((node) => node.id),
+      ),
+    [harnessFlow.nodes],
+  );
+  const overlayEventById = useMemo(
+    () => new Map(activeEvents.map((event) => [event.id, event])),
+    [activeEvents],
+  );
+  const overlayPayloadForAtom = useCallback(
+    (atomId: string, eventId?: string): unknown => {
+      const node = harnessFlow.nodes.find((candidate) => candidate.id === atomId);
+      if (!node) {
+        return null;
+      }
+      // The picked row's own event wins — and it decides the payload, not the
+      // atom's start event. One atom aggregates many events, so resolving
+      // every row from `startEvent` made the pane show the same content (or
+      // the same empty one) no matter which step of the chain was picked.
+      const rowEvent = eventId ? overlayEventById.get(eventId) ?? null : null;
+      const boundEvent = rowEvent ?? node.data.event ?? node.data.startEvent;
+      if (!boundEvent) {
+        return null;
+      }
+      if (inspectorTab === "input") {
+        if (
+          questionAtomIds.has(atomId) ||
+          getTraceEventKey(boundEvent) === "user.question" ||
+          hasPlanContent(boundEvent.payload)
+        ) {
+          return boundEvent.payload;
+        }
+        // A row is what the chain carried at that step: a tool call row reads
+        // its own arguments, a prompt row its own prompt, anything else its
+        // captured payload. The atom start stays only as the last fallback
+        // for a row without one.
+        if (boundEvent.eventName === "UserPromptSubmit") {
+          return boundEvent.payload;
+        }
+        if (boundEvent.eventName === "PreToolUse") {
+          return (
+            boundEvent.payload.tool_input ||
+            boundEvent.payload.toolInput ||
+            boundEvent.payload
+          );
+        }
+        if (rowEvent) {
+          return boundEvent.payload;
+        }
+        const start = node.data.startEvent;
+        return (
+          start?.payload?.tool_input || {
+            prompt: start?.payload?.prompt,
+            message: start?.payload?.message,
+            source: start?.payload?.source,
+          }
+        );
+      }
+      if (inspectorTab === "output") {
+        if (rowEvent) {
+          // The step's own result: a tool result row reads its response, a
+          // reply row its message; anything else falls back to the atom's
+          // closed result and then to the row payload itself.
+          if (boundEvent.eventName === "PostToolUse" || boundEvent.eventName === "PostToolUseFailure") {
+            return (
+              boundEvent.payload.tool_response ||
+              boundEvent.payload.toolResponse ||
+              boundEvent.payload
+            );
+          }
+          if (boundEvent.payload.tool_response) {
+            return boundEvent.payload.tool_response;
+          }
+          if (
+            typeof boundEvent.payload.message === "string" ||
+            typeof boundEvent.payload.last_assistant_message === "string" ||
+            typeof boundEvent.payload.text === "string"
+          ) {
+            return {
+              message:
+                boundEvent.payload.last_assistant_message ||
+                boundEvent.payload.message ||
+                boundEvent.payload.text,
+            };
+          }
+        }
+        return (
+          node.data.endEvent?.payload?.tool_response || {
+            message:
+              boundEvent.payload.last_assistant_message ||
+              boundEvent.payload.message ||
+              null,
+          }
+        );
+      }
+      return boundEvent;
+    },
+    [harnessFlow.nodes, inspectorTab, overlayEventById, questionAtomIds],
+  );
+  const overlayVariantForAtom = useCallback(
+    (atomId: string, eventId?: string): "default" | "question" => {
+      if (inspectorTab !== "input") {
+        return "default";
+      }
+      const rowEvent = eventId ? overlayEventById.get(eventId) : null;
+      if (rowEvent) {
+        return getTraceEventKey(rowEvent) === "user.question" ||
+          hasPlanContent(rowEvent.payload)
+          ? "question"
+          : "default";
+      }
+      return questionAtomIds.has(atomId) ? "question" : "default";
+    },
+    [inspectorTab, overlayEventById, questionAtomIds],
+  );
+  // The question the inspector shows is also the question an answer must be
+  // keyed to. Prefer the selected event (a LOG row may be the question itself,
+  // and a plan approval tool row previews the same plan) and fall back to the
+  // Flow atom's bound start event. Both come from the same event the reader
+  // sees; the floating panel's "newest request" rule is deliberately not used
+  // here. The plan-content branch mirrors the inspector's display fallback and
+  // stays display-only: it does not touch the user-question classifier.
+  const inspectedQuestionEvent =
+    selectedEvent &&
+    (getTraceEventKey(selectedEvent) === "user.question" ||
+      hasPlanContent(selectedEvent.payload))
+      ? selectedEvent
+      : selectedAtom?.key === "user.question"
+        ? selectedAtom.event
+        : null;
+  const questionEventAtomId = getAtomIdForEvent(
+    inspectedQuestionEvent,
+    platformId,
+  );
+  const matchedQuestionInteraction = useMemo(
+    () =>
+      matchQuestionInteraction(
+        interactions.requests,
+        inspectedQuestionEvent,
+        {
+          promptRunEvents: activeEvents,
+          atomId: questionEventAtomId,
+          selectedAtomId: currentAtomId,
+          platformId,
+        },
+      ),
+    [
+      interactions.requests,
+      inspectedQuestionEvent,
+      activeEvents,
+      currentAtomId,
+      questionEventAtomId,
+      platformId,
+    ],
+  );
+  const matchedQuestionKey = matchedQuestionInteraction
+    ? `${matchedQuestionInteraction.draft.request.requestId}:${matchedQuestionInteraction.question.question}`
+    : "";
+
+  useEffect(() => {
+    setQuestionAnswerDrafts({});
+  }, [matchedQuestionKey]);
+
+  // The floating card is no longer a global newest-request overlay: it is the
+  // same strict binding as the inspector, so changing agent or message leaves
+  // no question card behind. Keep the closed draft briefly for the result.
+  const activeInteraction = useMemo(
+    () =>
+      matchedQuestionInteraction && !matchedQuestionInteraction.draft.result
+        ? matchedQuestionInteraction.draft
+        : null,
+    [matchedQuestionInteraction],
+  );
+  // Where the question surface lives. `float` keeps the card over the canvas;
+  // the two dock layouts move it under the inspector tabs, which only exists
+  // while the EVENTS column is open — a collapsed column would leave a live
+  // question with nowhere to land inside its synchronous window, so the card
+  // takes over until the column is reopened.
+  const questionDocked =
+    isDockedQuestionPanelMode(questionPanelMode) && consoleOpen;
+  // The floating card is a live answer affordance, not a history preview. It
+  // only floats while the task being inspected is actually executing — active
+  // (running) or waiting — and the reader is not replaying a snapshot. A
+  // finished run or a replayed turn keeps its question readable in the
+  // inspector, but the answer controls there go read-only and no card floats.
+  //
+  // The gate keys off the *session* status the left RUN HISTORY card shows
+  // (its newest prompt run), not `activeDisplayState` (the selected prompt
+  // run). Drilling into an older message or atom can leave the selected run
+  // already `complete` inside a still-waiting session, which would freeze the
+  // question even though the task is still executing — so while the card says
+  // RUNNING or WAITING the question stays answerable regardless of the
+  // selected message.
+  const activeSessionDisplayStatus = activeSession
+    ? getRunHistoryDisplayState(
+        activeSession,
+        activePromptRuns,
+        now,
+        appTimings.activeRunTimeoutMs,
+      ).status
+    : undefined;
+  const questionActionable = isQuestionActionable({
+    status: activeSessionDisplayStatus,
+    replayMode,
+    isDemo,
+  });
+  // The rail's Live toggle keys off the *recorded* status — the RUNNING
+  // capsule the RUN HISTORY card keeps printing, STALE marker included — not
+  // the freshness-terminated display: a run gone quiet past its freshness
+  // window is still the executing message until a terminal event lands, and
+  // the row's STALE marker already tells the reader the recorder went quiet.
+  // A finished run (recorded terminal status) has nothing to follow.
+  const sessionRecordedStatus = activeSession
+    ? getRunHistoryDisplayStatus(activeSession.status, activePromptRuns)
+    : undefined;
+  const overlayFollowAvailable =
+    Boolean(activeSession) &&
+    !isDemo &&
+    !replayMode &&
+    isLiveRunStatus(sessionRecordedStatus);
+  // Armed = the follow posture: no explicit atom selection, so a genuinely
+  // executing message keeps advancing the selection to its newest atom. A run
+  // that is only recorded-running (STALE) lands on its newest event and
+  // resumes following the moment it produces an event again.
+  const overlayFollowing =
+    overlayFollowAvailable && selectedAtomId === undefined;
+  // The rail's search matches payload content too, through the shared
+  // per-event haystacks the LOG warms for the same run.
+  const overlaySearchEvent = useCallback(
+    (eventId: string, needle: string) => {
+      const event = overlayEventById.get(eventId);
+      return event ? matchesEventQuery(event, needle) : false;
+    },
+    [overlayEventById],
+  );
+  // After a refresh the SSE interaction frames are gone (the service never
+  // replays them), so `interactions.requests` is empty and the waiting
+  // question would read as read-only. Recover the *original* request from the
+  // service by the identity the captured event still carries, then replay it
+  // through the same reducer actions the live frames use. The host hook polls
+  // that request's deterministic id, so answering it reaches the blocked tool
+  // call. Only attempt once per identity; a failed lookup means the request
+  // expired and the host fell back to its native prompt.
+  const recoveredIdentityRef = useRef<string>("");
+  useEffect(() => {
+    if (!questionActionable || !eventsLoaded || replayMode || isDemo) {
+      return;
+    }
+    // Already matched — a live frame or a previous recovery supplied it.
+    if (matchedQuestionInteraction) {
+      return;
+    }
+    const event = inspectedQuestionEvent;
+    if (!event) {
+      return;
+    }
+    const identity = interactionIdentityFromEvent(event);
+    const key = `${identity.sessionId || ""}:${identity.toolUseId || ""}:${identity.toolName || ""}`;
+    if (!identity.sessionId && !identity.toolUseId) {
+      return;
+    }
+    if (recoveredIdentityRef.current === key) {
+      return;
+    }
+    recoveredIdentityRef.current = key;
+    let cancelled = false;
+    void fetchOpenInteractions(identity, { apiBase }).then((records) => {
+      if (cancelled || !records.length) {
+        return;
+      }
+      for (const record of records) {
+        dispatchInteraction({ type: "open", request: record.request });
+        for (const item of record.events) {
+          dispatchInteraction({ type: "update", event: item });
+        }
+        if (record.result) {
+          dispatchInteraction({ type: "close", result: record.result });
+        }
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    questionActionable,
+    eventsLoaded,
+    replayMode,
+    isDemo,
+    matchedQuestionInteraction,
+    inspectedQuestionEvent,
+    apiBase,
+  ]);
+  // Unchosen layouts track the run: an answerable question floats so it stays
+  // visible above the canvas it blocks, while a finished/captured one docks
+  // full so its whole text and options fit. A stored manual switch wins.
+  useEffect(() => {
+    if (questionPanelModeManualRef.current) {
+      return;
+    }
+    setQuestionPanelMode((current) => {
+      const next = autoQuestionPanelMode(questionActionable);
+      return current === next ? current : next;
+    });
+  }, [questionActionable]);
+  const lastOpenInteractionRef = useRef<InteractionDraft | null>(null);
+  if (activeInteraction) {
+    lastOpenInteractionRef.current = activeInteraction;
+  }
+  const [settlingInteraction, setSettlingInteraction] =
+    useState<InteractionDraft | null>(null);
+  const settlingMatchesView = Boolean(
+    settlingInteraction &&
+      questionMatchesCurrentView({
+        draft: settlingInteraction,
+        event: inspectedQuestionEvent,
+        promptRunEvents: activeEvents,
+        atomId: questionEventAtomId,
+        selectedAtomId: currentAtomId,
+        platformId,
+      }),
+  );
+  useEffect(() => {
+    if (activeInteraction) {
+      setSettlingInteraction(null);
+      return;
+    }
+    const previous = lastOpenInteractionRef.current;
+    lastOpenInteractionRef.current = null;
+    if (!previous) {
+      return;
+    }
+    const closed = interactionsRef.current.requests[previous.request.requestId];
+    if (!closed?.result) {
+      return;
+    }
+    setSettlingInteraction(closed);
+    const timer = window.setTimeout(() => {
+      setSettlingInteraction(null);
+    }, INTERACTION_SETTLE_MS);
+    return () => window.clearTimeout(timer);
+  }, [activeInteraction, interactions]);
 
   useEffect(() => {
     if (!animatingFlow || !activeExecutionAtomId) {
@@ -6669,6 +7573,22 @@ export default function App() {
     if (isDemo) {
       return;
     }
+    const commands = buildServiceCliCommands(apiBase, window.location.origin);
+    const offline = !service || Boolean(serviceError);
+    if (offline) {
+      // A browser cannot spawn a process on the reader's machine. Give the
+      // reader the exact command instead of silently failing against a port
+      // nobody is listening on. The wording follows the clipboard outcome.
+      let copied = false;
+      try {
+        await navigator.clipboard?.writeText(commands.repo);
+        copied = Boolean(navigator.clipboard);
+      } catch {
+        // Clipboard permission is optional; the notice still shows the command.
+      }
+      pushNotice("info", "本地服务不可达", offlineRestartNotice(copied, commands));
+      return;
+    }
     if (
       !window.confirm(
         "重启本地 ASTRO 服务？端口保持不变，完成后事件流会自动重连并重新加载。",
@@ -6860,16 +7780,65 @@ export default function App() {
     [activeEvents, platformId],
   );
 
-  const handleCanvasSelectNode = useCallback(
-    (node: HarnessNode) => {
-      const deselecting = selectedAtomId === node.id;
+  // One commit point for selecting a harness atom from any surface. The canvas
+  // toggles when you click the already-selected node; the overlay's rail never
+  // does (clicking the current row is a no-op there). Both paths go through
+  // this function so there is a single definition of what "selected" means.
+  const commitAtomSelection = useCallback(
+    (node: HarnessNode, deselect: boolean) => {
       setPlaying(false);
       setReplayMode(false);
-      setSelectedAtomId((current) => toggleAtomSelection(current, node.id));
+      setSelectedAtomId(deselect ? null : node.id);
       const boundEvent = node.data.endEvent || node.data.event;
-      setSelectedEventId(deselecting ? "" : boundEvent?.id || "");
+      setSelectedEventId(deselect ? "" : boundEvent?.id || "");
     },
-    [selectedAtomId],
+    [],
+  );
+
+  const handleCanvasSelectNode = useCallback(
+    (node: HarnessNode) => commitAtomSelection(node, selectedAtomId === node.id),
+    [commitAtomSelection, selectedAtomId],
+  );
+
+  /**
+   * The overlay rail selects a row of the message chain without ever toggling
+   * it off. It commits the same state the LOG's own select handler writes —
+   * the picked event plus the harness atom it maps to — so the rail, the LOG,
+   * the canvas and the inspector cannot disagree about what is selected.
+   */
+  const handleOverlaySelectEvent = useCallback(
+    (atomId: string, eventId: string) => {
+      setPlaying(false);
+      setReplayMode(false);
+      setSelectedAtomId(atomId || null);
+      setSelectedEventId(eventId);
+    },
+    [],
+  );
+
+  /**
+   * The rail header's 跟随 toggle mirrors the console's live following.
+   * Arming rides the session's newest prompt run — the executing one — with no
+   * explicit atom selection, mirroring the footer Live jump: the live-follow
+   * effect then advances the event to the newest one each batch. Disarming
+   * pins the atom currently on screen so the payload stops advancing. The
+   * toggle is armable while the *session* is executing (the RUN HISTORY
+   * card's status), not only the selected prompt run — drilling into an
+   * older message must not freeze the follow control while the task runs.
+   */
+  const handleOverlayFollowingChange = useCallback(
+    (armed: boolean) => {
+      if (armed) {
+        if (latestPromptRun && latestPromptRun.key !== activePromptRunKey) {
+          setActivePromptRunKey(latestPromptRun.key);
+        }
+        setSelectedAtomId(undefined);
+        setSelectedEventId(latestPromptRun?.events.at(-1)?.id || "");
+        return;
+      }
+      setSelectedAtomId(currentAtomId || null);
+    },
+    [activePromptRunKey, currentAtomId, latestPromptRun],
   );
 
   const handleReplaySeek = useCallback((index: number) => {
@@ -6920,13 +7889,16 @@ export default function App() {
    */
   const handleReplayExit = useCallback(() => {
     startTransition(() => {
-      const liveSession = filteredSessions.find((session) =>
-        liveSessionKeys.has(session.key),
-      );
       const targetSession =
         activeSession && promptExecuting
           ? activeSession
-          : liveSession ?? filteredSessions[0];
+          : selectScopeFallbackRun(
+              filteredSessions,
+              liveSessionKeys,
+              (session) =>
+                promptRunsBySession.get(session.key)?.at(-1)?.start ??
+                session.start,
+            );
       if (!targetSession) {
         return;
       }
@@ -7258,6 +8230,7 @@ export default function App() {
           <div className="header-icon-group">
             <SettingsDialog
               activeView={activeView}
+              chimeStyle={chimeStyle}
               consoleOpen={consoleOpen}
               deepView={deepView}
               historyOpen={historyOpen}
@@ -7265,6 +8238,8 @@ export default function App() {
               liveView={liveFilter}
               maxSync={maxSync}
               perfHud={perfHud}
+              questionPanelMode={questionPanelMode}
+              taskCompletionChime={taskCompletionChime}
               theme={theme}
               onActiveViewChange={(view) => {
                 setActiveView(view);
@@ -7279,6 +8254,9 @@ export default function App() {
               onLiveViewChange={setLiveFilter}
               onMaxSyncChange={setMaxSync}
               onPerfHudChange={setPerfHud}
+              onQuestionPanelModeChange={changeQuestionPanelMode}
+              onTaskCompletionChimeChange={setTaskCompletionChime}
+              onChimeStyleChange={setChimeStyle}
               onThemeChange={setTheme}
             />
             <ThemeSwitcher theme={theme} onChange={setTheme} />
@@ -7364,7 +8342,7 @@ export default function App() {
           )}
         </aside>
 
-        <section className="canvas-column grid min-h-0 min-w-0 grid-rows-[48px_minmax(0,1fr)_62px]">
+        <section className="canvas-column relative grid min-h-0 min-w-0 grid-rows-[48px_minmax(0,1fr)_62px]">
           <div className="canvas-toolbar flex min-w-0 items-center gap-2 border-b border-[var(--line)] px-2.5">
             <div className="toolbar-summary flex min-w-0 flex-1 flex-col">
               <span className="eyebrow">
@@ -7394,12 +8372,30 @@ export default function App() {
                       if (nextAgent !== OTHERS_AGENT_ID) {
                         setPlatformId(nextAgent);
                       }
-                      // The open run belongs to the scope that was just left.
-                      // Dropping the selection lands the canvas, the log and
-                      // the list on the new agent's newest message instead of
-                      // leaving another agent's run on screen with no row to
-                      // point at.
-                      setActiveSessionKey("");
+                      // The open run belongs to the scope just left, so the
+                      // selection is dropped. If the new agent has a message
+                      // executing right now, land on it instead of the newest
+                      // finished run: a resumed run may have started days ago
+                      // and would otherwise be missed, leaving the footer
+                      // Live button dark while the agent is in fact running.
+                      const scoped = filterSessionsByAgent(
+                        sessions,
+                        nextAgent,
+                        configuredSources,
+                      );
+                      const scopedLiveKeys = scopeLiveRunIndex(
+                        sessions,
+                        machineLiveKeys,
+                        scoped,
+                      ).keys;
+                      const fallback = selectScopeFallbackRun(
+                        scoped,
+                        scopedLiveKeys,
+                        (session) =>
+                          promptRunsBySession.get(session.key)?.at(-1)?.start ??
+                          session.start,
+                      );
+                      setActiveSessionKey(fallback?.key || "");
                       setActivePromptRunKey("");
                       setSelectedEventId("");
                       setSelectedAtomId(undefined);
@@ -7449,6 +8445,48 @@ export default function App() {
               ) : null}
             </div>
           </div>
+
+          {questionActionable && activeInteraction && !questionDocked ? (
+            <InteractionPanel
+              className="interaction-panel--floating"
+              deviceId={consoleDeviceId}
+              key={activeInteraction.request.requestId}
+              keyboard
+              lockedBy={activeInteraction.lockedBy}
+              mode={questionPanelMode}
+              onCancel={() =>
+                handleInteractionCancel(activeInteraction.request.requestId)
+              }
+              onModeChange={changeQuestionPanelMode}
+              onSend={(answers) =>
+                handleInteractionAnswers(
+                  activeInteraction.request.requestId,
+                  answers,
+                )
+              }
+              pending={Boolean(activeInteraction.pending)}
+              request={activeInteraction.request}
+              result={activeInteraction.result}
+              selections={activeInteraction.selections}
+            />
+          ) : questionActionable &&
+            settlingInteraction &&
+            settlingMatchesView &&
+            !questionDocked ? (
+            // The request just closed: same key and position as the open card,
+            // so the collapsed/expanded state carries over without a remount
+            // flicker while the result is shown and the card slides away.
+            <InteractionPanel
+              className="interaction-panel--floating interaction-panel--settling"
+              deviceId={consoleDeviceId}
+              key={settlingInteraction.request.requestId}
+              lockedBy={settlingInteraction.lockedBy}
+              mode={questionPanelMode}
+              onModeChange={changeQuestionPanelMode}
+              request={settlingInteraction.request}
+              result={settlingInteraction.result}
+            />
+          ) : null}
 
           <div className="runtime-canvas-stack relative min-h-0 min-w-0 overflow-hidden">
             <div
@@ -7542,6 +8580,35 @@ export default function App() {
                 atom={selectedAtom}
                 index={selectedEventIndex}
                 onActiveTabChange={setInspectorTab}
+                overlayAtoms={overlayAtoms}
+                overlaySelectedEventId={selectedEventId || ""}
+                overlayRunningEventId={
+                  executingLive && pendingEvent ? pendingEvent.id : ""
+                }
+                overlayFollowing={overlayFollowing}
+                overlayFollowAvailable={overlayFollowAvailable}
+                overlaySearchEvent={overlaySearchEvent}
+                onOverlayFollowingChange={handleOverlayFollowingChange}
+                onOverlaySelectEvent={handleOverlaySelectEvent}
+                overlayPayloadForAtom={overlayPayloadForAtom}
+                overlayVariantForAtom={overlayVariantForAtom}
+                matchedQuestion={matchedQuestionInteraction}
+                answerDrafts={questionAnswerDrafts}
+                onAnswerDraftChange={(question, text) =>
+                  setQuestionAnswerDrafts((current) => ({
+                    ...current,
+                    [question]: text,
+                  }))
+                }
+                onAnswerQuestion={handleQuestionAnswer}
+                onCancelQuestion={handleInteractionCancel}
+                questionActionable={questionActionable}
+                questionPanelMode={questionPanelMode}
+                onQuestionPanelModeChange={changeQuestionPanelMode}
+                questionDocked={questionDocked}
+                settledQuestion={
+                  settlingMatchesView ? settlingInteraction : null
+                }
               />
             </>
           ) : (

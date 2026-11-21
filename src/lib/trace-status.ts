@@ -1,5 +1,10 @@
 import type { TraceEvent } from "../types/trace";
-import { isUserQuestionStartEvent } from "./trace-event-kind.ts";
+import {
+  isBlockingUserQuestionStartEvent,
+  isSystemAuthorizationEvent,
+  isUserQuestionEvent,
+  isUserQuestionStartEvent,
+} from "./trace-event-kind.ts";
 
 const explicitWaitingEvents: readonly string[] = [
   "Elicitation",
@@ -26,12 +31,24 @@ export function isWaitingTraceEvent(
 ) {
   const explicitEvents = waitingEvents ?? explicitWaitingEvents;
   if (explicitEvents.includes(event.eventName)) {
+    // A PermissionRequest without `questions` / `plan` is the host's own
+    // authorization gate, not a pending user question. The same gate applies
+    // to a platform override (ZCode lists PermissionRequest explicitly).
+    if (isUserQuestionEvent(event)) {
+      return isBlockingUserQuestionStartEvent(event);
+    }
     return true;
   }
   // An explicit per-agent configuration is authoritative: the shared
   // user-question classification only applies to the default signals.
   if (!waitingEvents && isUserQuestionStartEvent(event)) {
-    return true;
+    return isBlockingUserQuestionStartEvent(event);
+  }
+  // An authorization gate that is not an answerable question must not fall
+  // through to the payload pattern below: "permission_prompt" matches it and
+  // would otherwise still mark the run as waiting.
+  if (isSystemAuthorizationEvent(event) && !isBlockingUserQuestionStartEvent(event)) {
+    return false;
   }
   if (event.eventName === "PermissionDenied" && event.payload.retry === true) {
     return true;

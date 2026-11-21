@@ -198,7 +198,7 @@ export function getExceptionOutcome(
     status: "failed",
     // A turn-level failure ends the run, whether the client reports it as
     // StopFailure (Claude, Trae, OpenCode, Pi) or as Stop + status=failed
-    // (Codex, DeepSeek). Tool failures and rejections stay recoverable so a
+    // (ChatGPT, DeepSeek). Tool failures and rejections stay recoverable so a
     // later retry or a final Stop still describes the run.
     terminal:
       event.eventName === "StopFailure" || event.eventName === "Stop",

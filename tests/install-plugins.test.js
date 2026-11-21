@@ -66,8 +66,8 @@ test("uses portable home-relative paths in hook commands", () => {
   );
   assert.equal(command.includes(homedir()), false);
   assert.equal(
-    resolveHomePath("~/.codex", "/unused"),
-    join(homedir(), ".codex"),
+    resolveHomePath("~/.chatgpt", "/unused"),
+    join(homedir(), ".chatgpt"),
   );
 });
 
@@ -100,7 +100,7 @@ test("rejects unsupported clients instead of silently doing nothing", () => {
 
 test("merges client hooks without replacing existing commands", () => {
   const root = mkdtempSync(join(tmpdir(), "astro-install-"));
-  const codexHome = join(root, "codex-home");
+  const chatgptHome = join(root, "chatgpt-home");
   const workbuddyHome = join(root, "workbuddy-home");
   const astroHome = join(root, "astro-home");
   const traeDir = join(root, ".trae");
@@ -121,10 +121,10 @@ test("merges client hooks without replacing existing commands", () => {
 
   installClients({
     targetDir: root,
-    codexHome,
+    chatgptHome,
     workbuddyHome,
     astroHome,
-    clients: ["trae", "claude", "codex", "workbuddy"],
+    clients: ["trae", "claude", "chatgpt", "workbuddy"],
   });
   const runtimeConfigFile = join(
     astroHome,
@@ -148,10 +148,10 @@ test("merges client hooks without replacing existing commands", () => {
   writeFileSync(runtimeEnvFile, "PRIVATE_VALUE=preserved\n");
   installClients({
     targetDir: root,
-    codexHome,
+    chatgptHome,
     workbuddyHome,
     astroHome,
-    clients: ["trae", "claude", "codex", "workbuddy"],
+    clients: ["trae", "claude", "chatgpt", "workbuddy"],
   });
   assert.match(readFileSync(runtimeConfigFile, "utf8"), /port: 4550/);
   assert.equal(
@@ -171,8 +171,8 @@ test("merges client hooks without replacing existing commands", () => {
   const claude = JSON.parse(
     readFileSync(join(root, ".claude", "settings.local.json"), "utf8"),
   );
-  const codex = JSON.parse(
-    readFileSync(join(codexHome, "hooks.json"), "utf8"),
+  const chatgpt = JSON.parse(
+    readFileSync(join(chatgptHome, "hooks.json"), "utf8"),
   );
   const workbuddy = JSON.parse(
     readFileSync(join(root, ".codebuddy", "settings.json"), "utf8"),
@@ -195,12 +195,12 @@ test("merges client hooks without replacing existing commands", () => {
     /--source=claude/,
   );
   assert.match(
-    codex.hooks.PreToolUse[0].hooks[0].command,
-    /--source=codex/,
+    chatgpt.hooks.PreToolUse[0].hooks[0].command,
+    /--source=chatgpt/,
   );
-  assert.match(codex.hooks.PreToolUse[0].hooks[0].command, /--quiet/);
-  assert.ok(codex.hooks.SessionEnd);
-  assert.ok(codex.hooks.Interrupt);
+  assert.match(chatgpt.hooks.PreToolUse[0].hooks[0].command, /--quiet/);
+  assert.ok(chatgpt.hooks.SessionEnd);
+  assert.ok(chatgpt.hooks.Interrupt);
   assert.match(
     workbuddy.hooks.PermissionRequest[0].hooks[0].command,
     /--source=workbuddy/,

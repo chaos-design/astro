@@ -17,7 +17,7 @@ ASTRO captures, inspects, and replays coding-agent runtime events on the local m
 - understanding tool execution, observations, memory, quality gates, and output through an execution topology;
 - inspecting tool input, output, duration, and raw payload;
 - replaying a historical session to locate the state before a failure;
-- using one event model across Trae, Claude Code, Codex, DeepSeek Harness, WorkBuddy, browser clients, and custom integrations;
+- using one event model across Trae, Claude Code, ChatGPT, DeepSeek Harness, WorkBuddy, browser clients, and custom integrations;
 - importing, exporting, and sharing one run as JSONL.
 
 ![ASTRO desktop console](assets/astro-desktop.png)
@@ -111,11 +111,11 @@ server, and built dashboard:
 pnpm build:native-plugins
 ```
 
-Then install the Codex plugin through the repository marketplace:
+Then install the ChatGPT plugin through the repository marketplace:
 
 ```bash
-codex plugin marketplace add /absolute/path/to/astro
-codex plugin add astro@astro-local
+chatgpt plugin marketplace add /absolute/path/to/astro
+chatgpt plugin add astro@astro-local
 ```
 
 Claude Code can load its native package directly:
@@ -134,26 +134,26 @@ claude plugin install astro@astro-local --scope user
 The sections below describe the direct Hook installer, which remains useful
 for Trae and environments where native plugin installation is unavailable.
 
-#### 4.2.1 Codex
+#### 4.2.1 ChatGPT
 
-Install the current-user hook in `$CODEX_HOME/hooks.json`:
-
-```bash
-pnpm install-plugins -- --clients=codex
-```
-
-For a non-default Codex home:
+Install the current-user hook in `$CHATGPT_HOME/hooks.json`:
 
 ```bash
-pnpm install-plugins -- --clients=codex --codex-home=/path/to/.codex
+pnpm install-plugins -- --clients=chatgpt
 ```
 
-Restart Codex, run `codex` from the project to observe, and create a new
-session. Live events are appended to `~/.astrox/codex/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl`. Import
+For a non-default ChatGPT home:
+
+```bash
+pnpm install-plugins -- --clients=chatgpt --chatgpt-home=/path/to/.chatgpt
+```
+
+Restart ChatGPT, run `chatgpt` from the project to observe, and create a new
+session. Live events are appended to `~/.astrox/chatgpt/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl`. Import
 existing active and archived rollout files with:
 
 ```bash
-pnpm import-codex
+pnpm import-chatgpt
 ```
 
 #### 4.2.2 Claude Code
@@ -366,7 +366,11 @@ HTTP service.
 - Theme: light, dark, or system; stored in `ASTROX_THEME`.
 - Service chip (the local service's uptime): opens the service card with the
   console/service versions, process details, session counts, the data directory
-  and "restart local service". The uptime follows a sync pause: while the sync
+  and "restart local service". While the service answers, that button posts
+  `/api/restart`; when it is unreachable the button becomes "copy start command"
+  and copies `pnpm service:up --port=<current port>` — a browser cannot spawn a
+  local process, so the CLI is the out-of-band start path. The uptime follows a
+  sync pause: while the sync
   is stopped at its cap (`paused`) the clock stops counting too, it continues
   from the frozen reading when sync resumes, and restarting the local service
   recounts from the new process. The "change" control next to the data directory
@@ -438,8 +442,12 @@ message runs (no shuffling as events keep arriving) — only a newly sent
 prompt takes the top. A message executing under another agent is not part of
 this list; the agent picker signals it instead, with a pulsing dot on the
 agent that is running, and switching to it shows the message.
-Switching agents also moves the canvas, the log and the selection onto the new
-agent's newest message rather than leaving the previous run on screen.
+Switching agents also moves the canvas, the log and the selection into the new
+scope. If that agent has a message executing right now, it lands on that live
+message and the footer Live button is lit by default — not on the newest finished
+run, because a resumed run may have sent its first prompt days ago. Without a
+live message it falls back to the newest run. The footer Live button uses the
+same selection when you press it from a non-live state.
 
 The `N LIVE` chip in the panel header toggles the Live filter:
 
@@ -511,7 +519,7 @@ notification (older captures are read from the message text), and ZCode
 reports its session's model on `SessionStart` — if the model is switched
 mid-session, later messages still show the session-start model. A mid-run
 model switch shows the last observation. Clients that do not report a model
-(for example the claude and codex hooks) show no tag — an unreported model is
+(for example the claude and chatgpt hooks) show no tag — an unreported model is
 not rendered as "unknown". A prompt run begins with one
 `UserPromptSubmit` and contains every following event before the next prompt.
 
@@ -534,7 +542,7 @@ The workspace renders the selected prompt run. It provides:
 
 Toolbar controls:
 
-- platform context: Codex, Claude Code, Trae, and other configured agents,
+- platform context: ChatGPT, Claude Code, Trae, and other configured agents,
   plus an **Others** catch-all;
 - topology/trajectory switch;
 - atom and edge guide;
@@ -615,10 +623,306 @@ The inspector provides:
   and topology counts stay unchanged. `Code` shows the raw payload;
 - `Output`: tool result or response;
 - `Raw`: full normalized event;
-- copy control for structured JSON.
+- copy control for structured JSON;
+- an expand control in the inspector header, available on `Input` / `Output` /
+  `Raw`, opens a **global overlay** that shows the same payload in a much larger
+  area. The overlay has a `Preview` / `Code` switch: `Preview` splits into two
+  panes — "Atom content" (the text the atom actually carried; a
+  `user.question` Input tab shows the question / option / answer list the
+  reader saw, other payloads render as Markdown, and code / JSON is highlighted)
+  and "Related data" (timestamps, paths, ids and annotations / explanations,
+  annotations first). Each row's preview is prepared once and cached by event
+  id (scoped by the tab the layer was opened from), so switching rows in the
+  rail is a lookup rather than a repeated
+  Markdown parse. Rendering uses highlight.js
+  syntax highlighting, after the same HTML sanitizer
+  strips acting markup. A tool result is unwrapped at any depth (`captured`,
+  `tool_response`, `output`, `result`, a `plan` nested in `tool_input`, and their
+  nested content) and rendered as the text it really is, so a Markdown result
+  becomes headings, task lists and highlighted code rather than field labels and a
+  JSON string; JSON results are fenced for the highlighter. A lone text field
+  (message, output, plan text) is the document itself; a captured result with no
+  single text shows as readable field lines rather than field labels plus fenced
+  JSON. The inspector's `{ contract, captured }` wrapper previews only
+  `captured`, keeping topology metadata out of the layer. `Code` is the raw,
+  token-coloured JSON of the same payload, so both readings stay in one dialog;
+  with nothing previewable the overlay says so and `Code` still shows it.
+  Escape or the scrim closes the layer. A left rail shows the current run's
+  **message chain in the LOG's own data standard**: every event of the run,
+  newest first, split by the same turn separators the LOG prints, with the row
+  number the LOG prints for that event. Picking a row jumps to that step's
+  payload and moves the whole console with it. The rail shares the single
+  console selection
+  with the canvas, LOG and inspector — selecting a row in the overlay also moves
+  the main console to that event, so the overlay can never highlight A while the
+  canvas stays on B. The selected row is highlighted (a larger type and a
+  brighter selection treatment) and marked `aria-current`.
+  Each row is the same LOG row: sequence number, TYPE badge, display key,
+  timestamp (date + clock), the action / summary line, the closed tool call's
+  duration badge (exact milliseconds, e.g. `12500ms`) and the pair marker that
+  names the other half's row — so the
+  chain of what happened when, and how long it took, is reproducible without
+  leaving the dialog. Arrow /
+  Home / End move focus between rows. The head is one row: the run counter, a
+  search box with a clear button, and the Live toggle. The rail carries its
+  own search box (rail-local state): a keyword filters the chain over the
+  rows' display fields AND the payload content, and a turn whose rows all miss
+  disappears with its separator.
+  While the run's status still reads RUNNING (the STALE marker included), the
+  header's **Live** toggle stays clickable: clicking lands on the message's
+  newest event and enters the follow posture — a genuinely executing message
+  keeps following its newest atom (new events appear and the selected row
+  stays in view, the toggle breathing); picking any row pins the payload
+  where it is. On a finished run (or the Demo sample) the toggle reads
+  disabled.
+  The layer is global (portaled to the document body), but the rail is scoped to
+  the current run and its content always follows that one selection. After
+  picking a row, the content pane shows the **core information of that row's
+  own event**: a tool-call row its arguments, a result row the real result (an
+  Edit-style change renders as a highlighted diff), a prompt row its text;
+  Markdown lists, code and option lists render and highlight by data type,
+  code strings are fenced with their inferred language (json / diff / xml /
+  typescript / python / bash), and field-name labels stay out of the body; a
+  payload with no readable prose falls back to its highlighted JSON with the
+  metadata keys stripped —
+  switching rows always changes the content. The related-data pane folds by
+  default (its body capped at ~200px, with an 展开 / 收起 toggle in the pane
+  head that expands it downward and collapses it again), and the two pane
+  titles (atom content / related data) stay pinned at the top of their panes
+  while the bodies scroll beneath them.
 
 Selecting a topology atom additionally exposes the atom contract, input/output ports, gate state, and bound event.
 The right panel state is stored in `ASTROX_CONSOLE_OPEN`.
+
+### 5.5.1 Auto-approving user questions (optional)
+
+Auto-approval is performed by a **separate host-side decision hook**
+(`scripts/auto-approve-question-hook.mjs`), not by the ASTRO capture chain: the
+recorders stay read-only and fail-open, and the console still records
+`PermissionRequest` and `PostToolUse`. When enabled, the host approves
+`AskUserQuestion` and `ExitPlanMode` plan approvals without an app switch. The
+feature is **not installed by default**; only an explicit `--apply` registers it.
+
+**Enable** (preview first, then save):
+
+```bash
+pnpm install:auto-approve -- --client=claude
+pnpm install:auto-approve -- --client=claude --apply
+```
+
+The installer merges one group with matcher `AskUserQuestion|ExitPlanMode`,
+preserves existing hooks and top-level keys, is idempotent, and backs up the
+target before writing. `--client` accepts `claude`, `codebuddy`, and `zcode`;
+for ZCode it also sets `hooks.enabled: true` and writes `hooks.events`.
+
+**Host differences**: Claude Code lists the group under `/hooks`. ZCode ignores
+project-level hooks and snapshots the configuration at session start, so open a
+**new session**; failures appear in
+`~/.zcode/cli/log/zcode-<date>.jsonl`. CodeBuddy needs `--event=PreToolUse` plus
+`ASTRO_AUTO_APPROVE_INPUT_FIELD=modifiedInput`. ChatGPT, OpenCode, Pi and DeepSeek
+Harness have no command-hook decision channel; use the host's native permission
+mode instead.
+
+**Options**: `ASTRO_AUTO_APPROVE_EVENTS` / `TOOLS` / `ANSWER` (`first`, `last`,
+or `all`, where `all` joins every option label with commas for multi-select)
+/ `ANSWERS` (a JSON map from question text to an answer string or array, taking
+priority over automatic selection) / `INPUT_FIELD`. All are inherited by the host hook process;
+the full table is in the deployment guide.
+
+**Risks and limits**: auto-approval widens the permission surface, so never
+broaden the matcher to tools such as `Bash`. Multiple hooks aggregate as
+`deny > ask > allow`; explicit deny rules, plan-mode write bans and hard tool
+limits still win over `allow`. `answers` is injected by the hook, not produced by
+the agent. A timeout, non-JSON stdout or incomplete payload falls back to the
+normal permission prompt.
+
+**Disable and remove**: delete the group from settings, or run
+`pnpm install:auto-approve -- --client=claude --remove --apply` (removal is also
+dry-run by default). Only this tool's group is removed; unrelated hooks remain.
+No ASTRO data needs cleanup.
+
+**Verify**: pipe a `PermissionRequest(AskUserQuestion)` payload into
+`node scripts/auto-approve-question-hook.mjs` and expect an allow decision with
+`answers` (an unrelated event must print nothing); run
+`node --test tests/auto-approve-hook.test.mjs`; trigger a question or plan
+approval in the host and confirm no dialog appears, then disable it and confirm
+the prompt returns; finally confirm the console still records
+`PermissionRequest` and shows the auto-filled answers in Input/Preview.
+
+The full English reference is "Optional: auto-approve user questions" in
+`docs/plugin-installation.md`.
+
+### 5.5.2 Answering user questions from the console (optional)
+
+The interaction hook hands `AskUserQuestion` and `ExitPlanMode` prompts to the
+console: a floating panel appears in the canvas, you click an option or type an
+answer, and the answer goes straight back to the host without switching to the
+agent app. It is a **separate opt-in hook** from auto-approval — the recorder
+stays read-only. Do not install both on the same event: auto-approve returns
+`allow` immediately, which makes the panel pointless.
+
+Install (preview first):
+
+```bash
+pnpm install:interaction -- --client=claude
+pnpm install:interaction -- --client=claude --apply
+```
+
+`--client` accepts `claude`, `codebuddy` and `zcode`. The default event is
+`PermissionRequest`, except CodeBuddy / WorkBuddy which register on `PreToolUse`
+because its `modifiedInput` override only applies there; other hosts add
+`--events=PreToolUse` to intercept pre-tool prompts too. The installer shares
+its merge, validation and removal logic with the auto-approve installer:
+existing hooks and top-level keys are preserved, a
+second run is idempotent, the file is backed up before writing, and
+`--remove --apply` strips only this hook's handlers.
+
+Current WorkBuddy / CodeBuddy Code writes `tool_input.questions` to hook stdin,
+so the interaction hook can register the same request the console sees and
+return the answer through `PreToolUse.modifiedInput`. A parameterized
+`AskUserQuestion` is therefore answerable from the Flow inspector; the
+permission notification itself is not — it only keeps the canvas on the
+question atom until the real question arrives. A newly installed hook takes
+effect in a **new WorkBuddy session**.
+
+Timing: the hook is synchronous and the answer window **is** the hook's
+registered timeout — the installer writes it (`--timeout`, default 600 seconds,
+`ttlMs = timeout - 500`), so the whole window is answerable while a console page
+is attached to the stream. With no console connected the service closes the
+request as `cancelled` at once, the hook exits with empty stdout immediately,
+and the native prompt appears right away — an unattended agent never waits out
+the window. A timeout, a cancel or an unreachable service behaves the same.
+Answers are never replayed outside the window.
+
+Panel behavior: an option click only highlights the choice; multi-select joins
+labels in the declared option order with commas; the input field is the answer
+submitted at the end of the batch, so there is no Set step. Submit requires
+every required question and sends all answers once; the "N questions · one submit"
+hint sits above the question list, not in the action bar, and both placements use
+the same Submit / Cancel order. Esc/cancel ends the request
+and falls back; another device answering first turns the panel read-only. The
+floating card also supports keyboard answering: it focuses the first option on
+open, digits `1`–`9` highlight that option of the first question, `Enter`
+submits the batch once every required question is answered, and `Esc` cancels.
+Shortcuts are scoped to the card — digits in the input stay text and Enter
+submits. A countdown rule on the card's top edge follows the hook's real window
+and never wraps after the deadline. The card follows the question
+lifecycle: it auto-expands with an entrance animation when a request opens, the
+header chevron collapses it to a one-line summary (handing the canvas back — a
+newly opened question re-expands it), the questions themselves never fold, and
+the list respects a maximum scroll height while Submit/Cancel stay pinned to the
+card's bottom edge. The list scrolls edge to edge — the card carries no outer
+padding, its rows carry the gutters — so the scrollbar rides the card's border
+instead of cutting into the question text; the shortcut legend moved up into the
+header, between the summary and the status (its long form lives in the title), so
+the footer keeps only the two buttons, Submit then Cancel. The card is only the
+`Floating` one of two placements: until you switch layouts by hand the choice
+follows the run state — an answerable question (session RUNNING / WAITING)
+floats, a finished or captured one docks full. Only a manual switch is saved, so
+a derived default is not frozen into the next load. In the floating card each
+option takes a full-width row for quick answering; switching to `Region full`
+moves the same question surface into the inspector's detail area with tighter
+rows so more of the question fits, and the card stops appearing over the canvas.
+A collapsed EVENTS column has no region to dock into, so the docked layout falls
+back to the card for the synchronous window.
+Once the request is answered, cancelled or timed out the card shows the result
+(ANSWERED / CANCELLED / …) for about two seconds and then slides away; the
+docked surface keeps the same result in place instead.
+`ExitPlanMode` renders as an "Approve this plan?" choice — only Approve returns
+a decision and the plan text is echoed unchanged. The floating card is bound to
+the current message and atom: the event must belong to the selected prompt run,
+resolve to the selected atom, and agree on session and source. Switching agent
+or message hides the old card instead of answering in the wrong context. When
+such a request opens, the canvas flashes its question atom. CodeBuddy / WorkBuddy
+`PreToolUse.modifiedInput` carries only the decision and answers — no notification
+extras that a strict host schema could reject.
+
+Only an executing task is answerable: the floating card and the inspector's
+answer controls follow the *session* status the RUN HISTORY card on the left
+shows — `active` (running) or `waiting` (paused on the question). A run blocked
+on a user question keeps its recorded `waiting` status (and the long freshness
+window) but the card reads RUNNING; a rate-limit wait still reads WAITING. As
+long as that card still reads RUNNING or WAITING, drilling into an older message or
+atom never freezes the question, so you can still submit. Once the session
+finishes (complete / failed / terminated), or you replay a captured snapshot,
+no card floats and the inspector question goes read-only: you can still read
+the question and its answer, but the options, input and Submit / Cancel are
+disabled, so you can never answer for a task that already ended. The region
+layout still expands a historical question for reading, read-only as well.
+
+Answering from a Flow atom: selecting the `User Question` atom binds the
+inspector to that question's start event (not to its answer); Overview shows
+the question text and the event details. The question surface exists exactly
+once — the dock below the inspector tabs in a region layout, the Input tab in
+`Floating` — and one toolbar row owns the Preview / Code switch, the placement
+switch and the fold:
+
+- **Preview** shows the questions and their option chips. While the request is
+  open the chips are buttons (single-select and a plan approval's Approve/Reject
+  highlight on click; multi-select toggles one by one and the draft keeps the
+  declared option order), the input value is what Submit sends (no Set step),
+  and the Submit / Cancel bar is a sibling of the scrolling body, so it stays
+  pinned to the bottom of the panel however long the question is.
+- **Code** shows the raw payload only — no options, no answer box, no submit bar.
+- **A closed or historical question** keeps the same chips as static, unclickable
+  spans: you can still read what was asked and which options existed, but
+  nothing pretends to be answerable. The read-only preview leads with a question
+  count and capture-order hint, numbers each question, marks answered ones and
+  prints the selected labels on their own line with a stronger selected-chip
+  highlight. Switching to a region layout expands the full Q&A inside the
+  inspector.
+
+Long question text wraps inside the inspector width and the body scrolls instead
+of widening the log column. The region-full / floating layouts are one shared
+placement with the floating card (only `Floating` puts a card on the canvas); it
+follows the run state until you switch it by hand.
+If a submit is rejected (busy, closed, answered elsewhere)
+the draft is kept and a notice explains why — it is never silently cleared. When one `AskUserQuestion` carries
+several descriptors the
+inspector lists every question with its own options/input and one Submit sends
+the whole batch: the host closes the request on the first submit, so answering
+one at a time would strand the rest. Even a lone question only fills the draft
+on click. Selecting the `ExitPlanMode` tool row (which previews the same
+plan) can bind to the same request, but only when the current message, atom,
+session and source all match. The area and the floating panel share the same
+interaction state and turn read-only once the request is closed or answered on
+another device. A historical question without a live request shows its content
+only. The atom binds the newest question start while its status still follows
+the last matching event, so an answered question remains complete.
+
+**Only a question with parameters blocks.** A `PermissionRequest` or permission
+notification must carry a non-empty `questions` (or a plan approval's `plan`)
+before the run turns waiting and the `User Question` atom offers an answer box
+where you type the values in Flow. Without parameters it is a host **system
+authorization** — ZCode's `Bash` / `Edit` permission requests, or WorkBuddy's
+`notification_type: "permission_prompt"` notification naming `AskUserQuestion`.
+Those display as `permission.request` and neither block nor offer an answer.
+A bare `PermissionRequest(Bash/Edit)` projects onto Action Gate; WorkBuddy's
+notification stays on the User Question atom in the `delta` phase, so when its
+real `questions` arrive with a later `PreToolUse` the parameterized question
+takes over the same atom and is reachable from the canvas. Plain
+`idle_prompt` / `auth_success` notifications stay runtime signals.
+
+Overrides, inherited from the host process: `ASTRO_INTERACTION_SERVICE`
+(default `http://127.0.0.1:5678`), `ASTRO_INTERACTION_TIMEOUT_MS` (defaults to
+the installer's `--timeout`; 5000 is the no-configuration fallback),
+`ASTRO_INTERACTION_POLL_MS` (100), `ASTRO_INTERACTION_SOURCE`,
+`ASTRO_INTERACTION_EVENTS` / `TOOLS` / `INPUT_FIELD`.
+
+Recording: the question row still comes from the recorder. On close the service
+writes one `Notification` event with counts, the device and elapsed time — never
+an answer value; the answers themselves are in the host's `PostToolUse`
+`tool_input.answers`, and the console's Answers section only parses them for
+display.
+
+**Verify**: `node --test tests/interaction-hook.test.mjs` and
+`node --test tests/interaction-integration.test.mjs`; then trigger a question in
+the host and confirm the panel appears, the agent continues after you answer,
+and the LOG holds one question row and one answer row.
+
+The full contract is in `docs/interaction-hooks-en.md`; the installer reference
+is "Optional: answer user questions from the console" in
+`docs/plugin-installation.md`.
 
 ### 5.6 Session Status
 
@@ -666,10 +970,17 @@ duration even when it is longer than the current limit.
 ### 5.8 Settings
 
 The gear in the header opens the settings dialog. It is a two-pane card: a
-section rail on the left (Appearance, Run history, Canvas, Panels, Performance,
-About) and
+section rail on the left (Appearance, Run history, Layout, Performance,
+Notifications, About) and
 the active section's fields on the right. Every entry applies immediately, and
-the footer's **Done** button only closes the dialog — there is no Apply step:
+the footer's **Done** button only closes the dialog — there is no Apply step.
+**Layout** is one entry for everything about how the console is viewed; inside it,
+**Canvas** and **Panels** stay two labelled groups, so the two halves of one
+question never live in two menus. Every choice group (theme, time range, canvas,
+panels, chime style, chime preview) divides its row equally: three options take
+three equal thirds, four take four equal quarters, and the chime previews use the
+same rule for three. The footer's **Restore defaults** and **Done** keep equal
+width inside the action bar.
 
 **Appearance**
 
@@ -700,16 +1011,30 @@ the footer's **Done** button only closes the dialog — there is no Apply step:
   time left under the new cap — and if the console is paused while the new cap
   still has time left (or is `No limit`) it resumes on its own.
 
-**Canvas**
+**Layout**
 
-- **Default view**: topology / trajectory (`ASTROX_ACTIVE_VIEW`).
+One section, two groups: **Canvas** decides how the canvas draws, **Panels**
+decides how much room it gets and where the question surface stops. Neither
+group writes anything back to captured events.
+
+*Canvas*
+
+- **Default view**: topology / trajectory (`ASTROX_ACTIVE_VIEW`). It only picks
+  the view a message opens with; the two header icons still switch at any time.
 - **Runtime atoms only**: hide atoms that take no part in this execution
   (`ASTROX_DEEP_VIEW`).
 
-**Panels**
+*Panels*
 
 - **Expand RUN HISTORY** and **Expand EVENTS**: the two columns' expanded state
-  (`ASTROX_HISTORY_OPEN` / `ASTROX_CONSOLE_OPEN`).
+  (`ASTROX_HISTORY_OPEN` / `ASTROX_CONSOLE_OPEN`); a collapsed column keeps a
+  vertical label, and its arrow reopens it.
+- **Question panel layout** (`ASTROX_QUESTION_PANEL_MODE`): where the answer
+  surface lands — `Region full` (the whole detail area below the tabs) or
+  `Floating` (the card over the canvas, shown only while the highlighted atom is
+  the question). It follows the run state by default (floating while answerable,
+  region full otherwise); a manual choice sticks and is the only value saved.
+  The two icons in the panel header share this one preference.
 
 **Performance**
 
@@ -720,6 +1045,28 @@ the footer's **Done** button only closes the dialog — there is no Apply step:
   that stored it is honoured once on first load, after which this switch owns
   the state. See "The Performance Panel" below.
 
+**Notifications**
+
+- **Task-completion chime**: play a short sound when a run reaches a complete,
+  failed, or terminated state, on by default (`ASTROX_TASK_COMPLETION_CHIME`) so it
+  works without hunting for a switch; switch it off in Settings to keep quiet.
+  The three states sound different — complete ascends, failed descends in a
+  lower register, and terminated is a neutral double tap — so the sound alone
+  tells a success from a failure from a plain stop.
+  The sound is generated locally in the browser with Web Audio — no audio file is
+  downloaded. Only a run the console watched finish while it was open makes a
+  sound: history that was already terminal on load stays silent. Receiving a new
+  prompt puts a session back in a live state, so its next completion chimes
+  again. Demo traces never make a sound. Browsers generally allow audio only
+  after the first interaction with the page.
+- **Chime style** (`ASTROX_CHIME_STYLE`): the notification offers three locally
+  generated timbres — 清脆 (bright, the default), 柔和 (soft) and 脉冲 (pulse).
+  A style changes the voice and the rhythm only; the status distinction
+  (complete ascends, failed descends, terminated neutral) holds in every one.
+  Preview buttons below the picker play the current style's complete, failed
+  and terminated tones once each, so the choice can be heard before it is
+  made.
+
 **About**
 
 - The console version (`v<appVersion>` — the value in `src/config/app-config.ts`,
@@ -728,10 +1075,10 @@ the footer's **Done** button only closes the dialog — there is no Apply step:
   presentation and never rewrite captured events.
 
 The values are written to `ASTROX_HISTORY_RANGE`, `ASTROX_RUN_HISTORY_LIVE_VIEW`,
-`ASTROX_MAX_SYNC`, `ASTROX_PERF_HUD` and the other keys above. **Reset**
-restores every section at once (3 hours, Live off, an 8-hour sync window,
-dark, topology, runtime atoms only, the performance panel off, and the
-width-based panel defaults).
+`ASTROX_MAX_SYNC`, `ASTROX_PERF_HUD`, `ASTROX_TASK_COMPLETION_CHIME` and the other
+keys above. **Reset** restores every section at once (3 hours, Live off, an
+8-hour sync window, dark, topology, runtime atoms only, the performance panel
+off, the task-completion chime on, and the width-based panel defaults).
 
 ## 6. Execution Topology
 
@@ -793,7 +1140,7 @@ The summary displays:
 - completed count;
 - failed count.
 
-The lane map uses Input, Model, and Tools. The detailed list groups steps by turn and shows event type, summary, timestamp, duration, and status. Hovering a block — a list row or a lane slot — opens one shared card that reports the block's **type** (its category, e.g. `SYSTEM` / `MODEL` / `TOOL`), event name, tool (when present), closed-pair span (`PAIR`), own wall-time span (`DURATION`, an atom), or the total of its closed-pair spans (`PAIRS` for a turn), and its status. The `TYPE` badge in front of a LOG event key comes from the same `atomTypeLabel` source and uses the same violet.
+The lane map uses Input, Model, and Tools; `waiting` (a blocked User Question, for example) counts as executing just like `running`, so its slot keeps the running pulse instead of going idle. The detailed list groups steps by turn and shows event type, summary, timestamp, duration, and status. Hovering a block — a list row or a lane slot — opens one shared card that reports the block's **type** (its category, e.g. `SYSTEM` / `MODEL` / `TOOL`), event name, tool (when present), closed-pair span (`PAIR`), own wall-time span (`DURATION`, an atom), or the total of its closed-pair spans (`PAIRS` for a turn), and its status. The `TYPE` badge in front of a LOG event key comes from the same `atomTypeLabel` source and uses the same violet.
 
 The card uses one three-step type scale (title / field value / field label) and separates fields by **colour**, not font size: `TYPE` violet, `EVENT` blue, tool name amber, the `PAIR` label violet (matching the row marker), duration by its heat tier, status by its own semantic colour. When the title already names the tool (a lane slot titled `Read`), the `EVENT` line does not repeat it.
 
@@ -876,32 +1223,37 @@ native browser alert.
 The page writes the current selection into:
 
 ```text
-?agent=codex&session=<sessionId>&event=<eventId>
+?agent=chatgpt&session=<sessionId>&event=<eventId>
 ```
 
 `agent` mirrors the dropdown filter (a configured agent id or `others`).
 Opening the URL selects the matching agent, session, containing prompt run,
-and event when that trace data exists in the target environment. Legacy
-`?source=` links keep working.
+and event when that trace data exists in the target environment. Switching
+agents drops the old `session` / `event` at once. When the new agent's filter
+has data the canvas locates its newest message and the address bar writes that
+new session; when it has none, only `agent` remains. Either way a stale deep
+link of the agent just left can never pull the dropdown back on the next reload.
+Service parameters such as `?api=` are preserved. Legacy `?source=` links keep
+working.
 
-## 11. Import Codex History
+## 11. Import ChatGPT History
 
-Import active and archived sessions from the default Codex home:
+Import active and archived sessions from the default ChatGPT home:
 
 ```bash
-pnpm import-codex
+pnpm import-chatgpt
 ```
 
 Import selected rollouts:
 
 ```bash
-node bin/astro.mjs import-codex /path/to/rollout.jsonl
+node bin/astro.mjs import-chatgpt /path/to/rollout.jsonl
 ```
 
-Use another Codex home:
+Use another ChatGPT home:
 
 ```bash
-node bin/astro.mjs import-codex --codex-home=/path/to/.codex
+node bin/astro.mjs import-chatgpt --chatgpt-home=/path/to/.chatgpt
 ```
 
 Deterministic IDs make unchanged imports idempotent.
@@ -909,12 +1261,14 @@ Deterministic IDs make unchanged imports idempotent.
 ## 12. CLI
 
 ```text
+pnpm service:up [--port N] [--home DIR]       # restart in place if running, start if down
+pnpm service:start|restart|status             # single-action shortcuts
 astro-trace serve
-astro-trace install [--target DIR] [--clients trae,claude,codex,deepseek,workbuddy] [--scope user|project]
+astro-trace install [--target DIR] [--clients trae,claude,chatgpt,deepseek,workbuddy] [--scope user|project]
 astro-trace update [--no-deepseek] [--astro-home DIR]
 astro-trace doctor [--target DIR] [--scope user|project] [--deepseek-profile NAME]
 astro-trace migrate [FILE_OR_DIR] [--astro-home DIR]
-astro-trace import-codex [FILE ...] [--codex-home DIR]
+astro-trace import-chatgpt [FILE ...] [--chatgpt-home DIR]
 astro-trace ingest [FILE] [--source NAME]
 ```
 
@@ -950,6 +1304,7 @@ underlying `astro-trace` shown above.
 astrox start [--port N] [--host H] [--open] [--no-global] [--bin-dir DIR]
 astrox stop
 astrox restart
+astrox up                     # restart if running, start if down, on the same port
 astrox status [--json] [--deepseek-profile web]
 astrox info [--json]
 astrox update [--no-deepseek]
@@ -975,9 +1330,9 @@ astrox path                    print ASTRO home, plugin dir, and CLI entry
   process; no extra cleanup runs. `restart` is `stop` followed by `start`.
 - `status` summarizes the plugin config (config.yaml / .env as OK, WARN, or
   MISSING), the global CLI state, the dashboard run state, and per-client hook
-  integrations (codex, claude, workbuddy, trae, deepseek). `--json` emits a
+  integrations (chatgpt, claude, workbuddy, trae, deepseek). `--json` emits a
   machine-readable report.
-- `info` lists each source's trace file count and byte total (claude, codex,
+- `info` lists each source's trace file count and byte total (claude, chatgpt,
   copilot, cursor, deepseek, gemini, iflow, llama, opencode, pi, qwen, trae,
   workbuddy, zcode, …) plus the trace root, plugin directory, and global CLI
   path. `--json` behaves the same.
@@ -1043,12 +1398,13 @@ Or:
 
 ```text
 GET /api/events
-GET /api/events?source=codex&session=<sessionId>
+GET /api/events?source=chatgpt&session=<sessionId>
 GET /api/events/<eventId>
 GET /api/search?q=<query>
-GET /api/search?q=<query>&source=codex&session=<sessionId>
+GET /api/search?q=<query>&source=chatgpt&session=<sessionId>
 GET /api/stream
 GET /api/demo-events
+GET /api/interactions/<requestId>    pending interaction {request, events, result}
 ```
 
 The server search scans nested fields. The current UI LOG search filters only
@@ -1066,6 +1422,19 @@ malformed one 500. `/api/health` reports the active cross-origin allowlist as
 `corsOrigins`. Both support the deployed preview page: it targets
 `http://127.0.0.1:5678` by default, and the allowlist is described in
 section 4.3.
+
+Interaction channel (used by the optional hook, see 5.5.2):
+
+```text
+POST /api/interactions                      register a pending request
+POST /api/interactions/<requestId>/events   append an answer event (seq increases)
+POST /api/interactions/<requestId>/close    close and produce the result
+GET  /api/interactions/<requestId>          late tab reads request and result
+```
+
+`/api/stream` also emits `interaction.open` / `interaction.update` /
+`interaction.close`. Interactions live in memory plus a result file and are not
+replayed after `reset`.
 
 ### 13.5 Service management
 
@@ -1172,7 +1541,7 @@ only effective display state.
 | Key | Values | Purpose |
 | --- | --- | --- |
 | `ASTROX_THEME` | `light` / `dark` / `system` | Theme |
-| `ASTROX_PLATFORM` | e.g. `codex` / `claude` / `deepseek` / `trae` / `workbuddy` | Platform context |
+| `ASTROX_PLATFORM` | e.g. `chatgpt` / `claude` / `deepseek` / `trae` / `workbuddy` | Platform context |
 | `ASTROX_HISTORY_OPEN` | `true` / `false` | Left History panel |
 | `ASTROX_CONSOLE_OPEN` | `true` / `false` | Right Events/Inspector panel |
 | `ASTROX_HISTORY_RANGE` | `1h` / `3h` / `6h` / `12h` / `1d` / `3d` / `5d` / `7d` | Default time range, `3h` unless changed |
@@ -1181,6 +1550,8 @@ only effective display state.
 | `ASTROX_ACTIVE_VIEW` | `topology` / `trajectory` | Last canvas view |
 | `ASTROX_DEEP_VIEW` | `true` / `false` | Runtime-only atoms in the topology |
 | `ASTROX_PERF_HUD` | `true` / `false` | Performance panel on, `false` unless changed |
+| `ASTROX_TASK_COMPLETION_CHIME` | `true` / `false` | Task-completion chime on, `true` unless changed |
+| `ASTROX_CHIME_STYLE` | `bright` / `soft` / `pulse` | Chime timbre (bright/soft/pulse), `bright` unless changed |
 
 Legacy `astro-theme`, `astro-platform`, and `astro:perf-hud` values are removed
 after the corresponding new key is written: the first two migrate automatically;
@@ -1381,7 +1752,7 @@ Check:
 4. SSE reconnect begins with a full `reset` containing every turn.
 5. The workspace or client was reloaded after hook configuration changed.
 
-### Codex Imports Appear Duplicated
+### ChatGPT Imports Appear Duplicated
 
 Unchanged files are idempotent. A changed path, row order, or row content changes deterministic IDs and may create new events.
 

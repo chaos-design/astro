@@ -143,15 +143,15 @@ test("keeps an explicit payload status instead of the inferred one", () => {
   assert.equal(event.status, "rate_limited");
 });
 
-test("folds a Codex turn.failed record into Stop with a failed status", () => {
+test("folds a ChatGPT turn.failed record into Stop with a failed status", () => {
   const event = createTraceEvent(
     {
       type: "turn.failed",
-      thread_id: "codex-thread",
+      thread_id: "chatgpt-thread",
       payload: { type: "turn.failed", error: "upstream failure" },
     },
     {
-      source: "codex",
+      source: "chatgpt",
       capturedAt: "2026-09-07T08:00:00.000Z",
     },
   );
@@ -549,7 +549,7 @@ test("hook output reports the reused page and preserves quiet-mode stdout", (t) 
     );
   }
   fs.cpSync(
-    path.join(__dirname, "..", "codex-plugin", "plugin", "vendor"),
+    path.join(__dirname, "..", "chatgpt-plugin", "plugin", "vendor"),
     path.join(runtime, "plugin", "vendor"),
     { recursive: true },
   );
@@ -626,7 +626,7 @@ test("reuses a compatible dashboard from another ASTRO installation", (t) => {
 
   assert.equal(
     launchDashboardForEvents(
-      [{ eventName: "SessionStart", source: "codex" }],
+      [{ eventName: "SessionStart", source: "chatgpt" }],
       { ASTRO_HOME: astroHome, ASTRO_PORT: "4401" },
       {
         dashboardFile: requestedDashboard,
