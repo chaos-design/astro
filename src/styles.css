@@ -69,6 +69,10 @@
   --line: #202636;
   --line-bright: #343d52;
   --chrome-line: #151a25;
+  /* Row gap shared by the LOG and the overlay rail, which reuse the same
+     `.atomic-log__row` markup. The rail widens it locally so two highlighted
+     rows never read as one continuous block. */
+  --log-row-gap: 6px;
   --muted: #69758a;
   --muted-soft: #8996aa;
   --text: #dbe5f2;
@@ -5846,10 +5850,13 @@ pre,
   font-size: 11px;
 }
 
-/* The rail lists every atom of the current run. It is a view of the single
-   console selection: picking a row commits through the canvas's own handler,
-   and the payload on the right follows reactively. The rail and the content
-   scroll independently so a long run never moves the controls or vice versa. */
+/* The rail is the run's message chain in the LOG's own data standard: every
+   event, newest first, split by the LOG's turn separators. It is a view of the
+   single console selection: picking a row commits through the LOG's own select
+   state, and the payload on the right follows reactively. The rail and the
+   content scroll independently so a long run never moves the controls or vice
+   versa. The width carries a full event key and a two-line summary without
+   truncating the names the reader needs to identify a step. */
 .payload-overlay__main {
   display: flex;
   flex: 1;
@@ -5860,30 +5867,78 @@ pre,
 .payload-overlay__rail {
   display: flex;
   flex: none;
-  width: clamp(152px, 22%, 288px);
+  width: clamp(236px, 26%, 384px);
   min-height: 0;
   flex-direction: column;
   border-right: 1px solid var(--chrome-line);
   background: color-mix(in srgb, var(--panel) 92%, transparent);
 }
 
-.payload-overlay__rail-title {
+.payload-overlay__rail-head {
+  display: flex;
   flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   padding: 12px 14px 10px;
+}
+
+.payload-overlay__rail-title {
   color: var(--muted);
   font-family: var(--font-mono);
   font-size: 9px;
   letter-spacing: 0.14em;
 }
 
+/* The 跟随 toggle mirrors the console's live following from inside the
+   overlay: armed it reads as the live pill (running tint over the panel),
+   disarmed it stays a quiet outlined control. Disabled only when the open run
+   is not executing at all — a finished run has nothing to follow. */
+.payload-overlay__follow {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid color-mix(in srgb, var(--line-bright) 80%, transparent);
+  border-radius: 999px;
+  color: var(--muted);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: var(--text-overline);
+  letter-spacing: 0.06em;
+  background: transparent;
+}
+
+.payload-overlay__follow svg {
+  width: 10px;
+  height: 10px;
+}
+
+.payload-overlay__follow:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--status-running) 55%, var(--line));
+  color: var(--text);
+}
+
+.payload-overlay__follow.is-armed {
+  border-color: color-mix(in srgb, var(--status-running) 52%, transparent);
+  color: color-mix(in srgb, var(--status-running) 78%, var(--text-strong));
+  background: color-mix(in srgb, var(--status-running) 20%, var(--bg));
+}
+
+.payload-overlay__follow:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
 .payload-overlay__atom-list {
+  --log-row-gap: 10px;
+
   display: flex;
   flex: 1;
   min-height: 0;
   flex-direction: column;
-  /* Keep the highlighted rows visually separate: without a gap two adjacent
-     selected / running backgrounds touch and read as one long highlight. */
-  gap: 10px;
+  gap: var(--log-row-gap);
   margin: 0;
   padding: 0 8px 10px;
   list-style: none;
@@ -5895,54 +5950,70 @@ pre,
 
 /* The rail reuses the LOG row itself (`.atomic-log__row`) instead of growing
    a second row imitation: sequence, tone dot, TYPE badge, event key, timestamp
-   and the action / summary line all come from the LOG markup. Only the narrow
-   rail's column widths and the atom's recorded status dot are local. */
+   and the action / summary line all come from the LOG markup. The rail-only
+   overrides give the chain room to be read: a wider grid, one step larger
+   type than the LOG panel, and a wrapping key/summary so a name is never cut
+   into `trajectory.pr…`. */
 .payload-overlay__rail .atomic-log__row {
-  grid-template-columns: 32px 6px minmax(0, 1fr) 62px;
+  grid-template-columns: 34px 6px minmax(0, 1fr) 72px;
   gap: 4px;
-  padding: 6px 4px;
+  padding: 7px 6px;
 }
 
-.payload-overlay__rail .atomic-log__row time {
-  font-size: var(--text-overline);
+.payload-overlay__rail .log-sequence {
+  font-size: var(--text-meta);
+}
+
+.payload-overlay__rail .atomic-log__row strong.atomic-log__name {
+  flex-wrap: wrap;
+  font-size: var(--text-body);
   line-height: 1.4;
+  white-space: normal;
+}
+
+.payload-overlay__rail .atomic-log__row .atomic-log__key {
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .payload-overlay__rail .atomic-log__type {
   padding: 0 3px;
 }
 
-/* The dot keeps the atom's recorded status even when its tone differs; LOG
-   uses tone only, a waiting question must still read amber here. */
-.payload-overlay__atom .phase-dot[data-status="running"],
-.payload-overlay__atom .phase-dot[data-status="active"] {
-  color: var(--status-running);
-  background: var(--status-running);
-  animation: dot-breathe 1.8s ease-in-out infinite;
+.payload-overlay__rail .atomic-log__row time {
+  font-size: var(--text-meta);
+  line-height: 1.4;
 }
 
-.payload-overlay__atom .phase-dot[data-status="waiting"] {
-  color: var(--status-waiting);
-  background: var(--status-waiting);
+.payload-overlay__rail .atomic-log__row time span {
+  font-size: var(--text-caption);
 }
 
-.payload-overlay__atom .phase-dot[data-status="complete"] {
-  background: var(--status-completed);
+.payload-overlay__rail .atomic-log__row small {
+  flex-wrap: wrap;
+  font-size: var(--text-meta);
+  line-height: 1.45;
+  white-space: normal;
 }
 
-.payload-overlay__atom .phase-dot[data-status="failed"] {
-  background: var(--status-failed);
+.payload-overlay__rail .atomic-log__row .atomic-log__summary {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
-.payload-overlay__atom-count {
-  flex: 0 0 auto;
-  padding: 0 3px;
-  border-radius: 3px;
-  color: var(--log-tone);
-  background: color-mix(in srgb, var(--log-tone) 14%, transparent);
-  font-family: var(--font-mono);
-  font-size: var(--text-overline);
-  font-variant-numeric: tabular-nums;
+/* The turn separators are the LOG's own chips, one step larger here so the
+   split of the chain reads without squinting. */
+.payload-overlay__turn {
+  margin-top: 2px;
+  font-size: 9px;
+}
+
+.payload-overlay__turn:first-child {
+  margin-top: 4px;
 }
 
 /* Same tone map as the LOG row, so a tool atom and a question atom keep their
@@ -6298,7 +6369,7 @@ pre,
 .atomic-log__list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--log-row-gap);
 }
 
 .atomic-log__turn {

@@ -11,9 +11,13 @@ const stylesForOverlay = readFileSync(
   new URL("../src/styles.css", import.meta.url),
   "utf8",
 );
-const bindingForOverlay = app.slice(
+const railBinding = app.slice(
   app.indexOf("const overlayAtoms"),
-  app.indexOf(");", app.indexOf("const overlayAtoms")),
+  app.indexOf("const overlayEventById"),
+);
+const overlayBinding = app.slice(
+  app.indexOf("<PayloadOverlay"),
+  app.indexOf("</section>", app.indexOf("<PayloadOverlay")),
 );
 
 /**
@@ -38,12 +42,16 @@ test("the preview splits the atom's content from its related data", () => {
   assert.match(stylesForOverlay, /\.payload-overlay__field\.is-annotation/);
 });
 
-test("prepared previews are cached per atom so rail switches are instant", () => {
+test("prepared previews are cached per row and scoped by the inspector tab", () => {
   assert.match(overlay, /useRef<Map<string, PreparedPreview>>/);
-  assert.match(overlay, /cache\.get\(atomId\)/);
-  assert.match(overlay, /cache\.set\(atomId, prepared\)/);
+  assert.match(overlay, /cache\.get\(rowKey\)/);
+  assert.match(overlay, /cache\.set\(rowKey, prepared\)/);
+  // One row's payload depends on which tab the layer was opened from, so the
+  // cache key carries that scope and a tab switch re-resolves.
+  assert.match(overlay, /cacheScope/);
   assert.match(overlay, /payloadForAtom/);
   assert.match(overlay, /variantForAtom/);
+  assert.match(overlayBinding, /cacheScope=\{activeTab\}/);
 });
 
 test("the global overlay keeps both Preview and the raw JSON Code view", () => {
@@ -68,90 +76,191 @@ test("an answers-only question falls back to the markdown answer preview", () =>
 });
 
 test("the inspector passes the raw question payload for question atoms", () => {
-  const binding = app.slice(
-    app.indexOf("<PayloadOverlay"),
-    app.indexOf("</section>", app.indexOf("<PayloadOverlay")),
-  );
   assert.match(
-    binding,
+    overlayBinding,
     /activeTab === "input" && questionEvent\s*\? questionEvent\.payload/,
   );
   assert.match(
-    binding,
+    overlayBinding,
     /variant=\{activeTab === "input" && questionEvent \? "question" : "default"\}/,
   );
 });
 
 test("the inspector passes the raw prompt payload so the overlay previews its content", () => {
-  const binding = app.slice(
-    app.indexOf("<PayloadOverlay"),
-    app.indexOf("</section>", app.indexOf("<PayloadOverlay")),
-  );
   assert.match(
-    binding,
+    overlayBinding,
     /activeTab === "input" && promptEvent\s*\? promptEvent\.payload/,
   );
 });
 
 /**
- * The left rail lists every atom of the current run and is a view of the single
- * console selection — picking a row calls `onSelectAtom` instead of growing a
- * second, overlay-local selection that could drift from the canvas / LOG.
+ * The left rail is the run's message chain: every event of the run, newest
+ * first, split by the LOG's turn separators. The pipeline-atom rail could not
+ * reproduce the chain — each atom aggregated all events of its type and bound
+ * only the newest one — so the rail now reads the same `buildLogEntries`
+ * result the LOG list prints, one row per event with LOG row numbers.
  */
-test("the overlay renders a run-atom rail that commits through onSelectAtom", () => {
-  assert.match(overlay, /orderedAtoms\.map\(/);
-  assert.match(overlay, /payload-overlay__rail/);
-  assert.match(overlay, /onClick=\{\(\) => onSelectAtom\(atom\.id\)\}/);
-  assert.match(overlay, /aria-current=\{selected \? "true" : undefined\}/);
-  assert.match(overlay, /const selected = atom\.id === selectedAtomId/);
-  assert.match(overlay, /atoms\.length > 0 \?/);
+test("the overlay rail is the run's message chain built from the LOG's own entries", () => {
+  assert.match(railBinding, /buildLogEntries\(activeEvents, platformId\)/);
+  // One data standard with the LOG list: the same builder yields the row
+  // number, turn, pair duration and pair link the LOG row prints.
+  assert.match(railBinding, /sequence: formatLogSequence\(index \+ 1\)/);
+  assert.match(railBinding, /turn,/);
+  assert.match(railBinding, /pairDuration,/);
+  assert.match(railBinding, /pairLink,/);
+  assert.match(railBinding, /atomType\?\.label \?\? ""/);
+  assert.match(railBinding, /eventMeta\[event\.eventName\]\?\.tone/);
+  // The chain must reach the harness atom the event commits to.
+  assert.match(railBinding, /atomId: getAtomIdForEvent\(event, platformId\)/);
 });
 
-test("the overlay rail reads like the LOG row and lists atoms newest first", () => {
-  // Reverse display order: the first-executed atom sits at the bottom while
-  // its `index` badge still reports the pipeline position.
+test("the rail splits the chain by turn with position-keyed separators", () => {
+  assert.match(overlay, /atom\.turn !== previousTurn/);
+  assert.match(overlay, /kind: "turn", turn: atom\.turn/);
+  assert.match(overlay, /className="atomic-log__turn payload-overlay__turn"/);
+  // Key by position, never by the turn value: two groups can legitimately
+  // repeat a number, and duplicate keys leave orphaned chips behind.
+  assert.match(overlay, /key=\{`rail-turn-\$\{railIndex\}`\}/);
+  assert.doesNotMatch(overlay, /key=\{`rail-turn-\$\{item\.turn\}`\}/);
+});
+
+test("the rail renders newest first with each row keeping its LOG number", () => {
   assert.match(overlay, /\[\.\.\.atoms\]\.reverse\(\)/);
-  assert.match(overlay, /atom\.sequence \?\? `#\$\{String\(atom\.index\)\.padStart\(3, "0"\)\}`/);
-  assert.match(bindingForOverlay, /formatLogSequence\(node\.data\.index \+ 1\)/);
-  // The rail is a LOG row, not a second row imitation: same grid, TYPE badge,
-  // time and action/summary line, with only narrow-rail column overrides.
+  assert.match(overlay, /<span className="log-sequence">\{atom\.sequence\}<\/span>/);
+});
+
+test("the rail row is the LOG row, not a second row imitation", () => {
   assert.match(overlay, /"atomic-log__row payload-overlay__atom"/);
   assert.match(overlay, /className="log-sequence"/);
   assert.match(overlay, /className="atomic-log__name"/);
   assert.match(overlay, /className="atomic-log__key"/);
   assert.match(overlay, /<time dateTime=\{atom\.timestamp\}/);
   assert.match(overlay, /className="atomic-log__summary"/);
+  // Execution duration: the closed-pair badge the LOG row prints, with heat.
+  assert.match(overlay, /atomic-log__duration heat-\$\{atom\.durationHeat\}/);
+  assert.match(overlay, /成对耗时/);
+  // Pair cross-reference marker, shared with the LOG and trajectory.
+  assert.match(overlay, /<PairLinkMarker/);
   assert.match(stylesForOverlay, /\.payload-overlay__rail \.atomic-log__row \{/);
   assert.match(overlay, /payload-overlay__atom-type/);
   assert.match(overlay, /`tone-\$\{atom\.tone \|\| "unknown"\}`/);
-  assert.match(overlay, /payload-overlay__atom-count/);
   assert.match(overlay, /handleAtomKeyDown/);
   assert.match(stylesForOverlay, /\.payload-overlay__atom\.tone-tool \{[\s\S]*?--log-tone: var\(--amber\)/);
-  assert.match(bindingForOverlay, /atomTypeLabel\(node\.data\.key, node\.data\.kind\)/);
-  assert.match(bindingForOverlay, /tone: node\.data\.meta\.tone/);
 });
 
-test("the rail separates highlighted rows so adjacent highlights do not touch", () => {
+test("the rail stays readable: wider grid, larger type, wrapping names", () => {
+  // The rail is wide enough for a full event key — no more `trajectory.pr…`.
   assert.match(
     stylesForOverlay,
-    /\.payload-overlay__atom-list \{[\s\S]*?display: flex;[\s\S]*?flex-direction: column;[\s\S]*?gap: 10px;/,
+    /\.payload-overlay__rail \{[\s\S]*?width: clamp\(236px, 26%, 384px\)/,
+  );
+  assert.match(
+    stylesForOverlay,
+    /\.payload-overlay__rail \.atomic-log__row \{[\s\S]*?grid-template-columns: 34px 6px minmax\(0, 1fr\) 72px/,
+  );
+  // The key and summary wrap instead of ellipsizing away the content. The
+  // overrides must out-rank the base `.atomic-log__row …` rules (same layer,
+  // later source), so they carry the row scope too.
+  assert.match(
+    stylesForOverlay,
+    /\.payload-overlay__rail \.atomic-log__row \.atomic-log__key \{[\s\S]*?overflow-wrap: anywhere/,
+  );
+  assert.match(
+    stylesForOverlay,
+    /\.payload-overlay__rail \.atomic-log__row \.atomic-log__summary \{[\s\S]*?-webkit-line-clamp: 2/,
+  );
+  // One step larger than the LOG panel.
+  assert.match(
+    stylesForOverlay,
+    /\.payload-overlay__rail \.atomic-log__row strong\.atomic-log__name \{[\s\S]*?font-size: var\(--text-body\)/,
   );
 });
 
-test("the inspector threads the atom list and selection handler into the overlay", () => {
-  const binding = app.slice(
-    app.indexOf("<PayloadOverlay"),
-    app.indexOf("</section>", app.indexOf("<PayloadOverlay")),
+test("the LOG and the rail share one row-gap token, with a wider rail value", () => {
+  // Both lists reuse `.atomic-log__row`; the gap belongs to one definition.
+  assert.match(stylesForOverlay, /--log-row-gap: 6px;/);
+  assert.match(
+    stylesForOverlay,
+    /\.atomic-log__list \{[\s\S]*?gap: var\(--log-row-gap\);/,
   );
-  assert.match(binding, /atoms=\{overlayAtoms\}/);
-  assert.match(binding, /selectedAtomId=\{overlaySelectedAtomId\}/);
-  assert.match(binding, /onSelectAtom=\{onOverlaySelectAtom\}/);
+  assert.match(
+    stylesForOverlay,
+    /\.payload-overlay__atom-list \{[\s\S]*?--log-row-gap: 10px;[\s\S]*?gap: var\(--log-row-gap\);/,
+  );
 });
 
-test("the overlay rail and the canvas share one atom-selection commit point", () => {
-  assert.match(app, /const commitAtomSelection = useCallback\(/);
-  assert.match(app, /handleCanvasSelectNode[\s\S]*commitAtomSelection\(node, selectedAtomId === node\.id\)/);
-  assert.match(app, /handleOverlaySelectAtom[\s\S]*commitAtomSelection\(node, false\)/);
-  // The rail data comes from the same harness topology the canvas projects.
-  assert.match(app, /harnessFlow\.nodes\.map\(/);
+test("the inspector threads the chain, selection and follow into the overlay", () => {
+  assert.match(overlayBinding, /atoms=\{overlayAtoms\}/);
+  assert.match(overlayBinding, /selectedEventId=\{overlaySelectedEventId\}/);
+  assert.match(overlayBinding, /onSelectAtom=\{onOverlaySelectEvent\}/);
+  assert.match(overlayBinding, /runningEventId=\{overlayRunningEventId\}/);
+  assert.match(overlayBinding, /following=\{overlayFollowing\}/);
+  assert.match(overlayBinding, /followAvailable=\{overlayFollowAvailable\}/);
+  assert.match(overlayBinding, /onFollowingChange=\{onOverlayFollowingChange\}/);
+});
+
+/**
+ * Picking a rail row commits the same state the LOG's own select handler
+ * writes — the picked event plus the harness atom it maps to — so the rail,
+ * LOG, canvas and inspector cannot disagree about what is selected.
+ */
+test("the rail and the LOG share one event-selection commit", () => {
+  assert.match(
+    app,
+    /const handleOverlaySelectEvent = useCallback\(\s*\n\s*\(atomId: string, eventId: string\) => \{/,
+  );
+  assert.match(
+    app,
+    /handleOverlaySelectEvent[\s\S]*?setSelectedAtomId\(atomId \|\| null\);\s*\n\s*setSelectedEventId\(eventId\);/,
+  );
+  // The payload of a picked row resolves the row's own event, not just the
+  // atom's newest one.
+  assert.match(
+    app,
+    /const rowEvent = eventId \? overlayEventById\.get\(eventId\) \?\? null : null;/,
+  );
+});
+
+/**
+ * The rail header's 跟随 toggle mirrors the console's live following: arming
+ * restores the follow state, disarming pins the current atom, and the toggle
+ * is only armable while the open run executes.
+ */
+test("the rail's follow toggle mirrors the console's live following", () => {
+  assert.match(overlay, /aria-pressed=\{following\}/);
+  assert.match(overlay, /onFollowingChange\(!following\)/);
+  assert.match(overlay, /disabled=\{!followAvailable && !following\}/);
+  // Armed, the rail keeps the selected row in view as new events land —
+  // scroll only, never a selection change.
+  assert.match(
+    overlay,
+    /if \(!open \|\| !following\) \{\s*\n\s*return;\s*\n\s*\}\s*\n\s*selectedRowRef\.current\?\.scrollIntoView/,
+  );
+  assert.match(
+    app,
+    /const handleOverlayFollowingChange = useCallback\(/,
+  );
+  assert.match(
+    app,
+    /handleOverlayFollowingChange[\s\S]*?setSelectedAtomId\(undefined\);\s*\n\s*setSelectedEventId\(latestPromptRun\?\.events\.at\(-1\)\?\.id \|\| ""\);/,
+  );
+  assert.match(
+    app,
+    /handleOverlayFollowingChange[\s\S]*?setSelectedAtomId\(currentAtomId \|\| null\);/,
+  );
+  assert.match(
+    app,
+    /overlayFollowing=\{followingLive\}/,
+  );
+  // Availability keys off the *session* status the RUN HISTORY card shows —
+  // drilling into an older message must not freeze the follow control.
+  assert.match(
+    app,
+    /overlayFollowAvailable=\{\s*\n\s*activeSession\s*\n\s*\? isPromptExecuting\(activeSessionDisplayStatus, isDemo\) &&/,
+  );
+  // Arming rides the session's newest prompt run, like the footer Live jump.
+  assert.match(
+    app,
+    /handleOverlayFollowingChange[\s\S]*?latestPromptRun\.key !== activePromptRunKey[\s\S]*?setActivePromptRunKey\(latestPromptRun\.key\)/,
+  );
 });

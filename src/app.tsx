@@ -16,7 +16,6 @@ import {
   FileInput,
   Focus,
   Folder,
-  Link2,
   ListTree,
   LocateFixed,
   Loader2,
@@ -74,6 +73,7 @@ import {
   type QuestionAnswerBinding,
 } from "./components/question-content";
 import { InteractionPanel } from "./components/interaction-panel";
+import { PairLinkMarker } from "./components/pair-link-marker";
 import {
   PayloadOverlay,
   type PayloadOverlayAtom,
@@ -2689,52 +2689,6 @@ const RunHistory = memo(function RunHistory({
 });
 
 /**
- * The single marker shared by LOG rows and trajectory atoms. Its `#number` is
- * the *other half's* LOG row, not a pair ordinal: a pair made of `#027` and
- * `#029` reads `#029` on `#027` and `#027` on `#029`. The two halves
- * cross-reference each other, so "who is paired with whom" is visible without
- * hovering, and clicking jumps straight to that numbered row. The turn and the
- * pair's order stay in the tooltip and the accessible name — the chip itself
- * keeps only the row number. Kept as a real button so keyboard users get the
- * same jump, and it stops propagation so the jump never doubles as a plain row
- * selection.
- */
-function PairLinkMarker({
-  link,
-  onLocate,
-}: {
-  link: TracePairLink;
-  onLocate: (eventId: string) => void;
-}) {
-  const roleLabel = link.role === "start" ? "起始" : "结果";
-  const targetLabel = link.role === "start" ? "结果" : "起始";
-  const targetRow = formatLogSequence(link.partnerIndex);
-  const pairHint = `${link.label} · 第 ${link.turn} 轮第 ${link.ordinal} 对 · ${link.rows} · #号是另一半的 LOG 行号`;
-  return (
-    <button
-      type="button"
-      className={`pair-link-marker is-${link.role}`}
-      title={`${pairHint}，成对${roleLabel}，点击定位${targetLabel}事件 ${targetRow}`}
-      aria-label={`${pairHint}，成对${roleLabel}，定位${targetLabel}事件 ${targetRow}`}
-      onClick={(clickEvent) => {
-        clickEvent.stopPropagation();
-        onLocate(link.partnerId);
-      }}
-      onKeyDown={(keyEvent) => {
-        if (keyEvent.key === "Enter" || keyEvent.key === " ") {
-          keyEvent.preventDefault();
-          keyEvent.stopPropagation();
-          onLocate(link.partnerId);
-        }
-      }}
-    >
-      <Link2 aria-hidden="true" />
-      <span className="pair-link-marker__target">{targetRow}</span>
-    </button>
-  );
-}
-
-/**
  * `buildLogEntries` rebuilds every pair link when a streamed batch appends an
  * event, so the row memo cannot compare links by identity. Compare the fields
  * the row and its tooltip render instead: a batch that leaves a pair unchanged
@@ -3371,8 +3325,12 @@ function TraceInspector({
   node,
   onActiveTabChange,
   overlayAtoms,
-  overlaySelectedAtomId,
-  onOverlaySelectAtom,
+  overlaySelectedEventId,
+  overlayRunningEventId,
+  overlayFollowing,
+  overlayFollowAvailable,
+  onOverlayFollowingChange,
+  onOverlaySelectEvent,
   overlayPayloadForAtom,
   overlayVariantForAtom,
   matchedQuestion,
@@ -3392,12 +3350,20 @@ function TraceInspector({
   index: number;
   node: TraceNodeType | null;
   onActiveTabChange: (tab: string) => void;
-  /** Atoms of the current run, shown in the overlay's left rail. */
+  /** The run's message chain (LOG-standard rows) for the overlay's left rail. */
   overlayAtoms: PayloadOverlayAtom[];
-  overlaySelectedAtomId: string;
-  onOverlaySelectAtom: (atomId: string) => void;
-  overlayPayloadForAtom: (atomId: string) => unknown;
-  overlayVariantForAtom: (atomId: string) => "default" | "question";
+  /** The console's selected event — the rail highlights and previews it. */
+  overlaySelectedEventId: string;
+  /** The event the LOG marks as executing (its START row), for the rail marker. */
+  overlayRunningEventId: string;
+  /** Whether the console is live-following the executing run. */
+  overlayFollowing: boolean;
+  /** Whether the open run is executing at all (the follow toggle's gate). */
+  overlayFollowAvailable: boolean;
+  onOverlayFollowingChange: (following: boolean) => void;
+  onOverlaySelectEvent: (atomId: string, eventId: string) => void;
+  overlayPayloadForAtom: (atomId: string, eventId?: string) => unknown;
+  overlayVariantForAtom: (atomId: string, eventId?: string) => "default" | "question";
   matchedQuestion: MatchedQuestionInteraction | null;
   answerDrafts: Readonly<Record<string, string>>;
   onAnswerDraftChange: (question: string, text: string) => void;
@@ -3658,13 +3624,18 @@ function TraceInspector({
       </Tabs>
       <PayloadOverlay
         atoms={overlayAtoms}
+        cacheScope={activeTab}
+        followAvailable={overlayFollowAvailable}
+        following={overlayFollowing}
         label={`${inspectorTitle} · ${activeTab === "input" ? "INPUT" : activeTab === "output" ? "OUTPUT" : "RAW"}`}
+        onFollowingChange={onOverlayFollowingChange}
         onOpenChange={setOverlayOpen}
-        onSelectAtom={onOverlaySelectAtom}
+        onSelectAtom={onOverlaySelectEvent}
         open={overlayOpen}
         payloadForAtom={overlayPayloadForAtom}
         variantForAtom={overlayVariantForAtom}
-        selectedAtomId={overlaySelectedAtomId}
+        runningEventId={overlayRunningEventId}
+        selectedEventId={overlaySelectedEventId}
         payload={
           activeTab === "input" && questionEvent
             ? questionEvent.payload
@@ -6923,44 +6894,57 @@ export default function App() {
     harnessFlow.nodes.find((node) => node.id === currentAtomId)?.data || null;
   const selectedEventIndex =
     activeEvents.findIndex((event) => event.id === selectedEventId);
-  // The payload overlay's left rail lists every atom of the run currently on
-  // screen, from the same harness topology the canvas projects. It is a view of
-  // this one selection, never a second one: picking a row commits through the
-  // same `commitAtomSelection` the canvas uses. Store only display fields here
-  // so the overlay needs no knowledge of TraceEvent / HarnessNodeData.
-  const overlayAtoms = useMemo(
+  // The payload overlay's left rail is the run's message chain in the LOG's
+  // own data standard: every event of the run the LOG renders, with the same
+  // `buildLogEntries` result the LOG row prints — sequence number, TYPE badge,
+  // turn, pair duration and pair link — plus the harness atom id the event
+  // commits to. It is a view of this one selection, never a second one:
+  // picking a row lands on the same state the LOG's own select handler writes.
+  // Store only display fields here so the overlay needs no knowledge of
+  // TraceEvent / HarnessNodeData. (The LOG computes the same builder inside
+  // AtomicLog; two O(n) passes per batch keep both readers on one definition
+  // without widening the LOG's contract.)
+  const overlayAtoms = useMemo<PayloadOverlayAtom[]>(
     () =>
-      harnessFlow.nodes.map((node) => {
-        const boundEvent = node.data.event ?? node.data.startEvent;
-        return {
-          id: node.id,
-          index: node.data.index + 1,
-          key: node.data.key,
-          label: node.data.label,
-          status: node.data.status,
-          // The rail reuses the LOG row's markup and helpers, so its number,
-          // TYPE badge, time and summary read exactly like a LOG line.
-          sequence: formatLogSequence(node.data.index + 1),
-          timestamp: boundEvent?.capturedAt,
-          dateLabel: boundEvent ? formatDate(boundEvent.capturedAt) : "",
-          clockLabel: boundEvent ? formatClock(boundEvent.capturedAt) : "",
-          action: boundEvent ? getEventAction(boundEvent) : undefined,
-          summary: boundEvent ? getEventSummary(boundEvent) : "",
-          // The TYPE badge reads the same atom-type definition as LOG and the
-          // trajectory hover card; tone/colour follows the LOG row's mapping.
-          type: atomTypeLabel(node.data.key, node.data.kind),
-          tone: node.data.meta.tone,
-          count: node.data.count,
-        };
-      }),
-    [harnessFlow.nodes],
+      buildLogEntries(activeEvents, platformId).map(
+        ({ event, index, atomType, pairDuration, pairLink, turn }) => {
+          const durationLabel =
+            pairDuration === null ? null : formatDurationMs(pairDuration);
+          return {
+            id: event.id,
+            atomId: getAtomIdForEvent(event, platformId),
+            index: index + 1,
+            key: getTraceEventKey(event),
+            eventName: event.eventName,
+            status: event.status || "complete",
+            sequence: formatLogSequence(index + 1),
+            turn,
+            timestamp: event.capturedAt,
+            dateLabel: formatDate(event.capturedAt),
+            clockLabel: formatClock(event.capturedAt),
+            action: getEventAction(event),
+            summary: getEventSummary(event),
+            // The TYPE badge and row tone read the same sources as the LOG
+            // row: the projection atom's label, the event meta's tone.
+            type: atomType?.label ?? "",
+            tone: eventMeta[event.eventName]?.tone || "unknown",
+            pairDuration,
+            durationLabel,
+            durationHeat:
+              pairDuration === null ? null : durationHeatClass(pairDuration),
+            pairLink,
+          };
+        },
+      ),
+    [activeEvents, platformId],
   );
-  // Resolve any overlay atom's payload for the active tab without rebuilding
+  // Resolve any overlay row's payload for the active tab without rebuilding
   // the inspector's whole tab model. The dialog caches each prepared preview
-  // by atom id, so switching rows in its rail is a lookup, not a re-render of
+  // by event id, so switching rows in its rail is a lookup, not a re-render of
   // this tree — the source of the old switch lag. A stable Set of question
   // atom ids keeps the question variant scoped to the atom that is actually
-  // being previewed.
+  // being previewed; a row whose own event carries the question display key
+  // (or a plan) previews as a question even when its atom aggregates more.
   const questionAtomIds = useMemo(
     () =>
       new Set(
@@ -6970,18 +6954,29 @@ export default function App() {
       ),
     [harnessFlow.nodes],
   );
+  const overlayEventById = useMemo(
+    () => new Map(activeEvents.map((event) => [event.id, event])),
+    [activeEvents],
+  );
   const overlayPayloadForAtom = useCallback(
-    (atomId: string): unknown => {
+    (atomId: string, eventId?: string): unknown => {
       const node = harnessFlow.nodes.find((candidate) => candidate.id === atomId);
       if (!node) {
         return null;
       }
-      const boundEvent = node.data.event ?? node.data.startEvent;
+      // The picked row's own event wins: one atom can aggregate many events,
+      // and the reader picked a step of the chain, not the atom's newest one.
+      const rowEvent = eventId ? overlayEventById.get(eventId) ?? null : null;
+      const boundEvent = rowEvent ?? node.data.event ?? node.data.startEvent;
       if (!boundEvent) {
         return null;
       }
       if (inspectorTab === "input") {
-        if (questionAtomIds.has(atomId)) {
+        if (
+          questionAtomIds.has(atomId) ||
+          getTraceEventKey(boundEvent) === "user.question" ||
+          hasPlanContent(boundEvent.payload)
+        ) {
           return boundEvent.payload;
         }
         const start = node.data.startEvent;
@@ -7008,12 +7003,23 @@ export default function App() {
       }
       return boundEvent;
     },
-    [harnessFlow.nodes, inspectorTab, questionAtomIds],
+    [harnessFlow.nodes, inspectorTab, overlayEventById, questionAtomIds],
   );
   const overlayVariantForAtom = useCallback(
-    (atomId: string): "default" | "question" =>
-      inspectorTab === "input" && questionAtomIds.has(atomId) ? "question" : "default",
-    [inspectorTab, questionAtomIds],
+    (atomId: string, eventId?: string): "default" | "question" => {
+      if (inspectorTab !== "input") {
+        return "default";
+      }
+      const rowEvent = eventId ? overlayEventById.get(eventId) : null;
+      if (rowEvent) {
+        return getTraceEventKey(rowEvent) === "user.question" ||
+          hasPlanContent(rowEvent.payload)
+          ? "question"
+          : "default";
+      }
+      return questionAtomIds.has(atomId) ? "question" : "default";
+    },
+    [inspectorTab, overlayEventById, questionAtomIds],
   );
   // The question the inspector shows is also the question an answer must be
   // keyed to. Prefer the selected event (a LOG row may be the question itself,
@@ -7704,15 +7710,45 @@ export default function App() {
     [commitAtomSelection, selectedAtomId],
   );
 
-  /** The overlay rail selects an atom without ever toggling it off. */
-  const handleOverlaySelectAtom = useCallback(
-    (atomId: string) => {
-      const node = harnessFlow.nodes.find((candidate) => candidate.id === atomId);
-      if (node) {
-        commitAtomSelection(node, false);
-      }
+  /**
+   * The overlay rail selects a row of the message chain without ever toggling
+   * it off. It commits the same state the LOG's own select handler writes —
+   * the picked event plus the harness atom it maps to — so the rail, the LOG,
+   * the canvas and the inspector cannot disagree about what is selected.
+   */
+  const handleOverlaySelectEvent = useCallback(
+    (atomId: string, eventId: string) => {
+      setPlaying(false);
+      setReplayMode(false);
+      setSelectedAtomId(atomId || null);
+      setSelectedEventId(eventId);
     },
-    [commitAtomSelection, harnessFlow.nodes],
+    [],
+  );
+
+  /**
+   * The rail header's 跟随 toggle mirrors the console's live following.
+   * Arming rides the session's newest prompt run — the executing one — with no
+   * explicit atom selection, mirroring the footer Live jump: the live-follow
+   * effect then advances the event to the newest one each batch. Disarming
+   * pins the atom currently on screen so the payload stops advancing. The
+   * toggle is armable while the *session* is executing (the RUN HISTORY
+   * card's status), not only the selected prompt run — drilling into an
+   * older message must not freeze the follow control while the task runs.
+   */
+  const handleOverlayFollowingChange = useCallback(
+    (armed: boolean) => {
+      if (armed) {
+        if (latestPromptRun && latestPromptRun.key !== activePromptRunKey) {
+          setActivePromptRunKey(latestPromptRun.key);
+        }
+        setSelectedAtomId(undefined);
+        setSelectedEventId(latestPromptRun?.events.at(-1)?.id || "");
+        return;
+      }
+      setSelectedAtomId(currentAtomId || null);
+    },
+    [activePromptRunKey, currentAtomId, latestPromptRun],
   );
 
   const handleReplaySeek = useCallback((index: number) => {
@@ -8455,8 +8491,19 @@ export default function App() {
                 index={selectedEventIndex}
                 onActiveTabChange={setInspectorTab}
                 overlayAtoms={overlayAtoms}
-                overlaySelectedAtomId={currentAtomId}
-                onOverlaySelectAtom={handleOverlaySelectAtom}
+                overlaySelectedEventId={selectedEventId || ""}
+                overlayRunningEventId={
+                  executingLive && pendingEvent ? pendingEvent.id : ""
+                }
+                overlayFollowing={followingLive}
+                overlayFollowAvailable={
+                  activeSession
+                    ? isPromptExecuting(activeSessionDisplayStatus, isDemo) &&
+                      !replayMode
+                    : false
+                }
+                onOverlayFollowingChange={handleOverlayFollowingChange}
+                onOverlaySelectEvent={handleOverlaySelectEvent}
                 overlayPayloadForAtom={overlayPayloadForAtom}
                 overlayVariantForAtom={overlayVariantForAtom}
                 matchedQuestion={matchedQuestionInteraction}
