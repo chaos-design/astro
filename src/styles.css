@@ -5877,8 +5877,13 @@ pre,
 }
 
 .payload-overlay__atom-list {
+  display: flex;
   flex: 1;
   min-height: 0;
+  flex-direction: column;
+  /* Keep the highlighted rows visually separate: without a gap two adjacent
+     selected / running backgrounds touch and read as one long highlight. */
+  gap: 10px;
   margin: 0;
   padding: 0 8px 10px;
   list-style: none;

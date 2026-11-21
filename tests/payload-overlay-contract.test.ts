@@ -131,6 +131,13 @@ test("the overlay rail reads like the LOG row and lists atoms newest first", () 
   assert.match(bindingForOverlay, /tone: node\.data\.meta\.tone/);
 });
 
+test("the rail separates highlighted rows so adjacent highlights do not touch", () => {
+  assert.match(
+    stylesForOverlay,
+    /\.payload-overlay__atom-list \{[\s\S]*?display: flex;[\s\S]*?flex-direction: column;[\s\S]*?gap: 10px;/,
+  );
+});
+
 test("the inspector threads the atom list and selection handler into the overlay", () => {
   const binding = app.slice(
     app.indexOf("<PayloadOverlay"),
