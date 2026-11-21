@@ -10,6 +10,7 @@ import {
   answerInteractionQuestions,
   buildInteractionEvent,
   cancelInteraction,
+  fetchOpenInteractions,
   sendInteractionEvent,
   submitInteraction,
   type InteractionTransport,
@@ -452,4 +453,44 @@ test("cancel closes through the service and applies the nested result locally", 
   });
   assert.equal(dispatches.length, 1);
   assert.deepEqual(dispatches[0], { type: "close", result: result.result });
+});
+
+test("fetchOpenInteractions queries by identity and returns recovered records", async () => {
+  const sample = draft();
+  const calls: string[] = [];
+  const transport: InteractionTransport = {
+    apiBase: "http://localhost:4399",
+    fetchImpl: (async (url: string) => {
+      calls.push(url);
+      return {
+        ok: true,
+        json: async () => ({ records: [{ request: sample.request, events: [], result: null }] }),
+      } as Response;
+    }) as typeof fetch,
+  };
+  const records = await fetchOpenInteractions(
+    { sessionId: "sess-1", toolUseId: "call-1", toolName: "AskUserQuestion" },
+    transport,
+  );
+  assert.equal(records.length, 1);
+  assert.equal(records[0].request.requestId, sample.request.requestId);
+  assert.match(calls[0], /\/api\/interactions\?/);
+  assert.match(calls[0], /sessionId=sess-1/);
+  assert.match(calls[0], /toolUseId=call-1/);
+});
+
+test("fetchOpenInteractions makes no request without an identity", async () => {
+  let called = false;
+  const records = await fetchOpenInteractions(
+    {},
+    {
+      apiBase: "",
+      fetchImpl: (async () => {
+        called = true;
+        return { ok: true, json: async () => ({ records: [] }) } as Response;
+      }) as typeof fetch,
+    },
+  );
+  assert.equal(called, false);
+  assert.deepEqual(records, []);
 });

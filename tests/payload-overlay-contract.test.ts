@@ -23,13 +23,31 @@ const bindingForOverlay = app.slice(
  */
 test("the overlay switches preview by atom type", () => {
   assert.match(overlay, /variant === "question"/);
-  assert.match(overlay, /<QuestionPreview payload=\{payload as TracePayload\} \/>/);
+  assert.match(overlay, /<QuestionPreview payload=\{activePayload as TracePayload\} \/>/);
   assert.match(overlay, /USER QUESTION/);
-  assert.match(overlay, /dangerouslySetInnerHTML=\{\{ __html: preview\.html \}\}/);
+  assert.match(overlay, /dangerouslySetInnerHTML=\{\{ __html: preview\.contentHtml \}\}/);
+});
+
+test("the preview splits the atom's content from its related data", () => {
+  assert.match(overlay, /splitPayloadPreview/);
+  assert.match(overlay, /contentToMarkdown/);
+  assert.match(overlay, /payload-overlay__pane--content/);
+  assert.match(overlay, /payload-overlay__pane--related/);
+  assert.match(overlay, /payload-overlay__fields/);
+  assert.match(stylesForOverlay, /\.payload-overlay__preview-grid/);
+  assert.match(stylesForOverlay, /\.payload-overlay__field\.is-annotation/);
+});
+
+test("prepared previews are cached per atom so rail switches are instant", () => {
+  assert.match(overlay, /useRef<Map<string, PreparedPreview>>/);
+  assert.match(overlay, /cache\.get\(atomId\)/);
+  assert.match(overlay, /cache\.set\(atomId, prepared\)/);
+  assert.match(overlay, /payloadForAtom/);
+  assert.match(overlay, /variantForAtom/);
 });
 
 test("the global overlay keeps both Preview and the raw JSON Code view", () => {
-  assert.match(overlay, /<JsonViewer value=\{payload\} \/>/);
+  assert.match(overlay, /<JsonViewer value=\{activePayload\} \/>/);
   assert.match(overlay, /Code2/);
   assert.match(overlay, /ToggleGroup/);
   assert.match(overlay, /viewMode/);

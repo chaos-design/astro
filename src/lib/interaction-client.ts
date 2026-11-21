@@ -68,6 +68,54 @@ function closeUrl(transport: InteractionTransport, requestId: string): string {
   );
 }
 
+/** Identity of the request a captured question belongs to. */
+export interface InteractionIdentity {
+  sessionId?: string;
+  toolUseId?: string;
+  toolName?: string;
+}
+
+/**
+ * Recover the original open interaction request(s) after a console refresh.
+ * The service indexes by the deterministic requestId the host hook computed;
+ * it has no toolUseId→requestId map, so the browser must ask by the identity a
+ * captured question event still carries. A newly created request would write
+ * its answer to a file the waiting host never polls.
+ */
+export interface RecoveredInteraction {
+  request: InteractionDraft["request"];
+  events: InteractionDraft["events"];
+  result: InteractionDraft["result"];
+}
+
+export async function fetchOpenInteractions(
+  identity: InteractionIdentity,
+  transport: InteractionTransport,
+): Promise<RecoveredInteraction[]> {
+  if (!identity.sessionId && !identity.toolUseId && !identity.toolName) {
+    return [];
+  }
+  const params = new URLSearchParams();
+  if (identity.sessionId) {
+    params.set("sessionId", identity.sessionId);
+  }
+  if (identity.toolUseId) {
+    params.set("toolUseId", identity.toolUseId);
+  }
+  if (identity.toolName) {
+    params.set("toolName", identity.toolName);
+  }
+  const fetchImpl = transport.fetchImpl ?? fetch;
+  const response = await fetchImpl(
+    joinApi(transport.apiBase, `/api/interactions?${params.toString()}`),
+  );
+  if (!response.ok) {
+    return [];
+  }
+  const body = (await response.json()) as { records?: RecoveredInteraction[] };
+  return Array.isArray(body.records) ? body.records : [];
+}
+
 export function buildInteractionEvent(
   draft: InteractionDraft,
   action: InteractionAction,

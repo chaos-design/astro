@@ -275,6 +275,7 @@ import {
   answerInteractionQuestions,
   cancelInteraction,
   consoleDeviceId,
+  fetchOpenInteractions,
   type InteractionSendResult,
 } from "./lib/interaction-client";
 import {
@@ -284,6 +285,7 @@ import {
   normalizeQuestionPanelMode,
 } from "./lib/question-panel-model";
 import {
+  interactionIdentityFromEvent,
   isQuestionActionable,
   matchQuestionInteraction,
   questionMatchesCurrentView,
@@ -2833,7 +2835,7 @@ const AtomicLogRow = memo(function AtomicLogRow({
       <span className="log-sequence">{formatLogSequence(index + 1)}</span>
       <i className="phase-dot" />
       <strong className="atomic-log__name">
-        {atomType ? (
+        {atomType?.label.trim() ? (
           <span
             className="atomic-log__type"
             title={`原子类型 ${atomType.label} · ${atomType.key} / ${atomType.kind}`}
@@ -3371,6 +3373,8 @@ function TraceInspector({
   overlayAtoms,
   overlaySelectedAtomId,
   onOverlaySelectAtom,
+  overlayPayloadForAtom,
+  overlayVariantForAtom,
   matchedQuestion,
   answerDrafts,
   onAnswerDraftChange,
@@ -3392,6 +3396,8 @@ function TraceInspector({
   overlayAtoms: PayloadOverlayAtom[];
   overlaySelectedAtomId: string;
   onOverlaySelectAtom: (atomId: string) => void;
+  overlayPayloadForAtom: (atomId: string) => unknown;
+  overlayVariantForAtom: (atomId: string) => "default" | "question";
   matchedQuestion: MatchedQuestionInteraction | null;
   answerDrafts: Readonly<Record<string, string>>;
   onAnswerDraftChange: (question: string, text: string) => void;
@@ -3656,6 +3662,8 @@ function TraceInspector({
         onOpenChange={setOverlayOpen}
         onSelectAtom={onOverlaySelectAtom}
         open={overlayOpen}
+        payloadForAtom={overlayPayloadForAtom}
+        variantForAtom={overlayVariantForAtom}
         selectedAtomId={overlaySelectedAtomId}
         payload={
           activeTab === "input" && questionEvent
@@ -4084,8 +4092,26 @@ const TrajectoryView = memo(function TrajectoryView({
   // right now are the first rows, so following a live run never means scrolling
   // past its start. The lane overview above stays a left-to-right timeline.
   const display = useMemo(() => orderTrajectoryNewestFirst(model), [model]);
+  // A turn that is executing (`running`) or blocked on a question (`waiting`)
+  // must read open the moment it appears — the reader came here to see the
+  // atom that needs attention, not to expand it by hand. `defaultExpandedTurns`
+  // is derived from the model on every rebuild (including a fresh snapshot
+  // after refresh), so the open state survives a reload without persisting a
+  // UI-only Set to storage. Manual toggles still work: they live in the
+  // overlay `expandedTurns` seeded by the effect below.
+  const liveTurnsKey = model.turns
+    .filter((turn) => turn.status === "running" || turn.status === "waiting")
+    .map((turn) => turn.turn)
+    .join("|");
+  const defaultExpandedTurns = useMemo(
+    () => new Set(liveTurnsKey ? liveTurnsKey.split("|").map(Number) : []),
+    [liveTurnsKey],
+  );
   const [expandedTurns, setExpandedTurns] = useState<Set<number>>(
-    () => new Set(model.turns.at(-1) ? [model.turns.at(-1)!.turn] : []),
+    () =>
+      new Set(
+        model.turns.at(-1) ? [model.turns.at(-1)!.turn] : [],
+      ),
   );
   const listRef = useRef<HTMLDivElement | null>(null);
   const locateRequestRef = useRef(locateRequest);
@@ -4306,8 +4332,16 @@ const TrajectoryView = memo(function TrajectoryView({
 
   useEffect(() => {
     const latestTurn = model.turns.at(-1)?.turn;
-    setExpandedTurns(latestTurn ? new Set([latestTurn]) : new Set());
-  }, [events[0]?.sessionId, turnKey]);
+    const next = new Set<number>(defaultExpandedTurns);
+    if (latestTurn !== undefined) {
+      next.add(latestTurn);
+    }
+    setExpandedTurns(next);
+    // Reset on a new session / turn set: a fresh run starts from the honest
+    // default (open the executing and blocked turns) rather than inheriting a
+    // previous run's manual collapses. The stable key means a waiting atom
+    // that appears mid-stream opens its turn without re-running on every batch.
+  }, [events[0]?.sessionId, turnKey, liveTurnsKey]);
 
   useEffect(() => {
     if (!selectedTrajectoryAtomId) {
@@ -6921,6 +6955,66 @@ export default function App() {
       }),
     [harnessFlow.nodes],
   );
+  // Resolve any overlay atom's payload for the active tab without rebuilding
+  // the inspector's whole tab model. The dialog caches each prepared preview
+  // by atom id, so switching rows in its rail is a lookup, not a re-render of
+  // this tree — the source of the old switch lag. A stable Set of question
+  // atom ids keeps the question variant scoped to the atom that is actually
+  // being previewed.
+  const questionAtomIds = useMemo(
+    () =>
+      new Set(
+        harnessFlow.nodes
+          .filter((node) => node.data.key === "user.question")
+          .map((node) => node.id),
+      ),
+    [harnessFlow.nodes],
+  );
+  const overlayPayloadForAtom = useCallback(
+    (atomId: string): unknown => {
+      const node = harnessFlow.nodes.find((candidate) => candidate.id === atomId);
+      if (!node) {
+        return null;
+      }
+      const boundEvent = node.data.event ?? node.data.startEvent;
+      if (!boundEvent) {
+        return null;
+      }
+      if (inspectorTab === "input") {
+        if (questionAtomIds.has(atomId)) {
+          return boundEvent.payload;
+        }
+        const start = node.data.startEvent;
+        if (start?.eventName === "UserPromptSubmit") {
+          return start.payload;
+        }
+        return (
+          start?.payload?.tool_input || {
+            prompt: start?.payload?.prompt,
+            message: start?.payload?.message,
+            source: start?.payload?.source,
+          }
+        );
+      }
+      if (inspectorTab === "output") {
+        return (
+          node.data.endEvent?.payload?.tool_response || {
+            message:
+              boundEvent.payload.last_assistant_message ||
+              boundEvent.payload.message ||
+              null,
+          }
+        );
+      }
+      return boundEvent;
+    },
+    [harnessFlow.nodes, inspectorTab, questionAtomIds],
+  );
+  const overlayVariantForAtom = useCallback(
+    (atomId: string): "default" | "question" =>
+      inspectorTab === "input" && questionAtomIds.has(atomId) ? "question" : "default",
+    [inspectorTab, questionAtomIds],
+  );
   // The question the inspector shows is also the question an answer must be
   // keyed to. Prefer the selected event (a LOG row may be the question itself,
   // and a plan approval tool row previews the same plan) and fall back to the
@@ -7012,6 +7106,63 @@ export default function App() {
     replayMode,
     isDemo,
   });
+  // After a refresh the SSE interaction frames are gone (the service never
+  // replays them), so `interactions.requests` is empty and the waiting
+  // question would read as read-only. Recover the *original* request from the
+  // service by the identity the captured event still carries, then replay it
+  // through the same reducer actions the live frames use. The host hook polls
+  // that request's deterministic id, so answering it reaches the blocked tool
+  // call. Only attempt once per identity; a failed lookup means the request
+  // expired and the host fell back to its native prompt.
+  const recoveredIdentityRef = useRef<string>("");
+  useEffect(() => {
+    if (!questionActionable || !eventsLoaded || replayMode || isDemo) {
+      return;
+    }
+    // Already matched — a live frame or a previous recovery supplied it.
+    if (matchedQuestionInteraction) {
+      return;
+    }
+    const event = inspectedQuestionEvent;
+    if (!event) {
+      return;
+    }
+    const identity = interactionIdentityFromEvent(event);
+    const key = `${identity.sessionId || ""}:${identity.toolUseId || ""}:${identity.toolName || ""}`;
+    if (!identity.sessionId && !identity.toolUseId) {
+      return;
+    }
+    if (recoveredIdentityRef.current === key) {
+      return;
+    }
+    recoveredIdentityRef.current = key;
+    let cancelled = false;
+    void fetchOpenInteractions(identity, { apiBase }).then((records) => {
+      if (cancelled || !records.length) {
+        return;
+      }
+      for (const record of records) {
+        dispatchInteraction({ type: "open", request: record.request });
+        for (const item of record.events) {
+          dispatchInteraction({ type: "update", event: item });
+        }
+        if (record.result) {
+          dispatchInteraction({ type: "close", result: record.result });
+        }
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    questionActionable,
+    eventsLoaded,
+    replayMode,
+    isDemo,
+    matchedQuestionInteraction,
+    inspectedQuestionEvent,
+    apiBase,
+  ]);
   // Unchosen layouts track the run: an answerable question floats so it stays
   // visible above the canvas it blocks, while a finished/captured one docks
   // full so its whole text and options fit. A stored manual switch wins.
@@ -8306,6 +8457,8 @@ export default function App() {
                 overlayAtoms={overlayAtoms}
                 overlaySelectedAtomId={currentAtomId}
                 onOverlaySelectAtom={handleOverlaySelectAtom}
+                overlayPayloadForAtom={overlayPayloadForAtom}
+                overlayVariantForAtom={overlayVariantForAtom}
                 matchedQuestion={matchedQuestionInteraction}
                 answerDrafts={questionAnswerDrafts}
                 onAnswerDraftChange={(question, text) =>

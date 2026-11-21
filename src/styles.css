@@ -5734,6 +5734,112 @@ pre,
   overflow: hidden;
 }
 
+/* Preview is two panes: the atom's real content leads (it is the reason the
+   reader opened the layer), and the related data — time, path, annotations —
+   sits beside it. Both scroll on their own so a long message never buries the
+   metadata, and neither pane fights the fixed header above. */
+.payload-overlay__preview-grid {
+  display: grid;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
+}
+
+.payload-overlay__pane {
+  display: flex;
+  min-height: 0;
+  min-width: 0;
+  flex-direction: column;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-bright) transparent;
+}
+
+.payload-overlay__pane--content {
+  padding: 14px 18px 20px;
+  border-right: 1px solid var(--chrome-line);
+}
+
+.payload-overlay__pane--related {
+  padding: 14px 16px 20px;
+  background: color-mix(in srgb, var(--panel) 46%, transparent);
+}
+
+.payload-overlay__pane-title {
+  flex: none;
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: var(--weight-strong);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.payload-overlay__pane .payload-overlay__body {
+  flex: 1;
+  padding: 0;
+  overflow: visible;
+}
+
+/* Related data reads as a compact definition list: one label/value pair per
+   row, with long paths wrapping instead of being clipped. Annotations carry
+   the violet accent so an explanation is distinguishable from a timestamp. */
+.payload-overlay__fields {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 0;
+}
+
+.payload-overlay__field {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(92px, 0.9fr) minmax(0, 1.4fr);
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: var(--text-caption);
+}
+
+.payload-overlay__field dt {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.payload-overlay__field dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--text);
+}
+
+.payload-overlay__field.is-annotation {
+  border-bottom-color: color-mix(in srgb, var(--violet) 38%, var(--line));
+}
+
+.payload-overlay__field.is-annotation dt {
+  color: var(--violet);
+}
+
+@media (max-width: 860px) {
+  .payload-overlay__preview-grid {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1.4fr) minmax(0, 1fr);
+  }
+
+  .payload-overlay__pane--content {
+    border-right: 0;
+    border-bottom: 1px solid var(--chrome-line);
+  }
+}
+
 .payload-overlay__empty {
   margin: 0;
   color: var(--muted-soft);
@@ -8940,19 +9046,26 @@ pre,
   align-items: baseline;
   justify-content: space-between;
   gap: 10px;
-  padding: 0 0 8px;
-  border-bottom: 1px solid var(--border);
+  min-width: 0;
+  padding: 0 0 9px;
+  border-bottom: 1px solid var(--line);
 }
 
 .question-preview__count {
+  flex: 0 0 auto;
   color: var(--text-strong);
   font-size: var(--text-meta);
   font-weight: var(--weight-medium, 600);
 }
 
 .question-preview__hint {
+  min-width: 0;
+  overflow: hidden;
   color: var(--muted-soft, var(--muted));
   font-size: var(--text-caption);
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .question-preview__list {

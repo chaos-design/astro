@@ -626,10 +626,14 @@ The inspector provides:
 - copy control for structured JSON;
 - an expand control in the inspector header, available on `Input` / `Output` /
   `Raw`, opens a **global overlay** that shows the same payload in a much larger
-  area. The overlay has a `Preview` / `Code` switch: `Preview` follows the
-  atom's type — a `user.question` Input tab shows the question / option /
-  answer list the reader saw, while every other payload turns into a Markdown
-  document rendered (headings, GFM task lists, code blocks) with highlight.js
+  area. The overlay has a `Preview` / `Code` switch: `Preview` splits into two
+  panes — "Atom content" (the text the atom actually carried; a
+  `user.question` Input tab shows the question / option / answer list the
+  reader saw, other payloads render as Markdown, and code / JSON is highlighted)
+  and "Related data" (timestamps, paths, ids and annotations / explanations,
+  annotations first). Each atom's preview is prepared once and cached by atom
+  id, so switching rows in the atom rail is a lookup rather than a repeated
+  Markdown parse. Rendering uses highlight.js
   syntax highlighting, after the same HTML sanitizer
   strips acting markup. A tool result is unwrapped at any depth (`captured`,
   `tool_response`, `output`, `result`, a `plan` nested in `tool_input`, and their

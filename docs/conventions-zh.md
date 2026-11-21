@@ -74,6 +74,11 @@
     单一来源，浮层组件 `src/components/payload-overlay.tsx` 只负责展示，并用同一个
     切换提供 `Preview`（渲染后的 Markdown：标题、GFM 任务列表、高亮代码、问题/选项/答案）
     与 `Code`（未加工的原始 JSON）两种形态，不再另写一份转换或消毒逻辑；
+    `Preview` 分两块区域：「原子内容」（真实文本，代码/JSON 高亮、Markdown 渲染）
+    与「相关数据」（时间戳、路径、ID、注释/说明；注释优先），拆分口径唯一定义在
+    `src/lib/payload-preview.ts`（`splitPayloadPreview` / `contentToMarkdown`）；
+    每个原子的预览在浮层内按原子 ID 缓存一次（`payloadForAtom` / `variantForAtom`
+    解析任意原子的载荷与类型），切换左侧列表是查表而非重新解析 Markdown；
     浮层左侧的「当前运行原子」列表由 app.tsx 从 `harnessFlow.nodes` 映射出的
     `overlayAtoms` 提供，点选走 `handleOverlaySelectAtom` → `commitAtomSelection`，
     与画布的 `handleCanvasSelectNode` 共用同一个提交点；弹窗不持有第二份选中态，
@@ -179,7 +184,12 @@
     提交 / Cancel 两个按钮）。检查器的批量作答
     只在 `src/lib/interaction-client.ts` 的 `answerInteractionQuestions` 一处构建
     seq 链：每个问题一条 `text`，再一条带完整答案映射的 `submit`；单问题入口
-    `answerInteractionQuestion` 只是它的单元素包装。同一个模块里的
+    `answerInteractionQuestion` 只是它的单元素包装。交互帧不随快照重放，刷新页面后
+    app.tsx 用 `interactionIdentityFromEvent`（会话 ID + 工具调用 ID + 工具名）调用
+    同模块的 `fetchOpenInteractions`，从服务 `GET /api/interactions?...` 取回原始请求
+    （服务 `interaction-store.findOpen` 按身份查未关闭记录），再以 open/update/close
+    重新注入 reducer；绝不新建请求——宿主 hook 轮询的是原 requestId 的结果文件，
+    新请求写出的答案无人读取。已关闭或已过期的请求不恢复。同一个模块里的
     `shouldLocateInteractionRequest` 决定 `interaction.open` 是否闪一下提问原子：
     只认正在跟随运行的同会话同来源请求，且只加定位脉冲、不改选中，避免把 Live
     跟随关掉。浮层问题卡片同样绑定当前消息与原子，并跟随请求生命周期：请求打开时

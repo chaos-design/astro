@@ -67,3 +67,25 @@ test("turn sections are tinted blocks distinct from the page ground", () => {
   const section = cssRule(".trajectory-turn");
   assert.match(section, /background:[\s\S]*var\(--accent\)/);
 });
+
+/**
+ * A turn that is executing or blocked on a question must open by itself — the
+ * reader should not have to expand the one turn that needs attention. The
+ * default is derived from the model on every rebuild (so a fresh snapshot
+ * after refresh reopens it) rather than persisted in a UI-only Set.
+ */
+test("running and waiting turns are expanded by default after every snapshot", () => {
+  const app = readFileSync(new URL("../src/app.tsx", import.meta.url), "utf8");
+  const start = app.indexOf("const liveTurnsKey");
+  const end = app.indexOf("const [expandedTurns", start);
+  const block = app.slice(start, end);
+  assert.match(block, /turn\.status === "running"/);
+  assert.match(block, /turn\.status === "waiting"/);
+
+  const reset = app.slice(
+    app.indexOf("useEffect(() => {\n    const latestTurn"),
+    app.indexOf("const toggleTurn"),
+  );
+  assert.match(reset, /new Set<number>\(defaultExpandedTurns\)/);
+  assert.match(reset, /latestTurn/);
+});

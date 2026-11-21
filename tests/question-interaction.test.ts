@@ -4,6 +4,7 @@ import test from "node:test";
 import { buildRequest as buildHostRequest } from "../scripts/interaction-hook.mjs";
 import { buildInteractionRequest } from "../src/lib/interaction-contract.ts";
 import {
+  interactionIdentityFromEvent,
   isQuestionActionable,
   matchQuestionInteraction,
   questionMatchesCurrentView,
@@ -402,4 +403,27 @@ test("floating question is actionable only while the task is executing and not r
     isQuestionActionable({ status: "active", replayMode: false, isDemo: true }),
     false,
   );
+});
+
+test("interactionIdentityFromEvent extracts the recovery identity from a captured question", () => {
+  const event = normalizeTraceEvent({
+    id: "q1",
+    eventName: "PermissionRequest",
+    capturedAt: "2026-11-21T09:10:00.000Z",
+    sessionId: "sess-recover",
+    source: "claude",
+    toolName: "AskUserQuestion",
+    toolUseId: "tu-recover",
+    payload: {
+      tool_name: "AskUserQuestion",
+      tool_use_id: "tu-recover",
+      tool_input: { questions: [{ question: "Pick one", options: ["A"] }] },
+    },
+  });
+  assert.deepEqual(interactionIdentityFromEvent(event), {
+    sessionId: "sess-recover",
+    toolUseId: "tu-recover",
+    toolName: "AskUserQuestion",
+  });
+  assert.deepEqual(interactionIdentityFromEvent(null), {});
 });

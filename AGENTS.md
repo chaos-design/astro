@@ -823,7 +823,13 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   toggle**: `Preview` is the rendered content (Markdown headings, GFM task lists,
   highlighted code, question/option/answer lists) and `Code` is the untouched
   structured JSON, so a reader can check either shape without leaving the
-  dialog. Its preview is type-aware: a user.question Input tab passes the raw
+  dialog. `Preview` is split into two panes — the atom's real content
+  (Markdown / highlighted code, or the question list) and the related data
+  (timestamps, paths, ids, annotations / explanations). The split lives only
+  in `src/lib/payload-preview.ts`; the dialog caches a prepared preview per
+  atom id via `payloadForAtom` / `variantForAtom`, so switching atoms in the
+  rail is a lookup, never a repeated Markdown parse. Its preview is type-aware:
+  a user.question Input tab passes the raw
   question payload to `QuestionPreview` (the shared read-only question / option
   / answer list) instead of the Markdown path — an answers-only payload with no
   question / plan falls back to the Markdown answer preview so the overlay is

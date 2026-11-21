@@ -826,6 +826,19 @@ async function handleRequest(request, response) {
   // polls a result file; the console appends events and closes the request.
   // `GET` exposes the same record for a late console tab or a reconnect.
   if (requestUrl.pathname === "/api/interactions") {
+    // GET recovers the original open request(s) for a captured question after
+    // a console refresh. Interaction frames are never replayed on reconnect,
+    // so without this the reloaded page can no longer answer a waiting
+    // question. Search by the identity the captured event still carries.
+    if (request.method === "GET") {
+      const records = interactions.findOpen({
+        sessionId: requestUrl.searchParams.get("sessionId") || undefined,
+        toolUseId: requestUrl.searchParams.get("toolUseId") || undefined,
+        toolName: requestUrl.searchParams.get("toolName") || undefined,
+      });
+      sendJson(response, 200, { records });
+      return;
+    }
     if (request.method !== "POST") {
       sendJson(response, 405, { error: "Method not allowed" });
       return;

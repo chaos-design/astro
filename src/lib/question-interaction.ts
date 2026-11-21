@@ -43,6 +43,51 @@ export function questionTextsFromEvent(event: TraceEvent | null): string[] {
   return content.message.trim() ? [content.message.trim()] : [];
 }
 
+/**
+ * The identity a captured question event still carries after a refresh. Used
+ * to recover the original interaction request from the service (which indexes
+ * by the host hook's deterministic requestId, not by tool id). Recovering the
+ * original matters: a new request would write its answer to a file the blocked
+ * host hook is not polling.
+ */
+export function interactionIdentityFromEvent(event: TraceEvent | null): {
+  sessionId?: string;
+  toolUseId?: string;
+  toolName?: string;
+} {
+  if (!event) {
+    return {};
+  }
+  const payload = event.payload;
+  const nested = payload.payload;
+  const toolInput = payload.tool_input ?? payload.toolInput;
+  let toolName =
+    typeof event.toolName === "string" && event.toolName.trim()
+      ? event.toolName.trim()
+      : "";
+  for (const candidate of [
+    payload.tool_name,
+    payload.toolName,
+    nested?.tool_name,
+    toolInput && typeof toolInput === "object"
+      ? (toolInput as Record<string, unknown>).tool_name
+      : undefined,
+  ]) {
+    if (typeof candidate === "string" && candidate.trim()) {
+      toolName = candidate.trim();
+      break;
+    }
+  }
+  return {
+    sessionId:
+      typeof event.sessionId === "string" && event.sessionId.trim()
+        ? event.sessionId
+        : undefined,
+    toolUseId: eventToolUseId(event) || undefined,
+    toolName: toolName || undefined,
+  };
+}
+
 function eventToolUseId(event: TraceEvent): string {
   const payload = event.payload;
   const nested = payload.payload;
