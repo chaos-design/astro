@@ -266,8 +266,16 @@ Guide 的观测列表保留语义化 `ul` / `li`，使用原生 `disc` 标记。
 `appVersion`；服务 = `/api/health` 的 `build`，来自 `package.json` 或安装目录的
 `plugin.json`）、**进程**（启动时间、启动耗时、重启次数、SSE 客户端数）、**数据**
 （事件数、轨迹文件数、数据根目录）、**会话**（`active` / `waiting` / `complete` /
-`failed` / `terminated` 五个计数）。两侧版本不一致会提示刷新或重启；`build` 读不到
-清单时为 `unknown`，卡片显示「未上报」并说明原因，而不是把 `unknown` 丢给用户。
+`failed` / `terminated` 五个计数）、**采集插件版本**（`/api/health` 的
+`captureVersions`：按 `source` 列出实际写入事件的长驻采集器版本）。两侧版本不一致会
+提示刷新或重启；`build` 读不到清单时为 `unknown`，卡片显示「未上报」并说明原因，而不是
+把 `unknown` 丢给用户。
+
+opencode / pi 这类长驻采集器在 `enqueue` 时把自己的 `package.json` 版本盖到每条事件的
+`payload.captureVersion`（单一来源就是各自的清单）；服务在 `indexEvent` 与 `append`
+里按 source 汇总版本及最近时间，`/api/health` 上报。同一 source 出现两个版本意味着
+「装了新插件但旧进程还在写」，卡片给出「重启对应 Agent 会话 / opencode service」的
+提示。这让「装没装上、生效没生效」变成可观测状态，而不是靠间接症状猜。
 
 ### 指南与日志控件
 

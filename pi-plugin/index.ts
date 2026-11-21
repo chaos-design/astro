@@ -56,6 +56,18 @@ const recorderCandidates = [
 const source = "pi";
 const flushIntervalMs = 150;
 
+// The installed extension's own manifest is the single source of truth for
+// which capture code wrote an event, so a stale process is observable in the
+// console after a reinstall without a restart.
+const extensionRequire = createRequire(import.meta.url);
+const captureVersion = (() => {
+  try {
+    return String(extensionRequire("./package.json").version || "");
+  } catch {
+    return "";
+  }
+})();
+
 function resolveAstroHome(): string {
   const fromRecorder = loaded?.module.resolveAstroHome?.(process.env);
   if (fromRecorder) {
@@ -145,7 +157,7 @@ export default function (pi: PiExtensionApi) {
   };
 
   const enqueue = (payload: AstroPayload) => {
-    queue.push(payload);
+    queue.push(captureVersion ? { ...payload, captureVersion } : payload);
     timer ??= setTimeout(flush, flushIntervalMs);
   };
 

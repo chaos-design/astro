@@ -72,6 +72,10 @@ export class TraceRepository extends EventEmitter {
     this.knownEventIds = new Set();
     this.unidentifiedEventCount = 0;
     this.sessionRecords = new Map();
+    // Per source, which capture-adapter versions wrote events, with the time
+    // of the newest event for each. A reinstall that the running process has
+    // not picked up shows two versions for one source — observable drift.
+    this.captureVersions = new Map();
     this.snapshotKey = "";
     this.eventIndexFor = null;
     this.eventIndex = null;
@@ -143,6 +147,24 @@ export class TraceRepository extends EventEmitter {
     return found === undefined ? -1 : found;
   }
 
+  /** Track the capture-adapter version that wrote one event (O(1)). */
+  trackCaptureVersion(event) {
+    const version = event?.payload?.captureVersion;
+    if (typeof version !== "string" || !version.trim()) {
+      return;
+    }
+    const source = String(event.source || "generic");
+    let versions = this.captureVersions.get(source);
+    if (!versions) {
+      versions = new Map();
+      this.captureVersions.set(source, versions);
+    }
+    const at = Date.parse(event.capturedAt || 0) || 0;
+    if (!versions.has(version) || versions.get(version) < at) {
+      versions.set(version, at);
+    }
+  }
+
   /** Fold one event into the per-session state summary. */
   indexEvent(event) {
     if (!event || typeof event !== "object") {
@@ -166,6 +188,7 @@ export class TraceRepository extends EventEmitter {
       this.sessionRecords.set(key, record);
     }
     applySessionEvent(record, event);
+    this.trackCaptureVersion(event);
   }
 
   /** Rebuild every derived view from the current store contents. */
@@ -173,6 +196,7 @@ export class TraceRepository extends EventEmitter {
     this.knownEventIds.clear();
     this.unidentifiedEventCount = 0;
     this.sessionRecords.clear();
+    this.captureVersions.clear();
     this.mergedEvents = null;
     for (const event of this.getEvents()) {
       this.indexEvent(event);
@@ -309,6 +333,21 @@ export class TraceRepository extends EventEmitter {
       );
   }
 
+  /**
+   * Per source, the capture-adapter versions that wrote events and when each
+   * was last seen. More than one version means a reinstall whose old process
+   * is still writing — `stale: true` lets the console say so.
+   */
+  getCaptureVersions() {
+    const result = {};
+    for (const [source, versions] of this.captureVersions) {
+      result[source] = [...versions.entries()]
+        .map(([version, lastSeenAt]) => ({ version, lastSeenAt }))
+        .sort((a, b) => b.lastSeenAt - a.lastSeenAt);
+    }
+    return result;
+  }
+
   /** `{ active, waiting, complete, failed, terminated }` counts. */
   getSessionStateCounts() {
     const counts = {
@@ -373,7 +412,15 @@ export class TraceRepository extends EventEmitter {
     const appended = [];
     for (const [traceFile, events] of eventsByFile) {
       const store = await this.ensureStore(traceFile);
-      appended.push(...store.append(events));
+      const written = store.append(events);
+      // Derived session/version views are rebuilt from the store listener on
+      // its next poll. Track capture versions here too so health is correct
+      // immediately; indexEvent de-duplicates by id, so the later poll is a
+      // no-op for the same event.
+      for (const event of written) {
+        this.trackCaptureVersion(event);
+      }
+      appended.push(...written);
     }
     return appended;
   }

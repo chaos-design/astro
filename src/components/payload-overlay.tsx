@@ -24,7 +24,9 @@ import { renderMarkdownPreview } from "@/lib/markdown-preview";
 import {
   contentToMarkdown,
   fallbackPayloadMarkdown,
+  isFoldableRelatedValue,
   orderRelated,
+  RELATED_VALUE_MAX_CHARS,
   splitPayloadPreview,
 } from "@/lib/payload-preview";
 import { payloadToMarkdown } from "@/lib/payload-markdown";
@@ -33,6 +35,46 @@ import type { TracePairLink } from "@/lib/trace-model";
 import type { TracePayload } from "@/types/trace";
 
 type PayloadViewMode = "preview" | "code";
+
+/**
+ * One related-data value. Long values fold behind their own control so a
+ * single captured path or blob cannot force the whole pane to be expanded —
+ * short timestamps and ids beside it stay readable either way. The fold is
+ * local to this value and resets when the row changes (keyed by field key).
+ */
+function RelatedValue({ value }: { value: string }) {
+  const foldable = isFoldableRelatedValue(value);
+  const [expanded, setExpanded] = useState(false);
+  if (!foldable) {
+    return <>{value}</>;
+  }
+  return (
+    <>
+      <span
+        className={cn(
+          "payload-overlay__field-text",
+          !expanded && "is-folded",
+        )}
+      >
+        {expanded ? value : `${value.slice(0, RELATED_VALUE_MAX_CHARS)}…`}
+      </span>
+      <button
+        aria-expanded={expanded}
+        className="payload-overlay__field-more"
+        onClick={() => setExpanded((current) => !current)}
+        title={expanded ? "收起该值" : "展开该值全文"}
+        type="button"
+      >
+        {expanded ? "收起" : "展开"}
+        {expanded ? (
+          <ChevronUp aria-hidden="true" />
+        ) : (
+          <ChevronDown aria-hidden="true" />
+        )}
+      </button>
+    </>
+  );
+}
 
 /**
  * One row of the overlay's left rail: a LOG-standard view of one trace event
@@ -204,10 +246,6 @@ export function PayloadOverlay({
   // separator, and a turn whose rows all miss simply disappears.
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
-  // The related-data pane folds by default: its body is capped so the content
-  // pane keeps the room, and one toggle expands it downward (and collapses it
-  // again). Sticky per dialog — the reader is comparing fields across rows.
-  const [relatedExpanded, setRelatedExpanded] = useState(false);
   // Reverse execution order: the newest / last event sits at the top so the
   // first step of the run is at the bottom, like RUN HISTORY and the LOG.
   // Turn separators split the flat list wherever the turn changes — newest
@@ -536,33 +574,8 @@ export function PayloadOverlay({
                 <section className="payload-overlay__pane payload-overlay__pane--related">
                   <div className="payload-overlay__pane-head">
                     <h4 className="payload-overlay__pane-title">相关数据</h4>
-                    {preview.related.length ? (
-                      <button
-                        aria-expanded={relatedExpanded}
-                        className="payload-overlay__related-toggle"
-                        onClick={() => setRelatedExpanded((current) => !current)}
-                        title={
-                          relatedExpanded
-                            ? "收起相关数据"
-                            : "向下展开全部相关数据"
-                        }
-                        type="button"
-                      >
-                        {relatedExpanded ? "收起" : "展开"}
-                        {relatedExpanded ? (
-                          <ChevronUp aria-hidden="true" />
-                        ) : (
-                          <ChevronDown aria-hidden="true" />
-                        )}
-                      </button>
-                    ) : null}
                   </div>
-                  <div
-                    className={cn(
-                      "payload-overlay__body payload-overlay__related-body",
-                      !relatedExpanded && preview.related.length > 0 && "is-folded",
-                    )}
-                  >
+                  <div className="payload-overlay__body payload-overlay__related-body">
                     {preview.related.length ? (
                       <dl className="payload-overlay__fields">
                         {preview.related.map((field) => (
@@ -574,7 +587,7 @@ export function PayloadOverlay({
                             key={field.key}
                           >
                             <dt title={field.key}>{field.label}</dt>
-                            <dd>{field.value}</dd>
+                            <dd><RelatedValue value={field.value} /></dd>
                           </div>
                         ))}
                       </dl>

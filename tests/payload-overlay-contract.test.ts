@@ -369,8 +369,8 @@ test("the rail filters its chain through a local search box", () => {
 
 /**
  * The two preview panes keep their titles pinned: 「原子内容」 / 「相关数据」
- * stay put while their bodies scroll under them. The related pane's head also
- * carries its fold toggle.
+ * stay put while their bodies scroll under them. The related pane has no
+ * section-wide fold — each value folds on its own instead.
  */
 test("the pane titles stay pinned while their bodies scroll", () => {
   assert.match(
@@ -381,35 +381,40 @@ test("the pane titles stay pinned while their bodies scroll", () => {
     stylesForOverlay,
     /\.payload-overlay__pane \.payload-overlay__body \{[\s\S]*?overflow: auto/,
   );
-  // The related pane wraps its fields in the same scrolling body, under a
-  // head that carries the fold toggle.
   assert.match(
     overlay,
     /payload-overlay__pane-head">\s*\n\s*<h4 className="payload-overlay__pane-title">相关数据<\/h4>/,
   );
   assert.match(
     overlay,
-    /payload-overlay__pane-title">相关数据<\/h4>[\s\S]*?<div\s*\n?\s*className=\{cn\(\s*\n\s*"payload-overlay__body payload-overlay__related-body"/,
+    /payload-overlay__pane-title">相关数据<\/h4>[\s\S]*?<div\s*\n?\s*className="payload-overlay__body payload-overlay__related-body"/,
   );
 });
 
 /**
- * The related pane folds by default: its body is capped so the content pane
- * keeps the room, and one toggle expands it downward (and collapses again).
+ * Folding is per related-data value, not per pane: a long path or blob gets
+ * its own 展开 control while the short fields beside it stay readable. No
+ * pane-wide cap may reappear — that was the bug this replaced.
  */
-test("the related data folds behind an expand toggle", () => {
-  assert.match(overlay, /const \[relatedExpanded, setRelatedExpanded\] = useState\(false\)/);
-  assert.match(overlay, /aria-expanded=\{relatedExpanded\}/);
-  assert.match(overlay, /\{relatedExpanded \? "收起" : "展开"\}/);
-  assert.match(
-    overlay,
-    /!relatedExpanded && preview\.related\.length > 0 && "is-folded"/,
+test("related values fold individually, never the whole pane", () => {
+  const preview = readFileSync(
+    new URL("../src/lib/payload-preview.ts", import.meta.url),
+    "utf8",
   );
-  assert.match(
-    stylesForOverlay,
-    /\.payload-overlay__related-body\.is-folded \{\s*\n\s*max-height: 200px;/,
-  );
-  assert.match(stylesForOverlay, /\.payload-overlay__related-toggle \{/);
+  assert.match(preview, /export const RELATED_VALUE_MAX_CHARS = 200;/);
+  assert.match(preview, /export function isFoldableRelatedValue/);
+  // A per-value component owns its own expanded state.
+  assert.match(overlay, /function RelatedValue\(\{ value \}: \{ value: string \}\)/);
+  assert.match(overlay, /const \[expanded, setExpanded\] = useState\(false\)/);
+  assert.match(overlay, /isFoldableRelatedValue\(value\)/);
+  assert.match(overlay, /value\.slice\(0, RELATED_VALUE_MAX_CHARS\)/);
+  assert.match(overlay, /<dd><RelatedValue value=\{field\.value\} \/><\/dd>/);
+  assert.match(overlay, /className="payload-overlay__field-more"/);
+  // The old section-wide fold is gone.
+  assert.doesNotMatch(overlay, /relatedExpanded/);
+  assert.doesNotMatch(overlay, /related-toggle/);
+  assert.doesNotMatch(stylesForOverlay, /\.payload-overlay__related-body\.is-folded/);
+  assert.doesNotMatch(stylesForOverlay, /\.payload-overlay__related-toggle \{/);
 });
 
 /**

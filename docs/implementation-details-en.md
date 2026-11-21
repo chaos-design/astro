@@ -321,7 +321,11 @@ from `package.json` or the installed runtime's `plugin.json`), **process**
 trace files, data root) and **sessions** (`active` / `waiting` / `complete` /
 `failed` / `terminated`). A console/service version mismatch is called out; an
 unreadable manifest reports "not reported" with the reason instead of a bare
-`unknown`.
+`unknown`, and a **capture plugins** group (`/api/health.captureVersions`: the
+long-lived capture-adapter version that actually wrote each source's events).
+opencode / pi stamp their own `package.json` version on every event as
+`payload.captureVersion`; two versions for one source means a reinstall the old
+process has not picked up, and the card tells the reader to restart the session.
 
 ### Guide and log controls
 

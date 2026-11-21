@@ -591,7 +591,14 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   `package.json` first and the installed runtime's `plugin.json` second (the
   installer copies no package manifest), so an installed service can report its
   release instead of `unknown`. A mismatch is called out, and an unreadable
-  manifest renders "未上报" with the reason — never a bare `unknown`.
+  manifest renders "未上报" with the reason — never a bare `unknown`. A **capture plugins** group reports
+  `/api/health.captureVersions`: the long-lived adapters (opencode / pi) stamp
+  their own `package.json` version as `payload.captureVersion` on every event
+  (single source of truth = that adapter's manifest), the service aggregates it
+  per source, and two versions for one source flag a reinstall the running
+  process has not picked up — the card says restart the session. This makes
+  installed-vs-running drift observable instead of inferred from a symptom like
+  "messages not syncing".
 - The card's restart button is honest about the browser boundary. With a live
   health response it posts `/api/restart` and waits for the new pid; with no
   service it does **not** fetch a dead port — it copies

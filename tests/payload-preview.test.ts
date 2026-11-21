@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   contentToMarkdown,
+  isFoldableRelatedValue,
   orderRelated,
+  RELATED_VALUE_MAX_CHARS,
   splitPayloadPreview,
 } from "../src/lib/payload-preview.ts";
 
@@ -70,4 +72,10 @@ test("orders annotations before the other related fields", () => {
   const ordered = orderRelated(preview.related);
   assert.equal(ordered[0].annotation, true);
   assert.equal(ordered[0].key, "comment");
+});
+
+test("only values past the limit fold, each on its own", () => {
+  assert.equal(isFoldableRelatedValue("a".repeat(RELATED_VALUE_MAX_CHARS)), false);
+  assert.equal(isFoldableRelatedValue("a".repeat(RELATED_VALUE_MAX_CHARS + 1)), true);
+  assert.equal(isFoldableRelatedValue("2026-11-11T02:25:25.256Z"), false);
 });

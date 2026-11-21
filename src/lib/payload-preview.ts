@@ -196,6 +196,17 @@ export type RelatedField = {
   annotation: boolean;
 };
 
+/**
+ * A related-data value longer than this is folded behind its own 展开 control.
+ * Folding is per value, never per pane: a long path must not hide the short
+ * timestamps beside it.
+ */
+export const RELATED_VALUE_MAX_CHARS = 200;
+
+export function isFoldableRelatedValue(value: string): boolean {
+  return value.length > RELATED_VALUE_MAX_CHARS;
+}
+
 export type PayloadPreview = {
   /** Markdown source for the atom's real content; empty when there is none. */
   content: string;

@@ -583,6 +583,12 @@
   called out, and `build: "unknown"` renders as "not reported" plus the reason
   (started from source, or an older install without a manifest) instead of a
   bare `unknown` the reader has to interpret.
+ - Long-lived adapters (opencode / pi) stamp their own `package.json` version as
+   `payload.captureVersion`; the service aggregates it per source into
+   `/api/health.captureVersions` and the card shows which version actually wrote
+   each client's events. Two versions for one source means a reinstall whose old
+   process is still running — prompt a session restart. The adapter's own
+   manifest is the single source of truth; no expected version is hardcoded.
 - Every icon button keeps an `aria-label`, but a **tooltip is opt-in**: add one
   only when the glyph cannot carry the action by itself (the chevrons that say
   *which* panel collapses, the action menu, the topology/trajectory switches)

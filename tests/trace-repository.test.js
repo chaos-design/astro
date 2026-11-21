@@ -148,3 +148,37 @@ test("snapshot key identifies the history and changes with it", async () => {
   repository.stop();
   rmSync(root, { recursive: true, force: true });
 });
+
+test("tracks per-source capture versions and flags drift after a reinstall", async () => {
+  const root = mkdtempSync(join(tmpdir(), "astro-repository-version-"));
+  const repository = new TraceRepository(
+    { ASTRO_HOME: root },
+    { discoveryInterval: 20, pollInterval: 20 },
+  );
+  await repository.initialize();
+  const event = (id, version, at) => ({
+    id,
+    source: "opencode",
+    sessionId: "session",
+    eventName: "SessionStart",
+    capturedAt: at,
+    payload: { captureVersion: version },
+  });
+  try {
+    assert.deepEqual(repository.getCaptureVersions(), {});
+    await repository.append([
+      event("old", "0.0.3", "2026-11-01T08:00:00.000Z"),
+      event("fresh", "0.0.5", "2026-11-02T08:00:00.000Z"),
+    ]);
+    const versions = repository.getCaptureVersions().opencode;
+    assert.deepEqual(
+      versions.map((entry) => entry.version),
+      ["0.0.5", "0.0.3"],
+      "newest capture version first",
+    );
+    assert.equal(versions.length, 2, "two versions = stale process drift");
+  } finally {
+    repository.stop();
+    rmSync(root, { recursive: true, force: true });
+  }
+});

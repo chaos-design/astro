@@ -35,6 +35,19 @@ const recorderCandidates = [
 const source = "opencode";
 const flushIntervalMs = 150;
 
+// The installed adapter's own manifest is the single source of truth for which
+// capture code wrote an event. Stamping it lets the console see a stale process
+// still emitting an old version after a reinstall (the restart gap that made
+// an outdated plugin look like "messages not syncing").
+const pluginRequire = createRequire(import.meta.url);
+const captureVersion = (() => {
+  try {
+    return String(pluginRequire("./package.json").version || "");
+  } catch {
+    return "";
+  }
+})();
+
 /**
  * A session is recorded by exactly one plugin instance. OpenCode can keep an
  * event subscription alive per location across configuration reloads, so the
@@ -126,7 +139,7 @@ export default {
     };
 
     const enqueue = (payload: AstroPayload) => {
-      queue.push(payload);
+      queue.push(captureVersion ? { ...payload, captureVersion } : payload);
       timer ??= setTimeout(flush, flushIntervalMs);
     };
 

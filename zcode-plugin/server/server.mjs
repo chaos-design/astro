@@ -753,6 +753,7 @@ async function handleRequest(request, response) {
       clientCount: clients.size,
       eventCount: store.getEventCount(),
       sessionCounts: store.getSessionStateCounts(),
+      captureVersions: store.getCaptureVersions(),
       dataRoot,
       traceFiles: store.getTraceFiles(),
       build: appBuild,

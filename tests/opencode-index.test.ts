@@ -101,6 +101,11 @@ test("session.text.delta emits a throttled streamed AgentMessage snapshot", asyn
   assert.equal(streamed.length, 1, "one in-flight snapshot inside the window");
   assert.equal(streamed[0].payload.message, "Hel");
   assert.equal(streamed[0].sessionId, "ses_index");
+  // Every event carries the installed adapter's own version, making a stale
+  // (reinstalled but not restarted) process observable in /api/health.
+  for (const event of events) {
+    assert.equal(event.payload.captureVersion, "0.0.5", event.eventName);
+  }
 });
 
 test("durable events without a location envelope use the remembered directory", async () => {

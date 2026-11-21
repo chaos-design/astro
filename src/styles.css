@@ -1110,6 +1110,44 @@ pre,
   line-height: 1.55;
 }
 
+.service-card__capture-versions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+}
+
+.service-card__capture-versions > div {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: var(--text-meta);
+}
+
+.service-card__capture-versions dt {
+  color: var(--muted);
+  font-family: var(--font-mono);
+}
+
+.service-card__capture-versions dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-family: var(--font-mono);
+}
+
+.service-card__capture-versions > div[data-stale="true"] dd {
+  color: var(--status-waiting);
+}
+
+.service-card__empty {
+  margin: 0;
+  color: var(--muted-soft);
+  font-size: 9px;
+}
+
 .service-card__counts {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -5796,38 +5834,6 @@ pre,
   margin: 0;
 }
 
-.payload-overlay__related-toggle {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  gap: 3px;
-  padding: 1px 6px;
-  border: 1px solid color-mix(in srgb, var(--line-bright) 70%, transparent);
-  border-radius: 4px;
-  color: var(--muted);
-  cursor: pointer;
-  font-family: var(--font-mono);
-  font-size: var(--text-overline);
-  background: transparent;
-}
-
-.payload-overlay__related-toggle svg {
-  width: 9px;
-  height: 9px;
-}
-
-.payload-overlay__related-toggle:hover {
-  border-color: color-mix(in srgb, var(--violet) 45%, var(--line));
-  color: var(--text);
-}
-
-/* Folded, the related body caps its height so the content pane keeps the
-   room; expanding removes the cap and the fields grow downward inside the
-   pane (which still scrolls if the run's related data outruns it). */
-.payload-overlay__related-body.is-folded {
-  max-height: 200px;
-}
-
 .payload-overlay__pane .payload-overlay__body {
   flex: 1;
   min-height: 0;
@@ -5868,10 +5874,51 @@ pre,
 }
 
 .payload-overlay__field dd {
+  display: flex;
   min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
   margin: 0;
   overflow-wrap: anywhere;
   color: var(--text);
+}
+
+/* A long value folds to its first 200 characters with its own 展开 control;
+   the short fields around it are never hidden by a pane-wide fold. */
+.payload-overlay__field-text.is-folded {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+}
+
+.payload-overlay__field-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.payload-overlay__field-more {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+  padding: 0;
+  border: 0;
+  color: var(--violet);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: var(--text-overline);
+  background: transparent;
+}
+
+.payload-overlay__field-more svg {
+  width: 9px;
+  height: 9px;
+}
+
+.payload-overlay__field-more:hover {
+  color: var(--text-strong);
 }
 
 .payload-overlay__field.is-annotation {

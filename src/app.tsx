@@ -924,6 +924,8 @@ type ServiceHealth = {
   clientCount: number;
   eventCount: number;
   sessionCounts: Record<string, number>;
+  /** Per-source capture-adapter versions observed in loaded events. */
+  captureVersions: Record<string, Array<{ version: string; lastSeenAt: number }>>;
   dataRoot: string;
   traceFiles: string[];
   build: string;
@@ -1155,6 +1157,35 @@ function ServiceStatus({
             <p className="service-card__notice">
               服务未上报版本号：它从源码目录或缺少清单文件的旧安装启动。重启服务会重新
               读取 package.json / plugin.json。
+            </p>
+          ) : null}
+        </section>
+
+        <section className="service-card__group">
+          <h4>采集插件版本</h4>
+          {service && Object.keys(service.captureVersions || {}).length ? (
+            <dl className="service-card__capture-versions">
+              {Object.entries(service.captureVersions).map(([source, versions]) => {
+                const stale = versions.length > 1;
+                return (
+                  <div key={source} data-stale={stale}>
+                    <dt>{source}</dt>
+                    <dd>
+                      {versions.map((entry) => `v${entry.version}`).join(" / ")}
+                    </dd>
+                  </div>
+                );
+              })}
+            </dl>
+          ) : (
+            <p className="service-card__empty">暂无带版本的采集事件。</p>
+          )}
+          {service && Object.values(service.captureVersions || {}).some(
+            (versions) => versions.length > 1,
+          ) ? (
+            <p className="service-card__notice">
+              同一客户端出现多个采集版本：重装插件后仍有旧进程在写入。重启对应的
+              Agent 会话（或 opencode service）让新代码生效。
             </p>
           ) : null}
         </section>
