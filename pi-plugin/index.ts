@@ -7,6 +7,7 @@ import { claimSession } from "./claim.ts";
 import {
   isTerminalEventName,
   mapPiEvent,
+  readPiLiveText,
   type AstroPayload,
 } from "./mapping.ts";
 
@@ -108,6 +109,14 @@ export default function (pi: PiExtensionApi) {
   const sessionCwds = new Map<string, string>();
   // A closed turn reports one terminal event; an identical re-fire is noise.
   const lastTerminal = new Map<string, string>();
+  // Pi emits no start→delta stream to the console: only `message_end` used to
+  // write the whole text, so the reader saw nothing until the step finished.
+  // Accumulate the live text per message and enqueue throttled snapshots, the
+  // same way opencode turns `session.text.delta` into AgentMessage snapshots.
+  // Reading the accumulated text from each update (not blind delta append)
+  // keeps every snapshot a prefix of the final message_end text.
+  const liveText = new Map<string, { text: string; lastAt: number }>();
+  const liveTextIntervalMs = 800;
   const mappingContext: { pendingPrompt?: string } = {};
   let queue: AstroPayload[] = [];
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -167,6 +176,48 @@ export default function (pi: PiExtensionApi) {
         }
       }
 
+      // Live assistant text. `message_start` opens a new buffer, each update
+      // advances it and emits a throttled snapshot, and `message_end` clears
+      // it before the final complete AgentMessage is written below. Snapshots
+      // are non-terminal, so they never touch the terminal dedupe set.
+      if (
+        type === "message_start" ||
+        type === "message_update" ||
+        type === "message_end"
+      ) {
+        const live = readPiLiveText(event);
+        const key = `${sessionId}:${live.messageId || "default"}`;
+        if (type === "message_start") {
+          liveText.delete(key);
+          return;
+        }
+        if (type === "message_end") {
+          liveText.delete(key);
+        } else {
+          const state = liveText.get(key) ?? { text: "", lastAt: 0 };
+          if (live.text !== null) {
+            state.text = live.text;
+          } else if (live.delta) {
+            state.text += live.delta;
+          } else {
+            return;
+          }
+          const now = Date.now();
+          if (now - state.lastAt >= liveTextIntervalMs) {
+            state.lastAt = now;
+            enqueue({
+              eventName: "AgentMessage",
+              sessionId,
+              cwd,
+              message: state.text,
+              streamed: true,
+            });
+          }
+          liveText.set(key, state);
+          return;
+        }
+      }
+
       const payloads = mapPiEvent(type, event, mappingContext);
       for (const payload of payloads) {
         if (isTerminalEventName(payload.eventName)) {
@@ -189,6 +240,8 @@ export default function (pi: PiExtensionApi) {
     "session_start",
     "input",
     "before_agent_start",
+    "message_start",
+    "message_update",
     "message_end",
     "tool_call",
     "tool_result",

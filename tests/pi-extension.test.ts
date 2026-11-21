@@ -53,6 +53,8 @@ test("observes the expected Pi lifecycle events", () => {
     "session_start",
     "input",
     "before_agent_start",
+    "message_start",
+    "message_update",
     "message_end",
     "tool_call",
     "tool_result",
@@ -149,6 +151,97 @@ test("records a session into the pi trace root and claims it", async () => {
       assert.equal(event.source, "pi");
       assert.equal(event.cwd, "/tmp/astro-pi-smoke");
     }
+  } finally {
+    if (previousHome === undefined) {
+      delete process.env.ASTRO_HOME;
+    } else {
+      process.env.ASTRO_HOME = previousHome;
+    }
+    if (previousAutoOpen === undefined) {
+      delete process.env.ASTRO_AUTO_OPEN;
+    } else {
+      process.env.ASTRO_AUTO_OPEN = previousAutoOpen;
+    }
+    rmSync(astroHome, { recursive: true, force: true });
+  }
+});
+
+test("streams accumulated text while the agent is still executing", async () => {
+  const astroHome = mkdtempSync(join(tmpdir(), "astro-pi-live-home-"));
+  const previousHome = process.env.ASTRO_HOME;
+  const previousAutoOpen = process.env.ASTRO_AUTO_OPEN;
+  process.env.ASTRO_HOME = astroHome;
+  process.env.ASTRO_AUTO_OPEN = "0";
+  const handlers = loadExtension();
+  const ctx = createContext();
+  const update = (text: string) =>
+    handlers.get("message_update")!(
+      {
+        message: {
+          id: "msg-live",
+          role: "assistant",
+          content: [{ type: "text", text }],
+        },
+      },
+      ctx,
+    );
+  try {
+    await handlers.get("session_start")!({}, ctx);
+    await handlers.get("input")!({ text: "write code" }, ctx);
+    await handlers.get("before_agent_start")!({ prompt: "write code" }, ctx);
+    await handlers.get("message_start")!(
+      { message: { id: "msg-live", role: "assistant" } },
+      ctx,
+    );
+    // First update emits immediately; the next one lands inside the throttle
+    // window, so only one in-flight snapshot is written.
+    await update("Hel");
+    await update("Hello");
+    await handlers.get("message_end")!(
+      {
+        message: {
+          id: "msg-live",
+          role: "assistant",
+          content: [{ type: "text", text: "Hello world" }],
+          stopReason: "stop",
+        },
+      },
+      ctx,
+    );
+    await handlers.get("session_shutdown")!({}, ctx);
+
+    const eventsFile = collectFiles(astroHome).find((file) =>
+      file.endsWith("events.jsonl"),
+    );
+    assert.ok(eventsFile, "events.jsonl under the pi trace root");
+    const events = readFileSync(eventsFile, "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    assert.deepEqual(
+      events.map((event) => event.eventName),
+      [
+        "SessionStart",
+        "UserPromptSubmit",
+        "AgentMessage",
+        "AgentMessage",
+        "Stop",
+        "SessionEnd",
+      ],
+    );
+    const streamed = events.filter((event) => event.payload.streamed === true);
+    assert.equal(streamed.length, 1, "one throttled in-flight snapshot");
+    assert.equal(streamed[0].payload.message, "Hel");
+    const final = events.filter(
+      (event) =>
+        event.eventName === "AgentMessage" &&
+        event.payload.streamed === undefined,
+    );
+    assert.equal(final.length, 1, "one final complete message");
+    assert.equal(final[0].payload.message, "Hello world");
+    // Every in-flight snapshot must be a prefix of the final text: that is
+    // what "consistent" means here — no drift between live and recorded.
+    assert.ok("Hello world".startsWith(streamed[0].payload.message));
   } finally {
     if (previousHome === undefined) {
       delete process.env.ASTRO_HOME;

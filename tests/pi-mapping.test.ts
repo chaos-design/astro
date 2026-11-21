@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   isTerminalEventName,
   mapPiEvent,
+  readPiLiveText,
   type PiMappingContext,
 } from "../pi-plugin/mapping.ts";
 
@@ -228,6 +229,37 @@ test("compaction and shutdown map to the canonical lifecycle", () => {
   assert.deepEqual(mapPiEvent("session_shutdown", {}, {}), [
     { eventName: "SessionEnd" },
   ]);
+});
+
+test("live text prefers the accumulated message so snapshots stay a prefix", () => {
+  const live = readPiLiveText({
+    message: {
+      id: "msg-7",
+      role: "assistant",
+      content: [{ type: "text", text: "partial answer" }],
+    },
+    assistantMessageEvent: { type: "text_delta", delta: "stale delta" },
+  });
+  assert.deepEqual(live, {
+    messageId: "msg-7",
+    text: "partial answer",
+    delta: "",
+  });
+});
+
+test("live text falls back to an incremental delta and carries the message id", () => {
+  assert.deepEqual(
+    readPiLiveText({
+      messageId: "msg-8",
+      assistantMessageEvent: { type: "text_delta", delta: " more" },
+    }),
+    { messageId: "msg-8", text: null, delta: " more" },
+  );
+  assert.deepEqual(readPiLiveText({ delta: 42 }), {
+    messageId: "",
+    text: null,
+    delta: "",
+  });
 });
 
 test("unmapped events return empty payloads", () => {

@@ -1091,7 +1091,16 @@ use Node.js ES modules or CommonJS according to their existing file extension.
 - Assistant `message_end` derives the terminal event from `stopReason`
   (`error` → `StopFailure`, `aborted` → `Interrupt`, `stop`/`length` →
   `Stop`); `toolUse` keeps the run active. `tool_call` / `tool_result` carry
-  the tool lifecycle; message and tool execution deltas stay unmapped.
+  the tool lifecycle. `message_start` / `message_update` keep the console's
+  text in sync while the step is still executing: the extension accumulates
+  live text per message id (reading the update's accumulated text first, so
+  every snapshot is a prefix of the final `message_end` text — re-fired or
+  reordered deltas cannot drift the two apart) and enqueues throttled
+  `AgentMessage{streamed:true}` snapshots every 800ms, the same carrier
+  opencode derives from `session.text.delta`. `message_end` clears the buffer
+  and writes the one complete message with its model / provider / usage.
+  `message_update` stays unmapped in `mapping.ts`; the accumulation lives in
+  `index.ts`, not the pure mapping layer. Tool execution deltas stay unmapped.
 - Pi sessions are resumable, so claim files record the owning pid and a later
   Pi process takes a session over only after the previous owner exits.
 - The extension reads event shapes defensively (Pi adds fields across
