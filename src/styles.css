@@ -8729,10 +8729,14 @@ pre,
   width: 100%;
 }
 
+/* Keep the title and its 必答 / 可多选 badges together on the left, the same
+   grouping as the docked `question-surface__heading`. `space-between` pushed
+   the badges to the far edge of a wide floating card and left a misleading
+   gap that read like the badges belonged to the next question. */
 .interaction-panel__question-heading {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 8px;
 }
 
@@ -8918,6 +8922,7 @@ pre,
 .question-surface__heading {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 6px;
 }
 

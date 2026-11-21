@@ -98,6 +98,18 @@ test("the read-only preview leads with a count and numbers each question", () =>
   assert.match(styles, /\.question-surface__item\.is-answered \{/);
 });
 
+test("floating and docked question headings group title and badges on the left", () => {
+  const floating = styles.match(
+    /\.interaction-panel__question-heading \{([^}]*)\}/,
+  )?.[1] ?? "";
+  const docked = styles.match(/\.question-surface__heading \{([^}]*)\}/)?.[1] ?? "";
+  assert.match(floating, /justify-content:\s*flex-start/);
+  assert.doesNotMatch(floating, /space-between/);
+  // Both placements state it explicitly so they cannot drift apart again.
+  assert.match(docked, /justify-content:\s*flex-start/);
+  assert.doesNotMatch(docked, /space-between/);
+});
+
 test("a captured answer gets a stronger selected chip in the preview", () => {
   assert.match(styles, /\.question-options__option\.is-static\.is-selected \{/);
   const matches = [
