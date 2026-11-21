@@ -33,6 +33,15 @@ export type PayloadOverlayAtom = {
   tone?: string;
   /** How many events the atom accumulated, when more than one. */
   count?: number;
+  /** `#001` style row number from the shared LOG formatter. */
+  sequence?: string;
+  /** LOG-style captured time of the atom's bound event. */
+  timestamp?: string;
+  dateLabel?: string;
+  clockLabel?: string;
+  /** LOG-style action prefix and one-line summary. */
+  action?: string;
+  summary?: string;
 };
 
 /**
@@ -171,7 +180,7 @@ export function PayloadOverlay({
                         aria-current={selected ? "true" : undefined}
                         aria-label={`${atom.index} ${atom.label} · ${atom.key}`}
                         className={cn(
-                          "payload-overlay__atom",
+                          "atomic-log__row payload-overlay__atom",
                           `tone-${atom.tone || "unknown"}`,
                           selected && "is-selected",
                           running && !selected && "is-running",
@@ -186,35 +195,46 @@ export function PayloadOverlay({
                         title={details}
                         type="button"
                       >
-                        <span className="payload-overlay__atom-seq">
-                          {String(atom.index).padStart(2, "0")}
+                        <span className="log-sequence">
+                          {atom.sequence ?? `#${String(atom.index).padStart(3, "0")}`}
                         </span>
-                        <span
+                        <i
                           aria-hidden="true"
-                          className="payload-overlay__atom-dot"
+                          className="phase-dot"
                           data-status={atom.status}
                         />
-                        <span className="payload-overlay__atom-copy">
-                          <span className="payload-overlay__atom-label">
-                            {atom.type ? (
-                              <span className="payload-overlay__atom-type">
-                                {atom.type}
-                              </span>
-                            ) : null}
-                            {atom.label}
-                          </span>
-                          <span className="payload-overlay__atom-key">
-                            {atom.key}
-                          </span>
-                        </span>
-                        {atom.count && atom.count > 1 ? (
-                          <span
-                            aria-label={`${atom.count} 个事件`}
-                            className="payload-overlay__atom-count"
-                          >
-                            ×{atom.count}
-                          </span>
+                        <strong className="atomic-log__name">
+                          {atom.type ? (
+                            <span
+                              className="atomic-log__type payload-overlay__atom-type"
+                              title={`原子类型 ${atom.type} · ${atom.key}`}
+                            >
+                              {atom.type}
+                            </span>
+                          ) : null}
+                          <span className="atomic-log__key">{atom.key}</span>
+                        </strong>
+                        {atom.timestamp ? (
+                          <time dateTime={atom.timestamp} title={atom.timestamp}>
+                            <span>{atom.dateLabel}</span>
+                            {atom.clockLabel}
+                          </time>
                         ) : null}
+                        <small>
+                          <span>{atom.action || atom.status}</span>
+                          <span className="atomic-log__summary">
+                            {atom.summary || atom.label}
+                          </span>
+                          {atom.count && atom.count > 1 ? (
+                            <span
+                              aria-label={`${atom.count} 个事件`}
+                              className="payload-overlay__atom-count"
+                              title={`${atom.count} 个事件`}
+                            >
+                              ×{atom.count}
+                            </span>
+                          ) : null}
+                        </small>
                       </button>
                     </li>
                   );

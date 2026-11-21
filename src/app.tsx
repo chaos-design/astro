@@ -6896,18 +6896,29 @@ export default function App() {
   // so the overlay needs no knowledge of TraceEvent / HarnessNodeData.
   const overlayAtoms = useMemo(
     () =>
-      harnessFlow.nodes.map((node) => ({
-        id: node.id,
-        index: node.data.index + 1,
-        key: node.data.key,
-        label: node.data.label,
-        status: node.data.status,
-        // The TYPE badge reads the same atom-type definition as LOG and the
-        // trajectory hover card; tone/colour follows the LOG row's mapping.
-        type: atomTypeLabel(node.data.key, node.data.kind),
-        tone: node.data.meta.tone,
-        count: node.data.count,
-      })),
+      harnessFlow.nodes.map((node) => {
+        const boundEvent = node.data.event ?? node.data.startEvent;
+        return {
+          id: node.id,
+          index: node.data.index + 1,
+          key: node.data.key,
+          label: node.data.label,
+          status: node.data.status,
+          // The rail reuses the LOG row's markup and helpers, so its number,
+          // TYPE badge, time and summary read exactly like a LOG line.
+          sequence: formatLogSequence(node.data.index + 1),
+          timestamp: boundEvent?.capturedAt,
+          dateLabel: boundEvent ? formatDate(boundEvent.capturedAt) : "",
+          clockLabel: boundEvent ? formatClock(boundEvent.capturedAt) : "",
+          action: boundEvent ? getEventAction(boundEvent) : undefined,
+          summary: boundEvent ? getEventSummary(boundEvent) : "",
+          // The TYPE badge reads the same atom-type definition as LOG and the
+          // trajectory hover card; tone/colour follows the LOG row's mapping.
+          type: atomTypeLabel(node.data.key, node.data.kind),
+          tone: node.data.meta.tone,
+          count: node.data.count,
+        };
+      }),
     [harnessFlow.nodes],
   );
   // The question the inspector shows is also the question an answer must be

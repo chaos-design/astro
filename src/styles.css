@@ -5782,169 +5782,82 @@ pre,
   scrollbar-color: var(--line-bright) transparent;
 }
 
-/* The rail borrows the LOG row's visual grammar: one sequence column, one
-   tone dot, a violet TYPE hairline, and the same hover / running / selected
-   accents. Status colours still come from the atom's status, so a waiting
-   question keeps its amber dot while its tone stays the question tone. */
-.payload-overlay__atom {
-  --atom-tone: var(--muted-soft);
-
-  display: grid;
-  width: 100%;
-  min-width: 0;
-  grid-template-columns: 24px 7px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 6px;
-  padding: 7px 6px;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--muted);
-  text-align: left;
-  cursor: pointer;
-  transition:
-    border-color 150ms ease,
-    background 150ms ease,
-    box-shadow 150ms ease;
+/* The rail reuses the LOG row itself (`.atomic-log__row`) instead of growing
+   a second row imitation: sequence, tone dot, TYPE badge, event key, timestamp
+   and the action / summary line all come from the LOG markup. Only the narrow
+   rail's column widths and the atom's recorded status dot are local. */
+.payload-overlay__rail .atomic-log__row {
+  grid-template-columns: 32px 6px minmax(0, 1fr) 62px;
+  gap: 4px;
+  padding: 6px 4px;
 }
 
-.payload-overlay__atom:hover,
-.payload-overlay__atom:focus-visible {
-  outline: none;
-  border-color: color-mix(in srgb, var(--atom-tone) 58%, var(--line));
-  background: color-mix(in srgb, var(--atom-tone) 7%, var(--panel-hover));
-  box-shadow: inset 2px 0 var(--atom-tone);
-  color: var(--text);
-}
-
-.payload-overlay__atom.is-running {
-  border-color: color-mix(in srgb, var(--atom-tone) 62%, var(--line-bright));
-  background: color-mix(in srgb, var(--atom-tone) 9%, var(--panel-raised));
-  box-shadow: inset 2px 0 var(--atom-tone);
-  color: var(--text);
-}
-
-.payload-overlay__atom.is-selected {
-  border-color: var(--selection-border);
-  background: var(--selection-bg);
-  box-shadow:
-    inset 3px 0 var(--selection-border),
-    0 0 5px color-mix(in srgb, var(--selection-glow) 62%, transparent);
-  color: var(--selection-text);
-}
-
-.payload-overlay__atom-seq {
-  color: var(--muted);
-  font-family: var(--font-mono);
-  font-size: var(--text-caption);
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-}
-
-.payload-overlay__atom-copy {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.payload-overlay__atom-label,
-.payload-overlay__atom-key {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 5px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.payload-overlay__atom-label {
-  color: var(--text);
-  font-size: var(--text-meta);
-  font-weight: var(--weight-medium);
-}
-
-.payload-overlay__atom-key {
-  color: var(--muted-soft);
-  font-family: var(--font-mono);
+.payload-overlay__rail .atomic-log__row time {
   font-size: var(--text-overline);
+  line-height: 1.4;
 }
 
-/* Same violet hairline badge as the LOG row; TYPE comes from atom-types.ts. */
-.payload-overlay__atom-type {
-  flex: 0 0 auto;
+.payload-overlay__rail .atomic-log__type {
   padding: 0 3px;
-  border: 1px solid color-mix(in srgb, var(--violet) 45%, var(--line));
-  border-radius: 3px;
-  color: var(--violet);
-  background: color-mix(in srgb, var(--violet-deep) 12%, transparent);
-  font-family: var(--font-mono);
-  font-size: var(--text-overline);
-  font-weight: var(--weight-medium);
-  line-height: 1.5;
+}
+
+/* The dot keeps the atom's recorded status even when its tone differs; LOG
+   uses tone only, a waiting question must still read amber here. */
+.payload-overlay__atom .phase-dot[data-status="running"],
+.payload-overlay__atom .phase-dot[data-status="active"] {
+  color: var(--status-running);
+  background: var(--status-running);
+  animation: dot-breathe 1.8s ease-in-out infinite;
+}
+
+.payload-overlay__atom .phase-dot[data-status="waiting"] {
+  color: var(--status-waiting);
+  background: var(--status-waiting);
+}
+
+.payload-overlay__atom .phase-dot[data-status="complete"] {
+  background: var(--status-completed);
+}
+
+.payload-overlay__atom .phase-dot[data-status="failed"] {
+  background: var(--status-failed);
 }
 
 .payload-overlay__atom-count {
   flex: 0 0 auto;
   padding: 0 3px;
   border-radius: 3px;
-  color: var(--atom-tone);
-  background: color-mix(in srgb, var(--atom-tone) 14%, transparent);
+  color: var(--log-tone);
+  background: color-mix(in srgb, var(--log-tone) 14%, transparent);
   font-family: var(--font-mono);
   font-size: var(--text-overline);
   font-variant-numeric: tabular-nums;
 }
 
-.payload-overlay__atom-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--muted-soft);
-}
-
-.payload-overlay__atom-dot[data-status="running"],
-.payload-overlay__atom-dot[data-status="active"] {
-  color: var(--status-running);
-  background: var(--status-running);
-  animation: dot-breathe 1.8s ease-in-out infinite;
-}
-
-.payload-overlay__atom-dot[data-status="waiting"] {
-  color: var(--status-waiting);
-  background: var(--status-waiting);
-}
-
-.payload-overlay__atom-dot[data-status="complete"] {
-  background: var(--status-completed);
-}
-
-.payload-overlay__atom-dot[data-status="failed"] {
-  background: var(--status-failed);
-}
-
+/* Same tone map as the LOG row, so a tool atom and a question atom keep their
+   colours across the canvas, the LOG and this rail. */
 .payload-overlay__atom.tone-prompt {
-  --atom-tone: var(--blue);
+  --log-tone: var(--blue);
 }
 
 .payload-overlay__atom.tone-agent,
 .payload-overlay__atom.tone-complete,
 .payload-overlay__atom.tone-session {
-  --atom-tone: var(--teal);
+  --log-tone: var(--teal);
 }
 
 .payload-overlay__atom.tone-reasoning,
 .payload-overlay__atom.tone-signal,
 .payload-overlay__atom.tone-gate {
-  --atom-tone: var(--violet);
+  --log-tone: var(--violet);
 }
 
 .payload-overlay__atom.tone-tool {
-  --atom-tone: var(--amber);
+  --log-tone: var(--amber);
 }
 
 .payload-overlay__atom.tone-failed {
-  --atom-tone: var(--red);
+  --log-tone: var(--red);
 }
 
 .payload-overlay__content {

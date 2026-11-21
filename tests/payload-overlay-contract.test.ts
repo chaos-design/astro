@@ -93,18 +93,22 @@ test("the overlay rail reads like the LOG row and lists atoms newest first", () 
   // Reverse display order: the first-executed atom sits at the bottom while
   // its `index` badge still reports the pipeline position.
   assert.match(overlay, /\[\.\.\.atoms\]\.reverse\(\)/);
-  assert.match(overlay, /String\(atom\.index\)\.padStart\(2, "0"\)/);
-  // One TYPE definition, shared with LOG / trajectory; tone and count make
-  // the rail readable without leaving the dialog.
+  assert.match(overlay, /atom\.sequence \?\? `#\$\{String\(atom\.index\)\.padStart\(3, "0"\)\}`/);
+  assert.match(bindingForOverlay, /formatLogSequence\(node\.data\.index \+ 1\)/);
+  // The rail is a LOG row, not a second row imitation: same grid, TYPE badge,
+  // time and action/summary line, with only narrow-rail column overrides.
+  assert.match(overlay, /"atomic-log__row payload-overlay__atom"/);
+  assert.match(overlay, /className="log-sequence"/);
+  assert.match(overlay, /className="atomic-log__name"/);
+  assert.match(overlay, /className="atomic-log__key"/);
+  assert.match(overlay, /<time dateTime=\{atom\.timestamp\}/);
+  assert.match(overlay, /className="atomic-log__summary"/);
+  assert.match(stylesForOverlay, /\.payload-overlay__rail \.atomic-log__row \{/);
   assert.match(overlay, /payload-overlay__atom-type/);
   assert.match(overlay, /`tone-\$\{atom\.tone \|\| "unknown"\}`/);
   assert.match(overlay, /payload-overlay__atom-count/);
   assert.match(overlay, /handleAtomKeyDown/);
-  assert.match(stylesForOverlay, /\.payload-overlay__atom\.tone-tool \{/);
-  assert.match(
-    stylesForOverlay,
-    /\.payload-overlay__atom\.is-running \{[\s\S]*?box-shadow: inset 2px 0 var\(--atom-tone\)/,
-  );
+  assert.match(stylesForOverlay, /\.payload-overlay__atom\.tone-tool \{[\s\S]*?--log-tone: var\(--amber\)/);
   assert.match(bindingForOverlay, /atomTypeLabel\(node\.data\.key, node\.data\.kind\)/);
   assert.match(bindingForOverlay, /tone: node\.data\.meta\.tone/);
 });

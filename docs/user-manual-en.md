@@ -650,9 +650,10 @@ The inspector provides:
   canvas stays on B. The selected row is highlighted and marked `aria-current`.
   The rail runs newest first: the last-executed atom sits at the top and the
   first-executed one at the bottom, while each row keeps its pipeline sequence
-  number. Rows borrow the LOG grammar — the shared `atomTypeLabel` TYPE badge,
-  atom tone for hover / running / selection, a status dot and an event count —
-  and Arrow / Home / End move focus between rows.
+  number. Each row is the same LOG row: sequence number, TYPE badge, event
+  key, timestamp and the action / summary line, with the selected row carrying
+  the same highlight; the recorded status still colours its dot. Arrow /
+  Home / End move focus between rows.
   The layer is global (portaled to the document body), but the rail is scoped to
   the current run and its content always follows that one selection.
 

@@ -814,10 +814,12 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   selection reactively. The rail renders **newest first** (`[...atoms].reverse()`
   in the dialog): the first-executed atom is at the bottom, matching RUN
   HISTORY and LOG, while each row keeps its original pipeline sequence number.
-  Its rows borrow the LOG grammar — the shared `atomTypeLabel` TYPE badge, the
-  atom tone for hover / running / selected accents, a status dot and an event
-  count — and support Arrow/Home/End navigation; `payload-overlay.tsx` must not
-  grow a second type taxonomy or tone map. The layer keeps **both readings behind one
+  Its rows **reuse the LOG row itself** (`.atomic-log__row`): shared
+  `formatLogSequence` number, `atomTypeLabel` TYPE badge, tone colour,
+  timestamp and action / summary, with only narrow-rail column widths and a
+  recorded-status dot overridden locally; `payload-overlay.tsx` must not grow a
+  second row implementation, type taxonomy or tone map. Arrow/Home/End move
+  focus between rows. The layer keeps **both readings behind one
   toggle**: `Preview` is the rendered content (Markdown headings, GFM task lists,
   highlighted code, question/option/answer lists) and `Code` is the untouched
   structured JSON, so a reader can check either shape without leaving the

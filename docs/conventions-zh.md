@@ -79,9 +79,10 @@
     与画布的 `handleCanvasSelectNode` 共用同一个提交点；弹窗不持有第二份选中态，
     只接收 `atoms` / `selectedAtomId` / `onSelectAtom`，内容随主控制台选中态响应式更新；
     左栏**倒序渲染**（弹窗内 `[...atoms].reverse()`），先执行的原子在下方，
-    序号仍保留流水线位置；行样式复用 LOG 的视觉语言（同一 `atomTypeLabel`
-    TYPE 徽标、tone 悬停/运行/选中强调、状态点、事件计数），方向键与 Home/End
-    可导航；
+    序号仍保留流水线位置；行直接复用 LOG 行组件（`.atomic-log__row`）——
+    同一 `formatLogSequence` 序号、`atomTypeLabel` TYPE 徽标、tone 色、
+    时间与动作/摘要，仅覆盖窄栏列宽与记录状态点；方向键与 Home/End 可导航，
+    弹窗不得另写一份行实现、类型表或 tone 映射；
     只读问题预览（`QuestionPreview` → `StaticQuestionContent`）先给问题数与
     捕获顺序提示，再给编号题目、作答状态与单独的已选答案行，静态选中 chip
     比实时选项更醒目；

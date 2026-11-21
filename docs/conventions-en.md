@@ -97,10 +97,11 @@
     follows the main console selection reactively. The rail renders newest
     first (`[...atoms].reverse()` inside the dialog), so the first-executed atom
     sits at the bottom while each row keeps its pipeline sequence number. Its
-    rows borrow the LOG grammar — the shared `atomTypeLabel` TYPE badge, atom
-    tone for hover / running / selected accents, a status dot and an event
-    count — with Arrow / Home / End navigation; `payload-overlay.tsx` must not
-    grow a second taxonomy or tone map. The read-only question preview
+    rows reuse the LOG row itself (`.atomic-log__row`) — shared sequence,
+    `atomTypeLabel` TYPE badge, tone, timestamp and action / summary — with
+    only narrow-rail column widths and a recorded-status dot overridden
+    locally; Arrow / Home / End move focus, and `payload-overlay.tsx` must not
+    grow a second row implementation, taxonomy or tone map. The read-only question preview
     (`QuestionPreview` → `StaticQuestionContent`) leads with a question count
     and capture-order hint, numbers each question, marks answered ones and
     prints the selected labels on their own line; static selected chips read
