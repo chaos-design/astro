@@ -1221,11 +1221,12 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   auto-approve answers immediately and makes the panel pointless.
 - Catalog entries for these docs live in `docs/index.md` and
   `site/src/docs.ts` (`sectionBySlug` + `readingOrder`).
-- `plans/planing/03-ask-user-question-implementation-breakdown.md` is the
-  executable backlog (32 tasks, A1–F5). 31 are ticked; F3 (real Claude / ZCode
-  host acceptance) is blocked because this machine has no host binary, so the
-  plan is not archived. Do not write "host acceptance passed" anywhere before
-  F3 is done.
+- `plans/pending/03-ask-user-question-implementation-breakdown.md` is the
+  executable backlog (32 tasks, A1–F5). 31 are ticked; F3 (real host acceptance)
+  is blocked because this machine has no drivable host binary (claude config-only,
+  zcode / codebuddy GUI apps with no headless CLI; 2026-11-22 probe: today's ZCode
+  log 0 allowed / 0 failed), so the plan stays pending and is not archived.
+  Do not write "host acceptance passed" anywhere before F3 is done.
 
 ## Validation
 

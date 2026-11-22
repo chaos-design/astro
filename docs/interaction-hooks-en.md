@@ -1,18 +1,21 @@
 # AskUserQuestion Interaction Hook Flow Design
 
-> **Status: implemented; real-host acceptance pending.** The interaction hook,
-> the `/api/interactions` service, the SSE `interaction.open` / `update` / `close`
-> frames, the console panel, `AgentNotification` and the installer all exist and
-> are covered by the automated tests in §10. For F3 (plan), the ZCode "clean
-> fresh-session log" criterion now holds on this machine: `pnpm
-> verify:host-integration` machine-scans the day's ZCode CLI log and today's
-> active host session has hundreds of `hook.run.allowed`, **zero**
-> `hook.run.failed`, all ASTRO-sourced. What still needs a host session: the
-> Claude `/hooks` + `Allowed by PermissionRequest hook` transcript (no Claude
-> binary here), and the interaction-hook closed loop (install the interaction
+> **Status: implemented; real-host acceptance not done (pending, plan F3).** The
+> interaction hook, the `/api/interactions` service, the SSE `interaction.open` /
+> `update` / `close` frames, the console panel, `AgentNotification` and the
+> installer all exist and are covered by the automated tests in §10. All three
+> F3 items still need a real host session: `pnpm verify:host-integration`
+> (refreshed 2026-11-22) machine-probes claude as config-only (no binary or
+> credentials), zcode / codebuddy as GUI apps with no headless CLI, and today's
+> ZCode log at **0 `hook.run.allowed` / 0 `hook.run.failed`** — no ASTRO-sourced
+> hook call today (the earlier hundreds were a historical session, not today).
+> What still needs a host session: ① the Claude `/hooks` +
+> `Allowed by PermissionRequest hook` transcript; ② the interaction-hook closed
+> loop (install the interaction
 > hook in a host and trigger one `AskUserQuestion` so a console answer carries
-> `answers` back). The ZCode / CodeBuddy agents run only inside their GUI app
-> process (no standalone CLI), so those steps are driven by hand on the host.
+> `answers` back); ③ a fresh ZCode session with a clean hook log. The ZCode /
+> CodeBuddy agents run only inside their GUI app process (no standalone CLI), so
+> those steps are driven by hand on the host.
 > `pnpm verify:host-integration` machine-generates the host-availability probe,
 > the live-session scan and a runbook into `plans/host-acceptance-03.md` so the
 > remaining steps are a copy-paste. For working configuration see
@@ -493,19 +496,22 @@ machine-generates a **host-availability probe** (PATH → known install path →
 config dir, classifying each client as `cli` / `app` / `config-only` /
 `absent`), a **live-session scan** of the day's ZCode CLI log (`hook.run.allowed`
 vs `hook.run.failed`, isolated to ASTRO-sourced calls) and a **runbook** into
-`plans/host-acceptance-03.md`. The ZCode "clean fresh-session log" criterion is
-met on this machine by that scan (an active host session ran the ASTRO hooks
-all day with zero failures). Still not executed (plan F3): the Claude `/hooks`
-visibility with the transcript line `Allowed by PermissionRequest hook` (no
-Claude binary here), and the interaction-hook closed loop — installing the
-interaction hook in a host and triggering one `AskUserQuestion` so a console
-answer carries `answers` back. The probe records why those two remain
-host-side, so the item stays unchecked and the plan is not archived.
+`plans/host-acceptance-03.md`. The 2026-11-22 probe found claude config-only
+(no binary/credentials), zcode / codebuddy as GUI apps with no headless CLI,
+and the day's ZCode log at 0 `hook.run.allowed` / 0 `hook.run.failed` — no
+ASTRO-sourced hook call today (the earlier hundreds were a historical session,
+not today). All three F3 items remain unexecuted: ① Claude `/hooks` visibility
+with the transcript line `Allowed by PermissionRequest hook`; ② the
+interaction-hook closed loop — installing the interaction hook in a host and
+triggering one `AskUserQuestion` so a console answer carries `answers` back;
+③ a fresh ZCode session with a clean hook log. The probe records why these
+remain host-side, so F3 stays unchecked and the plan stays in `plans/pending/`,
+not archived.
 
 ## 11. Implementation task breakdown
 
 The executable backlog lives in
-`plans/planing/03-ask-user-question-implementation-breakdown.md` (32 tasks,
+`plans/pending/03-ask-user-question-implementation-breakdown.md` (32 tasks,
 A1–F5; 31 done). This section gives only the stage overview and dependency
 order; each task's file paths, acceptance check and prerequisite are defined in
 that plan.
@@ -526,9 +532,10 @@ check is one runnable assertion or one spawn command; vague "finish module"
 wording is not allowed.
 
 Status: 31 of 32 tasks are done (A–E, F1, F2, F4, F5). F3 — real-host acceptance —
-is blocked because this machine has no `claude` / `zcode` / `codebuddy` binary,
-so the plan stays in `plans/planing/` and is not archived. Do not write "host
-acceptance passed" into any document until F3 is done.
+is blocked because this machine has no drivable `claude` / `zcode` /
+`codebuddy` host environment, so the plan stays in `plans/pending/` and is not
+archived. Do not write "host acceptance passed" into any document until F3 is
+done.
 
 ## 12. References
 
@@ -538,5 +545,6 @@ acceptance passed" into any document until F3 is done.
 - `docs/architecture-en.md` §6 — TraceStore and SSE snapshot semantics.
 - `AGENTS.md` — invariants for user-question classification, preview parsing and
   the decision-hook channel.
-- `plans/planing/03-ask-user-question-implementation-breakdown.md` — 32
-  implementation tasks with per-task paths and acceptance checks.
+- `plans/pending/03-ask-user-question-implementation-breakdown.md` — 32
+  implementation tasks with per-task paths and acceptance checks (F3 unchecked;
+  the plan stays pending).

@@ -1,15 +1,15 @@
 # AskUserQuestion 交互 Hook 执行流程设计
 
-> **状态：已实现，宿主实测部分完成。** 交互 Hook、`/api/interactions` 服务、SSE
-> `interaction.open` / `update` / `close` 三帧、控制台交互面板、AgentNotification 与
-> 安装器均已落地，自动化用例见 §10。F3（计划）中 **ZCode「新会话日志无
-> `hook.run.failed`」一项本机已满足**：`pnpm verify:host-integration` 每次运行自动
-> 扫描当天 ZCode CLI 日志，本机今日一个活跃宿主会话跑了几百条 `hook.run.allowed`、
-> **0 条 `hook.run.failed`**、全部 ASTRO 来源。仍需在宿主环境执行的：Claude
-> `/hooks` + transcript 的 `Allowed by PermissionRequest hook`（本机无 Claude 二进制），
-> 以及交互 Hook 闭环（在宿主里装交互 Hook 并触发一次 `AskUserQuestion`，让控制台
-> 作答把 `answers` 带回宿主）。ZCode / CodeBuddy 代理只活在各自 GUI 应用进程里
-> （无独立 CLI），这些步骤需人工在宿主里驱动。`pnpm verify:host-integration` 会把
+> **状态：已实现，宿主实测未完成（待决，计划 F3）。** 交互 Hook、`/api/interactions`
+> 服务、SSE `interaction.open` / `update` / `close` 三帧、控制台交互面板、
+> AgentNotification 与安装器均已落地，自动化用例见 §10。F3 三项**全部仍待人工宿主
+> 环境执行**：`pnpm verify:host-integration`（2026-11-22 刷新）机器探测显示 Claude
+> 仅配置目录、无二进制/凭证，ZCode / CodeBuddy 只活在 GUI 应用进程里（无独立 CLI），
+> 当天 ZCode 日志 **0 条 `hook.run.allowed` / 0 条 `hook.run.failed`**——今日无 ASTRO
+> 来源的 hook 调用（此前某日的几百条属历史会话，不代表今日）。需在宿主环境执行的：
+> ① Claude `/hooks` + transcript 的 `Allowed by PermissionRequest hook`；② 交互 Hook
+> 闭环（在宿主里装交互 Hook 并触发一次 `AskUserQuestion`，让控制台作答把 `answers`
+> 带回宿主）；③ ZCode 新会话产生干净日志。`pnpm verify:host-integration` 会把
 > 宿主可用性探测、实时会话扫描与运行手册机器生成进 `plans/host-acceptance-03.md`。
 > 配置与验证以 `docs/plugin-installation.md` 为准；本文仍是这些通道的契约来源，字段
 > 变化必须先改这里再改实现。
@@ -461,17 +461,19 @@ stdout schema 与安装器生成的配置结构；它**不能替代**启动宿�
 **宿主可用性探测**（PATH → 已知安装路径 → 配置目录，把各宿主归类为
 `cli` / `app` / `config-only` / `absent`）、**实时会话扫描**（当天 ZCode CLI 日志里
 `hook.run.allowed` 与 `hook.run.failed`，并隔离出 ASTRO 来源的调用）与**运行手册**
-机器生成进 `plans/host-acceptance-03.md`。ZCode「新会话日志无 `hook.run.failed`」
-一项已由本机的实时扫描满足（一个活跃宿主会话整天跑 ASTRO hook、零失败）。
-仍未执行（计划 F3）：Claude `/hooks` 可见性 + transcript 的
-`Allowed by PermissionRequest hook`（本机无 Claude 二进制），以及交互 Hook 闭环——
-在宿主里装交互 Hook 并触发一次 `AskUserQuestion`，让控制台作答把 `answers` 带回
-宿主。探测记录了为何这两项仍需宿主侧人工执行，因此该项保持未勾选，计划不归档。
+机器生成进 `plans/host-acceptance-03.md`。2026-11-22 探测实况：claude 仅配置目录、
+无二进制/凭证；zcode / codebuddy 为 GUI 应用、无独立 CLI 可无头驱动；当天 ZCode
+日志 0 条 `hook.run.allowed` / 0 条 `hook.run.failed`，今日无 ASTRO 来源 hook 调用
+（此前某日的几百条属历史会话，不代表今日）。F3 三项**全部未执行**：① Claude `/hooks`
+可见性 + transcript 的 `Allowed by PermissionRequest hook`；② 交互 Hook 闭环——在宿主
+里装交互 Hook 并触发一次 `AskUserQuestion`，让控制台作答把 `answers` 带回宿主；
+③ ZCode 新会话产生干净日志。探测记录了为何这三项仍需宿主侧人工执行，因此 F3 保持
+未勾选，计划留在 `plans/pending/`、不归档。
 
 ## 11. 实施任务拆解
 
 完整的可执行任务清单见
-`plans/planing/03-ask-user-question-implementation-breakdown.md`（32 条，编号
+`plans/pending/03-ask-user-question-implementation-breakdown.md`（32 条，编号
 A1–F5，待执行状态）。本节只给出阶段总览与依赖，每条任务的落点、验收点与前置
 依赖以该计划文件为准。
 
@@ -490,8 +492,8 @@ A1–F5，待执行状态）。本节只给出阶段总览与依赖，每条任�
 无法判定的描述。
 
 实施状态：32 条任务中 31 条已勾选（A–E、F1、F2、F4、F5）；F3 的真实宿主验收
-因本机没有 `claude` / `zcode` / `codebuddy` 二进制而阻塞，保持未勾选，计划因此留在
-`plans/planing/`、尚未归档。除 F3 外，本文的通道、消息与字段约束均已有实现与测试
+因本机没有可驱动的 `claude` / `zcode` / `codebuddy` 宿主环境而阻塞，保持未勾选，
+计划因此留在 `plans/pending/`、尚未归档。除 F3 外，本文的通道、消息与字段约束均已有实现与测试
 对应；F3 完成前不要把「宿主实测通过」写进任何文档。
 
 ## 12. 参考
@@ -500,5 +502,5 @@ A1–F5，待执行状态）。本节只给出阶段总览与依赖，每条任�
 - `docs/event-protocol-zh.md` §2 / §4 / §9 / §10：TraceEvent schema、投影、补齐与脱敏。
 - `docs/architecture-zh.md` §6：TraceStore 与 SSE 快照语义。
 - `AGENTS.md`：用户提问分类、预览解析与 Hook 决策通道的不变量。
-- `plans/planing/03-ask-user-question-implementation-breakdown.md`：32 条实施任务、
-  逐条落点与验收点。
+- `plans/pending/03-ask-user-question-implementation-breakdown.md`：32 条实施任务、
+  逐条落点与验收点（F3 未勾选，计划仍在 pending）。
