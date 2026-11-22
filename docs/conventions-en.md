@@ -204,7 +204,13 @@
     a streamed message lands as a new event every ~800ms and grows beneath the
     reader without moving the line they were on); only a row **the reader
     picked in the rail** re-anchors both panes to the top, and switching to the
-    Code view resets the memo so coming back opens from the start. The preview
+    Code view resets the memo so coming back opens from the start. The
+    `{ __html }` wrapper handed to `dangerouslySetInnerHTML` is memoized on
+    the html string (`previewHtml`, and `MarkdownView`'s `html`): React
+    compares the wrapper by object identity, so an inline literal made every
+    one-second app tick re-set identical markup and rebuild the children —
+    a horizontal scroll inside a wide code block snapped back to 0 about once
+    a second; with the memo React skips identical markup. The preview
     and related panes read one step larger than the
     inspector's, and their titles stay pinned while their bodies scroll. The
     read-only question preview

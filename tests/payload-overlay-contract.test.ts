@@ -29,7 +29,12 @@ test("the overlay switches preview by atom type", () => {
   assert.match(overlay, /variant === "question"/);
   assert.match(overlay, /<QuestionPreview payload=\{activePayload as TracePayload\} \/>/);
   assert.match(overlay, /USER QUESTION/);
-  assert.match(overlay, /dangerouslySetInnerHTML=\{\{ __html: preview\.contentHtml \}\}/);
+  // The `{ __html }` wrapper is memoized on the string: React compares the
+  // wrapper object by identity, and an inline literal re-set identical
+  // markup on every app tick — recreating the children and resetting any
+  // horizontal scroll inside a wide code block about once a second.
+  assert.match(overlay, /dangerouslySetInnerHTML=\{previewHtml\}/);
+  assert.match(overlay, /\(\) => \(\{ __html: preview\.contentHtml \}\)/);
 });
 
 test("the preview splits the atom's content from its related data", () => {

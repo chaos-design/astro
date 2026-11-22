@@ -325,6 +325,17 @@ export function PayloadOverlay({
     activePayload,
     activeVariant,
   );
+  // The wrapper object must be as stable as the html string: React compares
+  // `dangerouslySetInnerHTML` by object identity, not by the string inside,
+  // so an inline literal re-set the same markup on every app tick (the
+  // console re-renders each second while the dialog is open) and every
+  // rewrite recreated the children — a reader's horizontal scroll inside a
+  // wide code block, or a fenced block's badge row, snapped back to 0 about
+  // once a second. Memoizing on the string lets React skip identical markup.
+  const previewHtml = useMemo(
+    () => ({ __html: preview.contentHtml }),
+    [preview.contentHtml],
+  );
   // While following, keep the selected row in view: a live batch selects the
   // newest event, which sits at (or near) the top of this newest-first list,
   // so the reader watching the chain sees each step land without scrolling.
@@ -672,7 +683,7 @@ export function PayloadOverlay({
                       {preview.hasContent ? (
                         <div
                           className="markdown-preview"
-                          dangerouslySetInnerHTML={{ __html: preview.contentHtml }}
+                          dangerouslySetInnerHTML={previewHtml}
                         />
                       ) : (
                         <p className="payload-overlay__empty">
