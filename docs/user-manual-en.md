@@ -365,8 +365,13 @@ HTTP service.
   and the Live filter.
 - Theme: light, dark, or system; stored in `ASTROX_THEME`.
 - Service chip (the local service's uptime): opens the service card with the
-  console/service versions, process details, session counts, the data directory
-  and "restart local service". While the service answers, that button posts
+  console/service versions, per-client capture-plugin versions, process details,
+  session counts, the data directory and "restart local service". When one client
+  shows two versions or a `v旧(未标记)` entry beside a newer one, the card highlights
+  it and offers a "copy restart command" button (opencode copies
+  `opencode service restart`; Pi prompts a session restart) — the button only
+  copies, it never restarts the process for you. While the service answers, the
+  restart button posts
   `/api/restart`; when it is unreachable the button becomes "copy start command"
   and copies `pnpm service:up --port=<current port>` — a browser cannot spawn a
   local process, so the CLI is the out-of-band start path. The uptime follows a

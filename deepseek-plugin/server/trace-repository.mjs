@@ -73,8 +73,12 @@ export class TraceRepository extends EventEmitter {
     this.unidentifiedEventCount = 0;
     this.sessionRecords = new Map();
     // Per source, which capture-adapter versions wrote events, with the time
-    // of the newest event for each. A reinstall that the running process has
-    // not picked up shows two versions for one source — observable drift.
+    // of the newest event for each, plus `unversionedAt`: the newest event that
+    // carried NO version stamp. An old process (code written before stamping
+    // existed) contributes only to `unversionedAt` — without it a reinstall
+    // that the process never picked up produced no signal at all. Two code
+    // generations writing concurrently is then observable: an unstamped event
+    // at or after the newest stamped one, or two distinct stamped versions.
     this.captureVersions = new Map();
     this.snapshotKey = "";
     this.eventIndexFor = null;
@@ -147,21 +151,26 @@ export class TraceRepository extends EventEmitter {
     return found === undefined ? -1 : found;
   }
 
-  /** Track the capture-adapter version that wrote one event (O(1)). */
+  /** Track which capture-adapter generation wrote one event (O(1)). */
   trackCaptureVersion(event) {
+    const source = String(event?.source || "generic");
+    const at = Date.parse(event?.capturedAt || 0) || 0;
+    let state = this.captureVersions.get(source);
+    if (!state) {
+      state = { versions: new Map(), unversionedAt: 0 };
+      this.captureVersions.set(source, state);
+    }
     const version = event?.payload?.captureVersion;
-    if (typeof version !== "string" || !version.trim()) {
-      return;
-    }
-    const source = String(event.source || "generic");
-    let versions = this.captureVersions.get(source);
-    if (!versions) {
-      versions = new Map();
-      this.captureVersions.set(source, versions);
-    }
-    const at = Date.parse(event.capturedAt || 0) || 0;
-    if (!versions.has(version) || versions.get(version) < at) {
-      versions.set(version, at);
+    if (typeof version === "string" && version.trim()) {
+      if (!state.versions.has(version) || state.versions.get(version) < at) {
+        state.versions.set(version, at);
+      }
+    } else {
+      // No stamp = an older capture process that never learned to write one.
+      // Its most recent write is the signal that it is still running.
+      if (at > state.unversionedAt) {
+        state.unversionedAt = at;
+      }
     }
   }
 
@@ -334,16 +343,29 @@ export class TraceRepository extends EventEmitter {
   }
 
   /**
-   * Per source, the capture-adapter versions that wrote events and when each
-   * was last seen. More than one version means a reinstall whose old process
-   * is still writing — `stale: true` lets the console say so.
+   * Per source, the capture generations that wrote events. `versions` carries
+   * stamped adapters; `unversionedAt` is the newest event with no stamp at all
+   * (a process running code from before stamping existed). `stale` is true when
+   * more than one generation wrote, or when an unstamped event is at least as
+   * recent as the newest stamped one — an old process still writing after a
+   * reinstall. It is derived from event timestamps, not wall-clock freshness,
+   * so it does not flicker as the run ages.
    */
   getCaptureVersions() {
     const result = {};
-    for (const [source, versions] of this.captureVersions) {
-      result[source] = [...versions.entries()]
+    for (const [source, state] of this.captureVersions) {
+      const versions = [...state.versions.entries()]
         .map(([version, lastSeenAt]) => ({ version, lastSeenAt }))
         .sort((a, b) => b.lastSeenAt - a.lastSeenAt);
+      const newestStampedAt = versions.length ? versions[0].lastSeenAt : 0;
+      const stale =
+        versions.length > 1 ||
+        (versions.length > 0 && state.unversionedAt >= newestStampedAt);
+      result[source] = {
+        versions,
+        unversionedAt: state.unversionedAt || null,
+        stale,
+      };
     }
     return result;
   }

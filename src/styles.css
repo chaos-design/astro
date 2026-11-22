@@ -1148,6 +1148,30 @@ pre,
   font-size: 9px;
 }
 
+.service-card__capture-restarts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 5px;
+}
+
+.service-card__capture-restart {
+  padding: 3px 8px;
+  border: 1px solid color-mix(in srgb, var(--status-waiting) 48%, var(--line));
+  border-radius: 5px;
+  color: var(--status-waiting);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: var(--text-overline);
+  background: transparent;
+}
+
+.service-card__capture-restart:hover {
+  border-color: var(--status-waiting);
+  color: var(--text-strong);
+  background: color-mix(in srgb, var(--status-waiting) 12%, transparent);
+}
+
 .service-card__counts {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));

@@ -585,10 +585,15 @@
   bare `unknown` the reader has to interpret.
  - Long-lived adapters (opencode / pi) stamp their own `package.json` version as
    `payload.captureVersion`; the service aggregates it per source into
-   `/api/health.captureVersions` and the card shows which version actually wrote
-   each client's events. Two versions for one source means a reinstall whose old
-   process is still running — prompt a session restart. The adapter's own
-   manifest is the single source of truth; no expected version is hardcoded.
+   `/api/health.captureVersions`. Drift detection MUST bucket unversioned
+   events separately — a process on pre-stamp code writes no version at all, so
+   counting only stamped versions could never see it. `stale` = two stamped
+   versions, or an unstamped event at/after the newest stamped one, derived from
+   event timestamps not wall-clock freshness. The card shows a `v旧(未标记)`
+   bucket and, when stale, a copyable host-specific restart command
+   (`captureRestartCommand`: `opencode service restart` or a Pi session hint);
+   it never claims a browser can restart a process. The adapter's own manifest
+   is the single source of truth; no expected version is hardcoded.
 - Every icon button keeps an `aria-label`, but a **tooltip is opt-in**: add one
   only when the glyph cannot carry the action by itself (the chevrons that say
   *which* panel collapses, the action menu, the topology/trajectory switches)

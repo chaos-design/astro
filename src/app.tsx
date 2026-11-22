@@ -339,6 +339,10 @@ import {
 import { hasPlanContent, userQuestionSummary } from "./lib/user-question-content";
 import { buildConsoleLocationSearch } from "./lib/console-location";
 import {
+  captureRestartCommand,
+  captureRestartNotice,
+} from "./lib/capture-restart-command";
+import {
   buildServiceCliCommands,
   offlineRestartNotice,
   serviceCardHint,
@@ -924,8 +928,15 @@ type ServiceHealth = {
   clientCount: number;
   eventCount: number;
   sessionCounts: Record<string, number>;
-  /** Per-source capture-adapter versions observed in loaded events. */
-  captureVersions: Record<string, Array<{ version: string; lastSeenAt: number }>>;
+  /** Per-source capture generations: stamped versions + an unstamped bucket. */
+  captureVersions: Record<
+    string,
+    {
+      versions: Array<{ version: string; lastSeenAt: number }>;
+      unversionedAt: number | null;
+      stale: boolean;
+    }
+  >;
   dataRoot: string;
   traceFiles: string[];
   build: string;
@@ -988,6 +999,21 @@ function ServiceStatus({
   const [editingRoot, setEditingRoot] = useState(false);
   const [rootDraft, setRootDraft] = useState("");
   const [savingRoot, setSavingRoot] = useState(false);
+  const [copiedCapture, setCopiedCapture] = useState("");
+  const copyCaptureRestart = async (source: string) => {
+    const command = captureRestartCommand(source);
+    if (!command) {
+      return;
+    }
+    let copied = false;
+    try {
+      await navigator.clipboard?.writeText(command);
+      copied = Boolean(navigator.clipboard);
+    } catch {
+      // Clipboard permission is optional; the notice still names the command.
+    }
+    setCopiedCapture(captureRestartNotice(source, copied));
+  };
   const submitRoot = async (event: FormEvent) => {
     event.preventDefault();
     if (savingRoot) {
@@ -1165,28 +1191,46 @@ function ServiceStatus({
           <h4>采集插件版本</h4>
           {service && Object.keys(service.captureVersions || {}).length ? (
             <dl className="service-card__capture-versions">
-              {Object.entries(service.captureVersions).map(([source, versions]) => {
-                const stale = versions.length > 1;
-                return (
-                  <div key={source} data-stale={stale}>
-                    <dt>{source}</dt>
-                    <dd>
-                      {versions.map((entry) => `v${entry.version}`).join(" / ")}
-                    </dd>
-                  </div>
-                );
-              })}
+              {Object.entries(service.captureVersions).map(([source, state]) => (
+                <div key={source} data-stale={state.stale}>
+                  <dt>{source}</dt>
+                  <dd>
+                    {state.versions.map((entry) => `v${entry.version}`).join(" / ")}
+                    {state.unversionedAt ? " / v旧(未标记)" : ""}
+                  </dd>
+                </div>
+              ))}
             </dl>
           ) : (
-            <p className="service-card__empty">暂无带版本的采集事件。</p>
+            <p className="service-card__empty">暂无采集版本信息。</p>
           )}
-          {service && Object.values(service.captureVersions || {}).some(
-            (versions) => versions.length > 1,
+          {service && Object.entries(service.captureVersions || {}).some(
+            ([, state]) => state.stale,
           ) ? (
-            <p className="service-card__notice">
-              同一客户端出现多个采集版本：重装插件后仍有旧进程在写入。重启对应的
-              Agent 会话（或 opencode service）让新代码生效。
-            </p>
+            <>
+              <p className="service-card__notice">
+                同一客户端出现多个采集版本：重装后仍有旧进程在写入，需重启对应会话。
+              </p>
+              <div className="service-card__capture-restarts">
+                {Object.entries(service.captureVersions)
+                  .filter(([, state]) => state.stale)
+                  .map(([source]) =>
+                    captureRestartCommand(source) ? (
+                      <button
+                        className="service-card__capture-restart"
+                        key={source}
+                        onClick={() => copyCaptureRestart(source)}
+                        type="button"
+                      >
+                        复制 {source} 重启指令
+                      </button>
+                    ) : null,
+                  )}
+              </div>
+              {copiedCapture ? (
+                <p className="service-card__notice">{copiedCapture}</p>
+              ) : null}
+            </>
           ) : null}
         </section>
 

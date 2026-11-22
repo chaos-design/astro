@@ -162,21 +162,75 @@ test("tracks per-source capture versions and flags drift after a reinstall", asy
     sessionId: "session",
     eventName: "SessionStart",
     capturedAt: at,
-    payload: { captureVersion: version },
+    payload: version ? { captureVersion: version } : {},
   });
   try {
     assert.deepEqual(repository.getCaptureVersions(), {});
     await repository.append([
       event("old", "0.0.3", "2026-11-01T08:00:00.000Z"),
-      event("fresh", "0.0.5", "2026-11-02T08:00:00.000Z"),
+      event("fresh", "0.0.6", "2026-11-02T08:00:00.000Z"),
     ]);
-    const versions = repository.getCaptureVersions().opencode;
+    const state = repository.getCaptureVersions().opencode;
     assert.deepEqual(
-      versions.map((entry) => entry.version),
-      ["0.0.5", "0.0.3"],
+      state.versions.map((entry) => entry.version),
+      ["0.0.6", "0.0.3"],
       "newest capture version first",
     );
-    assert.equal(versions.length, 2, "two versions = stale process drift");
+    assert.equal(state.stale, true, "two stamped versions = stale process drift");
+    assert.equal(state.unversionedAt, null);
+  } finally {
+    repository.stop();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("an unstamped event after a stamped one reveals a still-running old process", async () => {
+  // This is the real bug: a process running pre-stamp code writes NO
+  // captureVersion at all, so counting only stamped versions showed one value
+  // and never warned. The unversioned bucket must make that drift visible.
+  const root = mkdtempSync(join(tmpdir(), "astro-repository-unversioned-"));
+  const repository = new TraceRepository(
+    { ASTRO_HOME: root },
+    { discoveryInterval: 20, pollInterval: 20 },
+  );
+  await repository.initialize();
+  const event = (id, version, at) => ({
+    id,
+    source: "pi",
+    sessionId: "session",
+    eventName: "AgentMessage",
+    capturedAt: at,
+    payload: version ? { captureVersion: version } : {},
+  });
+  try {
+    // A reinstalled, restarted process writes stamped events first.
+    await repository.append([event("new", "0.0.6", "2026-11-02T08:00:00.000Z")]);
+    let state = repository.getCaptureVersions().pi;
+    assert.equal(state.stale, false, "one stamped version alone is not drift");
+
+    // The old process was never killed and writes an unstamped event later.
+    await repository.append([event("old-still-writing", null, "2026-11-02T08:01:00.000Z")]);
+    state = repository.getCaptureVersions().pi;
+    assert.equal(state.unversionedAt, Date.parse("2026-11-02T08:01:00.000Z"));
+    assert.equal(state.stale, true, "unstamped event at/after newest stamp = drift");
+
+    // Old history only, from before stamping existed, is not drift: no stamped
+    // version to compare against.
+    const root2 = mkdtempSync(join(tmpdir(), "astro-repository-legacy-"));
+    const repository2 = new TraceRepository(
+      { ASTRO_HOME: root2 },
+      { discoveryInterval: 20, pollInterval: 20 },
+    );
+    await repository2.initialize();
+    try {
+      await repository2.append([event("legacy", null, "2026-10-01T08:00:00.000Z")]);
+      const legacy = repository2.getCaptureVersions().pi;
+      assert.equal(legacy.stale, false, "no stamped version, no drift to report");
+      assert.equal(typeof legacy.unversionedAt, "number");
+    } finally {
+      repository2.stop();
+      rmSync(root2, { recursive: true, force: true });
+    }
   } finally {
     repository.stop();
     rmSync(root, { recursive: true, force: true });

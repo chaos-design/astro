@@ -43,10 +43,34 @@ test("the service aggregates capture versions and reports them in health", () =>
   assert.match(server, /captureVersions: store\.getCaptureVersions\(\)/);
 });
 
-test("the console service card shows capture versions and flags drift", () => {
-  assert.match(app, /captureVersions: Record<string, Array<\{ version: string; lastSeenAt: number \}\>>/);
+test("the repository counts unstamped events and derives drift clock-independently", () => {
+  // The original bug: a process on pre-stamp code writes no captureVersion, so
+  // counting only stamped versions showed one value and never warned.
+  assert.match(repository, /unversionedAt/);
+  assert.match(
+    repository,
+    /state\.unversionedAt >= newestStampedAt/,
+    "an unstamped event at/after the newest stamp means an old process still writes",
+  );
+  assert.match(repository, /versions\.length > 1/);
+});
+
+test("the console service card shows generations, drift and a copyable restart command", () => {
+  assert.match(app, /unversionedAt: number \| null/);
   assert.match(app, /<h4>采集插件版本<\/h4>/);
-  assert.match(app, /const stale = versions\.length > 1/);
-  assert.match(app, /同一客户端出现多个采集版本/);
-  assert.match(styles, /\.service-card__capture-versions > div\[data-stale="true"\] dd/);
+  assert.match(app, /v旧\(未标记\)/);
+  assert.match(app, /state\.stale/);
+  assert.match(app, /复制 \{source\} 重启指令/);
+  assert.match(app, /copyCaptureRestart\(source\)/);
+  assert.match(styles, /\.service-card__capture-restart \{/);
+});
+
+test("restart commands are per host and never claim to have applied themselves", () => {
+  const helper = readFileSync(
+    new URL("../src/lib/capture-restart-command.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(helper, /opencode service restart/);
+  assert.match(helper, /重新打开对应的 Pi 会话/);
+  assert.match(helper, /已复制|请手动执行/);
 });

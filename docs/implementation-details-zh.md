@@ -273,9 +273,13 @@ Guide 的观测列表保留语义化 `ul` / `li`，使用原生 `disc` 标记。
 
 opencode / pi 这类长驻采集器在 `enqueue` 时把自己的 `package.json` 版本盖到每条事件的
 `payload.captureVersion`（单一来源就是各自的清单）；服务在 `indexEvent` 与 `append`
-里按 source 汇总版本及最近时间，`/api/health` 上报。同一 source 出现两个版本意味着
-「装了新插件但旧进程还在写」，卡片给出「重启对应 Agent 会话 / opencode service」的
-提示。这让「装没装上、生效没生效」变成可观测状态，而不是靠间接症状猜。
+里按 source 汇总版本及最近时间，并单独统计「无版本」事件的最近时间（旧代码进程根本
+不写版本，只数带版本事件会永远看不到漂移）。`/api/health.captureVersions` 对每个
+source 返回 `versions` / `unversionedAt` / `stale`：两个带版本版本并存，或无版本事件
+不早于最新带版本事件，都判为 `stale`（按事件时间推导，不依赖墙上时钟）。卡片显示
+`v旧(未标记)` 桶，`stale` 时给出可一键复制的宿主相关重启指令（`opencode service restart`
+或 Pi 会话提示），绝不假装浏览器能替你重启进程。这让「装没装上、生效没生效」变成
+可观测状态，而不是靠间接症状猜。
 
 ### 指南与日志控件
 

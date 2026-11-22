@@ -415,7 +415,7 @@
   必须写清主体：**控制台**是当前页面构建（`appVersion`），**服务**读 `/api/health`
   的 `build`；两者不一致给出提示，`build` 为 `unknown` 时显示「未上报」并说明原因
   （服务从源码目录或缺少清单的旧安装启动），而不是甩一个 `unknown` 让用户猜。
-- 采集插件版本可观测：长驻采集器（opencode / pi）把各自 `package.json` 版本作为 `payload.captureVersion` 盖在事件上，服务按 source 汇总到 `/api/health.captureVersions`，卡片显示每个客户端实际写入的版本；同一 source 多版本＝重装后旧进程未重启，提示重启会话。单一来源就是适配器自己的清单，不在别处硬编码期望版本。
+- 采集插件版本可观测：长驻采集器（opencode / pi）把各自 `package.json` 版本作为 `payload.captureVersion` 盖在事件上，服务按 source 汇总到 `/api/health.captureVersions`。漂移判定必须把「无版本」事件单独计桶——旧代码进程根本不写版本，只数带版本事件会永远看不到它仍在写入；`stale`＝两个带版本版本并存，或无版本事件不早于最新带版本事件，按事件时间而非墙上时钟推导。卡片显示 `v旧(未标记)` 桶，`stale` 时给出可一键复制的宿主相关重启指令（`captureRestartCommand`，opencode 为 `opencode service restart`，Pi 为会话提示），不假装浏览器能重启进程。单一来源就是适配器自己的清单，不在别处硬编码期望版本。
 - 每个图标按钮都保留 `aria-label`，但 **tooltip 是可选装饰**：只有图标本身说不清动作
   （收起/展开哪一侧面板的箭头、操作菜单、拓扑/轨迹切换）或者能补充状态与后果
   （`N LIVE` 的判定口径、重新加载进行中的状态）时才加。只是把图形翻译一遍的提示
