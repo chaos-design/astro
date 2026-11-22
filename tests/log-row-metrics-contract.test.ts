@@ -29,6 +29,16 @@ test("the log row measurement never depends on the metrics it writes", () => {
   assert.doesNotMatch(measure[0], /\bmetrics\.(row|turn)\b/);
 });
 
+test("the implicit LOG reveal is gated by Live, an explicit locate or a new selection", () => {
+  const effect = app.match(
+    /useEffect\(\(\) => \{\s*\n\s*const explicitLocate = locateRequestRef\.current[\s\S]*?\n  \}, \[[\s\S]*?\]\);/,
+  );
+  assert.ok(effect, "the LOG locate effect must exist");
+  assert.match(effect[0], /const selectionChanged = locatedEventRef\.current !== selectedEventId/);
+  assert.match(effect[0], /shouldScrollLogToSelection\(\{ explicitLocate, live, selectionChanged \}\)/);
+  assert.match(effect[0], /\blive,\n    locateRequest,/);
+});
+
 test("row and turn estimates use the tallest mounted item, not the first", () => {
   // A uniform-height layout must not clip a wrapped row: measuring only the
   // first row made the estimate jump whenever the virtual window slid.

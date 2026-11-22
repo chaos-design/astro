@@ -9,6 +9,7 @@ import {
   includeTurnRow,
   lowerBound,
   resolveScrollTopForRow,
+  shouldScrollLogToSelection,
 } from "../src/lib/log-window.ts";
 
 const metrics = { gap: 6, row: 50, turn: 30 };
@@ -165,4 +166,19 @@ test("a mounted window never ends on a turn separator", () => {
 test("fallback heights are usable before measurement", () => {
   assert.ok(LOG_ROW_ESTIMATE > 0);
   assert.ok(LOG_TURN_ESTIMATE > 0);
+});
+
+test("a non-live message ignores atom arrivals that only shift row offsets", () => {
+  const arrived = { explicitLocate: false, live: false, selectionChanged: false };
+  assert.equal(shouldScrollLogToSelection(arrived), false);
+  // Live following, an explicit locate and a fresh selection still reveal.
+  assert.equal(shouldScrollLogToSelection({ ...arrived, live: true }), true);
+  assert.equal(
+    shouldScrollLogToSelection({ ...arrived, explicitLocate: true }),
+    true,
+  );
+  assert.equal(
+    shouldScrollLogToSelection({ ...arrived, selectionChanged: true }),
+    true,
+  );
 });

@@ -88,6 +88,21 @@ test("fenced code is highlighted without losing the sanitizer's protection", () 
   assert.match(render.html, /hljs-comment/);
 });
 
+test("a shell command fence colours commands, flags and assignments", () => {
+  const render = renderMarkdownPreview(
+    "```bash\nASTRO_PORT=4401 pnpm service:up --quiet | head -20\n```",
+  );
+  assert.equal(render.valid, true);
+  assert.match(render.html, /data-lang="bash"/);
+  assert.match(render.html, /<span class="hljs-keyword">pnpm<\/span>/);
+  assert.match(render.html, /<span class="hljs-attr">--quiet<\/span>/);
+  assert.match(render.html, /<span class="hljs-property">ASTRO_PORT=4401<\/span>/);
+  // A captured command is untrusted text: the tokenizer still escapes it.
+  const hostile = renderMarkdownPreview("```bash\necho <img src=x onerror=bad>\n```");
+  assert.doesNotMatch(hostile.html, /<img/i);
+  assert.match(hostile.html, /&lt;img/);
+});
+
 test("a fence without a language stays a plain pre without a badge", () => {
   const render = renderMarkdownPreview("```\nplain captured text\n```");
   assert.equal(render.valid, true);

@@ -48,6 +48,23 @@ test("a code string in an unnamed field is fenced with its inferred language", (
   assert.doesNotMatch(markdown, /###|file_path|replace_all/);
 });
 
+test("a captured shell command is fenced instead of rendered as prose", () => {
+  // The result extractor used to return raw text (or fence only JSON), so a
+  // tool command arrived at the preview as a paragraph with its URL linked.
+  assert.match(
+    payloadToMarkdown({ tool_input: { command: "git status --short && pnpm test" } }),
+    /^```bash\ngit status --short && pnpm test\n```$/,
+  );
+  assert.match(
+    payloadToMarkdown({ command: "ASTRO_PORT=4401 pnpm service:up" }),
+    /^```bash\nASTRO_PORT=4401 pnpm service:up\n```$/,
+  );
+  assert.equal(
+    payloadToMarkdown({ message: "# Deploy\n\nRun `pnpm build`." }),
+    "# Deploy\n\nRun `pnpm build`.",
+  );
+});
+
 test("a Markdown message field renders as itself, not one code fence", () => {
   // The generic view shares the one fence decision with the content
   // extractor: an agent message that sketches `export type` lines inside a

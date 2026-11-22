@@ -5886,6 +5886,7 @@ pre,
 /* The names a reader scans a block for. The near-white these tokens used to
    inherit sat one step above the base text and read as unstyled code. */
 .markdown-preview pre code .hljs-title,
+.markdown-preview pre code .hljs-function,
 .markdown-preview pre code .hljs-name,
 .markdown-preview pre code .hljs-type,
 .markdown-preview pre code .hljs-section,
@@ -5911,6 +5912,21 @@ pre,
 
 .markdown-preview pre code .hljs-bullet {
   color: var(--muted-soft);
+}
+
+/* Inline code and template substitutions inside a fenced block carry the
+   string tone; without a rule they inherit the near-white base text and read
+   as unstyled plain text between coloured tokens. */
+.markdown-preview pre code .hljs-code,
+.markdown-preview pre code .hljs-template-variable {
+  color: var(--teal);
+}
+
+/* A diff's file / hunk headers wear the comment class, but they are the
+   structure the reader scans for. Keep them legible instead of dim italic. */
+.markdown-preview pre code.language-diff .hljs-comment {
+  color: var(--muted);
+  font-style: normal;
 }
 
 /* md-in-md: the fenced markdown block keeps its own inline marks. */

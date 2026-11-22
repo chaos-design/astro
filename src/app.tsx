@@ -218,11 +218,12 @@ import {
   findVisibleRange,
   includeTurnRow,
   resolveScrollTopForRow,
+  shouldScrollLogToSelection,
 } from "./lib/log-window";
 import {
   describeWorkspacePath,
 } from "./lib/workspace-path";
-import { formatOverlayDuration } from "./lib/duration-label";
+import { formatDurationMs } from "./lib/duration-label";
 import {
   OTHERS_AGENT_ID,
   canLoadMoreRunHistory,
@@ -472,45 +473,6 @@ function formatDate(timestamp: string | number) {
 function formatRunDate(timestamp: string | number) {
   return `${formatDate(timestamp)} ${runTimeFormatter.format(new Date(timestamp))}`;
 }
-
-/**
- * The trajectory's own durations (wall-time and closed-pair) use a stepped
- * unit rule so a value reads in the smallest honest unit: under 10s it is a
- * `ms` span, 10–60s a `s` span, then `m`, `h`, and `d` as it grows. Whole-second
- * `formatDuration` would print a 4s tool call as "4s" with no sub-second
- * siblings, so the trajectory resolves each span to its dominant unit instead
- * of compounding (`1m 4s`) — one number per tier, stepping ms → s → m → h → d.
- */
-function formatDurationMs(milliseconds: number) {
-  if (!Number.isFinite(milliseconds) || milliseconds < 0) {
-    return "--";
-  }
-  const s = milliseconds / 1000;
-  if (s < 10) {
-    return `${Math.round(milliseconds)}ms`;
-  }
-  const m = s / 60;
-  if (m < 1) {
-    return `${Math.round(s)}s`;
-  }
-  const h = m / 60;
-  if (h < 1) {
-    return `${Math.round(m)}m`;
-  }
-  const d = h / 24;
-  if (d < 1) {
-    return `${Math.round(h)}h`;
-  }
-  return `${Math.round(d)}d`;
-}
-
-/**
- * The overlay rail's duration label follows the shared overlay ladder
- * (`src/lib/duration-label.ts`): exact milliseconds below 10s — where the
- * digits being inspected live — then seconds, `M`-minutes and `H`-hours
- * composites as the span grows. The LOG and trajectory keep their own stepped
- * badges (`formatDurationMs`) so a long history stays scannable.
- */
 
 /**
  * The duration colour spec, a single source for how a span's magnitude is
@@ -2976,6 +2938,10 @@ const AtomicLog = memo(function AtomicLog({
 }) {
   const listRef = useRef<HTMLDivElement | null>(null);
   const locateRequestRef = useRef(locateRequest);
+  // Tracks the last selection the locate effect acted on so a streamed batch
+  // (which only changes rowTops / visibleEntries) can be told apart from a
+  // fresh selection by the reader.
+  const locatedEventRef = useRef(selectedEventId);
   const scrollFrameRef = useRef(0);
   // Render-cost instrumentation: the body stamps its start time, and the
   // no-deps layout effect below closes the measurement after commit. The
@@ -3158,8 +3124,19 @@ const AtomicLog = memo(function AtomicLog({
 
   useEffect(() => {
     const explicitLocate = locateRequestRef.current !== locateRequest;
+    const selectionChanged = locatedEventRef.current !== selectedEventId;
+    locatedEventRef.current = selectedEventId;
     const list = listRef.current;
     if (!list || !selectedEventId) {
+      return;
+    }
+    // A finished message keeps its selection while new atoms stream in. The
+    // prepended rows shift every `rowTops` entry, so the reveal below would
+    // keep dragging a reader who scrolled back to inspect older events. Only
+    // a Live message, an explicit locate or a fresh selection may scroll.
+    if (
+      !shouldScrollLogToSelection({ explicitLocate, live, selectionChanged })
+    ) {
       return;
     }
     const entryIndex = visibleEntries.findIndex(
@@ -3190,6 +3167,7 @@ const AtomicLog = memo(function AtomicLog({
     list.scrollTop = nextTop;
   }, [
     layout.rowTops,
+    live,
     locateRequest,
     metrics.row,
     selectedEventId,
@@ -7022,7 +7000,7 @@ export default function App() {
       buildLogEntries(activeEvents, platformId).map(
         ({ event, index, atomType, pairDuration, pairLink, turn }) => {
           const durationLabel =
-            pairDuration === null ? null : formatOverlayDuration(pairDuration);
+            pairDuration === null ? null : formatDurationMs(pairDuration);
           return {
             id: event.id,
             atomId: getAtomIdForEvent(event, platformId),

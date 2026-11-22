@@ -190,21 +190,15 @@ function findResultText(value: unknown, depth: number, seen: WeakSet<object>): s
 }
 
 /**
- * A result that is itself a JSON document belongs in a fenced block so the
- * renderer's highlighter colours it; prose and Markdown stay as-is so headings,
- * lists and inline code render normally.
+ * Every extracted result text takes the one code-fence decision in
+ * `contentToMarkdown`: JSON / diff / XML self-identify, a shell command or a
+ * source snippet is fenced with its inferred language, and a Markdown document
+ * stays a document. Repeating the JSON-only check here used to leave a tool
+ * command or a captured shell output as a paragraph, with its flags uncoloured
+ * and its URLs auto-linked into prose.
  */
 function resultToMarkdown(text: string): string {
-  const trimmed = text.trim();
-  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
-    try {
-      JSON.parse(trimmed);
-      return `\`\`\`json\n${trimmed}\n\`\`\``;
-    } catch {
-      // Not JSON after all: keep the original text.
-    }
-  }
-  return text;
+  return contentToMarkdown(text);
 }
 
 function answersToMarkdown(answers: UnknownRecord): string {
@@ -485,10 +479,10 @@ export function payloadToMarkdown(
     return "";
   }
   if (typeof value === "string") {
-    return value;
+    return contentToMarkdown(value);
   }
   if (typeof value !== "object") {
-    return String(value);
+    return contentToMarkdown(String(value));
   }
   if (seen.has(value)) {
     return "[circular reference]";
@@ -537,7 +531,7 @@ export function payloadToMarkdown(
     // see itself as already visited.
     const unwrapped = unwrapText(value, depth, new WeakSet());
     if (unwrapped.trim()) {
-      return unwrapped;
+      return contentToMarkdown(unwrapped);
     }
   }
   seen.add(value);

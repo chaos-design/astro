@@ -1,44 +1,31 @@
 /**
- * The global overlay rail's duration label — the badge on a closed tool pair.
- * The layer exists to inspect ONE step's latency, so it keeps more precision
- * than the list surfaces' stepped badges (`formatDurationMs`: <10s ms, <1m s,
- * then m / h / d), but a long tool call must still stay scannable: the ladder
- * resolves each span to its smallest honest unit and compounds only when one
- * number is no longer enough.
- *
- * - < 10s          exact milliseconds (`9500ms`) — the digits being inspected
- * - 10s – 60s      seconds, one decimal when it carries information (`12.5s`)
- * - 60s – 60min    minutes + seconds (`2M30s`); capital `M` keeps minutes
- *                  distinguishable from the lowercase `ms` tier
- * - ≥ 60min        hours + minutes + seconds (`1H25M30s`)
- *
- * Zero components drop (`1H25M`, `2M`, `1H`), so a composite never prints a
- * unit that carries nothing.
+ * The single stepped-duration ladder for the console. Both the LOG row badge
+ * and the global overlay's rail badge use it, so the same measured pair span
+ * reads with the same unit in every surface: under 10s it is a `ms` span,
+ * 10–60s a `s` span, then `m`, `h` and `d` as it grows. Each value resolves to
+ * its dominant unit instead of compounding (`1m 4s`): one number per tier
+ * keeps a long history scannable, and colour (not a second unit) carries the
+ * "is this slow" signal.
  */
-export function formatOverlayDuration(milliseconds: number): string {
+export function formatDurationMs(milliseconds: number): string {
   if (!Number.isFinite(milliseconds) || milliseconds < 0) {
     return "--";
   }
-  if (milliseconds < 10_000) {
+  const seconds = milliseconds / 1000;
+  if (seconds < 10) {
     return `${Math.round(milliseconds)}ms`;
   }
-  const totalSeconds = Math.round(milliseconds / 1000);
-  if (totalSeconds < 60) {
-    const seconds = Math.round((milliseconds / 1000) * 10) / 10;
-    return `${Number.isInteger(seconds) ? String(seconds) : seconds.toFixed(1)}s`;
+  const minutes = seconds / 60;
+  if (minutes < 1) {
+    return `${Math.round(seconds)}s`;
   }
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-  const parts: string[] = [];
-  if (hours > 0) {
-    parts.push(`${hours}H`);
+  const hours = minutes / 60;
+  if (hours < 1) {
+    return `${Math.round(minutes)}m`;
   }
-  if (minutes > 0) {
-    parts.push(`${minutes}M`);
+  const days = hours / 24;
+  if (days < 1) {
+    return `${Math.round(hours)}h`;
   }
-  if (seconds > 0) {
-    parts.push(`${seconds}s`);
-  }
-  return parts.join("");
+  return `${Math.round(days)}d`;
 }

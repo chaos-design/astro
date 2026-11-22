@@ -158,6 +158,29 @@ export function includeTurnRow<T extends { kind: "row" | "turn" }>(
 }
 
 /**
+ * Whether a selection change should move the virtualized log's scrollTop.
+ *
+ * The locate effect also runs when a streamed batch rebuilds `rowTops` and
+ * `visibleEntries`: a finished message keeps its selected event, but new rows
+ * are prepended above it and the effect would scroll to keep that event in
+ * view. A reader who scrolled back to inspect older atoms then sees the list
+ * yank itself on every batch. Only a Live message (the reader is following),
+ * an explicit locate, or a genuinely new selection may move the scroll bar —
+ * an atom arriving under a non-Live message may not.
+ */
+export function shouldScrollLogToSelection({
+  explicitLocate,
+  live,
+  selectionChanged,
+}: {
+  explicitLocate: boolean;
+  live: boolean;
+  selectionChanged: boolean;
+}): boolean {
+  return live || explicitLocate || selectionChanged;
+}
+
+/**
  * Scroll target that brings a row into view. Returns `null` when the row is
  * already visible so callers can skip a scroll write entirely.
  */

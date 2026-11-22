@@ -370,18 +370,16 @@ test("a payload without prose falls back to highlighted JSON", () => {
 });
 
 /**
- * The overlay's duration badge follows the shared overlay ladder
- * (`src/lib/duration-label.ts`): exact milliseconds below 10s — where the
- * digits being inspected live — then seconds, `M`-minutes and `H`-hours
- * composites, so a long tool call stays scannable without rounding away the
- * short spans. The LOG and trajectory badges keep their stepped
- * `formatDurationMs`.
+ * The overlay's duration badge uses the same stepped ladder as the LOG list:
+ * `formatDurationMs` lives in the shared `src/lib/duration-label.ts` module,
+ * so the same closed pair reads with the same unit in both surfaces. No
+ * second composite formatter may grow in the overlay.
  */
-test("the overlay's duration badge follows the shared ladder", () => {
-  assert.match(app, /import \{ formatOverlayDuration \} from "\.\/lib\/duration-label";/);
-  assert.match(railBinding, /formatOverlayDuration\(pairDuration\)/);
-  assert.doesNotMatch(app, /formatDurationMsExact/);
-  assert.match(app, /function formatDurationMs\(milliseconds: number\)/);
+test("the overlay's duration badge shares the LOG unit ladder", () => {
+  assert.match(app, /import \{ formatDurationMs \} from "\.\/lib\/duration-label";/);
+  assert.match(railBinding, /formatDurationMs\(pairDuration\)/);
+  assert.doesNotMatch(app, /formatOverlayDuration/);
+  assert.doesNotMatch(app, /function formatDurationMs\(milliseconds: number\)/);
 });
 
 /**

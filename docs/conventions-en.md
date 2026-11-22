@@ -84,7 +84,9 @@
     Markdown parsing, code syntax highlighting and
     HTML sanitizing live only in `src/lib/markdown-preview.ts`
     (`renderMarkdownPreview`, with highlight.js registering only the languages
-    captured payloads carry). A fence that names its language is wrapped in a
+    captured payloads carry; shell fences use a dedicated escaped tokenizer
+    that colours commands, flags, assignments and variables). A fence that
+    names its language is wrapped in a
     `.md-code` header: the language badge renders **outside** the scrolling
     `<pre>` so wide code pans under it, right-aligned mono small caps. The
     token map in `styles.css` covers every class the registered grammars
@@ -135,7 +137,11 @@
     is fenced with its inferred language (`inferCodeLanguage` / `fenceCode` —
     json / diff / xml / typescript / python / bash; weak signals additionally
     require code punctuation or a multi-line body so prose never gets
-    colourised; a keyword match is **per-line** evidence, so a text carrying
+    colourised — a single-line shell command qualifies through flags, chains,
+    variables or a `VAR=value` prefix, a shebang on its own; every unwrapped
+    result text goes through this one fence decision, so a captured tool
+    command never falls back to an uncoloured paragraph; a keyword match is
+    **per-line** evidence, so a text carrying
     Markdown block structure — headings, lists, emphasis, links, fences,
     tables — is a *document* and renders as one (its own fenced code stays
     highlighted, wide code blocks and tables scroll inside their block), never
@@ -169,12 +175,10 @@
     separators are keyed by position, never by the turn value. Its rows reuse
     the LOG row itself (`.atomic-log__row`) — shared sequence, `atomTypeLabel`
     TYPE badge, event-meta tone, timestamp, action / summary, the closed-pair
-    duration badge (the shared overlay ladder, `formatOverlayDuration` in
-    `src/lib/duration-label.ts` — exact milliseconds below 10s where the
-    digits being inspected live, then `12.5s`, `2M30s` minute composites and
-    `1H25M30s` hour composites with zero components dropping, so a long call
-    stays scannable while the lists keep their own stepped
-    `formatDurationMs`) and the pair link marker (the shared `PairLinkMarker`
+    duration badge (the **same stepped ladder as the LOG list**,
+    `formatDurationMs` in `src/lib/duration-label.ts` — `ms` below 10s, `s`
+    below 1m, then `m` / `h` / `d`, one dominant unit per tier, so the same
+    pair reads with the same unit in both surfaces) and the pair link marker (the shared `PairLinkMarker`
     component extracted to `src/components/pair-link-marker.tsx`, also rendered
     by the LOG and the trajectory) — with rail-only CSS overrides that exist
     for readability: a wider rail, one step larger type, a wrapping key and a

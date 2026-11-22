@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   collectPayloadFields,
   contentToMarkdown,
+  inferCodeLanguage,
   isFoldableRelatedValue,
   orderRelated,
   RELATED_VALUE_MAX_CHARS,
@@ -100,6 +101,19 @@ test("shell and Python sources stay fenced even with `#` comments", () => {
   assert.match(contentToMarkdown(script), /^```bash\n/);
   const python = "def main():\n    # setup\n    print(1)";
   assert.match(contentToMarkdown(python), /^```python\n/);
+});
+
+test("a single-line shell command fences even without a newline", () => {
+  assert.match(contentToMarkdown("git status --short && pnpm test"), /^```bash\n/);
+  assert.match(contentToMarkdown("pnpm install --frozen-lockfile"), /^```bash\n/);
+  assert.match(contentToMarkdown("ASTRO_PORT=4401 pnpm service:up"), /^```bash\n/);
+  assert.match(contentToMarkdown("export FOO=bar; echo $FOO"), /^```bash\n/);
+  assert.match(contentToMarkdown("#!/bin/bash\npnpm build"), /^```bash\n/);
+});
+
+test("a prose sentence starting with a command name is not code", () => {
+  assert.equal(inferCodeLanguage("git status shows the changed files"), null);
+  assert.equal(inferCodeLanguage("pnpm is our package manager"), null);
 });
 
 test("a Markdown document quoting commands stays a document", () => {

@@ -815,7 +815,10 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   the inspector/overlay's `{ contract, captured }` wrapper previews only
   `captured`, leaving the `contract` topology metadata to the Raw tab); Markdown parsing, syntax highlighting and HTML sanitizing
   live only in `src/lib/markdown-preview.ts` (`renderMarkdownPreview`, with
-  highlight.js registering only the languages captured payloads carry). A
+  highlight.js registering only the languages captured payloads carry; shell
+  fences go through a dedicated escaped tokenizer that colours commands,
+  flags, assignments and variables, since the stock bash grammar left real
+  captured commands almost monochrome). A
   fence that names its language is wrapped in a `.md-code` header whose badge
   stays **outside** the scrolling `<pre>` — it keeps its place while wide
   code pans; the token map in `styles.css` colours every class the
@@ -868,12 +871,10 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   event's payload content through the shared per-event haystacks
   `searchEvent` → `matchesEventQuery`; the input carries a clear button, and a
   turn whose rows all miss disappears with its separator). Its duration badge
-  follows the shared **overlay ladder** (`formatOverlayDuration` in
-  `src/lib/duration-label.ts` — exact milliseconds below 10s, where the digits
-  being inspected live, then `12.5s`, `2M30s` minutes composites and
-  `1H25M30s` hours composites, zero components dropping; the LOG and
-  trajectory keep their own stepped `formatDurationMs` so a long history
-  stays scannable). The rail
+  uses the **same stepped ladder as the LOG list** (`formatDurationMs` in
+  `src/lib/duration-label.ts` — <10s `ms`, <1m `s`, then `m` / `h` / `d`, one
+  dominant unit per tier): the same closed pair reads with the same unit in
+  both surfaces. No second composite formatter may grow in the overlay. The rail
   header carries a **Live toggle** that
   mirrors the console's live following: availability keys off the *recorded*
   status (`getRunHistoryDisplayStatus` — the RUNNING capsule the RUN HISTORY
@@ -928,7 +929,12 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   field-name headings are not printed, and a string value is fenced with its
   inferred language (`inferCodeLanguage` / `fenceCode` — json / diff / xml /
   typescript / python / bash; a wrong guess colours prose into noise, so weak
-  signals additionally require code punctuation or a multi-line body). A
+  signals additionally require code punctuation or a multi-line body — a
+  single-line shell command qualifies through flags, chains, variables or a
+  `VAR=value` prefix, and a shebang qualifies on its own). Every text the
+  result extractor unwraps (`payloadToMarkdown`, `resultToMarkdown`) goes
+  through this one fence decision, so a captured tool command never falls back
+  to an uncoloured paragraph. A
   keyword match is **per-line** evidence only: a text carrying Markdown block
   structure (headings, lists, emphasis, links, fences, tables) is a document
   and renders as one — its own fenced code highlighted, wide code blocks and

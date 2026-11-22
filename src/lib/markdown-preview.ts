@@ -71,9 +71,11 @@ markdownParser.use({
       // not a language identifier before it reaches the HTML string.
       const language = (fence.lang ?? "").trim().split(/\s+/)[0].replace(/[^a-zA-Z0-9_+-]/g, "");
       const body =
-        language && hljs.getLanguage(language)
-          ? hljs.highlight(code, { language, ignoreIllegals: true }).value
-          : escapeHtml(code);
+        language && SHELL_LANGUAGES.has(language)
+          ? highlightShell(code)
+          : language && hljs.getLanguage(language)
+            ? hljs.highlight(code, { language, ignoreIllegals: true }).value
+            : escapeHtml(code);
       const classes = language ? `hljs language-${language}` : "hljs";
       if (!language) {
         return `<pre><code class="${classes}">${body}</code></pre>`;
@@ -94,6 +96,61 @@ function escapeHtml(value: string): string {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+/**
+ * The registered bash grammar only colours a handful of builtins, so a real
+ * captured command (`ASTRO_PORT=4401 pnpm service:up && curl …`) came back
+ * almost monochrome — the exact "highlight looks wrong" a reader sees in the
+ * atom-content pane. Shell lines have a small, fixed vocabulary, so render
+ * them with one explicit tokenizer: command names, flags, assignments and
+ * variables each get a stable token class the shared theme already colours.
+ * Every token is escaped, so a captured command can never inject markup.
+ */
+const SHELL_LANGUAGES = new Set(["bash", "sh", "shell", "zsh", "console"]);
+const SHELL_TOKEN =
+  /("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`[^`]*`|\$\{[^}]*\}|\$[A-Za-z_]\w*|--?[A-Za-z0-9][\w-]*|[A-Za-z_]\w*=[^\s"'&|;]*|[A-Za-z_][\w./-]*|[;&|]+|\s+|.)/g;
+
+function highlightShell(code: string): string {
+  return code
+    .split("\n")
+    .map((line) => {
+      if (/^\s*#/.test(line)) {
+        return `<span class="hljs-comment">${escapeHtml(line)}</span>`;
+      }
+      let commandStart = true;
+      let html = "";
+      for (const match of line.matchAll(SHELL_TOKEN)) {
+        const token = match[0];
+        if (/^\s+$/.test(token)) {
+          html += escapeHtml(token);
+          continue;
+        }
+        if (/^[;&|]+$/.test(token)) {
+          commandStart = true;
+          html += `<span class="hljs-punctuation">${escapeHtml(token)}</span>`;
+          continue;
+        }
+        let tokenClass = "";
+        if (/^[A-Za-z_]\w*=/.test(token)) {
+          tokenClass = "hljs-property";
+        } else if (commandStart && /^[A-Za-z_./]/.test(token)) {
+          tokenClass = "hljs-keyword";
+          commandStart = false;
+        } else if (/^--?[A-Za-z0-9]/.test(token)) {
+          tokenClass = "hljs-attr";
+        } else if (/^\$/.test(token)) {
+          tokenClass = "hljs-variable";
+        } else if (/^["'`]/.test(token)) {
+          tokenClass = "hljs-string";
+        }
+        html += tokenClass
+          ? `<span class="${tokenClass}">${escapeHtml(token)}</span>`
+          : escapeHtml(token);
+      }
+      return html;
+    })
+    .join("\n");
 }
 
 export interface MarkdownRender {

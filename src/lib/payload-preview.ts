@@ -425,11 +425,27 @@ export function inferCodeLanguage(text: string): string | null {
   if (!candidate) {
     return null;
   }
-  const looksLikeCode = /[{};=<>[\]]/.test(body) || body.includes("\n");
+  // A keyword is per-line evidence, so prose that merely starts with a
+  // command name must still stay prose. A single-line shell command is code
+  // when it carries a flag, a chain/pipe, a variable or a script task name —
+  // none of which an ordinary sentence uses. Without this, a captured
+  // `pnpm build` rendered as a paragraph with its URL auto-linked into prose.
+  const shellEvidence =
+    /\s--?[A-Za-z0-9]|&&|\s\|\s|\$[A-Za-z_{]|^[A-Za-z_][A-Za-z0-9_]*=|[A-Za-z0-9_]+:[A-Za-z0-9_-]+/.test(
+      body,
+    );
+  const looksLikeCode =
+    /[{};=<>[\]]/.test(body) || body.includes("\n") || (candidate === "bash" && shellEvidence);
   return looksLikeCode ? candidate : null;
 }
 
 function inferStructuralLanguage(body: string): string | null {
+  // A shebang is unambiguous, even when the script body that follows has no
+  // other code punctuation. Without it the whole script would render as prose
+  // and `# comment` lines would turn into Markdown headings.
+  if (/^#!.*\b(?:bash|zsh|sh)\b/.test(body)) {
+    return "bash";
+  }
   if (body.startsWith("{") || body.startsWith("[")) {
     try {
       JSON.parse(body);
@@ -448,10 +464,14 @@ function inferStructuralLanguage(body: string): string | null {
 }
 
 function inferKeywordLanguage(body: string): string | null {
+  // `export FOO=bar` is a shell assignment, not a TypeScript export statement;
+  // without this guard the TS matcher claims it before the bash list is seen.
+  const shellExport = /^\s*export\s+[A-Za-z_]\w*=[^\n]*$/m.test(body);
   if (
-    /^\s*(?:import|export)\s[\w"'{*]/m.test(body) ||
-    /^\s*(?:const|let|var|function|class|interface|type)\s+\w/m.test(body) ||
-    /=>\s*\{/.test(body)
+    !shellExport &&
+    (/^\s*(?:import|export)\s[\w"'{*]/m.test(body) ||
+      /^\s*(?:const|let|var|function|class|interface|type)\s+\w/m.test(body) ||
+      /=>\s*\{/.test(body))
   ) {
     return "typescript";
   }
@@ -462,8 +482,18 @@ function inferKeywordLanguage(body: string): string | null {
   ) {
     return "python";
   }
+  // A command may be prefixed by env assignments (`ASTRO_PORT=4401 pnpm …`).
+  // Strip them only for the match: the original body keeps the `=` that makes
+  // the shell evidence unambiguous, and the related-data pane still shows the
+  // assignment verbatim.
+  const commandBody = body.replace(
+    /^(?:[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|[^\s]*)\s+)+/gm,
+    "",
+  );
   if (
-    /^\s*(?:ls|cat|wc|head|tail|grep|find|sed|awk|chmod|chown|mkdir|touch|rm|cp|mv|ln|curl|wget|git|npm|pnpm|yarn|npx|node|python3?|pip3?|docker|make|brew|sudo|ssh|scp|tar)\s+\S/m.test(body)
+    /^\s*(?:ls|cat|wc|head|tail|grep|find|sed|awk|chmod|chown|mkdir|touch|rm|cp|mv|ln|cd|echo|export|source|printf|pwd|which|kill|env|time|sleep|curl|wget|git|npm|pnpm|yarn|npx|node|python3?|pip3?|docker|make|brew|sudo|ssh|scp|tar|sort|uniq|cut|tr|xargs|tee|du|df)\s+\S/m.test(
+      commandBody,
+    )
   ) {
     return "bash";
   }
