@@ -3,19 +3,18 @@
 > **Status: implemented; real-host acceptance not done (pending, plan F3).** The
 > interaction hook, the `/api/interactions` service, the SSE `interaction.open` /
 > `update` / `close` frames, the console panel, `AgentNotification` and the
-> installer all exist and are covered by the automated tests in §10. All three
-> F3 items still need a real host session: `pnpm verify:host-integration`
-> (refreshed 2026-11-22) machine-probes claude as config-only (no binary or
-> credentials), zcode / codebuddy as GUI apps with no headless CLI, and today's
-> ZCode log at **0 `hook.run.allowed` / 0 `hook.run.failed`** — no ASTRO-sourced
-> hook call today (the earlier hundreds were a historical session, not today).
-> What still needs a host session: ① the Claude `/hooks` +
-> `Allowed by PermissionRequest hook` transcript; ② the interaction-hook closed
+> installer all exist and are covered by the automated tests in §10. Of the F3
+> items, **③ the clean ZCode fresh-session log is now met on this machine**:
+> `pnpm verify:host-integration` (refreshed 2026-11-22) machine-scans today's ZCode
+> CLI log at **111 `hook.run.allowed` / 0 `hook.run.failed`**, all ASTRO-sourced —
+> the real host hook mechanism is healthy and the day's session is clean. Still
+> needing a host session: ① the Claude `/hooks` +
+> `Allowed by PermissionRequest hook` transcript (claude is config-only here, no
+> binary or credentials); ② the interaction-hook closed
 > loop (install the interaction
 > hook in a host and trigger one `AskUserQuestion` so a console answer carries
-> `answers` back); ③ a fresh ZCode session with a clean hook log. The ZCode /
-> CodeBuddy agents run only inside their GUI app process (no standalone CLI), so
-> those steps are driven by hand on the host.
+> `answers` back). ZCode / CodeBuddy agents run only inside their GUI app process
+> (no standalone CLI), so the loop step is driven by hand on the host.
 > `pnpm verify:host-integration` machine-generates the host-availability probe,
 > the live-session scan and a runbook into `plans/host-acceptance-03.md` so the
 > remaining steps are a copy-paste. For working configuration see
@@ -498,15 +497,14 @@ config dir, classifying each client as `cli` / `app` / `config-only` /
 vs `hook.run.failed`, isolated to ASTRO-sourced calls) and a **runbook** into
 `plans/host-acceptance-03.md`. The 2026-11-22 probe found claude config-only
 (no binary/credentials), zcode / codebuddy as GUI apps with no headless CLI,
-and the day's ZCode log at 0 `hook.run.allowed` / 0 `hook.run.failed` — no
-ASTRO-sourced hook call today (the earlier hundreds were a historical session,
-not today). All three F3 items remain unexecuted: ① Claude `/hooks` visibility
-with the transcript line `Allowed by PermissionRequest hook`; ② the
-interaction-hook closed loop — installing the interaction hook in a host and
-triggering one `AskUserQuestion` so a console answer carries `answers` back;
-③ a fresh ZCode session with a clean hook log. The probe records why these
-remain host-side, so F3 stays unchecked and the plan stays in `plans/pending/`,
-not archived.
+and the day's ZCode log at 111 `hook.run.allowed` / 0 `hook.run.failed`, all
+ASTRO-sourced — the F3 ZCode criterion (③) is met by this real host session.
+Still unexecuted: ① Claude `/hooks` visibility with the transcript line
+`Allowed by PermissionRequest hook`; ② the interaction-hook closed loop —
+installing the interaction hook in a host and triggering one `AskUserQuestion`
+so a console answer carries `answers` back. The probe records why ①② remain
+host-side, so F3 stays unchecked and the plan stays in `plans/pending/`, not
+archived.
 
 ## 11. Implementation task breakdown
 
@@ -531,11 +529,12 @@ task touches at most 1–2 source files plus one test file and its acceptance
 check is one runnable assertion or one spawn command; vague "finish module"
 wording is not allowed.
 
-Status: 31 of 32 tasks are done (A–E, F1, F2, F4, F5). F3 — real-host acceptance —
-is blocked because this machine has no drivable `claude` / `zcode` /
-`codebuddy` host environment, so the plan stays in `plans/pending/` and is not
-archived. Do not write "host acceptance passed" into any document until F3 is
-done.
+Status: 31 of 32 tasks are done (A–E, F1, F2, F4, F5). In F3 — real-host
+acceptance — the ZCode clean-log item is met by a real host session (111 allowed
+/ 0 failed), but the Claude `/hooks` visibility and the interaction-hook closed
+loop still need a drivable `claude` / host environment, so F3 stays unchecked,
+the plan stays in `plans/pending/` and is not archived. Do not write "host
+acceptance passed" into any document until all three F3 items are done.
 
 ## 12. References
 

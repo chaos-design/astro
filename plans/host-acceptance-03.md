@@ -1,6 +1,6 @@
 # Host integration equivalence acceptance (plan F3)
 
-Generated: 2026-11-22T05:21:28.103Z
+Generated: 2026-11-22T06:39:32.229Z
 
 This record covers protocol-level acceptance using captured payloads and real
 hook processes. It does **not** replace launching Claude Code or ZCode:
@@ -31,9 +31,9 @@ Machine-generated on every run; this is the evidence behind the F3 blocker.
 
 ## Live ZCode host session (machine-scanned)
 
-Scanned /Users/xcz/.zcode/cli/log/zcode-2026-11-22.jsonl (2026-11-22): **0** hook.run.allowed, **0** hook.run.failed.
+Scanned /Users/xcz/.zcode/cli/log/zcode-2026-11-22.jsonl (2026-11-22): **111** hook.run.allowed, **0** hook.run.failed, 111 ASTRO-sourced, last ASTRO call Bash at 2026-11-22T06:19:01.350Z.
 
-The log exists but no ASTRO-sourced hook call today — the ASTRO hooks were not exercised on this host yet.
+A real ZCode host session ran ASTRO hooks on this day with **no `hook.run.failed`** — the F3 ZCode criterion of a clean fresh-session log holds on this machine.
 
 Note: the ASTRO calls logged here come from the installed **recorder** plugin, so this proves the host's hook mechanism is healthy and the day's session is clean. It is **not** the interaction-hook closed loop (registering a question and carrying a human answer back); that still needs the interaction hook installed and an AskUserQuestion triggered inside the host.
 
