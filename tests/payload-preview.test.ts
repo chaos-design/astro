@@ -64,6 +64,51 @@ test("fences JSON content so the renderer highlights it as code", () => {
   assert.equal(contentToMarkdown("   "), "");
 });
 
+test("a Markdown document with a code-like line renders as the document", () => {
+  // The regression this pins: one `export type` sketch line inside an agent's
+  // plan must not fence the whole reading surface into a monospace code block
+  // — the keyword matchers are per-line evidence, not document evidence.
+  const plan = [
+    "## Plan",
+    "",
+    "**User's asks:**",
+    "",
+    "1. 优化 study 页面布局",
+    "2. 补充更多学习方式",
+    "",
+    "### Part A: Study page layout + modes",
+    "",
+    "Sketching the service shape:",
+    "export type ModelServiceSpec = { name, baseUrl, apiKey, mode };",
+    "export function parseModelServicesEnv(): SavedModelService[];",
+    "",
+    "- Route page (`app/workspace/expressions/study/page.tsx`)",
+    "- `ExpressionStudyPage` → `ExpressionStudyWorkspace`",
+  ].join("\n");
+  assert.equal(contentToMarkdown(plan), plan);
+});
+
+test("a short code string still fences with its inferred language", () => {
+  assert.match(contentToMarkdown('import { X } from "./y";'), /^```typescript\n/);
+  assert.match(contentToMarkdown("ls -la\ngit status"), /^```bash\n/);
+});
+
+test("shell and Python sources stay fenced even with `#` comments", () => {
+  // `#` heads a Markdown heading elsewhere, but in shell / Python it is a
+  // comment — it must not read as document evidence there.
+  const script = "set -e\n# install deps\npnpm install\ngit push";
+  assert.match(contentToMarkdown(script), /^```bash\n/);
+  const python = "def main():\n    # setup\n    print(1)";
+  assert.match(contentToMarkdown(python), /^```python\n/);
+});
+
+test("a Markdown document quoting commands stays a document", () => {
+  // The `git push` line alone matches the bash keyword matcher; the
+  // document's list structure outranks it.
+  const doc = "## Steps\n\n- run `pnpm test`\n\ngit push --force-with-lease\n\nDone.";
+  assert.equal(contentToMarkdown(doc), doc);
+});
+
 test("orders annotations before the other related fields", () => {
   const preview = splitPayloadPreview({
     timestamp: "2026-11-11T02:25:25.256Z",

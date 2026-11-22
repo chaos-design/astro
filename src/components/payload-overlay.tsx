@@ -1,5 +1,14 @@
 import { ChevronDown, ChevronUp, Code2, Eye, Radio, Search, X } from "lucide-react";
-import { useDeferredValue, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import {
+  useDeferredValue,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type UIEvent,
+} from "react";
 import { JsonViewer } from "@/components/json-viewer";
 import { PairLinkMarker } from "@/components/pair-link-marker";
 import { cn } from "@/lib/utils";
@@ -337,6 +346,70 @@ export function PayloadOverlay({
     }
   }, [atoms.length, following, open, selectedEventId]);
   const atomRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  // The reader's scroll position in the two preview panes, written by their
+  // onScroll handlers (ref writes only — a streamed batch must not re-render).
+  // While a live run executes, following advances the selection to every new
+  // event, and a streamed message arrives as a new event every ~800ms: the
+  // preview switches content under the reader, and replacing the rendered HTML
+  // clamps the panes' scroll back to the start whenever the new content is
+  // narrower or shorter. The memo restores the position, so the line the
+  // reader was on stays put while the message grows underneath it.
+  const readerScrollRef = useRef({
+    contentTop: 0,
+    contentLeft: 0,
+    relatedTop: 0,
+    relatedLeft: 0,
+  });
+  // The rail row the reader picked themselves. That switch opens the payload
+  // from its top; every other selection change (the follow advance, a LOG /
+  // canvas pick while the layer is open) preserves the memo instead — the
+  // reader's position belongs to the reader.
+  const railPickedEventRef = useRef("");
+  const contentBodyRef = useRef<HTMLDivElement | null>(null);
+  const relatedBodyRef = useRef<HTMLDivElement | null>(null);
+  const handleContentScroll = (event: UIEvent<HTMLDivElement>) => {
+    const el = event.currentTarget;
+    readerScrollRef.current.contentTop = el.scrollTop;
+    readerScrollRef.current.contentLeft = el.scrollLeft;
+  };
+  const handleRelatedScroll = (event: UIEvent<HTMLDivElement>) => {
+    const el = event.currentTarget;
+    readerScrollRef.current.relatedTop = el.scrollTop;
+    readerScrollRef.current.relatedLeft = el.scrollLeft;
+  };
+  // Runs after each preview change commits. An explicit rail pick anchors the
+  // panes to the top; anything else restores the memo (the browser clamps
+  // whatever the new content cannot honour, so a shorter payload never leaves
+  // the reader stranded past its end). The pick mark is consumed on every run,
+  // and a switch into the Code view unmounts both panes and starts the memo
+  // over, so coming back opens from the top.
+  useLayoutEffect(() => {
+    const picked = railPickedEventRef.current;
+    railPickedEventRef.current = "";
+    const content = contentBodyRef.current;
+    const related = relatedBodyRef.current;
+    if (!content) {
+      readerScrollRef.current = { contentTop: 0, contentLeft: 0, relatedTop: 0, relatedLeft: 0 };
+      return;
+    }
+    if (picked && picked === selectedEventId) {
+      readerScrollRef.current = { contentTop: 0, contentLeft: 0, relatedTop: 0, relatedLeft: 0 };
+      content.scrollTop = 0;
+      content.scrollLeft = 0;
+      if (related) {
+        related.scrollTop = 0;
+        related.scrollLeft = 0;
+      }
+      return;
+    }
+    const memo = readerScrollRef.current;
+    content.scrollTop = memo.contentTop;
+    content.scrollLeft = memo.contentLeft;
+    if (related) {
+      related.scrollTop = memo.relatedTop;
+      related.scrollLeft = memo.relatedLeft;
+    }
+  }, [preview.contentHtml, selectedEventId, viewMode]);
   const rowCount = useMemo(
     () => railItems.reduce((total, item) => total + (item.kind === "atom" ? 1 : 0), 0),
     [railItems],
@@ -507,7 +580,10 @@ export function PayloadOverlay({
                           selected && !running && "is-selected",
                           partnerSelected && !selected && "is-pair-partner",
                         )}
-                        onClick={() => onSelectAtom(atom.atomId, atom.id)}
+                        onClick={() => {
+                          railPickedEventRef.current = atom.id;
+                          onSelectAtom(atom.atomId, atom.id);
+                        }}
                         onKeyDown={(keyEvent) =>
                           handleAtomKeyDown(keyEvent, rowPosition)
                         }
@@ -570,14 +646,22 @@ export function PayloadOverlay({
                 {preview.showQuestion ? (
                   <section className="payload-overlay__pane payload-overlay__pane--content">
                     <h4 className="payload-overlay__pane-title">原子内容</h4>
-                    <div className="payload-overlay__body">
+                    <div
+                      className="payload-overlay__body"
+                      onScroll={handleContentScroll}
+                      ref={contentBodyRef}
+                    >
                       <QuestionPreview payload={activePayload as TracePayload} />
                     </div>
                   </section>
                 ) : (
                   <section className="payload-overlay__pane payload-overlay__pane--content">
                     <h4 className="payload-overlay__pane-title">原子内容</h4>
-                    <div className="payload-overlay__body">
+                    <div
+                      className="payload-overlay__body"
+                      onScroll={handleContentScroll}
+                      ref={contentBodyRef}
+                    >
                       {preview.hasContent ? (
                         <div
                           className="markdown-preview"
@@ -595,7 +679,11 @@ export function PayloadOverlay({
                   <div className="payload-overlay__pane-head">
                     <h4 className="payload-overlay__pane-title">相关数据</h4>
                   </div>
-                  <div className="payload-overlay__body payload-overlay__related-body">
+                  <div
+                    className="payload-overlay__body payload-overlay__related-body"
+                    onScroll={handleRelatedScroll}
+                    ref={relatedBodyRef}
+                  >
                     {preview.related.length ? (
                       <dl className="payload-overlay__fields">
                         {preview.related.map((field) => (

@@ -420,6 +420,42 @@ test("related values fold individually, never the whole pane", () => {
 });
 
 /**
+ * The reader's position belongs to the reader. While a run executes, following
+ * advances the selection to every new event — and a streamed message arrives
+ * as a new event every ~800ms — so the preview content is replaced under the
+ * reader; the panes' scroll must survive that (the memo restores it) and only
+ * a row the reader picked themselves re-anchors to the top.
+ */
+test("a follow advance keeps the reader's scroll; picking a row re-anchors", () => {
+  // The panes' scroll is memoised by their onScroll handlers (ref writes
+  // only — a streamed batch must not re-render to record a position).
+  assert.match(overlay, /const readerScrollRef = useRef\(\{/);
+  assert.match(overlay, /onScroll=\{handleContentScroll\}/);
+  assert.match(overlay, /onScroll=\{handleRelatedScroll\}/);
+  // Restore after the commit: the layout effect runs on every preview change
+  // and puts the memo back, so the line the reader was on stays put.
+  assert.match(overlay, /content\.scrollTop = memo\.contentTop;/);
+  assert.match(overlay, /content\.scrollLeft = memo\.contentLeft;/);
+  assert.match(
+    overlay,
+    /\}, \[preview\.contentHtml, selectedEventId, viewMode\]\);/,
+  );
+  // A rail pick is the one re-anchor: the click marks the row, the effect
+  // consumes the mark and zeroes both panes.
+  assert.match(overlay, /railPickedEventRef\.current = atom\.id;/);
+  assert.match(overlay, /if \(picked && picked === selectedEventId\) \{/);
+  assert.match(overlay, /content\.scrollTop = 0;/);
+  // The Code view unmounts the panes and starts the memo over.
+  assert.match(overlay, /if \(!content\) \{/);
+  // Wide Markdown tables scroll inside their own block, like fenced code —
+  // the pane wraps prose and never widens for one wide element.
+  assert.match(
+    stylesForOverlay,
+    /\.payload-overlay \.markdown-preview table \{[\s*\S]*?overflow-x: auto;/,
+  );
+});
+
+/**
  * The content pane previews the payload's *core* information — the tool
  * result, the prompt, the message content — rendered by its type (Markdown
  * lists, highlighted code, a structured patch as a diff), never the raw
@@ -449,6 +485,28 @@ test("the content pane extracts the payload's core information", () => {
   assert.match(markdown, /function structuredPatchToMarkdown/);
   assert.match(markdown, /Fenced as `diff`/);
   assert.match(markdown, /findPatchMarkdown\(value, depth, new WeakSet\(\)\)/);
+});
+
+/**
+ * The recorder normalizes `toolInput` / `toolResponse` onto the snake names
+ * even when the producer only carried the camel spelling, so an empty `{}` can
+ * sit beside real content. That placeholder must never shadow the next
+ * spelling — an empty tool_input once blanked every tool call's Input preview
+ * while `toolInput.command` was right there.
+ */
+test("an empty tool_input placeholder never shadows the real spelling", () => {
+  assert.match(app, /function payloadField\(/);
+  assert.match(
+    app,
+    /payloadField\(\s*\n\s*boundEvent\.payload\.tool_input,\s*\n\s*boundEvent\.payload\.toolInput,\s*\n\s*\) \?\? boundEvent\.payload/,
+  );
+  assert.match(
+    app,
+    /payloadField\(\s*\n\s*boundEvent\.payload\.tool_response,\s*\n\s*boundEvent\.payload\.toolResponse,\s*\n\s*\) \?\? boundEvent\.payload/,
+  );
+  // The shadowing pattern is gone from every payload resolution.
+  assert.doesNotMatch(app, /payload\.tool_input \|\|\s*\n\s*payload\.toolInput/);
+  assert.doesNotMatch(app, /payload\.tool_response \|\|\s*\n\s*payload\.toolResponse/);
 });
 
 /**

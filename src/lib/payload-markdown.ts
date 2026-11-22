@@ -16,8 +16,8 @@
  */
 
 import {
+  contentToMarkdown,
   fenceCode,
-  inferCodeLanguage,
   isPayloadContainerKey,
   isPayloadMetaKey,
 } from "./payload-preview.ts";
@@ -390,8 +390,9 @@ function objectToMarkdown(value: UnknownRecord, depth: number, seen: WeakSet<obj
       if (!item.trim()) {
         continue;
       }
-      const language = inferCodeLanguage(item);
-      blocks.push(language ? fenceCode(item, language) : item);
+      // One fence decision with the content extractor: a code string fences
+      // with its inferred language, a Markdown document renders as itself.
+      blocks.push(contentToMarkdown(item));
     } else if (item !== null && item !== undefined && typeof item === "object") {
       if (container) {
         blocks.push(payloadToMarkdown(item, depth + 1, seen));

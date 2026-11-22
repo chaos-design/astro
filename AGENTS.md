@@ -869,7 +869,13 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   keeps advancing to its newest atom, a STALE one lands on its newest event
   and resumes following the moment it produces an event again. Armed
   it breathes (a `payload-follow-breathe` halo); the label is the console's
-  own Live mark.
+  own Live mark. A follow advance replaces the preview content **under the
+  reader** while keeping both panes' scroll positions (an onScroll memo
+  restored after each commit — a streamed message lands as a new event every
+  ~800ms and grows beneath the reader without moving the line they were on);
+  only a row **the reader picked in the rail** re-anchors both panes to the
+  top, and a switch to the Code view resets the memo so coming back opens
+  from the start.
   The layer keeps **both readings behind one
   toggle**: `Preview` is the rendered content (Markdown headings, GFM task lists,
   highlighted code, question/option/answer lists) and `Code` is the untouched
@@ -883,8 +889,11 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   `payloadForAtom(atomId, eventId)` / `variantForAtom(atomId, eventId)` — a
   picked row resolves its *own* event's payload (one atom aggregates many
   events, so the resolver is row-event-first: a tool-call row reads its own
-  `tool_input`, a result row its `tool_response`, a prompt row its payload),
-  and the pane previews the payload's **core information**, never the raw
+  `tool_input`, a result row its `tool_response`, a prompt row its payload;
+  `payloadField` in app.tsx skips the recorder's empty `{}` placeholder — the
+  recorder writes `tool_input: {}` when only the camel spelling exists, and
+  letting it shadow `toolInput.command` once blanked every tool call's Input
+  preview), and the pane previews the payload's **core information**, never the raw
   envelope: a split with prose renders as Markdown, one without falls to the
   shared core extractor `payloadToMarkdown` (which reads the camel
   `toolResponse` spelling and renders a `structuredPatch` as a highlighted
@@ -895,7 +904,15 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   field-name headings are not printed, and a string value is fenced with its
   inferred language (`inferCodeLanguage` / `fenceCode` — json / diff / xml /
   typescript / python / bash; a wrong guess colours prose into noise, so weak
-  signals additionally require code punctuation or a multi-line body). The
+  signals additionally require code punctuation or a multi-line body). A
+  keyword match is **per-line** evidence only: a text carrying Markdown block
+  structure (headings, lists, emphasis, links, fences, tables) is a document
+  and renders as one — its own fenced code highlighted, wide code blocks and
+  tables scrolling inside their block — never wholesale-fenced into a
+  horizontally scrolling monospace wall because one line inside looks like
+  code (an `export type …` sketch inside an agent's plan); json / diff / xml
+  self-identify and fence unconditionally, and `#` lines are comments in
+  shell / Python, never document evidence there. The
   related-data pane lists **every captured field** via `collectPayloadFields`
   (content keys, empty strings, null/false/0 and nested dotted paths included —
   annotations first); folding is **per value**, never per pane: only a value

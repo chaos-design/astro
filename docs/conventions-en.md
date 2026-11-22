@@ -100,7 +100,11 @@
     (`cacheScope`); `payloadForAtom(atomId, eventId)` resolves the picked row's
     *own* event's payload, row-event-first — a tool-call row reads its own
     `tool_input`, a result row its `tool_response`, a prompt row its payload —
-    and the pane previews the payload's **core information**, never the raw
+    and `payloadField` (app.tsx) skips the recorder's **empty `{}` placeholder**
+    (the recorder writes `tool_input: {}` when only the camel spelling exists)
+    so it never shadows the real `toolInput.command` — that shadowing once
+    blanked every tool call's Input preview — and the pane previews the
+    payload's **core information**, never the raw
     envelope: a split with prose renders as Markdown (lists, highlighted code
     by data type), one without falls to the shared core extractor
     `payloadToMarkdown` (which reads the camel `toolResponse` spelling and
@@ -115,7 +119,15 @@
     is fenced with its inferred language (`inferCodeLanguage` / `fenceCode` —
     json / diff / xml / typescript / python / bash; weak signals additionally
     require code punctuation or a multi-line body so prose never gets
-    colourised). The related pane lists **every field** via `collectPayloadFields`
+    colourised; a keyword match is **per-line** evidence, so a text carrying
+    Markdown block structure — headings, lists, emphasis, links, fences,
+    tables — is a *document* and renders as one (its own fenced code stays
+    highlighted, wide code blocks and tables scroll inside their block), never
+    wholesale-fenced into a horizontally scrolling monospace wall because one
+    line inside looks like code (`export type …` sketches in an agent's plan);
+    json / diff / xml self-identify and fence unconditionally, and `#` lines
+    are comments in shell / Python so they never count as document evidence
+    there). The related pane lists **every field** via `collectPayloadFields`
     (content keys, empty values, null/false/0, nested dotted paths — annotations
     first); folding is **per value**, not per pane: only a value past
     `RELATED_VALUE_MAX_CHARS` (200) gets its own 展开 / 收起 on that row, and the
@@ -162,7 +174,14 @@
     message keeps advancing to its newest atom, a STALE one lands on its newest
     event and resumes following the moment it produces an event again. Armed it
     breathes (a `payload-follow-breathe` halo); the label is the console's own
-    Live mark. The preview and related panes read one step larger than the
+    Live mark. A follow advance (or any selection change the dialog did not
+    originate) replaces the preview content **under the reader** while keeping
+    both panes' scroll positions (an onScroll memo restored after each commit —
+    a streamed message lands as a new event every ~800ms and grows beneath the
+    reader without moving the line they were on); only a row **the reader
+    picked in the rail** re-anchors both panes to the top, and switching to the
+    Code view resets the memo so coming back opens from the start. The preview
+    and related panes read one step larger than the
     inspector's, and their titles stay pinned while their bodies scroll. The
     read-only question preview
     (`QuestionPreview` → `StaticQuestionContent`) leads with a question count

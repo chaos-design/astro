@@ -48,6 +48,19 @@ test("a code string in an unnamed field is fenced with its inferred language", (
   assert.doesNotMatch(markdown, /###|file_path|replace_all/);
 });
 
+test("a Markdown message field renders as itself, not one code fence", () => {
+  // The generic view shares the one fence decision with the content
+  // extractor: an agent message that sketches `export type` lines inside a
+  // document stays a document (the inspector's generic view included).
+  const markdown = payloadToMarkdown({
+    eventName: "Reasoning",
+    message: "## Plan\n\n**Layout:** two columns\n\nexport type Spec = { id: string };\n",
+  });
+  assert.match(markdown, /## Plan/);
+  assert.match(markdown, /\*\*Layout:\*\*/);
+  assert.doesNotMatch(markdown, /```typescript\n## Plan/);
+});
+
 test("an answers map becomes question rows with Markdown answers", () => {
   const markdown = payloadToMarkdown({
     tool_input: {

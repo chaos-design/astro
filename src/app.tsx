@@ -634,6 +634,31 @@ function buildLogEntries(events: TraceEvent[], platformId: string) {
   }));
 }
 
+/**
+ * The recorder normalizes `toolInput` / `toolResponse` onto the canonical
+ * snake names even when the producer only carried the camel spelling, so an
+ * empty `{}` can sit beside real content. An empty object is the recorder's
+ * placeholder, never content: it must not shadow the next spelling down the
+ * fallback chain (that shadowing is how a tool call's Input preview went
+ * blank while `toolInput.command` was right there).
+ */
+function payloadField(...values: unknown[]): unknown {
+  for (const value of values) {
+    if (
+      value !== null &&
+      value !== undefined &&
+      !(
+        typeof value === "object" &&
+        !Array.isArray(value) &&
+        Object.keys(value).length === 0
+      )
+    ) {
+      return value;
+    }
+  }
+  return null;
+}
+
 function getPayloadForTab(
   node: TraceNodeType | null,
   event: TraceEvent | null,
@@ -651,7 +676,7 @@ function getPayloadForTab(
       return start.payload;
     }
     return (
-      start.payload.tool_input || {
+      payloadField(start.payload.tool_input) ?? {
         prompt: start.payload.prompt,
         message: start.payload.message,
         source: start.payload.source,
@@ -661,7 +686,7 @@ function getPayloadForTab(
 
   if (tab === "output") {
     return (
-      end?.payload?.tool_response || {
+      payloadField(end?.payload?.tool_response) ?? {
         message:
           event.payload.last_assistant_message ||
           event.payload.message ||
@@ -3507,11 +3532,11 @@ function TraceInspector({
   const capturedInput =
     node && event
       ? getPayloadForTab(node, event, "input")
-      : event?.payload?.tool_input || event?.payload || null;
+      : payloadField(event?.payload?.tool_input, event?.payload);
   const capturedOutput =
     node && event
       ? getPayloadForTab(node, event, "output")
-      : event?.payload?.tool_response || null;
+      : payloadField(event?.payload?.tool_response);
   const promptEvent = event?.eventName === "UserPromptSubmit"
     ? event
     : node?.data.startEvent.eventName === "UserPromptSubmit"
@@ -7083,9 +7108,10 @@ export default function App() {
         }
         if (boundEvent.eventName === "PreToolUse") {
           return (
-            boundEvent.payload.tool_input ||
-            boundEvent.payload.toolInput ||
-            boundEvent.payload
+            payloadField(
+              boundEvent.payload.tool_input,
+              boundEvent.payload.toolInput,
+            ) ?? boundEvent.payload
           );
         }
         if (rowEvent) {
@@ -7093,7 +7119,7 @@ export default function App() {
         }
         const start = node.data.startEvent;
         return (
-          start?.payload?.tool_input || {
+          payloadField(start?.payload?.tool_input) ?? {
             prompt: start?.payload?.prompt,
             message: start?.payload?.message,
             source: start?.payload?.source,
@@ -7107,13 +7133,15 @@ export default function App() {
           // closed result and then to the row payload itself.
           if (boundEvent.eventName === "PostToolUse" || boundEvent.eventName === "PostToolUseFailure") {
             return (
-              boundEvent.payload.tool_response ||
-              boundEvent.payload.toolResponse ||
-              boundEvent.payload
+              payloadField(
+                boundEvent.payload.tool_response,
+                boundEvent.payload.toolResponse,
+              ) ?? boundEvent.payload
             );
           }
-          if (boundEvent.payload.tool_response) {
-            return boundEvent.payload.tool_response;
+          const response = payloadField(boundEvent.payload.tool_response);
+          if (response !== null) {
+            return response;
           }
           if (
             typeof boundEvent.payload.message === "string" ||
@@ -7129,7 +7157,7 @@ export default function App() {
           }
         }
         return (
-          node.data.endEvent?.payload?.tool_response || {
+          payloadField(node.data.endEvent?.payload?.tool_response) ?? {
             message:
               boundEvent.payload.last_assistant_message ||
               boundEvent.payload.message ||

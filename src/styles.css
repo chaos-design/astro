@@ -6009,6 +6009,16 @@ pre,
   font-size: var(--text-body);
 }
 
+/* Prose wraps and fenced code scrolls inside its own block; a wide Markdown
+   table gets the same treatment so the pane itself never needs to widen for
+   one wide element — horizontal scrolling stays local to what is wide. */
+.payload-overlay .markdown-preview table {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
 /* The rail is the run's message chain in the LOG's own data standard: every
    event, newest first, split by the LOG's turn separators. It is a view of the
    single console selection: picking a row commits through the LOG's own select

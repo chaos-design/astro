@@ -636,7 +636,13 @@ The inspector provides:
   `user.question` Input tab shows the question / option / answer list the
   reader saw, other payloads render as Markdown, and code / JSON is highlighted)
   and "Related data" (timestamps, paths, ids and annotations / explanations,
-  annotations first). Each row's preview is prepared once and cached by event
+  annotations first). Markdown and code stay separate readings: a text with
+  Markdown block structure (headings, lists, emphasis, links, fences, tables)
+  is a document and renders as one — prose wraps, its own fenced code stays
+  highlighted and scrolls inside the block, wide tables likewise — while only
+  predominantly-code content (JSON, diff, XML, scripts, command lines) is
+  fenced whole; one code-like line inside a plan never turns the document
+  into a horizontally scrolling monospace wall. Each row's preview is prepared once and cached by event
   id (scoped by the tab the layer was opened from), so switching rows in the
   rail is a lookup rather than a repeated
   Markdown parse. Rendering uses highlight.js
@@ -677,13 +683,19 @@ The inspector provides:
   header's **Live** toggle stays clickable: clicking lands on the message's
   newest event and enters the follow posture — a genuinely executing message
   keeps following its newest atom (new events appear and the selected row
-  stays in view, the toggle breathing); picking any row pins the payload
+  stays in view, the toggle breathing). A follow advance replaces the
+  preview content while keeping your reading position — a streamed message
+  lands a new snapshot roughly every 800ms and grows beneath the reader
+  without moving the line they were on; only a row picked in the rail
+  re-opens from the top. Picking any row pins the payload
   where it is. On a finished run (or the Demo sample) the toggle reads
   disabled.
   The layer is global (portaled to the document body), but the rail is scoped to
   the current run and its content always follows that one selection. After
   picking a row, the content pane shows the **core information of that row's
-  own event**: a tool-call row its arguments, a result row the real result (an
+  own event**: a tool-call row its arguments (the recorder's empty
+  `tool_input: {}` placeholder counts as nothing and never shadows the real
+  parameters), a result row the real result (an
   Edit-style change renders as a highlighted diff), a prompt row its text;
   Markdown lists, code and option lists render and highlight by data type,
   code strings are fenced with their inferred language (json / diff / xml /

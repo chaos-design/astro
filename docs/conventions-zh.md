@@ -82,7 +82,11 @@
     每个原子的预览在浮层内按事件 ID 缓存一次，并**按检查器标签页分域**
     （`cacheScope`；`payloadForAtom(atomId, eventId)` / `variantForAtom` 解析
     任意行的载荷与类型，选中的行**以它自己的事件为准**——工具调用行读自己的
-    `tool_input`、结果行读 `tool_response`、提示词行读自己的 payload；拆分后
+    `tool_input`、结果行读 `tool_response`、提示词行读自己的 payload；记录器
+    归一化会在只有 camel 拼写时写入**空 `{}` 占位**（`tool_input: {}`），
+    `payloadField`（app.tsx）把空对象当作占位而非内容、跳到下一个拼写，
+    空占位绝不能遮住真实的 `toolInput.command`（那曾让每次工具调用的 Input
+    预览变成空白）；拆分后
     没有正文的载荷走共享的核心内容抽取 `payload-markdown.ts` 的
     `payloadToMarkdown`（读 camel `toolResponse`、把 `structuredPatch` 渲染成
     高亮 diff——预览的是载荷的**核心信息**：tool result 的结果、prompt input、
@@ -90,7 +94,13 @@
     不进正文（`isPayloadMetaKey`，容器键 `tool_input`/`toolResponse` 除外，
     它们递归展开），字段名标签不打印，字符串值按推断语言围栏高亮
     （`inferCodeLanguage` / `fenceCode`：json / diff / xml / typescript /
-    python / bash；弱信号必须另有代码标点或多行才围栏，防止把散文误染色），
+    python / bash；弱信号必须另有代码标点或多行才围栏，防止把散文误染色；
+    关键词匹配只是**逐行**证据——带块级 Markdown 结构（标题、列表、强调、
+    链接、围栏、表格）的文本是文档，整体按文档渲染（文档内部自带的围栏代码
+    仍高亮、宽代码块与宽表格在块内横向滚动），绝不因其中一行像代码
+    （计划里勾勒的 `export type …`）而把整篇变成横向滚动的等宽墙；
+    json / diff / xml 自识别、无条件围栏，shell / Python 里 `#` 是注释、
+    不算文档证据）；
     仍无内容才回退为高亮 JSON（`payload-preview.ts` 的
     `fallbackPayloadMarkdown`，倾倒前同样剥掉 metadata 键，`captured` 包装只
     倾倒 captured 半边）——切换行必须改变内容，面板不得停留在同一个空态），
@@ -127,6 +137,11 @@
     跟随最新原子，仅记录态运行的落在最新事件上并在再次产出事件时恢复跟随；
     之后新事件到达只做**滚动跟随**（把选中行滚进视口），绝不代替读者改选中态；
     点任意行即解除跟随；armed 呼吸灯；
+    跟随推进（或任何非本弹窗发起的选中变化）替换预览内容时，两个窗格保留
+    读者当前滚动位置（onScroll 写入的 ref 备忘 + 提交后恢复，流式消息每
+    ~800ms 一个新事件快照，正文在读者下方增长而阅读位置不动）；只有**读者
+    在链路里点选的行**才回到顶部重开；切到 Code 视图卸载两窗格、备忘清零，
+    切回 Preview 从头开始；
     预览正文与相关数据字号各大一档，两个窗格的标题（原子内容 / 相关数据）
     钉住不动、正文在标题下滚动；「相关数据」**按值折叠**——单个值超过
     `RELATED_VALUE_MAX_CHARS`（200）才在**该行**带「展开 / 收起」，短字段不受影响，

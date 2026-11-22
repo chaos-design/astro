@@ -447,24 +447,58 @@ export function fenceCode(text: string, language?: string | null): string {
   return `\`\`\`${language ?? ""}\n${text.trimEnd()}\n\`\`\``;
 }
 
+const HEADING_LINE = /^\s{0,3}#{1,6}\s+\S/m;
+
+/**
+ * Whether a text carries Markdown block structure. Such a text is a
+ * *document*, not an unnamed code string: the keyword matchers below are
+ * per-line evidence, and one code-like line inside a document — an agent's
+ * plan sketching `export type …` signatures, a command quoted in prose — must
+ * not fence the whole reading surface into a monospace wall. `#` lines are
+ * comments in shell and Python sources, so a heading only counts as Markdown
+ * evidence for languages where it cannot be one.
+ */
+function hasMarkdownBlockStructure(text: string, allowHashHeading: boolean): boolean {
+  return (
+    (allowHashHeading && HEADING_LINE.test(text)) ||
+    /\*\*[^*\n]+\*\*/.test(text) || // strong emphasis
+    /\[[^\]\n]+\]\([^)\n]+\)/.test(text) || // link
+    /^\s{0,3}\d+[.)]\s+\S/m.test(text) || // ordered list
+    /^\s{0,3}[-*+]\s+\S/m.test(text) || // bullet list
+    text.includes("```") || // the document already fences its own code
+    /^\s{0,3}\|.+\|\s*$/m.test(text) // table row
+  );
+}
+
 /**
  * Fence a content that is itself code so the Markdown renderer highlights it.
  * Plain Markdown and prose pass through unchanged — the renderer already
  * handles inline and fenced code, headings and lists. A text that is code in
  * an unnamed field (an `import` line, a diff, a shell command) is fenced with
  * its inferred language instead of being rendered as mangled prose.
+ *
+ * The fence is for content that is *predominantly* code: a structural format
+ * (JSON / diff / XML) self-identifies and fences unconditionally, while a
+ * keyword match is per-line evidence — a long document that carries Markdown
+ * block structure renders as the document it is, its own fenced code still
+ * highlighted inside, instead of one horizontally scrolling code block.
  */
 export function contentToMarkdown(content: string): string {
   const text = content.trim();
   if (!text) {
     return "";
   }
-  const trimmed = text.trim();
-  const language = inferCodeLanguage(trimmed);
+  const language = inferCodeLanguage(text);
   if (language) {
-    return fenceCode(trimmed, language);
+    const structural = language === "json" || language === "diff" || language === "xml";
+    // `#` heads a Markdown heading everywhere; in shell / Python it is a
+    // comment, so there it must not count as document evidence.
+    const allowHashHeading = language !== "bash" && language !== "python";
+    if (structural || !hasMarkdownBlockStructure(text, allowHashHeading)) {
+      return fenceCode(text, language);
+    }
   }
-  return trimmed;
+  return text;
 }
 
 /**
