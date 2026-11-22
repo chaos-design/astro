@@ -84,7 +84,23 @@
     Markdown parsing, code syntax highlighting and
     HTML sanitizing live only in `src/lib/markdown-preview.ts`
     (`renderMarkdownPreview`, with highlight.js registering only the languages
-    captured payloads carry). The inspector's Input/Output/Raw tabs and the
+    captured payloads carry). A fence that names its language is wrapped in a
+    `.md-code` header: the language badge renders **outside** the scrolling
+    `<pre>` so wide code pans under it, right-aligned mono small caps. The
+    token map in `styles.css` covers every class the registered grammars
+    emit — keywords violet, strings teal, constants amber, and the name
+    family (functions, types, tag names, json/yaml keys) reads on the
+    dedicated `--code-accent` (it used to inherit near-white and disappear
+    into plain code text); diff lines carry addition/deletion tints and
+    comments stay muted italics. `.markdown-preview` restores `list-style`
+    and block layout for lists: Tailwind's preflight resets `list-style`
+    globally and a flex column blockifies `li` away from `list-item` — either
+    alone silently dropped every bullet and ordered number; GFM task lists
+    swap their marker for the checkbox, headings scale in em (h2 with an
+    underline), inline code is 0.92em so the chip never inflates the line
+    height, tables collapse borders with a tinted header row and zebra rows,
+    and blockquotes carry the violet border and tint. The inspector's
+    Input/Output/Raw tabs and the
     global overlay share these two single sources; `src/components/payload-overlay.tsx`
     only renders them, with one toggle between `Preview` (rendered Markdown —
     headings, GFM task lists, highlighted code — and question/option/answer

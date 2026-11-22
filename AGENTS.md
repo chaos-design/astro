@@ -810,7 +810,18 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   the inspector/overlay's `{ contract, captured }` wrapper previews only
   `captured`, leaving the `contract` topology metadata to the Raw tab); Markdown parsing, syntax highlighting and HTML sanitizing
   live only in `src/lib/markdown-preview.ts` (`renderMarkdownPreview`, with
-  highlight.js registering only the languages captured payloads carry). The
+  highlight.js registering only the languages captured payloads carry). A
+  fence that names its language is wrapped in a `.md-code` header whose badge
+  stays **outside** the scrolling `<pre>` — it keeps its place while wide
+  code pans; the token map in `styles.css` colours every class the
+  registered grammars emit (names, tag names and json/yaml keys read on the
+  dedicated `--code-accent`, diff lines carry addition/deletion tints) — the
+  near-white the name family used to inherit read as unstyled code.
+  `.markdown-preview` restores `list-style` and block layout for lists:
+  Tailwind's preflight resets `list-style` globally and a flex column
+  blockifies `li` away from `list-item` — either one alone silently dropped
+  every bullet and ordered number. GFM task lists swap their marker for the
+  checkbox. The
   Input/Output/Raw tabs and the global expand layer share these two sources;
   `src/components/payload-overlay.tsx` only renders them — it must not grow a
   second conversion or sanitizer. The expand control opens a Dialog (portaled

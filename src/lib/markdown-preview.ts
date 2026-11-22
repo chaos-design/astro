@@ -54,6 +54,13 @@ const markdownParser = new Marked({ breaks: true, gfm: true });
  * source the agent produced. highlight.js emits only `<span class="hljs-*">`
  * tokens — no inline styles or event handlers — so the sanitizer below keeps
  * them and the theme stays entirely in `styles.css`.
+ *
+ * A fence that names its language is wrapped in a `.md-code` header div: the
+ * language badge lives **outside** the scrolling `<pre>`, so it stays put
+ * while wide code pans and never sits under the first line. An unnamed fence
+ * stays a plain `<pre>` — nothing to label. The language is the sanitized
+ * identifier only, so both the `data-lang` attribute and the badge text are
+ * inert before the sanitizer ever sees them.
  */
 markdownParser.use({
   renderer: {
@@ -68,7 +75,15 @@ markdownParser.use({
           ? hljs.highlight(code, { language, ignoreIllegals: true }).value
           : escapeHtml(code);
       const classes = language ? `hljs language-${language}` : "hljs";
-      return `<pre><code class="${classes}">${body}</code></pre>`;
+      if (!language) {
+        return `<pre><code class="${classes}">${body}</code></pre>`;
+      }
+      return (
+        `<div class="md-code" data-lang="${language}">` +
+        `<span class="md-code__lang" aria-hidden="true">${language}</span>` +
+        `<pre><code class="${classes}">${body}</code></pre>` +
+        `</div>`
+      );
     },
   },
 });

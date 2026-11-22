@@ -57,6 +57,26 @@ test("related data renders array elements as indexed group rows", () => {
   assert.match(stylesForOverlay, /\.payload-overlay__field--group \{/);
 });
 
+test("the markdown reading surface carries its own code language and token map", () => {
+  // The fence renderer labels the block with its sanitized language; the
+  // badge lives outside the scrolling <pre>, so wide code pans under it.
+  const previewPipeline = readFileSync(
+    new URL("../src/lib/markdown-preview.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(previewPipeline, /class="md-code" data-lang="\$\{language\}"/);
+  assert.match(stylesForOverlay, /\.md-code__lang \{/);
+  // Every token class the registered grammars emit gets a colour; the
+  // name/key family uses the dedicated accent instead of near-white text.
+  assert.match(stylesForOverlay, /--code-accent: #7dd3fc/);
+  assert.match(stylesForOverlay, /--code-accent: #0369a1/);
+  assert.match(stylesForOverlay, /\.hljs-attr,\n\.markdown-preview pre code \.hljs-attribute/);
+  assert.match(stylesForOverlay, /\.hljs-addition \{[^}]*--teal/);
+  assert.match(stylesForOverlay, /\.hljs-deletion \{[^}]*--red/);
+  // GFM task lists swap the marker for the checkbox.
+  assert.match(stylesForOverlay, /li:has\(> input\[type="checkbox"\]\)/);
+});
+
 test("prepared previews are cached per row and scoped by the inspector tab", () => {
   assert.match(overlay, /useRef<Map<string, PreparedPreview>>/);
   assert.match(overlay, /cache\.get\(rowKey\)/);

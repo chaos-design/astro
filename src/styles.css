@@ -109,6 +109,11 @@
   --selection-text: #ecfeff;
   --selection-muted: #a5f3fc;
   --selection-bg: #0a2933;
+  /* Highlighted-code names — functions, types, tag names, json/yaml keys.
+     The prose palette (violet/teal/amber/red) has no cool accent for the
+     tokens a reader scans a block for, and the near-white these tokens fell
+     back to was indistinguishable from plain code text. */
+  --code-accent: #7dd3fc;
   --selection-glow: rgb(34 211 238 / 42%);
   --atom-selected-bg: #0d4c5f;
   --atom-selected-glow: rgb(34 211 238 / 68%);
@@ -204,6 +209,9 @@
   --selection-text: #172554;
   --selection-muted: #1d4ed8;
   --selection-bg: #dbeafe;
+  /* Highlighted-code names — see the dark-theme note above. A deep sky that
+     keeps the name/keys family legible on the light panel. */
+  --code-accent: #0369a1;
   --selection-glow: rgb(37 99 235 / 32%);
   --atom-selected-bg: #b9ddff;
   --atom-selected-glow: rgb(0 87 255 / 46%);
@@ -5571,8 +5579,10 @@ pre,
 
 /* The question preview renders captured markdown as the rich text the
    reader's client showed. The type scale stays panel-sized: the inspector
-   pane is narrow, so headings cap at h3 and every block uses the same body
-   and meta metrics the neighboring preview sections use. */
+   pane is narrow, so every block uses the same body and meta metrics the
+   neighboring preview sections use. Sizes that vary (headings, inline code)
+   are em-based, so the overlay's larger reading surface scales them with
+   the prose instead of needing a second scale. */
 .markdown-preview {
   min-width: 0;
   color: var(--text);
@@ -5589,15 +5599,40 @@ pre,
   margin-bottom: 0;
 }
 
+/* One rhythm, a real scale: h2 carries the document's sections with a
+   hairline underline; h1/h3 step around it; h4-h6 settle back to the body
+   size. All em so the overlay reads them proportionally larger. */
 .markdown-preview h1,
 .markdown-preview h2,
 .markdown-preview h3,
-.markdown-preview h4 {
-  margin: 12px 0 6px;
+.markdown-preview h4,
+.markdown-preview h5,
+.markdown-preview h6 {
+  margin: 14px 0 6px;
   color: var(--text-strong);
-  font-size: var(--text-label);
-  font-weight: var(--weight-medium);
+  font-weight: var(--weight-strong);
   line-height: 1.4;
+}
+
+.markdown-preview h1 {
+  font-size: 1.3em;
+  letter-spacing: 0.01em;
+}
+
+.markdown-preview h2 {
+  padding-bottom: 3px;
+  border-bottom: 1px solid var(--line);
+  font-size: 1.18em;
+}
+
+.markdown-preview h3 {
+  font-size: 1.06em;
+}
+
+.markdown-preview h4,
+.markdown-preview h5,
+.markdown-preview h6 {
+  font-size: 1em;
 }
 
 .markdown-preview p,
@@ -5605,29 +5640,94 @@ pre,
 .markdown-preview ol,
 .markdown-preview blockquote,
 .markdown-preview pre,
+.markdown-preview .md-code,
 .markdown-preview table {
   margin: 0 0 8px;
 }
 
+/* Block layout, not a flex column: a flex container blockifies its `li`
+   children away from `display: list-item`, and Tailwind's preflight resets
+   `list-style` globally — both together silently dropped every bullet and
+   ordered number from the preview. Restore the marker explicitly; items
+   carry the same rhythm through margins instead. */
 .markdown-preview ul,
 .markdown-preview ol {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
   padding-left: 18px;
+}
+
+.markdown-preview ul {
+  list-style: disc outside;
+}
+
+.markdown-preview ul ul {
+  list-style: circle outside;
+}
+
+.markdown-preview ol {
+  list-style: decimal outside;
+}
+
+.markdown-preview li {
+  margin: 0 0 3px;
+}
+
+.markdown-preview li:last-child {
+  margin-bottom: 0;
 }
 
 .markdown-preview li::marker {
   color: var(--muted-soft);
 }
 
+/* A nested list tightens under its item instead of opening the parent gap;
+   the item owns the rhythm, a loose list's paragraphs only separate
+   siblings. */
+.markdown-preview li > ul,
+.markdown-preview li > ol {
+  margin: 3px 0 0;
+}
+
+.markdown-preview li > p {
+  margin: 0 0 4px;
+}
+
+.markdown-preview li > :last-child {
+  margin-bottom: 0;
+}
+
+/* GFM task lists: the checkbox replaces the marker instead of doubling it,
+   and carries the violet accent the rest of the console's interactive
+   controls use. */
+.markdown-preview li:has(> input[type="checkbox"]) {
+  list-style: none;
+}
+
+.markdown-preview input[type="checkbox"] {
+  margin: 0 6px 0 0;
+  accent-color: var(--violet);
+  vertical-align: -1px;
+}
+
+.markdown-preview strong {
+  color: var(--text-strong);
+  font-weight: var(--weight-medium);
+}
+
+.markdown-preview del {
+  color: var(--muted-soft);
+}
+
+/* Inline code reads a half-step brighter than the prose around it; the
+   0.92em size keeps the chip from inflating the line height in either
+   reading surface. */
 .markdown-preview code {
   padding: 1px 5px;
   border: 1px solid var(--line);
   border-radius: 4px;
   background: color-mix(in srgb, var(--panel-raised) 78%, var(--panel));
+  color: var(--text-strong);
   font-family: var(--font-mono);
-  font-size: var(--text-meta);
+  font-size: 0.92em;
 }
 
 .markdown-preview pre {
@@ -5636,25 +5736,63 @@ pre,
   border-radius: 6px;
   background: color-mix(in srgb, var(--panel) 92%, var(--bg));
   overflow-x: auto;
+  line-height: 1.55;
+  tab-size: 2;
+  scrollbar-width: thin;
 }
 
 .markdown-preview pre code {
   padding: 0;
   border: 0;
   background: transparent;
-  font-size: var(--text-meta);
+  color: var(--text);
+  font-size: 0.92em;
+}
+
+/* A fenced block with a language prints its name above the code —
+   right-aligned so it never argues with the first line, and outside the
+   scrolling <pre> so it stays put while wide code pans. */
+.markdown-preview .md-code pre {
+  margin: 0;
+}
+
+.markdown-preview .md-code__lang {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-overline);
+  letter-spacing: 0.08em;
+  text-align: right;
+  text-transform: uppercase;
+  user-select: none;
 }
 
 .markdown-preview blockquote {
-  padding: 2px 10px;
-  border-left: 2px solid var(--line-bright);
+  padding: 5px 10px;
+  border-left: 2px solid color-mix(in srgb, var(--violet) 45%, var(--line));
+  border-radius: 0 4px 4px 0;
+  background: color-mix(in srgb, var(--violet) 6%, transparent);
   color: var(--muted-soft);
+}
+
+.markdown-preview blockquote > :last-child {
+  margin-bottom: 0;
 }
 
 .markdown-preview a {
   color: var(--violet);
   text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--violet) 45%, transparent);
   text-underline-offset: 2px;
+}
+
+.markdown-preview a:hover {
+  text-decoration-color: currentcolor;
+}
+
+.markdown-preview table {
+  border-collapse: collapse;
 }
 
 .markdown-preview th,
@@ -5662,11 +5800,18 @@ pre,
   padding: 4px 8px;
   border: 1px solid var(--line);
   text-align: left;
+  vertical-align: top;
 }
 
 .markdown-preview th {
+  border-bottom-color: var(--line-bright);
+  background: color-mix(in srgb, var(--panel-raised) 62%, transparent);
   color: var(--muted-soft);
   font-weight: var(--weight-medium);
+}
+
+.markdown-preview tbody tr:nth-child(even) {
+  background: color-mix(in srgb, var(--panel-raised) 48%, transparent);
 }
 
 .markdown-preview hr {
@@ -5677,49 +5822,115 @@ pre,
 
 .markdown-preview img {
   max-width: 100%;
+  height: auto;
   border-radius: 6px;
 }
 
 /* Fenced code is highlighted by highlight.js in the markdown pipeline. Only
    token colours are set here — the code surface keeps the panel's own
-   background in both themes, and the overlay reuses `.markdown-preview`. */
+   background in both themes, and the overlay reuses `.markdown-preview`.
+   The map covers every token class the registered grammars (bash / diff /
+   json / markdown / python / ts / xml / yaml) emit: control keywords violet,
+   captured strings teal, constants amber, names and keys — functions, tag
+   names, json/yaml keys, variables — the dedicated `--code-accent`, and
+   comments muted. */
 .markdown-preview pre code.hljs {
   color: var(--text);
   background: transparent;
 }
 
-.markdown-preview pre code .hljs-comment {
+.markdown-preview pre code .hljs-comment,
+.markdown-preview pre code .hljs-quote {
   color: var(--muted-soft);
   font-style: italic;
 }
 
+.markdown-preview pre code .hljs-doctag,
 .markdown-preview pre code .hljs-keyword,
 .markdown-preview pre code .hljs-selector-tag,
+.markdown-preview pre code .hljs-template-tag,
 .markdown-preview pre code .hljs-literal {
   color: var(--violet);
 }
 
+/* `this` / `self` are language keywords wearing the variable class. */
+.markdown-preview pre code .hljs-variable.language_ {
+  color: var(--violet);
+  font-style: italic;
+}
+
 .markdown-preview pre code .hljs-string,
-.markdown-preview pre code .hljs-regexp,
-.markdown-preview pre code .hljs-addition {
+.markdown-preview pre code .hljs-regexp {
   color: var(--teal);
 }
 
-.markdown-preview pre code .hljs-number,
-.markdown-preview pre code .hljs-built_in,
-.markdown-preview pre code .hljs-symbol {
-  color: var(--amber);
-}
-
-.markdown-preview pre code .hljs-title,
-.markdown-preview pre code .hljs-function,
-.markdown-preview pre code .hljs-attr,
-.markdown-preview pre code .hljs-attribute {
-  color: var(--selection-text);
+/* A diff line arrives whole inside one addition/deletion span, so the tint
+   carries the line and the hue stays subtle enough to read embedded code. */
+.markdown-preview pre code .hljs-addition {
+  color: var(--teal);
+  background: color-mix(in srgb, var(--teal) 12%, transparent);
 }
 
 .markdown-preview pre code .hljs-deletion {
   color: var(--red);
+  background: color-mix(in srgb, var(--red) 12%, transparent);
+}
+
+.markdown-preview pre code .hljs-number,
+.markdown-preview pre code .hljs-symbol,
+.markdown-preview pre code .hljs-built_in,
+.markdown-preview pre code .hljs-title.class_ {
+  color: var(--amber);
+}
+
+/* The names a reader scans a block for. The near-white these tokens used to
+   inherit sat one step above the base text and read as unstyled code. */
+.markdown-preview pre code .hljs-title,
+.markdown-preview pre code .hljs-name,
+.markdown-preview pre code .hljs-type,
+.markdown-preview pre code .hljs-section,
+.markdown-preview pre code .hljs-attr,
+.markdown-preview pre code .hljs-attribute,
+.markdown-preview pre code .hljs-property,
+.markdown-preview pre code .hljs-variable,
+.markdown-preview pre code .hljs-params,
+.markdown-preview pre code .hljs-selector-id,
+.markdown-preview pre code .hljs-selector-class,
+.markdown-preview pre code .hljs-selector-attr,
+.markdown-preview pre code .hljs-selector-pseudo,
+.markdown-preview pre code .hljs-meta {
+  color: var(--code-accent);
+}
+
+/* Punctuation only frames the code: xml angle brackets, yaml markers and
+   markdown list bullets stay quiet so the tokens above carry the block. */
+.markdown-preview pre code .hljs-tag,
+.markdown-preview pre code .hljs-punctuation {
+  color: var(--muted-soft);
+}
+
+.markdown-preview pre code .hljs-bullet {
+  color: var(--muted-soft);
+}
+
+/* md-in-md: the fenced markdown block keeps its own inline marks. */
+.markdown-preview pre code .hljs-strong {
+  color: var(--text-strong);
+  font-weight: var(--weight-medium);
+}
+
+.markdown-preview pre code .hljs-emphasis {
+  font-style: italic;
+}
+
+.markdown-preview pre code .hljs-link {
+  color: var(--violet);
+  text-decoration: underline;
+}
+
+/* Template substitutions reset to the prose colour inside a string token. */
+.markdown-preview pre code .hljs-subst {
+  color: var(--text);
 }
 
 /* Global payload layer: the same data as the inspector tab, but large enough
@@ -6018,14 +6229,11 @@ pre,
 
 /* The global layer is the reading surface: one step larger than the
    inspector's preview, so a long tool result, a Markdown list or highlighted
-   code stays readable in the wide pane. */
+   code stays readable in the wide pane. Code sizes are em-based inside
+   `.markdown-preview`, so inline chips and fenced blocks scale with this
+   step on their own — no per-context bump needed here. */
 .payload-overlay .markdown-preview {
   font-size: var(--text-label);
-}
-
-.payload-overlay .markdown-preview code,
-.payload-overlay .markdown-preview pre code {
-  font-size: var(--text-body);
 }
 
 /* Prose wraps and fenced code scrolls inside its own block; a wide Markdown

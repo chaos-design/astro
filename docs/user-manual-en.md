@@ -651,7 +651,21 @@ The inspector provides:
   rail is a lookup rather than a repeated
   Markdown parse. Rendering uses highlight.js
   syntax highlighting, after the same HTML sanitizer
-  strips acting markup. A tool result is unwrapped at any depth (`captured`,
+  strips acting markup. A fence that names its language prints the language
+  as a small right-aligned badge **above** the block — outside the scrolling
+  `<pre>`, so wide code pans under it (an unnamed fence gets no badge). The
+  token colours cover every class the registered grammars emit: keywords
+  violet, strings teal, constants amber, and the name family — functions,
+  types, XML tag names, json/yaml keys — reads on a dedicated sky accent
+  instead of the near-white it used to inherit; diff lines carry red/green
+  tints and comments stay muted italics. Lists restore their bullets and
+  numbers explicitly (the global reset and the old flex layout silently
+  dropped them; nested levels use hollow circles), task lists swap the
+  marker for a violet-accented checkbox, headings scale in em with an
+  underlined h2, inline code is 0.92em and half a step brighter than the
+  prose, tables collapse borders with a tinted header row and zebra rows,
+  blockquotes carry the violet border and tint, and struck-through text
+  fades to muted. A tool result is unwrapped at any depth (`captured`,
   `tool_response`, `output`, `result`, a `plan` nested in `tool_input`, and their
   nested content) and rendered as the text it really is, so a Markdown result
   becomes headings, task lists and highlighted code rather than field labels and a

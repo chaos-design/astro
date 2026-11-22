@@ -78,11 +78,21 @@ test("fenced code is highlighted without losing the sanitizer's protection", () 
     "```js\nconst answer = 42; // done\n```",
   );
   assert.equal(render.valid, true);
-  // A known language becomes hljs tokens the theme CSS can colour.
+  // A known language becomes hljs tokens the theme CSS can colour, wrapped
+  // in a badge div so the language name reads above the block.
+  assert.match(render.html, /<div class="md-code" data-lang="js">/);
+  assert.match(render.html, /<span class="md-code__lang"[^>]*>js<\/span>/);
   assert.match(render.html, /<code class="hljs language-js">/);
   assert.match(render.html, /hljs-keyword/);
   assert.match(render.html, /hljs-number/);
   assert.match(render.html, /hljs-comment/);
+});
+
+test("a fence without a language stays a plain pre without a badge", () => {
+  const render = renderMarkdownPreview("```\nplain captured text\n```");
+  assert.equal(render.valid, true);
+  assert.match(render.html, /<pre><code class="hljs">plain captured text<\/code><\/pre>/);
+  assert.doesNotMatch(render.html, /md-code/);
 });
 
 test("an unknown fenced language is escaped, never trusted as a class or markup", () => {
@@ -92,5 +102,10 @@ test("an unknown fenced language is escaped, never trusted as a class or markup"
   assert.equal(render.valid, true);
   assert.doesNotMatch(render.html, /onmouseover/i);
   assert.doesNotMatch(render.html, /<script/i);
+  // The badge label carries the sanitized identifier only — marked cuts the
+  // info string at the first space, and the identifier strips everything
+  // that is not a language character.
+  assert.match(render.html, /data-lang="lang"/);
+  assert.doesNotMatch(render.html, /data-lang="[^"]*pwned/i);
   assert.match(render.html, /&lt;script&gt;/);
 });

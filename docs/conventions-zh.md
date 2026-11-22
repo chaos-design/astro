@@ -70,7 +70,17 @@
     captured }` 包装只预览 `captured`，`contract` 拓扑元数据留给 Raw 标签）；
     Markdown 的解析、代码语法高亮与 HTML 清理
     只在 `src/lib/markdown-preview.ts`（`renderMarkdownPreview`，highlight.js 只
-    注册捕获载荷常见语言）。检查器的 Input/Output/Raw 与全局浮层共用这两个
+    注册捕获载荷常见语言）。带语言的围栏块包一层 `.md-code`：语言徽标画在
+    滚动的 `<pre>` **外面**（横向滚动的宽代码不会带走徽标），`.md-code__lang`
+    右对齐、等宽小字；`styles.css` 的 token 映射覆盖已注册语法会产出的全部
+    token 类——关键字紫、字符串青、常量琥珀，函数/类型/标签名/json·yaml 键
+    读专属的 `--code-accent`（它们曾落在近白上，与正文代码几乎不可分），
+    diff 行带 addition/deletion 底色，注释灰斜体。`.markdown-preview` 显式
+    恢复列表的 `list-style` 与块级布局：Tailwind preflight 全局重置
+    `list-style`，而 flex 列布局会把 `li` 块化掉 `list-item`——任一都会让
+    圆点/编号静默消失；GFM 任务清单用复选框替换 marker，标题按 em 缩放
+    （h2 带下划线），行内代码 0.92em 不撑行高，表格塌陷边框 + 表头底色 +
+    偶数行斑马纹，引用块紫边 + 底色。检查器的 Input/Output/Raw 与全局浮层共用这两个
     单一来源，浮层组件 `src/components/payload-overlay.tsx` 只负责展示，并用同一个
     切换提供 `Preview`（渲染后的 Markdown：标题、GFM 任务列表、高亮代码、问题/选项/答案）
     与 `Code`（未加工的原始 JSON）两种形态，不再另写一份转换或消毒逻辑；
