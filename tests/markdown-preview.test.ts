@@ -103,6 +103,17 @@ test("a shell command fence colours commands, flags and assignments", () => {
   assert.match(hostile.html, /&lt;img/);
 });
 
+test("shell comments and heredoc bodies are not painted as commands", () => {
+  const render = renderMarkdownPreview(
+    "```bash\npnpm build # ship it\ncat <<EOF\nplain data\nEOF\n```",
+  );
+  assert.match(render.html, /<span class="hljs-comment"># ship it<\/span>/);
+  assert.match(render.html, /<span class="hljs-keyword">pnpm<\/span>/);
+  assert.match(render.html, /plain data/);
+  // The heredoc line is data, so no command token is emitted for it.
+  assert.doesNotMatch(render.html, /<span class="hljs-keyword">plain<\/span>/);
+});
+
 test("a fence without a language stays a plain pre without a badge", () => {
   const render = renderMarkdownPreview("```\nplain captured text\n```");
   assert.equal(render.valid, true);

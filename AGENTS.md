@@ -1164,6 +1164,20 @@ use Node.js ES modules or CommonJS according to their existing file extension.
 - Pi has no hook protocol; capture is a global extension loaded by jiti from
   `~/.pi/agent/extensions/astro-trace/` and installed by
   `scripts/install-pi-plugin.mjs`.
+- `resolvePiSessionId` (`pi-plugin/session.ts`) is the one session-id rule for
+  CLI, Web and SDK hosts: `ctx.sessionManager.getSessionId()`, `ctx.sessionId`,
+  `ctx.session.id`, `event.sessionId`, `event.session.id`, `PI_SESSION_ID`, then
+  a stable `pi-process-<pid>-<cwd>` fallback. Reading only `ctx.sessionManager`
+  dropped every main-Agent event in hosts without that context while the
+  headless subagent children still recorded. Claims and live-text buffers key
+  on this *origin* id; the events are written with the display id below.
+- Named Pi subagents run in their own child processes. `readSubagentIdentity`
+  reads `PI_SUBAGENT_DEPTH` / `PI_SUBAGENT_STACK` / `PI_SUBAGENT_DELEGATION`
+  and the persisted `pi-subagent:delegation` custom entry in the child's
+  session JSONL (only an entry whose `childSessionId` matches is accepted),
+  then writes the child's events under `parentSessionId` with
+  `subagentAgent` / `subagentHandle` / `subagentSessionId`. An orphan
+  `subagent.*` session must never replace the main Agent's own history.
 - Prompt runs pair the `input` event with `before_agent_start`: slash commands
   and other non-agent inputs never create prompt runs.
 - Assistant `message_end` derives the terminal event from `stopReason`
@@ -1175,7 +1189,9 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   every snapshot is a prefix of the final `message_end` text — re-fired or
   reordered deltas cannot drift the two apart) and enqueues throttled
   `AgentMessage{streamed:true}` snapshots every 800ms, the same carrier
-  opencode derives from `session.text.delta`. `message_end` clears the buffer
+  opencode derives from `session.text.delta`. Pi fires these for every role,
+  so a non-assistant `message_start` / `message_end` must never clear an
+  assistant buffer that is still filling. `message_end` clears the buffer
   and writes the one complete message with its model / provider / usage.
   `message_update` stays unmapped in `mapping.ts`; the accumulation lives in
   `index.ts`, not the pure mapping layer. Tool execution deltas stay unmapped.

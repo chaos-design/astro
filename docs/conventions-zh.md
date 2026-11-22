@@ -75,7 +75,10 @@
     右对齐、等宽小字；`styles.css` 的 token 映射覆盖已注册语法会产出的全部
     token 类——关键字紫、字符串青、常量琥珀，函数/类型/标签名/json·yaml 键
     读专属的 `--code-accent`（它们曾落在近白上，与正文代码几乎不可分），
-    diff 行带 addition/deletion 底色，注释灰斜体。`.markdown-preview` 显式
+    diff 行带 addition/deletion 底色，注释灰斜体。shell 围栏走专用转义 tokenizer，
+    给命令、选项、变量与赋值分别上色，行内注释与 heredoc 正文不算命令；
+    Code 视图 `JsonViewer` 的键沿用同一 `--code-accent`，切标签不再换配色。
+    `.markdown-preview` 显式
     恢复列表的 `list-style` 与块级布局：Tailwind preflight 全局重置
     `list-style`，而 flex 列布局会把 `li` 块化掉 `list-item`——任一都会让
     圆点/编号静默消失；GFM 任务清单用复选框替换 marker，标题按 em 缩放

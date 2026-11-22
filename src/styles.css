@@ -7606,8 +7606,11 @@ pre,
   white-space: pre-wrap;
 }
 
+/* The Code view and the fenced blocks in Preview are two readings of the same
+   payload: keys must carry the same cool accent as the hljs json/yaml key
+   tokens, or switching tabs silently recolours the reader's mental map. */
 .json-token--key {
-  color: var(--blue);
+  color: var(--code-accent);
 }
 
 .json-token--string {
@@ -7634,6 +7637,12 @@ pre,
 
 .json-token--punctuation {
   color: var(--muted);
+}
+
+/* The global layer is a reading surface, not the narrow inspector: the raw
+   payload gets the same step up as its Markdown sibling. */
+.payload-overlay .json-viewer pre {
+  font-size: var(--text-label);
 }
 
 .json-viewer__empty {

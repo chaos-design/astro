@@ -94,7 +94,11 @@
     family (functions, types, tag names, json/yaml keys) reads on the
     dedicated `--code-accent` (it used to inherit near-white and disappear
     into plain code text); diff lines carry addition/deletion tints and
-    comments stay muted italics. `.markdown-preview` restores `list-style`
+    comments stay muted italics. Shell fences use a dedicated escaped tokenizer
+    that colours commands, flags, variables and assignments; inline comments
+    and heredoc bodies are not commands. The Code view's `JsonViewer` keys use
+    the same `--code-accent`, so switching tabs never recolours the payload.
+    `.markdown-preview` restores `list-style`
     and block layout for lists: Tailwind's preflight resets `list-style`
     globally and a flex column blockifies `li` away from `list-item` — either
     alone silently dropped every bullet and ordered number; GFM task lists

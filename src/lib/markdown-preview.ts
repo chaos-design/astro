@@ -112,9 +112,22 @@ const SHELL_TOKEN =
   /("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`[^`]*`|\$\{[^}]*\}|\$[A-Za-z_]\w*|--?[A-Za-z0-9][\w-]*|[A-Za-z_]\w*=[^\s"'&|;]*|[A-Za-z_][\w./-]*|[;&|]+|\s+|.)/g;
 
 function highlightShell(code: string): string {
+  // A heredoc body is data, not a sequence of commands: colouring its lines
+  // as commands was the other half of the "shell looks wrong" report.
+  let heredoc = "";
   return code
     .split("\n")
     .map((line) => {
+      if (heredoc) {
+        if (line.trim() === heredoc) {
+          heredoc = "";
+        }
+        return escapeHtml(line);
+      }
+      const marker = line.match(/<<-?\s*(?:'([^']*)'|"([^"]*)"|([A-Za-z_]\w*))/);
+      if (marker) {
+        heredoc = marker[1] || marker[2] || marker[3] || "";
+      }
       if (/^\s*#/.test(line)) {
         return `<span class="hljs-comment">${escapeHtml(line)}</span>`;
       }
@@ -125,6 +138,12 @@ function highlightShell(code: string): string {
         if (/^\s+$/.test(token)) {
           html += escapeHtml(token);
           continue;
+        }
+        if (token.startsWith("#")) {
+          // A trailing comment runs to end of line; the tokenizer's `.`
+          // fallback would otherwise paint each word as a command.
+          html += `<span class="hljs-comment">${escapeHtml(line.slice(match.index))}</span>`;
+          break;
         }
         if (/^[;&|]+$/.test(token)) {
           commandStart = true;

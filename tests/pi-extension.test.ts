@@ -166,6 +166,208 @@ test("records a session into the pi trace root and claims it", async () => {
   }
 });
 
+test("records the main agent when the host context has no session manager", async () => {
+  const astroHome = mkdtempSync(join(tmpdir(), "astro-pi-main-home-"));
+  const previousHome = process.env.ASTRO_HOME;
+  const previousAutoOpen = process.env.ASTRO_AUTO_OPEN;
+  process.env.ASTRO_HOME = astroHome;
+  process.env.ASTRO_AUTO_OPEN = "0";
+  const handlers = loadExtension();
+  // Pi Web / SDK hosts may not expose `ctx.sessionManager` at all.
+  const ctx = { cwd: "/tmp/astro-pi-web" };
+  try {
+    await handlers.get("session_start")!({}, ctx);
+    await handlers.get("input")!({ text: "main prompt" }, ctx);
+    await handlers.get("before_agent_start")!({}, ctx);
+    await handlers.get("message_end")!(
+      {
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "main answer" }],
+          stopReason: "stop",
+        },
+      },
+      ctx,
+    );
+    await handlers.get("session_shutdown")!({}, ctx);
+
+    const eventsFile = collectFiles(astroHome).find((file) =>
+      file.endsWith("events.jsonl"),
+    );
+    assert.ok(eventsFile, "the main session is no longer silently dropped");
+    const events = readFileSync(eventsFile, "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    assert.deepEqual(
+      events.map((event) => event.eventName),
+      ["SessionStart", "UserPromptSubmit", "AgentMessage", "Stop", "SessionEnd"],
+    );
+    assert.match(events[0].sessionId, /^pi-process-\d+/);
+    assert.equal(
+      events.find((event) => event.eventName === "UserPromptSubmit")?.payload.prompt,
+      "main prompt",
+    );
+  } finally {
+    if (previousHome === undefined) {
+      delete process.env.ASTRO_HOME;
+    } else {
+      process.env.ASTRO_HOME = previousHome;
+    }
+    if (previousAutoOpen === undefined) {
+      delete process.env.ASTRO_AUTO_OPEN;
+    } else {
+      process.env.ASTRO_AUTO_OPEN = previousAutoOpen;
+    }
+    rmSync(astroHome, { recursive: true, force: true });
+  }
+});
+
+test("attributes a named subagent's messages to the parent session", async () => {
+  const astroHome = mkdtempSync(join(tmpdir(), "astro-pi-subagent-home-"));
+  const previous = {
+    home: process.env.ASTRO_HOME,
+    autoOpen: process.env.ASTRO_AUTO_OPEN,
+    depth: process.env.PI_SUBAGENT_DEPTH,
+    stack: process.env.PI_SUBAGENT_STACK,
+    delegation: process.env.PI_SUBAGENT_DELEGATION,
+  };
+  process.env.ASTRO_HOME = astroHome;
+  process.env.ASTRO_AUTO_OPEN = "0";
+  process.env.PI_SUBAGENT_DEPTH = "1";
+  process.env.PI_SUBAGENT_STACK = '["main","explore"]';
+  process.env.PI_SUBAGENT_DELEGATION = JSON.stringify({
+    version: 1,
+    childSessionId: "subagent.child",
+    parentSessionId: "main-parent",
+    agent: "explore",
+    handle: "auth",
+  });
+  const handlers = loadExtension();
+  const ctx = createContext();
+  ctx.sessionManager.getSessionId = () => "subagent.child";
+  try {
+    await handlers.get("session_start")!({}, ctx);
+    await handlers.get("input")!({ text: "explore auth" }, ctx);
+    await handlers.get("before_agent_start")!({}, ctx);
+    await handlers.get("message_end")!(
+      {
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "findings" }],
+          stopReason: "stop",
+        },
+      },
+      ctx,
+    );
+    await handlers.get("session_shutdown")!({}, ctx);
+
+    const eventsFile = collectFiles(astroHome).find((file) =>
+      file.endsWith("events.jsonl"),
+    );
+    assert.ok(eventsFile);
+    const events = readFileSync(eventsFile, "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    for (const event of events) {
+      assert.equal(event.sessionId, "main-parent");
+      assert.equal(event.payload.parentSessionId, "main-parent");
+      assert.equal(event.payload.subagentAgent, "explore");
+      assert.equal(event.payload.subagentSessionId, "subagent.child");
+    }
+    assert.equal(
+      events.find((event) => event.eventName === "UserPromptSubmit")?.payload.prompt,
+      "explore auth",
+    );
+    const claimFile = join(astroHome, "pi", ".claims", "subagent.child.claim");
+    assert.equal(existsSync(claimFile), true, "the child session keeps its own claim");
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+    rmSync(astroHome, { recursive: true, force: true });
+  }
+});
+
+test("a non-assistant message_start cannot wipe a streaming assistant buffer", async () => {
+  const astroHome = mkdtempSync(join(tmpdir(), "astro-pi-roles-home-"));
+  const previousHome = process.env.ASTRO_HOME;
+  const previousAutoOpen = process.env.ASTRO_AUTO_OPEN;
+  process.env.ASTRO_HOME = astroHome;
+  process.env.ASTRO_AUTO_OPEN = "0";
+  const handlers = loadExtension();
+  const ctx = createContext();
+  ctx.sessionManager.getSessionId = () => "session-roles";
+  try {
+    await handlers.get("session_start")!({}, ctx);
+    await handlers.get("input")!({ text: "prompt" }, ctx);
+    await handlers.get("before_agent_start")!({}, ctx);
+    await handlers.get("message_start")!(
+      { message: { id: "m1", role: "assistant" } },
+      ctx,
+    );
+    await handlers.get("message_update")!(
+      { message: { id: "m1", role: "assistant", content: [{ type: "text", text: "Hel" }] } },
+      ctx,
+    );
+    await handlers.get("message_start")!(
+      { message: { id: "t1", role: "toolResult", content: [] } },
+      ctx,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 850));
+    await handlers.get("message_update")!(
+      { message: { id: "m1", role: "assistant", content: [{ type: "text", text: "Hello" }] } },
+      ctx,
+    );
+    await handlers.get("message_end")!(
+      {
+        message: {
+          id: "m1",
+          role: "assistant",
+          content: [{ type: "text", text: "Hello world" }],
+          stopReason: "stop",
+        },
+      },
+      ctx,
+    );
+    await handlers.get("session_shutdown")!({}, ctx);
+
+    const eventsFile = collectFiles(astroHome).find((file) =>
+      file.endsWith("events.jsonl"),
+    );
+    assert.ok(eventsFile);
+    const events = readFileSync(eventsFile, "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    const streamed = events.filter(
+      (event) => event.eventName === "AgentMessage" && event.payload.streamed,
+    );
+    assert.ok(streamed.length >= 2, "both updates survive the tool-result message");
+    assert.deepEqual(
+      streamed.map((event) => event.payload.message),
+      ["Hel", "Hello"],
+    );
+  } finally {
+    if (previousHome === undefined) {
+      delete process.env.ASTRO_HOME;
+    } else {
+      process.env.ASTRO_HOME = previousHome;
+    }
+    if (previousAutoOpen === undefined) {
+      delete process.env.ASTRO_AUTO_OPEN;
+    } else {
+      process.env.ASTRO_AUTO_OPEN = previousAutoOpen;
+    }
+    rmSync(astroHome, { recursive: true, force: true });
+  }
+});
+
 test("streams accumulated text while the agent is still executing", async () => {
   const astroHome = mkdtempSync(join(tmpdir(), "astro-pi-live-home-"));
   const previousHome = process.env.ASTRO_HOME;
