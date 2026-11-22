@@ -26,9 +26,8 @@ updated: 2026-11-16 11:26:34
 
 ## 待决事项
 
-- [ ] F3 真实宿主验收三项中，**ZCode「新会话日志无 `hook.run.failed`」一项本机已满足**：`pnpm verify:host-integration` 现每次运行自动扫描当天 ZCode CLI 日志（`~/.zcode/cli/log/zcode-$(date +%F).jsonl`），本机今日 300+ 条 `hook.run.allowed`、**0 条 `hook.run.failed`**、全部 ASTRO 来源（`plugin.astro@astro-zcode-local`），证明真宿主 hook 机制健康、当日会话干净，证据机器生成进 `plans/host-acceptance-03.md` 的「Live ZCode host session」段。
-  **仍待人工宿主环境执行的**：① Claude `/hooks` 可见且 transcript 出现 `Allowed by PermissionRequest hook`（本机 Claude 无二进制、无凭证）；② interaction-hook 闭环——把交互 Hook 装进宿主并触发一次 `AskUserQuestion`，确认控制台作答把 `answers` 回传给宿主（上面那条只证明 recorder 插件的 hook 跑通了，不等于 interaction hook 的应答链路）。
-  本机探测（每次运行由 `pnpm verify:host-integration` 机器生成）：claude 仅配置目录、无二进制；zcode / codebuddy 是 Electron 桌面应用、无独立 CLI 可无头驱动，但**当前确有活跃的真实 ZCode 会话在跑 ASTRO hook**。等价验收 6/6 已入库。请在装有 Claude 的环境执行 ①、并在任一宿主里装交互 Hook 触发一次提问完成 ②，再把 ZCode 项与 ①② 一起勾选，`move 03 planing`、补齐完成标准后归档。
+- [ ] F3 真实宿主验收三项**全部仍待人工宿主环境执行**，本机无一项可勾选。`pnpm verify:host-integration` 每次运行机器生成探测与当天 ZCode CLI 日志扫描（`~/.zcode/cli/log/zcode-$(date +%F).jsonl`）到 `plans/host-acceptance-03.md`：① Claude `/hooks` 可见且 transcript 出现 `Allowed by PermissionRequest hook`；② interaction-hook 闭环——把交互 Hook 装进宿主并触发一次 `AskUserQuestion`，确认控制台作答把 `answers` 回传给宿主；③ ZCode 新会话日志无 `hook.run.failed` 且确有 ASTRO hook 运行痕迹。
+  **2026-11-22 探测实况**（已刷新进验收记录）：claude 仅配置目录、无二进制/凭证；zcode / codebuddy 是 GUI 桌面应用、无独立 CLI 可无头驱动，须人工在 GUI 里驱动；当天 ZCode 日志 `0` 条 `hook.run.allowed`、`0` 条 `hook.run.failed`——今日没有 ASTRO 来源的 hook 调用，连 ZCode 项的当日证据都不成立（此前某日的 300+ allowed 属历史会话，不代表今日）。协议级等价验收 6/6 已入库，但它不替代真实宿主会话。请在装有 Claude 的环境执行 ①、在 GUI 宿主里装交互 Hook 触发一次提问完成 ②、并开新 ZCode 会话产生干净日志完成 ③，再把三项一起勾选，`move 03 planing`、补齐完成标准后归档。**在完成前不得写「宿主验收通过」或勾选 F3。**
 
 ## 拆解口径
 
@@ -223,3 +222,4 @@ updated: 2026-11-16 11:26:34
 - 2026-11-16 11:28:10 修正 CodeBuddy 注册事件：官方只在 `PreToolUse` 文档化 `modifiedInput`，原安装器注册在 `PermissionRequest` 会让决策被宿主忽略；`install-interaction-hook.mjs` 改为按客户端选默认事件（claude/zcode=PermissionRequest，codebuddy=PreToolUse），`tests/install-interaction-hook.test.mjs` 与 `docs/plugin-installation.md` 同步。新增 `scripts/verify-host-integration.mjs`（`pnpm verify:host-integration`）与验收记录 `plans/host-acceptance-03.md`；全量 660/660、两处 tsc、两处 build 均通过。
 - 2026-11-16 11:55 复核 F3 宿主可用性：Claude 二进制确认不存在；ZCode 宿主实际存在（ZCode.app + 每日 CLI 日志）但 Electron 二进制无法从无头沙箱驱动（子进程调用禁用 Node 环境变量、asar 入口需要 GUI 运行时），F3 仍需人工宿主环境执行，细节补记于 `plans/host-acceptance-03.md` 附录。同轮代码审计清理 `src/lib/interaction-reducer.ts` 的恒真过滤器（行为等价，26 项相关测试与全量 660/660 复跑通过）。
 - 2026-11-16 12:08 把 F3 交接做成开箱即用：`scripts/verify-host-integration.mjs` 新增「Host availability probe」（按客户端探测 PATH/已知安装路径/配置目录，输出 cli/app/config-only/absent）与「Runbook for the host-equipped machine」（三步逐条命令与判据），两者机器生成进验收记录；新增 `tests/verify-host-probe.test.mjs`（6 例，可注入文件系统/PATH/home）。全量 666/666（660+6）；`pnpm verify:host-integration -- --out plans/host-acceptance-03.md` 重生成入库。待决事项措辞更正：asar 内是 `out/main`+`out/renderer` 桌面 app 而非 CLI 入口，`~/.zcode/cli/node-fallback` 仅是 app 生成的 shim。
+- 2026-11-22 刷新 F3 验收记录到今日实况：`pnpm verify:host-integration -- --out plans/host-acceptance-03.md` 机器重新探测。claude=config-only（无二进制/凭证）、zcode/codebuddy=GUI app 无独立 CLI 可无头驱动；当天 ZCode 日志 0 条 `hook.run.allowed` / 0 条 `hook.run.failed`，今日无 ASTRO 来源 hook 调用（此前 300+ allowed 属历史会话，不代表今日）。修正待决事项里过时的「今日 300+ allowed / ZCode 项本机已满足」陈述。F3 仍 0/1、保持 pending、未勾选，未写「宿主验收通过」；三项仍待人工在装有宿主的环境按验收记录 runbook 执行后勾选归档。

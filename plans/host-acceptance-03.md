@@ -1,6 +1,6 @@
 # Host integration equivalence acceptance (plan F3)
 
-Generated: 2026-11-16T04:37:59.459Z
+Generated: 2026-11-22T05:21:28.103Z
 
 This record covers protocol-level acceptance using captured payloads and real
 hook processes. It does **not** replace launching Claude Code or ZCode:
@@ -10,8 +10,8 @@ what this machine can and cannot verify; the runbook lists the remaining steps.
 
 | Check | Result | Detail |
 | --- | --- | --- |
-| captured payload source | pass | /Users/xcz/.astrox/zcode/2026/11-15/20_12_53-sess_e368bd57-f885-4f11-b215-e2e8b8693cf6/events.jsonl (3 questions) |
-| auto-approve hook emits a real-host PermissionRequest decision | pass | 3 answers, keys match question text |
+| captured payload source | pass | /Users/xcz/.astrox/zcode/2026/11-19/23_39_24-sess_4db98348-a34b-4f04-bcd4-775963ab9029/events.jsonl (1 questions) |
+| auto-approve hook emits a real-host PermissionRequest decision | pass | 1 answers, keys match question text |
 | interaction hook fails open with no host service | pass | empty stdout, exit 0 (host prompt remains) |
 | interaction decision matches Claude PreToolUse schema | pass | permissionDecision + updatedInput.answers |
 | interaction decision matches ZCode strict PermissionRequest schema | pass | hookSpecificOutput.decision.behavior, strict key set |
@@ -31,9 +31,9 @@ Machine-generated on every run; this is the evidence behind the F3 blocker.
 
 ## Live ZCode host session (machine-scanned)
 
-Scanned /Users/xcz/.zcode/cli/log/zcode-2026-11-16.jsonl (2026-11-16): **329** hook.run.allowed, **0** hook.run.failed, 329 ASTRO-sourced, last ASTRO call Bash at 2026-11-16T04:37:41.829Z.
+Scanned /Users/xcz/.zcode/cli/log/zcode-2026-11-22.jsonl (2026-11-22): **0** hook.run.allowed, **0** hook.run.failed.
 
-A real ZCode host session ran ASTRO hooks on this day with **no `hook.run.failed`** — the F3 ZCode criterion of a clean fresh-session log holds on this machine.
+The log exists but no ASTRO-sourced hook call today — the ASTRO hooks were not exercised on this host yet.
 
 Note: the ASTRO calls logged here come from the installed **recorder** plugin, so this proves the host's hook mechanism is healthy and the day's session is clean. It is **not** the interaction-hook closed loop (registering a question and carrying a human answer back); that still needs the interaction hook installed and an AskUserQuestion triggered inside the host.
 
