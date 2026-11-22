@@ -76,7 +76,11 @@
     与 `Code`（未加工的原始 JSON）两种形态，不再另写一份转换或消毒逻辑；
     `Preview` 分两块区域：「原子内容」（真实文本，代码/JSON 高亮、Markdown 渲染）
     与「相关数据」（**全部**字段：含 content 键、空值、null/false/0 与嵌套路径，
-    注释优先），正文提取口径唯一定义在 `src/lib/payload-preview.ts`
+    注释优先；对象数组保留形状——每个元素自带一行带下标的**分组行**
+    （`questions[0]`、`questions[0].options[1]`，即遍历产出的 `groupHeader`），
+    成员缩进排在它下面，重复的裸键（`label`、`label`、`label`）因此各归其位；
+    只有**不在数组元素内**的注释浮到窗格顶部，元素内的注释不得脱离分组），
+    正文提取口径唯一定义在 `src/lib/payload-preview.ts`
     （`splitPayloadPreview` / `contentToMarkdown`），字段清单则由 `collectPayloadFields`
     一次遍历给出——两者职责分离，不在组件里另写字段过滤；
     每个原子的预览在浮层内按事件 ID 缓存一次，并**按检查器标签页分域**
@@ -204,6 +208,10 @@
     `Pre/PostToolUse` 之外，宿主没有 `PermissionRequest` Hook 时那条
     `notification_type=permission_prompt` 且正文点名提问工具的 `Notification`
     也算提问开始（WorkBuddy 弹题时只有它，`PreToolUse` 要等作答后才落盘）；
+    提问工具名按**归一化后的精确值**匹配（`AskUserQuestion`、
+    `request_user_input`、…、OpenCode 就叫 `question`）；
+    正文匹配是**在句子里找工具名**，只保留无歧义的名字——"question" 单独一个词
+    是任何句子的名词，不进正文匹配；
     `idle_prompt`、`auth_success` 与其他工具的权限提示不算，仍只是运行信号；
     是否**阻塞**另由 `isBlockingUserQuestionStartEvent` 判定：权限请求与权限提示
     通知必须带非空 `questions` / `plan` 才进入等待态与 Flow 作答，没有参数的

@@ -133,7 +133,7 @@ type PreparedPreview = {
   contentHtml: string;
   hasContent: boolean;
   related: ReturnType<typeof orderRelated>;
-  question: ReturnType<typeof parseUserQuestionContent> | null;
+  question: ReturnType<typeof parseUserQuestionContent>;
   showQuestion: boolean;
 };
 
@@ -157,10 +157,14 @@ function preparePreview(
     ? contentToMarkdown(split.content)
     : payloadToMarkdown(payload) || fallbackPayloadMarkdown(payload);
   const rendered = renderMarkdownPreview(source);
-  const question =
-    variant === "question"
-      ? parseUserQuestionContent(payload as TracePayload)
-      : null;
+  // Parsed for every row: a payload carrying a structured `questions` list is
+  // the question list itself, whether or not the classifier named the event a
+  // user question (OpenCode writes it as a plain `question` tool call). The
+  // list wins over the flattened `### Questions` Markdown so the reader sees
+  // the same shape the client asked. Free-form message / plan text keeps the
+  // Markdown path unless the row is already question-keyed — a prompt or
+  // command payload must not be swallowed by the Question heading.
+  const question = parseUserQuestionContent(payload as TracePayload);
   return {
     contentHtml: rendered.html,
     hasContent: rendered.valid,
@@ -170,7 +174,10 @@ function preparePreview(
     related: orderRelated(collectPayloadFields(payload)),
     question,
     showQuestion: Boolean(
-      question && (question.prompts.length || question.message.trim() || question.plan.trim()),
+      question &&
+        (question.prompts.length ||
+          (variant === "question" &&
+            (question.message.trim() || question.plan.trim()))),
     ),
   };
 }
@@ -686,18 +693,38 @@ export function PayloadOverlay({
                   >
                     {preview.related.length ? (
                       <dl className="payload-overlay__fields">
-                        {preview.related.map((field) => (
-                          <div
-                            className={cn(
-                              "payload-overlay__field",
-                              field.annotation && "is-annotation",
-                            )}
-                            key={field.key}
-                          >
-                            <dt title={field.key}>{field.label}</dt>
-                            <dd><RelatedValue value={field.value} /></dd>
-                          </div>
-                        ))}
+                        {preview.related.map((field) => {
+                          // Array elements open with their own indexed row
+                          // (`questions[0]`, `options[1]`) and their members
+                          // indent beneath it, so a repeated bare key
+                          // (`description`, `label`) still reads inside the
+                          // element it belongs to. Headers carry no value.
+                          const indent = field.groupHeader
+                            ? field.level ?? 0
+                            : field.level === undefined
+                              ? 0
+                              : field.level + 1;
+                          return (
+                            <div
+                              className={cn(
+                                "payload-overlay__field",
+                                field.groupHeader && "payload-overlay__field--group",
+                                field.annotation && "is-annotation",
+                              )}
+                              key={field.key}
+                              style={
+                                indent > 0
+                                  ? { paddingInlineStart: `${indent * 14}px` }
+                                  : undefined
+                              }
+                            >
+                              <dt title={field.key}>{field.label}</dt>
+                              {field.groupHeader ? null : (
+                                <dd><RelatedValue value={field.value} /></dd>
+                              )}
+                            </div>
+                          );
+                        })}
                       </dl>
                     ) : (
                       <p className="payload-overlay__empty">没有关联数据。</p>

@@ -917,18 +917,28 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   shell / Python, never document evidence there. The
   related-data pane lists **every captured field** via `collectPayloadFields`
   (content keys, empty strings, null/false/0 and nested dotted paths included —
-  annotations first); folding is **per value**, never per pane: only a value
+  annotations first). An array of objects keeps its shape: each element opens
+  with an indexed **group row** (`questions[0]`, `questions[0].options[1]`,
+  the walk's `groupHeader`) and its members indent beneath it, so repeated
+  bare keys (`label`, `label`, `label`) stay attributable to their element;
+  only annotations **outside** any array float to the pane top, a note inside
+  an element must not leave its group. Folding is **per value**, never per
+  pane: only a value
   past `RELATED_VALUE_MAX_CHARS` (200) gets its own 展开 / 收起 on that row, so a
   long path cannot hide the short fields beside it. `splitPayloadPreview` stays
   the single content-extraction definition; the field inventory is a separate,
   purpose-built walk, not a second filter in the component. The two pane titles
   stay pinned while their bodies scroll. Switching rows in the
   rail is a lookup, never a repeated Markdown parse. Its preview is type-aware:
-  a user.question Input tab passes the raw
-  question payload to `QuestionPreview` (the shared read-only question / option
-  / answer list) instead of the Markdown path — an answers-only payload with no
+  a payload carrying a structured `questions` list renders `QuestionPreview`
+  (the shared read-only question / option / answer list) whatever the row's
+  display key — an unclassified question-tool row (OpenCode writes a plain
+  `question` tool call) must not fall to the flattened `### Questions` Markdown;
+  free-form `message` / `plan` text keeps the Markdown path unless the row is
+  already question-keyed, so a prompt or command payload is never swallowed by
+  the Question heading — and an answers-only payload with no
   question / plan falls back to the Markdown answer preview so the overlay is
-  never blank; every other tab keeps the Markdown view. The read-only question
+  never blank. The read-only question
   list (`QuestionPreview` → `StaticQuestionContent`) leads with a question count
   and a capture-order hint, numbers each question, marks answered ones, and
   prints the selected labels on a dedicated line; captured selections use a
@@ -940,7 +950,12 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   (`isUserQuestionEvent` / `isUserQuestionStartEvent`): question-named events,
   a `Pre/PostToolUse` naming the question tool, plus a
   `notification_type=permission_prompt` `Notification` whose text or tool field
-  names `AskUserQuestion`. Generic `idle_prompt` / `auth_success` notifications
+  names `AskUserQuestion`. The tool-name set matches **exactly** normalized
+  names (`AskUserQuestion`, `request_user_input`, …, OpenCode's bare
+  `question`); prose matching searches sentences and therefore keeps the
+  unambiguous names only — "question" alone is a noun of every sentence, so it
+  never joins the prose matcher. Generic `idle_prompt` / `auth_success`
+  notifications
   and permission prompts for other tools (Bash, DeferExecuteTool) stay runtime
   signals. **Whether it blocks is a separate decision** in the same module:
   `isBlockingUserQuestionStartEvent` requires answerable parameters (a non-empty

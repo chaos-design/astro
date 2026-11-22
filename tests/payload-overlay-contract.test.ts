@@ -42,6 +42,21 @@ test("the preview splits the atom's content from its related data", () => {
   assert.match(stylesForOverlay, /\.payload-overlay__field\.is-annotation/);
 });
 
+test("related data renders array elements as indexed group rows", () => {
+  // The field walk emits one header row per element (`questions[0]`,
+  // `options[1]`); the pane prints it as a section marker and indents the
+  // members beneath, so repeated bare keys stay attributable.
+  const previewLib = readFileSync(
+    new URL("../src/lib/payload-preview.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(previewLib, /groupHeader: true/);
+  assert.match(overlay, /field\.groupHeader/);
+  assert.match(overlay, /payload-overlay__field--group/);
+  assert.match(overlay, /paddingInlineStart/);
+  assert.match(stylesForOverlay, /\.payload-overlay__field--group \{/);
+});
+
 test("prepared previews are cached per row and scoped by the inspector tab", () => {
   assert.match(overlay, /useRef<Map<string, PreparedPreview>>/);
   assert.match(overlay, /cache\.get\(rowKey\)/);
@@ -69,9 +84,12 @@ test("the global overlay keeps both Preview and the raw JSON Code view", () => {
 test("an answers-only question falls back to the markdown answer preview", () => {
   assert.match(overlay, /parseUserQuestionContent/);
   assert.match(overlay, /showQuestion \?/);
+  // Structured questions win over the flattened Markdown for every row;
+  // free-form message / plan text stays gated to question-keyed rows so a
+  // prompt or command payload is never swallowed by the Question heading.
   assert.match(
     overlay,
-    /question\.prompts\.length \|\| question\.message\.trim\(\) \|\| question\.plan\.trim\(\)/,
+    /question\.prompts\.length \|\|\s*\n\s*\(variant === "question" &&\s*\n\s*\(question\.message\.trim\(\) \|\| question\.plan\.trim\(\)\)\)/,
   );
 });
 

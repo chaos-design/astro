@@ -632,11 +632,15 @@ The inspector provides:
 - an expand control in the inspector header, available on `Input` / `Output` /
   `Raw`, opens a **global overlay** that shows the same payload in a much larger
   area. The overlay has a `Preview` / `Code` switch: `Preview` splits into two
-  panes — "Atom content" (the text the atom actually carried; a
-  `user.question` Input tab shows the question / option / answer list the
-  reader saw, other payloads render as Markdown, and code / JSON is highlighted)
+  panes — "Atom content" (the text the atom actually carried; a payload that
+  carries a structured `questions` list shows the question / option / answer
+  list the reader saw whatever the row's display key, other payloads render as
+  Markdown, and code / JSON is highlighted)
   and "Related data" (timestamps, paths, ids and annotations / explanations,
-  annotations first). Markdown and code stay separate readings: a text with
+  annotations first; arrays of objects keep their shape — each element opens
+  with an indexed group row such as `questions[0]` / `options[1]` and its
+  members indent beneath it, so repeated same-named keys stay attributable;
+  only annotations outside any array float to the top). Markdown and code stay separate readings: a text with
   Markdown block structure (headings, lists, emphasis, links, fences, tables)
   is a document and renders as one — prose wraps, its own fenced code stays
   highlighted and scrolls inside the block, wide tables likewise — while only

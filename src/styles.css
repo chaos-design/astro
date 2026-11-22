@@ -5979,6 +5979,25 @@ pre,
   color: var(--violet);
 }
 
+/* An array element opens with its own indexed row (`questions[0]`,
+   `options[1]`) and its members indent beneath it — a repeated bare key
+   (`description`, `label`) only reads once its element is visible. The
+   indent itself is per-row inline padding set by the renderer. */
+.payload-overlay__field--group {
+  grid-template-columns: minmax(0, 1fr);
+  padding-bottom: 1px;
+  padding-top: 10px;
+  border-bottom: 0;
+}
+
+.payload-overlay__field--group dt {
+  overflow-wrap: anywhere;
+  color: var(--text-strong);
+  font-size: var(--text-overline);
+  letter-spacing: 0.08em;
+  white-space: normal;
+}
+
 @media (max-width: 860px) {
   .payload-overlay__preview-grid {
     grid-template-columns: minmax(0, 1fr);

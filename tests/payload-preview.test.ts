@@ -120,6 +120,20 @@ test("orders annotations before the other related fields", () => {
   assert.equal(ordered[0].key, "comment");
 });
 
+test("orderRelated keeps a grouped annotation inside its array element", () => {
+  // An annotation captured inside `questions[0]` must not float to the pane
+  // top: it would leave its element and read as the root's own note.
+  const fields = collectPayloadFields({
+    questions: [{ header: "方式", note: "逐块渲染" }],
+  });
+  const ordered = orderRelated(fields);
+  assert.equal(ordered[0].groupHeader, true, "element header opens the group");
+  assert.equal(ordered[0].key, "questions[0]");
+  const noteIndex = ordered.findIndex((field) => field.key === "questions[0].note");
+  assert.ok(noteIndex > 0, "the grouped note stays behind its element header");
+  assert.equal(ordered[noteIndex].annotation, true);
+});
+
 test("only values past the limit fold, each on its own", () => {
   assert.equal(isFoldableRelatedValue("a".repeat(RELATED_VALUE_MAX_CHARS)), false);
   assert.equal(isFoldableRelatedValue("a".repeat(RELATED_VALUE_MAX_CHARS + 1)), true);
@@ -145,6 +159,47 @@ test("the field inventory shows every field, including content, empty and nested
   assert.equal(byKey.get("zero"), "0", "zero stays visible");
   assert.equal(byKey.get("tool_response.tool_use_id"), "tu_1", "nested paths qualified");
   assert.equal(byKey.get("tool_response.content[0].type"), "text", "array objects walked by index");
+});
+
+test("an array of objects opens each element with an indexed group row", () => {
+  // The related-data pane reads element members beneath their header, so a
+  // repeated bare key (`label`, `description`) still knows its element.
+  const fields = collectPayloadFields({
+    questions: [
+      {
+        header: "内容区分方式",
+        multiple: false,
+        options: [
+          { label: "A", description: "第一项" },
+          { label: "B", description: "第二项" },
+        ],
+      },
+    ],
+  });
+  const headers = fields.filter((field) => field.groupHeader);
+  assert.deepEqual(
+    headers.map((field) => field.key),
+    ["questions[0]", "questions[0].options[0]", "questions[0].options[1]"],
+    "one header row per element, walk order",
+  );
+  assert.deepEqual(
+    headers.map((field) => field.label),
+    ["questions[0]", "options[0]", "options[1]"],
+    "the header label is the relative indexed path",
+  );
+  assert.deepEqual(
+    headers.map((field) => field.level),
+    [0, 1, 1],
+    "top-level elements nest at 0, arrays inside them at 1",
+  );
+  const member = fields.find((field) => field.key === "questions[0].options[1].description");
+  assert.equal(member?.value, "第二项");
+  assert.equal(member?.label, "description", "members keep their bare key");
+  assert.equal(member?.level, 1);
+  assert.equal(member?.groupHeader, undefined);
+  const multiple = fields.find((field) => field.key === "questions[0].multiple");
+  assert.equal(multiple?.value, "false");
+  assert.equal(multiple?.level, 0, "scalar members carry their element's level");
 });
 
 test("the field inventory handles cycles without recursing forever", () => {

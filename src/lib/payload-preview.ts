@@ -194,6 +194,15 @@ export type RelatedField = {
   value: string;
   /** `annotation` fields are shown first and carry a distinct tone. */
   annotation: boolean;
+  /**
+   * Nesting depth of the array element this row belongs to: `0` for members
+   * of a top-level array (`questions[0]`), `1` for members of one nested
+   * inside it (`questions[0].options[1]`). Undefined for rows outside any
+   * array element — the pane indents them by one step more than their header.
+   */
+  level?: number;
+  /** The row introduces one array element; its members render beneath it. */
+  groupHeader?: boolean;
 };
 
 /**
@@ -279,6 +288,12 @@ export function splitPayloadPreview(value: unknown, depth = 0, seen = new WeakSe
  * Every scalar leaf of a captured payload, with a dotted path so a nested
  * `tool_response.tool_use_id` stays distinguishable from a top-level one.
  *
+ * Arrays of objects keep their shape: each element opens with a
+ * `groupHeader` row named after its indexed path (`questions[0]`,
+ * `questions[0].options[1]`) and its scalar members follow with that row's
+ * `level`, so the pane can indent them beneath their element instead of
+ * printing three identical bare keys (`label`, `label`, `label`).
+ *
  * Unlike `splitPayloadPreview`'s curated `related` list (which keeps only
  * metadata and drops content fields and empty values), this is the complete
  * field inventory: content keys, empty strings, `null`, `false` and `0` are
@@ -291,6 +306,7 @@ export function collectPayloadFields(
   prefix = "",
   depth = 0,
   seen = new WeakSet<object>(),
+  level?: number,
 ): RelatedField[] {
   if (depth > 8 || value === null || typeof value !== "object" || seen.has(value)) {
     return [];
@@ -304,6 +320,7 @@ export function collectPayloadFields(
         label: prefix || "[]",
         value: "[]",
         annotation: false,
+        ...(level === undefined ? {} : { level }),
       });
       return mergeRelated(fields);
     }
@@ -318,12 +335,27 @@ export function collectPayloadFields(
         label: prefix,
         value: value.map(scalarFieldValue).filter(Boolean).join(", "),
         annotation: false,
+        ...(level === undefined ? {} : { level }),
       });
       return mergeRelated(fields);
     }
+    const childLevel = level === undefined ? 0 : level + 1;
     value.forEach((item, index) => {
+      const childPrefix = `${prefix}[${index}]`;
+      // One header row per element gives the pane its array shape: the reader
+      // sees which index every bare `label` / `description` beneath belongs
+      // to instead of three identical keys. The header carries no value; the
+      // members follow in walk order, indented one step deeper.
+      fields.push({
+        key: childPrefix,
+        label: childPrefix.slice(childPrefix.lastIndexOf(".") + 1),
+        value: "",
+        annotation: false,
+        level: childLevel,
+        groupHeader: true,
+      });
       fields.push(
-        ...collectPayloadFields(item, `${prefix}[${index}]`, depth + 1, seen),
+        ...collectPayloadFields(item, childPrefix, depth + 1, seen, childLevel),
       );
     });
     return mergeRelated(fields);
@@ -331,13 +363,14 @@ export function collectPayloadFields(
   for (const [key, item] of Object.entries(value as UnknownRecord)) {
     const path = prefix ? `${prefix}.${key}` : key;
     if (item !== null && typeof item === "object") {
-      fields.push(...collectPayloadFields(item, path, depth + 1, seen));
+      fields.push(...collectPayloadFields(item, path, depth + 1, seen, level));
     } else {
       fields.push({
         key: path,
         label: key,
         value: scalarFieldValue(item),
         annotation: isAnnotation(key),
+        ...(level === undefined ? {} : { level }),
       });
     }
   }
@@ -570,11 +603,18 @@ export function fallbackPayloadMarkdown(payload: unknown): string {
   return contentToMarkdown(JSON.stringify(stripped, null, 2));
 }
 
-/** Related fields sorted so annotations lead, then timestamps / paths / ids. */
+/**
+ * Related fields sorted so annotations lead, then timestamps / paths / ids.
+ * Only rows outside any array element float: hoisting a note that lives
+ * inside `questions[0]` would tear it out of its element, so grouped rows
+ * keep the walk order their header rows established.
+ */
 export function orderRelated(fields: readonly RelatedField[]): RelatedField[] {
   return [...fields].sort((a, b) => {
-    if (a.annotation !== b.annotation) {
-      return a.annotation ? -1 : 1;
+    const aTop = a.annotation && a.level === undefined ? 0 : 1;
+    const bTop = b.annotation && b.level === undefined ? 0 : 1;
+    if (aTop !== bTop) {
+      return aTop - bTop;
     }
     return 0;
   });

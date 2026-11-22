@@ -129,7 +129,12 @@
     are comments in shell / Python so they never count as document evidence
     there). The related pane lists **every field** via `collectPayloadFields`
     (content keys, empty values, null/false/0, nested dotted paths — annotations
-    first); folding is **per value**, not per pane: only a value past
+    first; arrays of objects keep their shape — each element opens with an
+    indexed **group row** (`questions[0]`, `questions[0].options[1]`, the
+    walk's `groupHeader`) and its members indent beneath it, so repeated bare
+    keys (`label`, `label`, `label`) stay attributable to their element; only
+    annotations **outside** any array float to the pane top); folding is
+    **per value**, not per pane: only a value past
     `RELATED_VALUE_MAX_CHARS` (200) gets its own 展开 / 收起 on that row, and the
     two pane titles stay pinned while their bodies scroll.
     The rail
@@ -265,7 +270,11 @@
     names the question tool, plus — for a host with no `PermissionRequest`
     hook — a `notification_type=permission_prompt` `Notification` whose text
     names the question tool (WorkBuddy offers only that while blocked; its
-    `PreToolUse` lands after the answer). `idle_prompt`, `auth_success` and
+    `PreToolUse` lands after the answer). Tool names match **exactly** after
+    normalization (`AskUserQuestion`, `request_user_input`, …, OpenCode's bare
+    `question`); prose matching searches sentences and therefore keeps the
+    unambiguous names only — "question" alone is a noun of every sentence and
+    never joins the prose matcher. `idle_prompt`, `auth_success` and
     permission prompts for other tools stay runtime signals. Whether it
     **blocks** is decided only by `isBlockingUserQuestionStartEvent`: a
     permission request / notification needs non-empty `questions` / `plan` to
