@@ -313,12 +313,28 @@ export function PayloadOverlay({
   // newest event, which sits at (or near) the top of this newest-first list,
   // so the reader watching the chain sees each step land without scrolling.
   // Deliberately scroll-only — never a selection change, that is the reader's.
+  // Scroll the rail list directly rather than asking the browser to reveal the
+  // row: that walks every scrollable ancestor, so a live batch yanked the
+  // content pane's horizontal (and vertical) scroll back to the start while
+  // the reader was reading a long wrapped line. Only the rail's own scrollTop
+  // may move here.
   const selectedRowRef = useRef<HTMLButtonElement | null>(null);
   useEffect(() => {
     if (!open || !following) {
       return;
     }
-    selectedRowRef.current?.scrollIntoView({ block: "nearest" });
+    const row = selectedRowRef.current;
+    const list = row?.closest<HTMLElement>(".payload-overlay__atom-list");
+    if (!row || !list) {
+      return;
+    }
+    const rowTop = row.offsetTop;
+    const rowBottom = rowTop + row.offsetHeight;
+    if (rowTop < list.scrollTop) {
+      list.scrollTop = rowTop;
+    } else if (rowBottom > list.scrollTop + list.clientHeight) {
+      list.scrollTop = rowBottom - list.clientHeight;
+    }
   }, [atoms.length, following, open, selectedEventId]);
   const atomRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const rowCount = useMemo(
@@ -396,7 +412,7 @@ export function PayloadOverlay({
             <nav aria-label="运行的消息链路" className="payload-overlay__rail">
               <header className="payload-overlay__rail-head">
                 <span className="payload-overlay__rail-title">
-                  LOG · {atoms.length}
+                  LOG <i aria-hidden="true" className="payload-overlay__rail-title-dot">·</i> {atoms.length}
                 </span>
                 <InputGroup
                   className="payload-overlay__rail-search"

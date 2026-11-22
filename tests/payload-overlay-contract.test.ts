@@ -235,11 +235,13 @@ test("the rail's follow toggle mirrors the console's live following", () => {
   // a run whose capsule still reads RUNNING.
   assert.match(overlay, /disabled=\{!followAvailable\}/);
   // Armed, the rail keeps the selected row in view as new events land —
-  // scroll only, never a selection change.
-  assert.match(
-    overlay,
-    /if \(!open \|\| !following\) \{\s*\n\s*return;\s*\n\s*\}\s*\n\s*selectedRowRef\.current\?\.scrollIntoView/,
-  );
+  // scroll only the rail list's own scrollTop, never a selection change and
+  // never `scrollIntoView` (which walks every scrollable ancestor and would
+  // yank the content pane's horizontal scroll back to the start).
+  assert.match(overlay, /const row = selectedRowRef\.current;/);
+  assert.match(overlay, /closest<HTMLElement>\("\.payload-overlay__atom-list"\)/);
+  assert.match(overlay, /list\.scrollTop = rowBottom - list\.clientHeight/);
+  assert.doesNotMatch(overlay, /scrollIntoView/);
   assert.match(
     app,
     /const handleOverlayFollowingChange = useCallback\(/,
@@ -447,4 +449,45 @@ test("the content pane extracts the payload's core information", () => {
   assert.match(markdown, /function structuredPatchToMarkdown/);
   assert.match(markdown, /Fenced as `diff`/);
   assert.match(markdown, /findPatchMarkdown\(value, depth, new WeakSet\(\)\)/);
+});
+
+/**
+ * Reader comfort in the global layer: a live batch must not reset the content
+ * pane's scroll, each pane's scroll region keeps its own padding, the LOG · N
+ * separator dot stays small, and the Live control is legible at rest with a
+ * larger hover response.
+ */
+test("scroll, padding and control polish keep the reading surface stable", () => {
+  // Scroll confined to the rail, never scrollIntoView on all ancestors.
+  assert.doesNotMatch(overlay, /scrollIntoView/);
+  assert.match(overlay, /list\.scrollTop = rowTop/);
+
+  // Padding moved off the pane onto head + body so the scroll region has an
+  // inset on all sides while the bar still hugs the pane edge.
+  assert.match(stylesForOverlay, /\.payload-overlay__pane--content \{\s*\n\s*min-width: 0;/);
+  assert.match(
+    stylesForOverlay,
+    /\.payload-overlay__pane \.payload-overlay__body \{[\s*\S]*?padding: 10px 18px 20px;/,
+  );
+  assert.match(
+    stylesForOverlay,
+    /\.payload-overlay__pane--related \.payload-overlay__body \{[\s*\S]*?padding: 0 16px 20px;/,
+  );
+
+  // The middle dot of "LOG · N" is small and dimmed.
+  assert.match(overlay, /className="payload-overlay__rail-title-dot">·</);
+  assert.match(
+    stylesForOverlay,
+    /\.payload-overlay__rail-title-dot \{[\s*\S]*?font-size: 8px;/,
+  );
+
+  // Live: visible default background, stronger hover with a ring.
+  assert.match(
+    stylesForOverlay,
+    /\.payload-overlay__follow \{[\s*\S]*?background: color-mix\(in srgb, var\(--panel-raised\) 70%, transparent\);/,
+  );
+  assert.match(
+    stylesForOverlay,
+    /\.payload-overlay__follow:hover:not\(:disabled\) \{[\s*\S]*?box-shadow: 0 0 0 3px/,
+  );
 });

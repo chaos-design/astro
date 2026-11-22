@@ -5822,19 +5822,24 @@ pre,
   overflow: hidden;
 }
 
+/* Padding lives on each pane's scroll body, not the pane: the scroll bar sits
+   flush at the pane edge while the content it scrolls keeps its own inset on
+   every side. Folding padding into the pane (with a 0-padding body) made text
+   scroll right up against the divider and the outer edge. */
 .payload-overlay__pane--content {
-  padding: 14px 18px 20px;
+  min-width: 0;
   border-right: 1px solid var(--chrome-line);
 }
 
 .payload-overlay__pane--related {
-  padding: 14px 16px 20px;
+  min-width: 0;
   background: color-mix(in srgb, var(--panel) 46%, transparent);
 }
 
 .payload-overlay__pane-title {
   flex: none;
-  margin: 0 0 10px;
+  margin: 0;
+  padding: 14px 18px 0;
   color: var(--muted);
   font-family: var(--font-mono);
   font-size: 9px;
@@ -5851,11 +5856,12 @@ pre,
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  margin: 0 0 10px;
+  padding: 14px 16px 10px;
 }
 
 .payload-overlay__pane-head .payload-overlay__pane-title {
   margin: 0;
+  padding: 0;
 }
 
 /* Each pane scrolls on its own, and its scroll bar sits flush at the pane's
@@ -5863,14 +5869,20 @@ pre,
    inside the content. The thumb is made clearly visible: a `thin` width on the
    dark panel read as "nothing scrolls here", so the reader could not tell the
    相关数据 pane was the scroll region. */
+/* Each scroll region carries its own padding so its content keeps an inset on
+   all four sides while the scroll bar hugs the pane's outer edge. */
 .payload-overlay__pane .payload-overlay__body {
   flex: 1;
   min-height: 0;
-  padding: 0;
+  padding: 10px 18px 20px;
   overflow: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
   scrollbar-color: var(--line-bright) transparent;
+}
+
+.payload-overlay__pane--related .payload-overlay__body {
+  padding: 0 16px 20px;
 }
 
 .payload-overlay__pane .payload-overlay__body::-webkit-scrollbar {
@@ -6040,6 +6052,14 @@ pre,
   letter-spacing: 0.08em;
 }
 
+.payload-overlay__rail-title-dot {
+  margin: 0 1px;
+  color: var(--muted-soft);
+  font-size: 8px;
+  font-style: normal;
+  vertical-align: 2px;
+}
+
 /* The rail's own search box (rail-local state, like the LOG's): a keystroke
    filters the chain without re-rendering the studio. It sits between the
    counter and the Live toggle and carries its own clear button. */
@@ -6082,7 +6102,7 @@ pre,
   font-size: 12px;
   font-variant: all-small-caps;
   letter-spacing: 0.06em;
-  background: transparent;
+  background: color-mix(in srgb, var(--panel-raised) 70%, transparent);
 }
 
 .payload-overlay__follow svg {
@@ -6091,8 +6111,11 @@ pre,
 }
 
 .payload-overlay__follow:hover:not(:disabled) {
-  border-color: color-mix(in srgb, var(--status-running) 55%, var(--line));
-  color: var(--text);
+  border-color: color-mix(in srgb, var(--status-running) 80%, var(--line));
+  color: var(--text-strong);
+  background: color-mix(in srgb, var(--status-running) 22%, var(--panel-raised));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--status-running) 12%, transparent);
+  transform: translateY(-1px);
 }
 
 .payload-overlay__follow.is-armed {
