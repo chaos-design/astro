@@ -288,6 +288,16 @@ function userQuestionProjection(
   ];
 }
 
+// `sourceAtom` is a stable object from the platform config, reused by every
+// projected event of that atom type. The definition is pure, so cache it once
+// per atom instead of rebuilding it (and its alias/kind work) on every step —
+// a streaming batch projects tens of thousands of events through a handful of
+// atoms. The WeakMap keys on object identity and needs no invalidation.
+const atomicDefinitionCache = new WeakMap<
+  object,
+  AtomicDefinition
+>();
+
 export function toAtomicDefinition(
   atom: {
     key: string;
@@ -295,55 +305,66 @@ export function toAtomicDefinition(
     label: string;
   },
 ): AtomicDefinition {
-  return {
+  const cached = atomicDefinitionCache.get(atom);
+  if (cached) {
+    return cached;
+  }
+  const definition: AtomicDefinition = {
     key: atom.key,
     kind: atomicKind(atom.kind),
     label: atom.label,
     level: atomLevel(atom.key),
   };
+  atomicDefinitionCache.set(atom, definition);
+  return definition;
 }
 
 export function atomLevel(atomKey: string): AtomicLevel {
   return RUNTIME_ATOM_KEYS.has(atomKey) ? "runtime" : "deep";
 }
 
+// Module-level constants: per-event predicates may only consult module-level
+// Sets, and the alias table must not be rebuilt on every projection step.
+const ATOMIC_KIND_ALIASES: Readonly<Record<string, AtomicKind>> = {
+  checkpoint: "store",
+  gate: "action",
+  observation: "context",
+  output: "reply",
+  question: "input",
+  reasoning: "model",
+  run: "loop",
+  subagent: "agent",
+  telemetry: "trace",
+};
+
+const ATOMIC_KINDS = new Set<AtomicKind>([
+  "action",
+  "agent",
+  "context",
+  "eval",
+  "handoff",
+  "hook",
+  "input",
+  "loop",
+  "memory",
+  "model",
+  "release",
+  "reply",
+  "skill",
+  "store",
+  "tool",
+  "trace",
+  "trajectory",
+  "usage",
+]);
+
 function atomicKind(kind: string): AtomicKind {
-  const aliases: Readonly<Record<string, AtomicKind>> = {
-    checkpoint: "store",
-    gate: "action",
-    observation: "context",
-    output: "reply",
-    question: "input",
-    reasoning: "model",
-    run: "loop",
-    subagent: "agent",
-    telemetry: "trace",
-  };
-  const resolved = aliases[kind] ?? kind;
+  const resolved = ATOMIC_KIND_ALIASES[kind] ?? kind;
   return isAtomicKind(resolved) ? resolved : "trace";
 }
 
 function isAtomicKind(value: string): value is AtomicKind {
-  return [
-    "action",
-    "agent",
-    "context",
-    "eval",
-    "handoff",
-    "hook",
-    "input",
-    "loop",
-    "memory",
-    "model",
-    "release",
-    "reply",
-    "skill",
-    "store",
-    "tool",
-    "trace",
-    "trajectory",
-    "usage",
-  ].includes(value);
+  return ATOMIC_KINDS.has(value as AtomicKind);
 }
 
 function fallbackPhase(event: TraceEvent): AtomicPhase {

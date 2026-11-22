@@ -75,8 +75,10 @@
     切换提供 `Preview`（渲染后的 Markdown：标题、GFM 任务列表、高亮代码、问题/选项/答案）
     与 `Code`（未加工的原始 JSON）两种形态，不再另写一份转换或消毒逻辑；
     `Preview` 分两块区域：「原子内容」（真实文本，代码/JSON 高亮、Markdown 渲染）
-    与「相关数据」（时间戳、路径、ID、注释/说明；注释优先），拆分口径唯一定义在
-    `src/lib/payload-preview.ts`（`splitPayloadPreview` / `contentToMarkdown`）；
+    与「相关数据」（**全部**字段：含 content 键、空值、null/false/0 与嵌套路径，
+    注释优先），正文提取口径唯一定义在 `src/lib/payload-preview.ts`
+    （`splitPayloadPreview` / `contentToMarkdown`），字段清单则由 `collectPayloadFields`
+    一次遍历给出——两者职责分离，不在组件里另写字段过滤；
     每个原子的预览在浮层内按事件 ID 缓存一次，并**按检查器标签页分域**
     （`cacheScope`；`payloadForAtom(atomId, eventId)` / `variantForAtom` 解析
     任意行的载荷与类型，选中的行**以它自己的事件为准**——工具调用行读自己的
@@ -126,8 +128,9 @@
     之后新事件到达只做**滚动跟随**（把选中行滚进视口），绝不代替读者改选中态；
     点任意行即解除跟随；armed 呼吸灯；
     预览正文与相关数据字号各大一档，两个窗格的标题（原子内容 / 相关数据）
-    钉住不动、正文在标题下滚动；「相关数据」默认**折叠**（正文上限 200px，
-    标题行带「展开 / 收起」开关，向下展开、可再次收起）；
+    钉住不动、正文在标题下滚动；「相关数据」**按值折叠**——单个值超过
+    `RELATED_VALUE_MAX_CHARS`（200）才在**该行**带「展开 / 收起」，短字段不受影响，
+    绝不对整块区域做展开折叠；
     只读问题预览（`QuestionPreview` → `StaticQuestionContent`）先给问题数与
     捕获顺序提示，再给编号题目、作答状态与单独的已选答案行，静态选中 chip
     比实时选项更醒目；

@@ -425,6 +425,18 @@ test("related values fold individually, never the whole pane", () => {
  * also reads the camel `toolResponse` spelling and renders a structured patch
  * as a highlighted diff.
  */
+test("the related pane lists every captured field, not just metadata", () => {
+  assert.match(overlay, /collectPayloadFields\(payload\)/);
+  const previewLib = readFileSync(
+    new URL("../src/lib/payload-preview.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(previewLib, /export function collectPayloadFields/);
+  assert.match(previewLib, /value === "" \? '""'/);
+  // Content keys are no longer dropped from the field inventory.
+  assert.doesNotMatch(previewLib, /related\/\*content only\*\//);
+});
+
 test("the content pane extracts the payload's core information", () => {
   assert.match(overlay, /payloadToMarkdown\(payload\) \|\| fallbackPayloadMarkdown\(payload\)/);
   const markdown = readFileSync(

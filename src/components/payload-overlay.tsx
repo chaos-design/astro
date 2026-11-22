@@ -24,6 +24,7 @@ import { renderMarkdownPreview } from "@/lib/markdown-preview";
 import {
   contentToMarkdown,
   fallbackPayloadMarkdown,
+  collectPayloadFields,
   isFoldableRelatedValue,
   orderRelated,
   RELATED_VALUE_MAX_CHARS,
@@ -154,7 +155,10 @@ function preparePreview(
   return {
     contentHtml: rendered.html,
     hasContent: rendered.valid,
-    related: orderRelated(split.related),
+    // Every captured field, not just metadata: the related-data pane is a
+    // complete inventory of the payload (content keys, empty values, nested
+    // paths included). The content pane still renders the real content above.
+    related: orderRelated(collectPayloadFields(payload)),
     question,
     showQuestion: Boolean(
       question && (question.prompts.length || question.message.trim() || question.plan.trim()),

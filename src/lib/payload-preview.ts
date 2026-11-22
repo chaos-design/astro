@@ -275,6 +275,92 @@ export function splitPayloadPreview(value: unknown, depth = 0, seen = new WeakSe
   return { content: contents.join("\n\n"), related: mergeRelated(related) };
 }
 
+/**
+ * Every scalar leaf of a captured payload, with a dotted path so a nested
+ * `tool_response.tool_use_id` stays distinguishable from a top-level one.
+ *
+ * Unlike `splitPayloadPreview`'s curated `related` list (which keeps only
+ * metadata and drops content fields and empty values), this is the complete
+ * field inventory: content keys, empty strings, `null`, `false` and `0` are
+ * all present. The related-data pane shows this list so a reader can inspect
+ * every field the adapter captured; the content pane still renders the real
+ * content via `splitPayloadPreview`. Cycles and deep trees are bounded.
+ */
+export function collectPayloadFields(
+  value: unknown,
+  prefix = "",
+  depth = 0,
+  seen = new WeakSet<object>(),
+): RelatedField[] {
+  if (depth > 8 || value === null || typeof value !== "object" || seen.has(value)) {
+    return [];
+  }
+  seen.add(value);
+  const fields: RelatedField[] = [];
+  if (Array.isArray(value)) {
+    if (!value.length) {
+      fields.push({
+        key: prefix || "[]",
+        label: prefix || "[]",
+        value: "[]",
+        annotation: false,
+      });
+      return mergeRelated(fields);
+    }
+    // An array of scalars reads as one joined value; an array of objects is
+    // walked by index so no nested field is lost.
+    const hasObjects = value.some(
+      (item) => item !== null && typeof item === "object",
+    );
+    if (!hasObjects) {
+      fields.push({
+        key: prefix,
+        label: prefix,
+        value: value.map(scalarFieldValue).filter(Boolean).join(", "),
+        annotation: false,
+      });
+      return mergeRelated(fields);
+    }
+    value.forEach((item, index) => {
+      fields.push(
+        ...collectPayloadFields(item, `${prefix}[${index}]`, depth + 1, seen),
+      );
+    });
+    return mergeRelated(fields);
+  }
+  for (const [key, item] of Object.entries(value as UnknownRecord)) {
+    const path = prefix ? `${prefix}.${key}` : key;
+    if (item !== null && typeof item === "object") {
+      fields.push(...collectPayloadFields(item, path, depth + 1, seen));
+    } else {
+      fields.push({
+        key: path,
+        label: key,
+        value: scalarFieldValue(item),
+        annotation: isAnnotation(key),
+      });
+    }
+  }
+  return mergeRelated(fields);
+}
+
+/** Render a scalar leaf, keeping empty/falsy values visible as real fields. */
+function scalarFieldValue(value: unknown): string {
+  if (value === null) {
+    return "null";
+  }
+  if (value === undefined) {
+    return "undefined";
+  }
+  if (typeof value === "string") {
+    return value === "" ? '""' : value.trim();
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  return "";
+}
+
 /** Later duplicates (e.g. `transcript_path` after `transcriptPath`) win. */
 function mergeRelated(fields: RelatedField[]): RelatedField[] {
   const byKey = new Map<string, RelatedField>();

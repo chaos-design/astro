@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  collectPayloadFields,
   contentToMarkdown,
   isFoldableRelatedValue,
   orderRelated,
@@ -78,4 +79,32 @@ test("only values past the limit fold, each on its own", () => {
   assert.equal(isFoldableRelatedValue("a".repeat(RELATED_VALUE_MAX_CHARS)), false);
   assert.equal(isFoldableRelatedValue("a".repeat(RELATED_VALUE_MAX_CHARS + 1)), true);
   assert.equal(isFoldableRelatedValue("2026-11-11T02:25:25.256Z"), false);
+});
+
+test("the field inventory shows every field, including content, empty and nested values", () => {
+  const fields = collectPayloadFields({
+    message: "hi",
+    prompt: "do it",
+    empty: "",
+    nil: null,
+    flag: false,
+    zero: 0,
+    tool_response: { tool_use_id: "tu_1", content: [{ type: "text", text: "result" }] },
+  });
+  const byKey = new Map(fields.map((field) => [field.key, field.value]));
+  assert.equal(byKey.get("message"), "hi", "content keys appear in the field list");
+  assert.equal(byKey.get("prompt"), "do it");
+  assert.equal(byKey.get("empty"), '""', "empty strings stay visible");
+  assert.equal(byKey.get("nil"), "null", "null stays visible");
+  assert.equal(byKey.get("flag"), "false", "false stays visible");
+  assert.equal(byKey.get("zero"), "0", "zero stays visible");
+  assert.equal(byKey.get("tool_response.tool_use_id"), "tu_1", "nested paths qualified");
+  assert.equal(byKey.get("tool_response.content[0].type"), "text", "array objects walked by index");
+});
+
+test("the field inventory handles cycles without recursing forever", () => {
+  const cyclic: Record<string, unknown> = { id: "root" };
+  cyclic.self = cyclic;
+  const fields = collectPayloadFields(cyclic);
+  assert.deepEqual(fields, [{ key: "id", label: "id", value: "root", annotation: false }]);
 });

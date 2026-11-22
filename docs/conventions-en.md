@@ -115,9 +115,11 @@
     is fenced with its inferred language (`inferCodeLanguage` / `fenceCode` —
     json / diff / xml / typescript / python / bash; weak signals additionally
     require code punctuation or a multi-line body so prose never gets
-    colourised). The related pane **folds by default**: its body is capped
-    (200px) with an 展开 / 收起 toggle in the pane head that expands it
-    downward, and the two pane titles stay pinned while their bodies scroll.
+    colourised). The related pane lists **every field** via `collectPayloadFields`
+    (content keys, empty values, null/false/0, nested dotted paths — annotations
+    first); folding is **per value**, not per pane: only a value past
+    `RELATED_VALUE_MAX_CHARS` (200) gets its own 展开 / 收起 on that row, and the
+    two pane titles stay pinned while their bodies scroll.
     The rail
     head is **one row** — counter, search box, Live toggle — and the rail has
     its **own search box** (rail-local state, the LOG's deferred-needle

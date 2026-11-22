@@ -896,9 +896,14 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   inferred language (`inferCodeLanguage` / `fenceCode` — json / diff / xml /
   typescript / python / bash; a wrong guess colours prose into noise, so weak
   signals additionally require code punctuation or a multi-line body). The
-  related-data pane **folds by default**: its body is capped (200px) with an
-  展开 / 收起 toggle in the pane head that expands it downward, and the two
-  pane titles stay pinned while their bodies scroll. Switching rows in the
+  related-data pane lists **every captured field** via `collectPayloadFields`
+  (content keys, empty strings, null/false/0 and nested dotted paths included —
+  annotations first); folding is **per value**, never per pane: only a value
+  past `RELATED_VALUE_MAX_CHARS` (200) gets its own 展开 / 收起 on that row, so a
+  long path cannot hide the short fields beside it. `splitPayloadPreview` stays
+  the single content-extraction definition; the field inventory is a separate,
+  purpose-built walk, not a second filter in the component. The two pane titles
+  stay pinned while their bodies scroll. Switching rows in the
   rail is a lookup, never a repeated Markdown parse. Its preview is type-aware:
   a user.question Input tab passes the raw
   question payload to `QuestionPreview` (the shared read-only question / option
