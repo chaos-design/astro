@@ -5858,6 +5858,11 @@ pre,
   margin: 0;
 }
 
+/* Each pane scrolls on its own, and its scroll bar sits flush at the pane's
+   outer edge — left of 原子内容, right of 相关数据 — rather than drifting
+   inside the content. The thumb is made clearly visible: a `thin` width on the
+   dark panel read as "nothing scrolls here", so the reader could not tell the
+   相关数据 pane was the scroll region. */
 .payload-overlay__pane .payload-overlay__body {
   flex: 1;
   min-height: 0;
@@ -5866,6 +5871,15 @@ pre,
   overscroll-behavior: contain;
   scrollbar-width: thin;
   scrollbar-color: var(--line-bright) transparent;
+}
+
+.payload-overlay__pane .payload-overlay__body::-webkit-scrollbar {
+  width: 8px;
+}
+
+.payload-overlay__pane .payload-overlay__body::-webkit-scrollbar-thumb {
+  border-radius: 99px;
+  background: var(--line-bright);
 }
 
 /* Related data reads as a compact definition list: one label/value pair per
@@ -6022,8 +6036,8 @@ pre,
   flex: none;
   color: var(--muted);
   font-family: var(--font-mono);
-  font-size: 9px;
-  letter-spacing: 0.14em;
+  font-size: 12px;
+  letter-spacing: 0.08em;
 }
 
 /* The rail's own search box (rail-local state, like the LOG's): a keystroke
@@ -6033,6 +6047,13 @@ pre,
   flex: 1;
   min-width: 0;
   inline-size: auto;
+}
+
+/* The search box is the quiet middle control of the rail head: its text sits
+   one step below the enlarged counter and Live pill so those anchors read as
+   the controls and the search stays a background affordance. */
+.payload-overlay__rail-search input {
+  font-size: var(--text-overline);
 }
 
 .payload-overlay__rail-empty {
@@ -6051,22 +6072,22 @@ pre,
   display: inline-flex;
   flex: none;
   align-items: center;
-  gap: 4px;
-  padding: 2px 8px;
+  gap: 5px;
+  padding: 3px 11px;
   border: 1px solid color-mix(in srgb, var(--line-bright) 80%, transparent);
   border-radius: 999px;
   color: var(--muted);
   cursor: pointer;
   font-family: var(--font-mono);
-  font-size: var(--text-overline);
+  font-size: 12px;
   font-variant: all-small-caps;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
   background: transparent;
 }
 
 .payload-overlay__follow svg {
-  width: 10px;
-  height: 10px;
+  width: 13px;
+  height: 13px;
 }
 
 .payload-overlay__follow:hover:not(:disabled) {
