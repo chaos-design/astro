@@ -182,7 +182,12 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   `deploy-pages` job carries its own job-level `concurrency` group
   (`console-preview-pages`, `cancel-in-progress`) so deploys from *different*
   branches serialize against one another and "most recent build wins" holds
-  across branches. The workflow-level group is ref-agnostic
+  across branches. The deploy job clears the run's stale `github-pages`
+  artifacts before uploading: a deploy that failed after uploading (a
+  transient artifact-metadata hiccup) leaves its artifact behind, a rerun
+  uploads a second one, and `deploy-pages` refuses ambiguity — without the
+  cleanup every later rerun of that run keeps failing. The workflow-level
+  group is ref-agnostic
   (`console-preview-ci-<lane>`, `cancel-in-progress`): a newly triggered
   push/dispatch run cancels every in-flight push/dispatch run across all
   branches — the CI race — so a slower, older build can no longer overtake a
@@ -888,7 +893,13 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   ~800ms and grows beneath the reader without moving the line they were on);
   only a row **the reader picked in the rail** re-anchors both panes to the
   top, and a switch to the Code view resets the memo so coming back opens
-  from the start.
+  from the start. The `{ __html }` wrapper passed to `dangerouslySetInnerHTML`
+  is **memoized on the html string** (`previewHtml` / `MarkdownView`'s
+  `html`): React compares the wrapper by object identity, so an inline
+  literal re-set identical markup on every app tick — the console re-renders
+  each second while the dialog is open — and every rewrite recreated the
+  children, resetting a horizontal scroll inside a wide code block about
+  once a second. The memo lets React skip identical markup.
   The layer keeps **both readings behind one
   toggle**: `Preview` is the rendered content (Markdown headings, GFM task lists,
   highlighted code, question/option/answer lists) and `Code` is the untouched

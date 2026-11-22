@@ -146,6 +146,23 @@ jobs:
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
 
+      # A deploy that fails after uploading (a transient artifact-metadata
+      # hiccup) leaves its `github-pages` artifact behind, and re-running the
+      # job uploads a second one — deploy-pages refuses ambiguity ("Multiple
+      # artifacts named github-pages") and every later rerun keeps failing on
+      # it. Clear the run's stale Pages artifacts first so a rerun is
+      # self-healing: exactly one upload survives for deploy-pages to find.
+      - name: Remove stale Pages artifacts from earlier attempts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ids="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" \
+            --jq '.artifacts[] | select(.name == "github-pages") | .id')"
+          for id in $ids; do
+            echo "Deleting stale github-pages artifact $id"
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/artifacts/$id"
+          done
+
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
