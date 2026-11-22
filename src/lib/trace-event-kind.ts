@@ -15,6 +15,25 @@ const userQuestionToolNames = new Set([
   "askuser",
   "askuserquestion",
   "elicitation",
+  // OpenCode names its question tool exactly `question` — a PreToolUse with
+  // `tool_input.questions` and no other readable name is still a user question.
+  "question",
+  "requestinput",
+  "requestuserinput",
+  "userquestion",
+]);
+
+/**
+ * Prose matching searches a sentence for a tool name, so it keeps the
+ * unambiguous names only: "question" alone is a noun of every sentence ("the
+ * agent asked a question"), and matching it in prose would turn any
+ * permission prompt that happens to contain the word into a pending question.
+ */
+const userQuestionProseToolNames = new Set([
+  "askquestion",
+  "askuser",
+  "askuserquestion",
+  "elicitation",
   "requestinput",
   "requestuserinput",
   "userquestion",
@@ -169,7 +188,7 @@ function mentionsUserQuestionTool(value: unknown) {
   if (!normalized) {
     return false;
   }
-  for (const toolName of userQuestionToolNames) {
+  for (const toolName of userQuestionProseToolNames) {
     if (normalized.includes(toolName)) {
       return true;
     }

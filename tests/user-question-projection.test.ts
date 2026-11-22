@@ -62,6 +62,67 @@ test("recognizes explicit and tool-based user question events", () => {
   assert.equal(getAtomIdForEvent(toolStart, "trae"), "harness-user-question");
 });
 
+test("OpenCode's `question` tool is a user question", () => {
+  // OpenCode names its question tool exactly `question` and carries the
+  // prompts in `tool_input.questions`. Before the name joined the exact
+  // tool-name set, the run read as a generic tool call and the overlay fell
+  // back to the flattened `### Questions` Markdown.
+  const start = normalizeTraceEvent({
+    capturedAt: "2026-11-22T08:00:00.000Z",
+    eventName: "PreToolUse",
+    id: "opencode-question",
+    payload: {
+      toolName: "question",
+      toolUseId: "q-1",
+      tool_input: {
+        questions: [
+          {
+            header: "内容区分方式",
+            question: "希望做到哪一步?",
+            options: [{ label: "加类型徽标" }],
+            multiple: false,
+          },
+        ],
+      },
+    },
+    sessionId: "ses_opencode",
+    source: "opencode",
+    toolName: "question",
+    toolUseId: "q-1",
+    workspaceId: "workspace",
+  });
+
+  assert.equal(isUserQuestionToolEvent(start), true);
+  assert.equal(isUserQuestionEvent(start), true);
+  assert.equal(isUserQuestionStartEvent(start), true);
+  assert.equal(isBlockingUserQuestionStartEvent(start), true);
+  assert.equal(isWaitingTraceEvent(start), true);
+  assert.equal(getTraceEventKey(start), "user.question");
+  assert.equal(getAtomIdForEvent(start, "opencode"), "harness-user-question");
+  assert.match(getEventSummary(start), /希望做到哪一步/);
+});
+
+test("prose matching keeps the unambiguous tool names only", () => {
+  // `question` joined the exact tool-name set, but it must not join the prose
+  // matcher: a permission prompt whose sentence merely contains the word
+  // "question" names no question tool.
+  const prompt = normalizeTraceEvent({
+    capturedAt: "2026-09-10T10:00:00.000Z",
+    eventName: "Notification",
+    id: "prose-question",
+    payload: {
+      message: "the agent asked a question out of band",
+      notification_type: "permission_prompt",
+    },
+    sessionId: "session",
+    source: "workbuddy",
+    workspaceId: "workspace",
+  });
+
+  assert.equal(isUserQuestionEvent(prompt), false);
+  assert.equal(isBlockingUserQuestionStartEvent(prompt), false);
+});
+
 test("labels Notification events as AskUserQuestion activity", () => {
   const notification = normalizeTraceEvent({
     eventName: "Notification",
