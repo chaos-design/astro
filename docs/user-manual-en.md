@@ -670,7 +670,10 @@ The inspector provides:
   brighter selection treatment) and marked `aria-current`.
   Each row is the same LOG row: sequence number, TYPE badge, display key,
   timestamp (date + clock), the action / summary line, the closed tool call's
-  duration badge (exact milliseconds, e.g. `12500ms`) and the pair marker that
+  duration badge (a ladder of smallest honest units: exact milliseconds
+  below 10s, e.g. `12500ms`, then seconds like `12.5s`, minute+second
+  composites like `2M30s` up to an hour, and `1H25M30s` hour composites
+  beyond, zero components dropping) and the pair marker that
   names the other half's row — so the
   chain of what happened when, and how long it took, is reproducible without
   leaving the dialog. Arrow /

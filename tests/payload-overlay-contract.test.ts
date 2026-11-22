@@ -327,14 +327,17 @@ test("a payload without prose falls back to highlighted JSON", () => {
 });
 
 /**
- * The overlay's duration badge keeps the exact milliseconds: the global layer
- * exists to inspect ONE step's latency, where the lists' stepped units would
- * round away the digits being inspected. The LOG and trajectory badges keep
- * their stepped `formatDurationMs`.
+ * The overlay's duration badge follows the shared overlay ladder
+ * (`src/lib/duration-label.ts`): exact milliseconds below 10s — where the
+ * digits being inspected live — then seconds, `M`-minutes and `H`-hours
+ * composites, so a long tool call stays scannable without rounding away the
+ * short spans. The LOG and trajectory badges keep their stepped
+ * `formatDurationMs`.
  */
-test("the overlay's duration badge keeps exact milliseconds", () => {
-  assert.match(app, /function formatDurationMsExact\(milliseconds: number\)/);
-  assert.match(railBinding, /formatDurationMsExact\(pairDuration\)/);
+test("the overlay's duration badge follows the shared ladder", () => {
+  assert.match(app, /import \{ formatOverlayDuration \} from "\.\/lib\/duration-label";/);
+  assert.match(railBinding, /formatOverlayDuration\(pairDuration\)/);
+  assert.doesNotMatch(app, /formatDurationMsExact/);
   assert.match(app, /function formatDurationMs\(milliseconds: number\)/);
 });
 

@@ -148,8 +148,11 @@
     separators are keyed by position, never by the turn value. Its rows reuse
     the LOG row itself (`.atomic-log__row`) — shared sequence, `atomTypeLabel`
     TYPE badge, event-meta tone, timestamp, action / summary, the closed-pair
-    duration badge (exact milliseconds, `formatDurationMsExact` — the layer
-    inspects ONE step's latency, while the lists keep the stepped
+    duration badge (the shared overlay ladder, `formatOverlayDuration` in
+    `src/lib/duration-label.ts` — exact milliseconds below 10s where the
+    digits being inspected live, then `12.5s`, `2M30s` minute composites and
+    `1H25M30s` hour composites with zero components dropping, so a long call
+    stays scannable while the lists keep their own stepped
     `formatDurationMs`) and the pair link marker (the shared `PairLinkMarker`
     component extracted to `src/components/pair-link-marker.tsx`, also rendered
     by the LOG and the trajectory) — with rail-only CSS overrides that exist

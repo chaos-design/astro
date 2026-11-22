@@ -222,6 +222,7 @@ import {
 import {
   describeWorkspacePath,
 } from "./lib/workspace-path";
+import { formatOverlayDuration } from "./lib/duration-label";
 import {
   OTHERS_AGENT_ID,
   canLoadMoreRunHistory,
@@ -504,18 +505,12 @@ function formatDurationMs(milliseconds: number) {
 }
 
 /**
- * The overlay rail's duration label keeps the exact milliseconds. The global
- * layer exists to inspect ONE step's latency, where the list surfaces' stepped
- * units (<10s, <1m, … — see `formatDurationMs`) would round away the very
- * digits being inspected; the LOG and trajectory keep their stepped badges so
- * a long history stays scannable.
+ * The overlay rail's duration label follows the shared overlay ladder
+ * (`src/lib/duration-label.ts`): exact milliseconds below 10s — where the
+ * digits being inspected live — then seconds, `M`-minutes and `H`-hours
+ * composites as the span grows. The LOG and trajectory keep their own stepped
+ * badges (`formatDurationMs`) so a long history stays scannable.
  */
-function formatDurationMsExact(milliseconds: number) {
-  if (!Number.isFinite(milliseconds) || milliseconds < 0) {
-    return "--";
-  }
-  return `${Math.round(milliseconds)}ms`;
-}
 
 /**
  * The duration colour spec, a single source for how a span's magnitude is
@@ -7027,7 +7022,7 @@ export default function App() {
       buildLogEntries(activeEvents, platformId).map(
         ({ event, index, atomType, pairDuration, pairLink, turn }) => {
           const durationLabel =
-            pairDuration === null ? null : formatDurationMsExact(pairDuration);
+            pairDuration === null ? null : formatOverlayDuration(pairDuration);
           return {
             id: event.id,
             atomId: getAtomIdForEvent(event, platformId),

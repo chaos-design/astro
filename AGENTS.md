@@ -852,10 +852,12 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   event's payload content through the shared per-event haystacks
   `searchEvent` → `matchesEventQuery`; the input carries a clear button, and a
   turn whose rows all miss disappears with its separator). Its duration badge
-  keeps the **exact
-  milliseconds** (`formatDurationMsExact` — the layer exists to inspect ONE
-  step's latency, where the lists' stepped units would round away the digits
-  being inspected; the LOG and trajectory keep `formatDurationMs`). The rail
+  follows the shared **overlay ladder** (`formatOverlayDuration` in
+  `src/lib/duration-label.ts` — exact milliseconds below 10s, where the digits
+  being inspected live, then `12.5s`, `2M30s` minutes composites and
+  `1H25M30s` hours composites, zero components dropping; the LOG and
+  trajectory keep their own stepped `formatDurationMs` so a long history
+  stays scannable). The rail
   header carries a **Live toggle** that
   mirrors the console's live following: availability keys off the *recorded*
   status (`getRunHistoryDisplayStatus` — the RUNNING capsule the RUN HISTORY

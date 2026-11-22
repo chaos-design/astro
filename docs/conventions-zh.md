@@ -120,8 +120,10 @@
     （弹窗内 `[...source].reverse()`），先执行的事件在下方，轮次分隔符按位置
     取 key、绝不按轮次值；行直接复用 LOG 行组件（`.atomic-log__row`）——
     同一 `formatLogSequence` 序号、`atomTypeLabel` TYPE 徽标、事件元 tone 色、
-    时间、动作/摘要、成对耗时徽标（**保留精确毫秒**，`formatDurationMsExact`：
-    浮层用于检视单步延迟，列表侧仍用 LOG 的阶梯单位）与成对跳转标记
+    时间、动作/摘要、成对耗时徽标（**浮层阶梯**，`formatOverlayDuration`（
+    `src/lib/duration-label.ts`）：<10s 精确毫秒——被检视的数字所在区间——随后
+    `12.5s`、`2M30s` 分钟组合、`1H25M30s` 小时组合，零分量省略，长调用仍可扫读；
+    列表侧仍用 LOG 的阶梯单位 `formatDurationMs`）与成对跳转标记
     （`PairLinkMarker`，与 LOG、轨迹共用 `src/components/pair-link-marker.tsx`
     里的同一个组件）；浮层独有的 CSS 覆盖只做「可读性」：更宽的栏、大一档
     字号、事件键换行、摘要两行截断、选中行再大一号并加亮、**行无 hover 态**
