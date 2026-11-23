@@ -25,7 +25,6 @@ import { RelatedFields } from "@/components/related-fields";
 import {
   isAgentTranscriptAtBottom,
   isLatestStepVisible,
-  isManualUpScroll,
 } from "@/lib/agent-transcript-scroll";
 import { cn } from "@/lib/utils";
 import type {
@@ -74,8 +73,6 @@ export function AgentTranscript({
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const stepRefs = useRef(new Map<string, HTMLElement>());
   const atBottomRef = useRef(true);
-  const manualUpRef = useRef(false);
-  const lastScrollTopRef = useRef(0);
   const stepCountRef = useRef(view.steps.length);
   const chainId = view.steps[0]?.id ?? "";
   const initializedChainRef = useRef<string | null>(null);
@@ -84,11 +81,12 @@ export function AgentTranscript({
   const [showJump, setShowJump] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
 
-  // Programmatic positioning records its destination as the previous top, so
-  // the scroll event it fires cannot masquerade as a manual scroll back.
+  // Programmatic positioning: the centered affordance is derived from whether
+  // the newest step is still on screen, so a programmatic scroll (pin, locate,
+  // jump) can never masquerade as a manual one — there is no gesture state to
+  // get wrong.
   const scrollToTop = useCallback((element: HTMLElement, top: number) => {
     element.scrollTop = top;
-    lastScrollTopRef.current = element.scrollTop;
   }, []);
 
   // The scroll handler reads layout at most once per frame: a live stream can
@@ -99,9 +97,6 @@ export function AgentTranscript({
     if (!container) {
       return;
     }
-    const current = container.scrollTop;
-    const previous = lastScrollTopRef.current;
-    lastScrollTopRef.current = current;
     // "At the newest" is not the same as "at the bottom": a tall last reply
     // can still be on screen well above the bottom edge. Keep following and
     // hide the pill whenever that newest step is visible, so a reader looking
@@ -118,20 +113,18 @@ export function AgentTranscript({
       isAgentTranscriptAtBottom(container) || latestVisible;
     atBottomRef.current = atBottom;
     if (atBottom) {
-      // At the newest step: disarm the pill and resume live pinning.
-      manualUpRef.current = false;
+      // At the newest step: disarm the pill and resume live pinning. The
+      // bottom loading row owns the "still executing" read on its own.
       setShowJump(false);
       setPendingCount(0);
       return;
     }
-    if (isManualUpScroll(current, previous)) {
-      manualUpRef.current = true;
-    }
-    // A live run reserves the pill for a manual scroll back. Once the run has
-    // ended there is nothing to follow, so any position above the last step
-    // can offer a plain quick-scroll instead.
+    // The newest step has scrolled out of view. A live run keeps its loading
+    // state in the centered pill (with the pending-step count); a finished
+    // run has nothing to follow, so the same spot becomes a plain
+    // quick-scroll button — and only when the chain actually overflows.
     const scrollable = container.scrollHeight > container.clientHeight + 40;
-    setShowJump(scrollable && (manualUpRef.current || !live));
+    setShowJump(live || scrollable);
   }, [live, view.steps]);
 
   const handleScroll = useCallback(() => {
@@ -181,9 +174,7 @@ export function AgentTranscript({
       scrollToTop(container, container.scrollHeight);
     }
     atBottomRef.current = true;
-    manualUpRef.current = false;
     stepCountRef.current = view.steps.length;
-    lastScrollTopRef.current = container?.scrollTop ?? 0;
     setShowJump(false);
     setPendingCount(0);
   }, [chainId, scrollToTop]);
@@ -251,7 +242,6 @@ export function AgentTranscript({
     }
     scrollToTop(container, container.scrollHeight);
     atBottomRef.current = true;
-    manualUpRef.current = false;
     setShowJump(false);
     setPendingCount(0);
   }, [scrollToTop]);
@@ -308,18 +298,14 @@ export function AgentTranscript({
           ) : (
             <p className="payload-overlay__empty">这次运行还没有可呈现的事件。</p>
           )}
-          {live ? (
+          {live && !showJump ? (
             <div
               aria-live="polite"
               className="agent-transcript__pending"
               role="status"
             >
               <LoaderCircle aria-hidden="true" className="animate-spin" />
-              <span>
-                {pendingCount > 0
-                  ? `正在等待 ${pendingCount} 条新消息…`
-                  : "正在等待新消息…"}
-              </span>
+              <span>正在等待新消息…</span>
             </div>
           ) : null}
         </div>

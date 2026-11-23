@@ -147,9 +147,16 @@ test("the Agent view keeps a reader's scroll and offers a jump to the newest ste
   // few pixels of the bottom: a tall last reply can be visible well above it.
   assert.match(agentTranscript, /isLatestStepVisible\(/);
   assert.match(agentTranscript, /isAgentTranscriptAtBottom\(container\) \|\| latestVisible/);
-  assert.match(agentTranscript, /isManualUpScroll\(current, previous\)/);
-  assert.match(agentTranscript, /manualUpRef\.current = false/);
-  assert.match(agentTranscript, /manualUpRef\.current \|\| !live/);
+  // The centered pill is gated by the newest step's visibility, not by a
+  // manual gesture: a programmatic locate of an older step scrolls it away
+  // too, so the loading state follows it into the middle as well.
+  assert.match(agentTranscript, /setShowJump\(live \|\| scrollable\)/);
+  assert.doesNotMatch(agentTranscript, /isManualUpScroll/);
+  assert.doesNotMatch(agentTranscript, /manualUpRef/);
+  // The bottom loading row is only the "reader is at the newest step" read;
+  // once the newest step leaves the viewport the centered pill owns the
+  // loading state instead, so the two never show at once.
+  assert.match(agentTranscript, /live && !showJump/);
   assert.match(agentTranscript, /快速滚动到底部/);
   assert.match(agentTranscript, /ChevronsDown/);
   assert.match(stylesForOverlay, /\.agent-transcript__jump\.is-settled \{/);

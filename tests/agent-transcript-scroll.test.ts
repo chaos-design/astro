@@ -5,7 +5,6 @@ import {
   AGENT_SCROLL_BOTTOM_EPSILON,
   isAgentTranscriptAtBottom,
   isLatestStepVisible,
-  isManualUpScroll,
 } from "../src/lib/agent-transcript-scroll.ts";
 
 function viewport(scrollTop: number) {
@@ -64,11 +63,4 @@ test("the newest step on screen hides the jump even above the bottom edge", () =
     false,
     "the newest step has scrolled above the viewport",
   );
-});
-
-test("only an upward movement counts as a manual scroll back", () => {
-  assert.equal(isManualUpScroll(200, 300), true);
-  assert.equal(isManualUpScroll(300, 200), false, "scrolling down is not a jump request");
-  assert.equal(isManualUpScroll(300, 300), false, "a programmatic pin records its destination");
-  assert.equal(isManualUpScroll(299.5, 300), false, "sub-pixel jitter is not a gesture");
 });

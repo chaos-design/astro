@@ -130,16 +130,21 @@
     (`src/components/related-fields.tsx`), and steps share the rail's
     `onSelectAtom` selection state. The bottom test has one definition,
     `isAgentTranscriptAtBottom` in `src/lib/agent-transcript-scroll.ts` (24px
-    tolerance), and `isManualUpScroll` marks only a manual upward gesture as
-    history reading (programmatic pinning and step locating record their target
-    top and never trigger it). The overlay bumps `agentLocateRequest` only for
-    an explicit pick so live follow never steals the reader's scroll; new steps
-    count up on the bottom-centered jump pill, and returning to the bottom
-    dismisses it and resumes automatic appending; once the run ends, stopping
-    above the last step turns it into a plain "scroll to bottom" control. Each
-    content kind carries its own accent and routes its body through the same
-    `contentToMarkdown` for code/document highlighting. The trailing loading state appears only
-    while the run is still executing (`followAvailable`). The overlay's left rail is the run's **message chain in the
+    tolerance), and `isLatestStepVisible` decides whether the newest step is
+    in the viewport (a tall last reply can be on screen well above the
+    bottom). The overlay bumps `agentLocateRequest` only for an explicit pick
+    so live follow never steals the reader's scroll; arriving steps never
+    push a reader who is above the newest step — they only add up the count.
+    The reads are mutually exclusive: while the reader sits on the newest
+    step the bottom loading row is the only loading read; once the newest
+    step has scrolled out of view — a manual gesture or a programmatic
+    locate alike — the row is hidden and the bottom-centered pill shows the
+    loading state with its pending-step count; when the run has ended the
+    same pill becomes a plain "scroll to bottom" control. Returning to the
+    newest step resumes automatic appending. Each content kind carries its
+    own accent and routes its body through the same `contentToMarkdown` for
+    code/document highlighting. The bottom loading row appears only while
+    the run is still executing (`live`). The overlay's left rail is the run's **message chain in the
     LOG's own data standard**, fed by `overlayAtoms`, mapped from the same
     `buildLogEntries(activeEvents, …)` result the LOG list prints (app.tsx):
     one row per **event** (carrying the harness atom id it commits to), split

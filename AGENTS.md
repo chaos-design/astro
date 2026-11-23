@@ -933,14 +933,19 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   questions through `QuestionContent` / `QuestionPreview`. Steps and rail rows
   commit through the same `onSelectAtom` state. A reader scrolled back keeps
   their position: the overlay's `agentLocateRequest` is bumped only by an
-  explicit pick, live follow counts new steps behind a bottom-centered jump
-  pill, the bottom and manual-up tests live only in
+  explicit pick, live follow counts new steps behind a bottom-centered pill
+  without moving the reader, and the bottom / latest-step tests live only in
   `src/lib/agent-transcript-scroll.ts` (`isAgentTranscriptAtBottom`,
-  `isManualUpScroll`), returning to the bottom resumes automatic appending,
-  an ended run above the last step shows a plain scroll-to-bottom control, each
-  content kind carries its own accent with bodies highlighted through one
-  `contentToMarkdown`, and the trailing loading state is shown only while the
-  run is still executing. The related-field inventory is
+  `isLatestStepVisible`). The affordance has exactly three reads, never two at
+  once: while the reader sits on the newest step the trailing loading row
+  shows only at the bottom; whenever the newest step has scrolled out of view
+  — a manual gesture or an explicit locate of an older step alike — the bottom
+  row is hidden and the centered pinned pill carries the loading state with its
+  pending-step count; once the run has ended that same pill becomes a plain
+  scroll-to-bottom control. Returning to the newest step resumes automatic
+  appending, each content kind carries its own accent with bodies highlighted
+  through one `contentToMarkdown`, and the trailing loading row is shown only
+  while the run is still executing. The related-field inventory is
   shared with Preview in `src/components/related-fields.tsx` and folds long
   values per field, never per pane. `Preview` is split into two panes — the atom's real content
   (Markdown / highlighted code, or the question list) and the related data

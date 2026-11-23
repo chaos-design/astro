@@ -4,8 +4,12 @@
  * Keeping the bottom test here (instead of inline in the component) makes the
  * threshold a named, testable rule: a reader who is a few pixels short of the
  * last step is still "at the bottom", so a streamed batch may keep following
- * without yanking them, while a reader who scrolled up keeps their position
- * and gets the jump-to-latest affordance.
+ * without yanking them. Whether the newest step is in the reader's viewport
+ * drives the centered affordance: it stays hidden while the newest message is
+ * visible and appears — as a loading pill while the run executes, as a plain
+ * quick-scroll button after it ends — only once that step has scrolled out of
+ * view. A manual upward gesture is one way the step leaves the viewport, not a
+ * gate of its own: programmatic locating of an older step scrolls it away too.
  */
 export const AGENT_SCROLL_BOTTOM_EPSILON = 24;
 
@@ -18,18 +22,6 @@ export function isAgentTranscriptAtBottom(element: {
     element.scrollHeight - element.scrollTop - element.clientHeight <=
     AGENT_SCROLL_BOTTOM_EPSILON
   );
-}
-
-/**
- * Only a scroll that moves the reader *up* reveals the jump pill. Programmatic
- * positioning records its destination as the previous top, so locating a step
- * or pinning a live batch can never be mistaken for a manual scroll back.
- */
-export function isManualUpScroll(
-  currentTop: number,
-  previousTop: number,
-): boolean {
-  return currentTop < previousTop - 1;
 }
 
 /**

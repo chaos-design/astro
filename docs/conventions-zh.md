@@ -98,15 +98,18 @@
     `parseUserQuestionContent`。呈现层 `src/components/agent-transcript.tsx`
     只读该结果，正文仍走 `MarkdownView`、`QuestionContent/Preview` 与共享的
     `RelatedFields`（`src/components/related-fields.tsx`，按值折叠），
-    步骤与左 rail 共用 `onSelectAtom` 选择态；读者向上滚动后由
+    步骤与左 rail 共用 `onSelectAtom` 选择态。
     `src/lib/agent-transcript-scroll.ts` 的 `isAgentTranscriptAtBottom`（24px 容差）
-    单一判定是否仍在底部，`isManualUpScroll` 只把人为上滚记作阅读回看
-    （程序定位与新事件跟随会记录目标位置，不误触发），overlay 的
-    `agentLocateRequest` 只由显式点选递增，实时跟随不抢阅读位置，新步骤累计在
-    底部「回到最新」按钮上，滚回底部即解除并恢复自动追加，运行结束后停在非末步则改为
-    「快速滚动到底部」；四类正文用各自强调色区分，并统一经 `contentToMarkdown`
-    按代码/文档形态高亮，不另写解析器；末尾 loading 态只在运行仍执行
-    （`followAvailable`）时出现，结束即撤；
+    单一判定是否仍在底部，`isLatestStepVisible` 判定最新步骤是否仍在视口内
+    （高回复未到最底时也可能可见）。overlay 的
+    `agentLocateRequest` 只由显式点选递增，实时跟随不抢阅读位置；新步骤到达而
+    读者不在最新步骤时不推其阅读位置，只累计条数。三种展示互斥：读者停在
+    最新步骤时底部 loading 行是唯一的 loading 态，最新步骤滚出视口（人为上滚
+    与程序定位皆算）后底部行隐藏、底部居中的按钮改在中间显示 loading 态加
+    待读条数，运行结束后同一按钮变为「快速滚动到底部」。滚回最新步骤即恢复
+    自动追加；四类正文用各自强调色区分，并统一经 `contentToMarkdown`
+    按代码/文档形态高亮，不另写解析器；底部 loading 行只在运行仍执行
+    （`live`）时出现，结束即撤；
     `Preview` 分两块区域：「原子内容」（真实文本，代码/JSON 高亮、Markdown 渲染）
     与「相关数据」（**全部**字段：含 content 键、空值、null/false/0 与嵌套路径，
     注释优先；对象数组保留形状——每个元素自带一行带下标的**分组行**
