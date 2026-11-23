@@ -6401,7 +6401,7 @@ pre,
   border: 1px solid color-mix(in srgb, var(--line-bright) 90%, transparent);
   border-radius: 5px;
   color: var(--muted-soft);
-  background: color-mix(in srgb, var(--selection-border) 14%, var(--panel-raised));
+  background: color-mix(in srgb, var(--selection-border) 26%, var(--panel-raised));
   cursor: pointer;
   transition:
     color 120ms ease,
