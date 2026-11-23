@@ -872,7 +872,9 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   rule would otherwise out-rank), and the selected row is one more step of type
   with a brighter selection treatment — the step being inspected must be
   unmistakable at a glance. Arrow/Home/End move focus between rows. The head
-  is **one row** — run counter, a growing search box, the Live toggle — and
+  is **one row** — run counter, a growing search box, two jump-to-edge buttons
+  (both mounted with reserved width, the unreachable edge disabled), the Live
+  toggle — and
   the rail has its **own search box** (rail-local state, the LOG's
   deferred-needle pattern, matching the rows' display fields AND the row
   event's payload content through the shared per-event haystacks

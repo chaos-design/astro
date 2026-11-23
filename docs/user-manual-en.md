@@ -699,7 +699,9 @@ The inspector provides:
   chain of what happened when, and how long it took, is reproducible without
   leaving the dialog. Arrow /
   Home / End move focus between rows. The head is one row: the run counter, a
-  search box with a clear button, and the Live toggle. The rail carries its
+  search box with a clear button, two jump-to-edge buttons (both mounted with
+  reserved width, the unreachable edge greyed out), and the Live toggle. The
+  rail carries its
   own search box (rail-local state): a keyword filters the chain over the
   rows' display fields AND the payload content, and a turn whose rows all miss
   disappears with its separator.

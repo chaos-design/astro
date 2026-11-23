@@ -6348,9 +6348,9 @@ pre,
   background: color-mix(in srgb, var(--panel) 92%, transparent);
 }
 
-/* The head is one row: run counter, the search box (which grows), and the
-   Live toggle — the chain's controls never stack into two rows that resize
-   as the query changes. */
+/* The head is one row: run counter, the search box (which grows), the two
+   jump-to-edge buttons and the Live toggle — the chain's controls never stack
+   into two rows that resize as the query changes. */
 .payload-overlay__rail-head {
   display: flex;
   flex: none;
@@ -6389,6 +6389,55 @@ pre,
    the controls and the search stays a background affordance. */
 .payload-overlay__rail-search input {
   font-size: var(--text-overline);
+}
+
+/* Quick jump to either end of the chain, beside the rail's search box. The
+   container reserves the two-button width, both chevrons stay mounted and an
+   unreachable edge is disabled — never an unmount — so the search box beside
+   them never shifts while the list scrolls or a live event lands. */
+.payload-overlay__rail-scroll-controls {
+  display: flex;
+  flex: 0 0 48px;
+  width: 48px;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.payload-overlay__rail-scroll-button {
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--line-bright);
+  border-radius: 5px;
+  color: var(--muted-soft);
+  background: transparent;
+  cursor: pointer;
+  transition:
+    color 120ms ease,
+    border-color 120ms ease,
+    background 120ms ease;
+}
+
+.payload-overlay__rail-scroll-button:disabled {
+  color: var(--muted);
+  border-color: var(--line);
+  cursor: default;
+}
+
+.payload-overlay__rail-scroll-button > svg {
+  width: 12px;
+  height: 12px;
+}
+
+.payload-overlay__rail-scroll-button:not(:disabled):hover {
+  border-color: var(--selection-border);
+  color: var(--selection-text);
+  background: var(--selection-bg);
 }
 
 .payload-overlay__rail-empty {

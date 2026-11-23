@@ -388,7 +388,9 @@ test("the overlay's duration badge shares the LOG unit ladder", () => {
  * through the shared per-event haystacks the LOG warms), with the same
  * deferred-needle pattern the LOG uses, so a keystroke re-renders only the
  * rail. The head is one row — counter, growing search input with a clear
- * button, Live toggle.
+ * button, jump-to-edge buttons, Live toggle. The jump buttons stay mounted
+ * with reserved width and disable the unreachable edge, beside the search box
+ * rather than floating over the chain.
  */
 test("the rail filters its chain through a local search box", () => {
   assert.match(overlay, /const \[query, setQuery\] = useState\(""\)/);
@@ -411,6 +413,27 @@ test("the rail filters its chain through a local search box", () => {
   );
   assert.match(overlay, /aria-label="清空搜索"/);
   assert.match(stylesForOverlay, /\.payload-overlay__rail-search \{\s*\n\s*flex: 1;\s*\n\s*min-width: 0;/);
+  // Quick jump to either end lives in the head beside the search box, never as
+  // a floating overlay over the chain, and the width is reserved so the input
+  // beside it never shifts as the list scrolls.
+  const searchAt = overlay.indexOf('className="payload-overlay__rail-search"');
+  const controlsAt = overlay.indexOf("payload-overlay__rail-scroll-controls");
+  const followAt = overlay.indexOf("payload-overlay__follow");
+  assert.ok(
+    searchAt < controlsAt && controlsAt < followAt,
+    "the jump buttons sit between the search box and the Live toggle",
+  );
+  assert.match(overlay, /aria-label="滚动到顶部"/);
+  assert.match(overlay, /aria-label="滚动到底部"/);
+  assert.match(overlay, /disabled=\{!railEdges\.canScrollUp\}/);
+  assert.match(overlay, /disabled=\{!railEdges\.canScrollDown\}/);
+  assert.match(overlay, /scrollRailToEdge\("top"\)/);
+  assert.match(overlay, /scrollRailToEdge\("bottom"\)/);
+  assert.match(overlay, /onScroll=\{syncRailEdges\}/);
+  assert.match(
+    stylesForOverlay,
+    /\.payload-overlay__rail-scroll-controls \{\s*\n\s*display: flex;\s*\n\s*flex: 0 0 48px;/,
+  );
 });
 
 /**

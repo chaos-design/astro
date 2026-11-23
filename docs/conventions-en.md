@@ -164,7 +164,9 @@
     `RELATED_VALUE_MAX_CHARS` (200) gets its own 展开 / 收起 on that row, and the
     two pane titles stay pinned while their bodies scroll.
     The rail
-    head is **one row** — counter, search box, Live toggle — and the rail has
+    head is **one row** — counter, search box, two jump-to-edge buttons (both
+    mounted with reserved width, unreachable edge disabled), Live toggle — and
+    the rail has
     its **own search box** (rail-local state, the LOG's deferred-needle
     pattern over the rows' display fields AND the row event's payload content
     via `searchEvent` → `matchesEventQuery`, the shared per-event haystacks the

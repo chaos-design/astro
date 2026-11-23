@@ -1,5 +1,6 @@
 import { ChevronDown, ChevronUp, Code2, Eye, Radio, Search, X } from "lucide-react";
 import {
+  useCallback,
   useDeferredValue,
   useEffect,
   useLayoutEffect,
@@ -294,6 +295,52 @@ export function PayloadOverlay({
     }
     return items;
   }, [atoms, deferredQuery]);
+  // Jump-to-edge controls for the chain, mounted beside the rail's search box.
+  // Both stay mounted with the width reserved so the search box never resizes
+  // while the list scrolls; an unreachable edge is disabled, not unmounted.
+  const railListRef = useRef<HTMLUListElement | null>(null);
+  const [railEdges, setRailEdges] = useState({
+    canScrollDown: false,
+    canScrollUp: false,
+  });
+  const railEdgesRef = useRef(railEdges);
+  railEdgesRef.current = railEdges;
+  const syncRailEdges = useCallback(() => {
+    const list = railListRef.current;
+    if (!list) {
+      return;
+    }
+    const next = {
+      canScrollDown:
+        list.scrollHeight - list.clientHeight - list.scrollTop > 2,
+      canScrollUp: list.scrollTop > 2,
+    };
+    const current = railEdgesRef.current;
+    if (
+      next.canScrollDown === current.canScrollDown &&
+      next.canScrollUp === current.canScrollUp
+    ) {
+      return;
+    }
+    railEdgesRef.current = next;
+    setRailEdges(next);
+  }, []);
+  // Filtering the chain (or a new live event) changes the list's scrollable
+  // height without a scroll gesture, so re-check the edges after the commit.
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(syncRailEdges);
+    return () => window.cancelAnimationFrame(frame);
+  }, [railItems, syncRailEdges]);
+  const scrollRailToEdge = (edge: "top" | "bottom") => {
+    const list = railListRef.current;
+    if (!list) {
+      return;
+    }
+    list.scrollTo({
+      behavior: "smooth",
+      top: edge === "top" ? 0 : list.scrollHeight,
+    });
+  };
   // Preview cache keyed by the selected event id. Switching rows in the rail —
   // the action that used to stall the dialog — now reuses an already-prepared
   // preview. The cache is scoped to the dialog instance; payloads are
@@ -528,6 +575,32 @@ export function PayloadOverlay({
                     </InputGroupAddon>
                   ) : null}
                 </InputGroup>
+                {/* Jump to either end of the chain without arming Live. These
+                    live in the header, never over the list where a chevron
+                    would cover a row; both stay mounted with their width
+                    reserved so the search box beside them never shifts. */}
+                <div className="payload-overlay__rail-scroll-controls">
+                  <button
+                    aria-label="滚动到顶部"
+                    className="payload-overlay__rail-scroll-button"
+                    disabled={!railEdges.canScrollUp}
+                    onClick={() => scrollRailToEdge("top")}
+                    title="滚动到顶部"
+                    type="button"
+                  >
+                    <ChevronUp aria-hidden="true" />
+                  </button>
+                  <button
+                    aria-label="滚动到底部"
+                    className="payload-overlay__rail-scroll-button"
+                    disabled={!railEdges.canScrollDown}
+                    onClick={() => scrollRailToEdge("bottom")}
+                    title="滚动到底部"
+                    type="button"
+                  >
+                    <ChevronDown aria-hidden="true" />
+                  </button>
+                </div>
                 {onFollowingChange ? (
                   <button
                     aria-pressed={following}
@@ -551,7 +624,11 @@ export function PayloadOverlay({
                   </button>
                 ) : null}
               </header>
-              <ul className="payload-overlay__atom-list">
+              <ul
+                className="payload-overlay__atom-list"
+                onScroll={syncRailEdges}
+                ref={railListRef}
+              >
                 {railItems.length === 0 ? (
                   <output className="payload-overlay__rail-empty">
                     没有匹配的事件
