@@ -3418,6 +3418,7 @@ function TraceInspector({
   overlayRunningEventId,
   overlayFollowing,
   overlayFollowAvailable,
+  overlayAgentRunExecuting,
   overlaySearchEvent,
   onOverlayFollowingChange,
   onOverlaySelectEvent,
@@ -3453,6 +3454,8 @@ function TraceInspector({
   overlayFollowing: boolean;
   /** Whether the open run is executing at all (the follow toggle's gate). */
   overlayFollowAvailable: boolean;
+  /** Whether the selected message is executing — drives the Agent view's loading / scroll control. */
+  overlayAgentRunExecuting: boolean;
   /** Deep payload match for the rail's search (shared per-event haystacks). */
   overlaySearchEvent: (eventId: string, needle: string) => boolean;
   onOverlayFollowingChange: (following: boolean) => void;
@@ -3722,6 +3725,7 @@ function TraceInspector({
       <PayloadOverlay
         atoms={overlayAtoms}
         agentView={agentView}
+        agentRunExecuting={overlayAgentRunExecuting}
         cacheScope={activeTab}
         followAvailable={overlayFollowAvailable}
         following={overlayFollowing}
@@ -8680,6 +8684,7 @@ export default function App() {
                 }
                 overlayFollowing={overlayFollowing}
                 overlayFollowAvailable={overlayFollowAvailable}
+                overlayAgentRunExecuting={executingLive}
                 overlaySearchEvent={overlaySearchEvent}
                 onOverlayFollowingChange={handleOverlayFollowingChange}
                 onOverlaySelectEvent={handleOverlaySelectEvent}

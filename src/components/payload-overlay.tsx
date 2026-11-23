@@ -173,6 +173,7 @@ function preparePreview(
 export function PayloadOverlay({
   atoms,
   agentView,
+  agentRunExecuting = false,
   cacheScope = "",
   followAvailable = false,
   following = false,
@@ -194,6 +195,12 @@ export function PayloadOverlay({
   atoms: PayloadOverlayAtom[];
   /** Derived Agent view of the same event sequence as the rail. */
   agentView: AgentView;
+  /**
+   * Whether the selected *message* is still executing. Distinct from
+   * `followAvailable` (a session-level capability): the Agent view's loading
+   * state and scroll-to-bottom control follow this message execution status.
+   */
+  agentRunExecuting?: boolean;
   /**
    * Scope of the per-row preview cache. The payload of one row also depends
    * on which inspector tab the layer was opened from (Input / Output / Raw
@@ -733,7 +740,7 @@ export function PayloadOverlay({
                 onSelectEvent={handleAgentSelectEvent}
                 questionBinding={questionBinding}
                 questionEventId={questionEventId}
-                live={followAvailable}
+                live={agentRunExecuting}
                 locateRequest={agentLocateRequest}
               />
             ) : viewMode === "preview" ? (

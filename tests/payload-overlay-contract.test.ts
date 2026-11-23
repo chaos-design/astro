@@ -134,7 +134,12 @@ test("the Agent view keeps a reader's scroll and offers a jump to the newest ste
   assert.match(overlay, /useState<PayloadViewMode>\("agent"\)/);
   assert.match(overlay, /const \[agentLocateRequest, setAgentLocateRequest\]/);
   assert.match(overlay, /locateRequest=\{agentLocateRequest\}/);
-  assert.match(overlay, /live=\{followAvailable\}/);
+  // The Agent view's loading / scroll control is driven by the selected
+  // message's execution state, not the session-level follow capability.
+  assert.match(overlay, /live=\{agentRunExecuting\}/);
+  assert.match(overlay, /agentRunExecuting\?: boolean/);
+  assert.match(app, /overlayAgentRunExecuting=\{executingLive\}/);
+  assert.match(app, /agentRunExecuting=\{overlayAgentRunExecuting\}/);
   assert.match(overlay, /setAgentLocateRequest\(\(current\) => current \+ 1\)/);
   assert.match(agentTranscript, /if \(!explicit && !atBottomRef\.current\)/);
   assert.match(agentTranscript, /isAgentTranscriptAtBottom\(container\)/);
