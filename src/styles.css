@@ -2058,6 +2058,9 @@ pre,
 }
 
 .history-search__query-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   padding: 12px;
   border-bottom: 1px solid var(--chrome-line);
 }
@@ -2094,6 +2097,8 @@ pre,
 }
 
 .history-search__query {
+  flex: 1 1 auto;
+  min-width: 0;
   height: 42px;
   border-color: color-mix(in srgb, var(--selection-border) 46%, var(--line-bright));
   border-radius: 6px;
@@ -2124,6 +2129,63 @@ pre,
   font-family: var(--font-mono);
   font-size: 7px;
   text-align: center;
+}
+
+/* The two edge buttons live beside the search box, not over the result list,
+   so no row is ever covered. The container reserves the two-button width and
+   both chevrons stay mounted: an unreachable edge is a disabled button, never
+   an unmount, so the sibling input never resizes as the list scrolls. */
+.history-search__scroll-controls {
+  display: flex;
+  flex: 0 0 48px;
+  width: 48px;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.history-search__scroll-button {
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--line-bright);
+  border-radius: 5px;
+  color: var(--muted-soft);
+  background: transparent;
+  cursor: pointer;
+  transition:
+    color 120ms ease,
+    border-color 120ms ease,
+    background 120ms ease;
+}
+
+.history-search__scroll-button:disabled {
+  color: var(--muted);
+  border-color: var(--line);
+  cursor: default;
+}
+
+.history-search__scroll-button > svg {
+  width: 12px;
+  height: 12px;
+}
+
+.history-search__scroll-button:not(:disabled):hover {
+  border-color: var(--selection-border);
+  color: var(--selection-text);
+  background: var(--selection-bg);
+}
+
+.history-search__scroll-button--top:not(:disabled):hover svg {
+  animation: scroll-cue-up 720ms ease-in-out infinite;
+}
+
+.history-search__scroll-button--bottom:not(:disabled):hover svg {
+  animation: scroll-cue-down 720ms ease-in-out infinite;
 }
 
 .history-search__filters {

@@ -585,9 +585,11 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   `N LIVE` rules, the reload control while it is loading). A card that merely
   restates a recognisable mark — GitHub, gear, sun/moon, copy — is noise: it
   trails the pointer across the header icon row and covers the panel below.
-- Scroll controls for a list live in its panel header, never as a floating
-  overlay: the overlay chevron covered the first visible atom. Each direction's
-  control renders only while that edge is out of view.
+- List scroll controls live in the panel header beside the list's search box
+  (LOG, global history search), never as a floating overlay: an overlay chevron
+  covered the first visible row. Both directions stay mounted and the header
+  reserves their width; an unreachable edge is a `disabled` button rather than
+  an unmount, so the sibling search input never shifts as the list scrolls.
 - The Flow Guide drawer dims the console with a flat scrim
   (`.atom-guide__overlay`), never a backdrop blur — the canvas repaints
   continuously and would pay for the blur on every frame.

@@ -664,10 +664,12 @@
   while it is loading). A card that only translates a recognisable mark —
   GitHub, gear, sun/moon, copy — is noise: it trails the pointer across the
   header icon row and covers the panel underneath.
-- In-list scroll controls belong in the panel header, never as a floating
-  overlay: a floating chevron sits on the first visible atom, so the row the
-  reader just scrolled to is the one they cannot read. Render a direction's
-  control only while that edge is out of view.
+- In-list scroll controls belong in the panel header beside the list's search
+  box (LOG, global history search), never as a floating overlay: a floating
+  chevron sits on the first visible row, so the row the reader just scrolled to
+  is the one they cannot read. Both directions stay mounted with their width
+  reserved; an unreachable edge is a `disabled` button rather than an unmount,
+  so the sibling search input never shifts as the list scrolls.
 
 ## 9. First paint, rendering, and feedback
 

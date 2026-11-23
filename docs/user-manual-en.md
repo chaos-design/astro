@@ -408,7 +408,10 @@ Filters combine across groups. Text matching is case-insensitive and supports
 exact substrings and ordered fuzzy matches. The result list loads more entries
 automatically as it scrolls — appends render only the new rows and are
 scheduled at lower priority, so scrolling a long list never re-renders the
-rows already on screen.
+rows already on screen. The up/down arrows to the right of the search box jump
+to the top or bottom of the results; the arrow for a direction that is already
+at its edge is greyed out and updates automatically as the list scrolls or the
+results change.
 
 ![Global history search dialog](assets/history-search.png)
 
