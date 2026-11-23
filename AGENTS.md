@@ -918,8 +918,11 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   in `src/lib/agent-view.ts` (`buildAgentView`, a pure function): snapshots with
   one `messageId` merge into one reply with a count, a broken prefix records a
   diagnostic and keeps every step, legacy id-less captures only fold adjacent
-  `startsWith` chains, every Reasoning event is its own block, and questions
-  bind only to the blocking start event through `parseUserQuestionContent`.
+  `startsWith` chains, every Reasoning event is its own block with the real
+  captured text shown by default (all hook spellings folded by `extractText`
+  in `trace-model.ts`), tool commands read only from the paired `PreToolUse`
+  through `getToolCallCommand` without mutating events, and questions bind only
+  to the blocking start event through `parseUserQuestionContent`.
   `src/components/agent-transcript.tsx` only consumes that projection; payload
   text still goes through `MarkdownView` / the shared payload helpers and
   questions through `QuestionContent` / `QuestionPreview`. Steps and rail rows

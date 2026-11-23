@@ -91,7 +91,10 @@
     Agent 投影唯一入口是纯函数 `buildAgentView(events, platformId)`
     （`src/lib/agent-view.ts`）：同 `messageId` 的流式前缀与最终消息合并为一个
     ReplyStep 并计数，前缀断裂记诊断且保留每一步，无 id 的老数据只用时间邻近 +
-    `startsWith` 回退；每个 Reasoning 独立成块，提问只绑阻断性 start 并复用
+    `startsWith` 回退；每个 Reasoning 独立成块并默认展示真实思考文本，统一经
+    `extractText` 读取 hook 实际字段（`message` / 嵌套 `summary` / `text` / `content`），
+    不为某个客户端另写解析器；工具 command 只由 `getToolCallCommand` 从配对的
+    `PreToolUse` 读取，不写回事件、不从工具名编造；提问只绑阻断性 start 并复用
     `parseUserQuestionContent`。呈现层 `src/components/agent-transcript.tsx`
     只读该结果，正文仍走 `MarkdownView`、`QuestionContent/Preview` 与共享的
     `RelatedFields`（`src/components/related-fields.tsx`，按值折叠），

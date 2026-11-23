@@ -6,7 +6,7 @@
 
 ASTRO expands to **Agent State Trace & Runtime Observations**.
 
-ASTRO is a local-first runtime observability platform for coding agents. It normalizes heterogeneous events from Trae, Claude Code, ChatGPT, DeepSeek Harness, WorkBuddy / CodeBuddy Code, browser extensions, and custom clients into a versioned trace envelope, persists those events in local JSONL, and provides live inspection, search, and historical replay.
+ASTRO is a local-first runtime observability platform for coding agents. It normalizes heterogeneous events from Trae, Claude Code, ZCode, OpenCode, Pi, ChatGPT, DeepSeek Harness, WorkBuddy / CodeBuddy Code, browser extensions, and custom clients into a versioned trace envelope, persists those events in local JSONL, and provides live inspection, search, and historical replay.
 
 The system has three explicit boundaries:
 
@@ -19,6 +19,18 @@ in the host, but it is a separate, off-by-default handler that is never part of
 the capture chain. Recorders keep their fail-open, read-only stdout contract;
 see "Optional: auto-approve user questions" in `docs/plugin-installation.md`.
 
+There are now three distinct host channels: the **observation channel**
+(`plugin/trace-recorder.cjs` and its client mirrors, plus
+`plugin/zcode-adapter.cjs`) is read-only and fail-open, with stdout fixed to
+`{"continue":true}` (empty in quiet mode); the **decision channel**
+(`scripts/auto-approve-question-hook.mjs`) and the **interaction channel**
+(`scripts/interaction-hook.mjs` + `/api/interactions`) are opt-in on the host,
+off by default, write no TraceEvent, and never change the capture chain. The
+interaction contract lives in `docs/interaction-hooks-en.md`; F3 host
+acceptance currently covers only the clean ZCode session log item, while
+Claude `/hooks` visibility and the interaction closed loop remain unverified
+in a real host and must not be described as accepted.
+
 ## 2. System Context
 
 ```mermaid
@@ -29,6 +41,9 @@ flowchart LR
     X["ChatGPT Hooks / Rollout JSONL"]
     D["DeepSeek Harness Bundle"]
     W["WorkBuddy / CodeBuddy Hooks"]
+    Z["ZCode Hooks"]
+    O["OpenCode Adapter"]
+    PI["Pi Extension"]
     B["Browser SDK"]
     H["Custom HTTP Client"]
   end
@@ -47,6 +62,9 @@ flowchart LR
   X --> N
   D --> N
   W --> N
+  Z --> N
+  O --> N
+  PI --> N
   B --> API
   H --> API
   API --> N
@@ -269,6 +287,35 @@ The dependency-free browser ES module provides:
 
 Generic clients may send one event, an event array, or `{ "events": [...] }` to `POST /api/events`.
 
+### 6.6 ZCode
+
+`zcode-plugin/` is a portable plugin and local marketplace catalog;
+`plugin/zcode-adapter.cjs` normalizes ZCode's camelCase payload into canonical
+event names and fields (`toolCallId→toolUseId`, `toolInput→tool_input`,
+`toolResponse→tool_response`) for the seven hook events the host actually
+supports. The recorder's stdout contract is unchanged. `hook.run.failed` in the
+host log is the acceptance signal; only the clean-session log item is currently
+verified, not the interaction closed loop.
+
+### 6.7 OpenCode
+
+`opencode-plugin/` is a zero-dependency globally installed plugin:
+`mapping.ts` maps OpenCode server events to canonical names and `claim.ts`
+keeps one recorder per session. Durable events carry no location envelope, so
+`opencodeEventDirectory` preserves every host spelling and remembers the
+directory per session to avoid losing text. `session.text.delta` accumulates
+into `AgentMessage` snapshots carrying a `messageId`, and the final message
+writes the same id (plugin 0.0.7).
+
+### 6.8 Pi
+
+`pi-plugin/` is a zero-dependency extension: `mapping.ts` maps its events and
+`claim.ts` persists the owning pid so resumable sessions keep recording across
+Pi restarts. `readPiLiveText().messageId` is written to both throttled
+snapshots and the `message_end` final message (plugin 0.0.7). Both long-lived
+adapters stamp their own `package.json` version into `payload.captureVersion`;
+drift detection is described in §7.1.
+
 ## 7. Local Storage and Live Service
 
 The default root is `ASTRO_HOME=~/.astrox` for every client:
@@ -310,15 +357,24 @@ process memory. New trace discovery and file truncation produce a complete
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `GET` | `/api/health` | Status, event count, and trace file path |
+| `GET` | `/api/health` | Status, event count, trace file path, and per-source `captureVersions` (including `stale`) |
 | `GET` | `/api/events` | Events with optional `source` and `session` filters |
 | `GET` | `/api/events/:eventId` | Exact lookup |
 | `POST` | `/api/events` | Single or batch ingestion |
 | `DELETE` | `/api/events` | Clear local server events |
+| `GET` | `/api/sessions` | Session list and state summary |
 | `GET` | `/api/search?q=` | Nested-field search with optional filters |
-| `GET` | `/api/stream` | `ready`, `trace`, `reset`, and `resume` SSE events |
+| `GET` | `/api/demo-events` | Sample dataset (production build requires the `?demo=1` gate) |
+| `GET` | `/api/interactions/:id` | One interaction request snapshot |
+| `POST` | `/api/interactions` | Create an interaction request |
+| `POST` | `/api/interactions/:id/events` | Append an interaction event, idempotent by seq |
+| `POST` | `/api/interactions/:id/close` | Close an interaction and produce its result |
+| `GET` | `/api/git` | Repository information |
+| `POST` | `/api/config/data-root` | Change the service data root |
+| `POST` | `/api/restart` | Restart the service |
+| `GET` | `/api/stream` | `ready`, `trace`, `reset`, `resume` and `interaction.open/update/close` SSE frames |
 
-Only ingestion exposes browser CORS preflight. Reads, search, and SSE remain same-origin. The default request body limit is `5 MiB`.
+Only ingestion exposes browser CORS preflight. Reads, search, and SSE remain same-origin. The default request body limit is `5 MiB`. The single source of truth for `captureVersions` is each adapter's own manifest; unstamped events are bucketed separately and `stale` is derived from event timestamps rather than wall-clock freshness. Interaction frames are pushed on the live connection only, never replayed with the snapshot; interaction routes listen on loopback by default.
 
 ## 8. Frontend Domain Model
 
@@ -702,9 +758,17 @@ The current automated suite covers:
 - exact pre-threshold, at-threshold, post-threshold, waiting, and preserved
   terminal-duration cases;
 - `ASTROX_` preference keys, legacy migration, and invalid-value fallback;
-- production Demo exclusion and Vite proxy environment resolution.
+- production Demo exclusion and Vite proxy environment resolution;
+- capture manifest stamping, `/api/health.captureVersions` aggregation, and
+  drift detection;
+- interaction contract, atomic store writes and SSE frames, installer dry-run
+  and fail-open negatives;
+- ZCode adaptation, OpenCode / Pi long-lived mappings and `messageId` writes;
+- Agent view snapshot merging and prefix-break fallback, real paired-tool
+  command reads, and thinking field compatibility.
 
-The current suite contains 527 tests.
+The test count grows with the suite; use the pass count printed by `pnpm test`
+as the current number.
 
 Run:
 
@@ -728,3 +792,24 @@ The shared plugin-owned `config.yaml` and `.env` model is implemented across
 the recorder, CLI, service, installer, DeepSeek adapter, Vite proxy, and native
 plugin packages. The installer creates both files under
 `<ASTRO_HOME>/plugins/astro` and preserves user changes during upgrades.
+
+## 18. Known Architecture Issues and Boundaries (from the current code)
+
+- **Uneven capture coverage**: ZCode and WorkBuddy / CodeBuddy hook allowlists
+  have no `Reasoning`, so those sources produce no thinking events; opencode /
+  pi write thinking into `payload.message`, and ChatGPT rollouts into a nested
+  `payload.payload.summary` array. The read side folds every spelling through
+  `extractText` in `src/lib/trace-model.ts` rather than growing a second parser
+  per client.
+- **Tool commands are derived reads**: the command lives on the paired
+  `PreToolUse` `tool_input`, while result events usually carry none. The Agent
+  view reads it through `getToolCallCommand` without mutating `TraceEvent` or
+  inventing a value from the tool name.
+- **Host channel boundaries**: observation stays fail-open; decision and
+  interaction hooks are off by default and must be installed explicitly. F3
+  has not verified Claude `/hooks` visibility or the interaction closed loop,
+  so the docs must not claim host acceptance.
+- **Version drift is not wall-clock freshness**: `captureVersions` relies on the
+  event's `captureVersion` and event timestamps; unstamped events from an old
+  process are bucketed separately. `stale` means either two stamped generations
+  or an unstamped event at/after the newest stamped one.

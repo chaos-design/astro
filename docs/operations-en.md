@@ -503,7 +503,7 @@ Archive old date directories while the service is stopped for long-running insta
 
 ## 16. Release Checklist
 
-- `pnpm test`: all current 527 tests pass.
+- `pnpm test`: all tests pass (use the pass count printed by the runner).
 - `pnpm typecheck`: no TypeScript errors.
 - `pnpm build`: production build succeeds.
 - `pnpm build:native-plugins`: native copies are synchronized.

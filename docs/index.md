@@ -17,7 +17,7 @@ This directory separates task-oriented guides from protocol, architecture, and o
 | [使用手册](user-manual-zh.md) | 控制台使用者 | 安装、Prompt 子运行层级、拓扑、轨迹、回放、放大层 Agent/Preview/Code 三视图、实时超时、默认时间范围与 Live 筛选、导入导出和常见问题。 |
 | [事件协议参考](event-protocol-zh.md) | 集成开发者 | Schema v2、17 类事件、状态优先级、关联、顺序、幂等、HTTP 与 SSE 契约。 |
 | [数据定义参考](data-definitions-zh.md) | 集成与维护者 | 事件字段与派生数据的完整定义。 |
-| [架构说明](architecture-zh.md) | 维护者 | 采集、Repository、派生状态、共享时钟、投影、布局、安全和容量边界。 |
+| [架构说明](architecture-zh.md) | 维护者 | 采集与三类 Hook 通道、采集版本漂移、Repository、派生状态、共享时钟、投影、布局、已知架构问题和容量边界。 |
 | [运维与故障处理](operations-zh.md) | 本地运维与发布人员 | 权限、目录、超时配置、升级、备份、恢复、连续问答验收与故障矩阵。 |
 | [部署指南](deployment-zh.md) | 部署与运维人员 | 本地服务、云端控制台、文档站的完整参考：环境变量与配置全表、CORS、服务管理、故障速查。 |
 | [实现细节与规划状态](implementation-details-zh.md) | 开发、评审与答辩人员 | 设计落地总表、实现机制、代码与测试证据、边界，以及明确标记的规划项。 |
@@ -34,7 +34,7 @@ This directory separates task-oriented guides from protocol, architecture, and o
 | [User Manual](user-manual-en.md) | Console users | Installation, prompt-run hierarchy, topology, trajectory, replay, the overlay's Agent/Preview/Code views, live timeout, default range and Live filter, import/export, troubleshooting. |
 | [Event Protocol Reference](event-protocol-en.md) | Integration developers | Schema v2, 17 event types, status precedence, correlation, ordering, idempotency, HTTP and SSE contracts. |
 | [Data Definitions Reference](data-definitions-en.md) | Integrators and maintainers | Complete field and derived-data definitions. |
-| [Architecture](architecture-en.md) | Maintainers | Capture, repository, derived state, shared clock, projection, layout, security, and capacity. |
+| [Architecture](architecture-en.md) | Maintainers | Capture and three host channels, version drift, repository, derived state, shared clock, projection, layout, known architecture issues, and capacity. |
 | [Operations and Troubleshooting](operations-en.md) | Local operators and release owners | Permissions, directories, timeout configuration, upgrade, backup, recovery, and acceptance tests. |
 | [Deployment Guide](deployment-en.md) | Deployment and operators | Complete reference for the local service, cloud console, and docs site: full env-var and config table, CORS, service management, and troubleshooting. |
 | [Implementation Details and Delivery Status](implementation-details-en.md) | Developers and reviewers | Delivery matrix, mechanisms, code and test evidence, boundaries, and explicitly marked plans. |

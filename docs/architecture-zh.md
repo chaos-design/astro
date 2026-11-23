@@ -7,7 +7,7 @@
 ASTRO 是 **Agent State Trace & Runtime Observations** 的缩写，即“智能体状态追踪与
 运行时观测”。
 
-ASTRO 是面向编码智能体的本地优先运行时可观测平台。它把 Trae、Claude Code、ChatGPT、DeepSeek Harness、WorkBuddy / CodeBuddy Code、浏览器扩展和自定义客户端产生的异构事件统一为版本化 Trace 事件，在本地 JSONL 文件中持久化，并提供实时观察、搜索、检查和历史回放。
+ASTRO 是面向编码智能体的本地优先运行时可观测平台。它把 Trae、Claude Code、ZCode、OpenCode、Pi、ChatGPT、DeepSeek Harness、WorkBuddy / CodeBuddy Code、浏览器扩展和自定义客户端产生的异构事件统一为版本化 Trace 事件，在本地 JSONL 文件中持久化，并提供实时观察、搜索、检查和历史回放。
 
 系统有三条明确边界：
 
@@ -19,6 +19,8 @@ ASTRO 是面向编码智能体的本地优先运行时可观测平台。它把 T
 独立、默认关闭的组件，不属于采集链路；采集器仍保持 fail-open、只读的 stdout 契约。
 配置与边界见 `docs/plugin-installation.md` 的「Optional: auto-approve user questions」。
 
+Hook 侧现在有三条互不替代的通道：**观测通道**（`plugin/trace-recorder.cjs` 及各客户端镜像、`plugin/zcode-adapter.cjs`）只读、fail-open，stdout 固定为 `{"continue":true}`（quiet 模式为空）；**决策通道**（`scripts/auto-approve-question-hook.mjs`）与**交互通道**（`scripts/interaction-hook.mjs` + `/api/interactions`）都在宿主侧 opt-in、默认不安装，不写 TraceEvent，也不改变采集链。交互契约见 `docs/interaction-hooks-zh.md`；F3 宿主实测目前只完成 ZCode 干净会话日志项，Claude `/hooks` 可见性与交互闭环仍待真实宿主验收，不得表述为「宿主验收通过」。
+
 ## 2. 系统上下文
 
 ```mermaid
@@ -29,6 +31,9 @@ flowchart LR
     X["ChatGPT Hooks / Rollout JSONL"]
     D["DeepSeek Harness Bundle"]
     W["WorkBuddy / CodeBuddy Hooks"]
+    Z["ZCode Hooks"]
+    O["OpenCode Adapter"]
+    PI["Pi Extension"]
     B["Browser SDK"]
     H["Custom HTTP Client"]
   end
@@ -47,6 +52,9 @@ flowchart LR
   X --> N
   D --> N
   W --> N
+  Z --> N
+  O --> N
+  PI --> N
   B --> API
   H --> API
   API --> N
@@ -257,6 +265,18 @@ Hook 命令使用 `${CODEBUDDY_PLUGIN_ROOT}`，并保留权限、Elicitation、�
 
 通用客户端可以直接向 `POST /api/events` 发送单个事件、事件数组，或 `{ "events": [...] }` 包装体。
 
+### 6.6 ZCode
+
+`zcode-plugin/` 是便携插件与本地市场目录；`plugin/zcode-adapter.cjs` 把 ZCode 的 camelCase 载荷归一为规范事件名与字段（`toolCallId→toolUseId`、`toolInput→tool_input`、`toolResponse→tool_response`），只登记宿主实际支持的 7 类 hook。采集器的 stdout 契约在 ZCode 下同样固定；宿主日志中的 `hook.run.failed` 是验收依据，当前只完成干净会话日志项，不代表交互闭环已验收。
+
+### 6.7 OpenCode
+
+`opencode-plugin/` 是全局安装的零依赖插件：`mapping.ts` 把 OpenCode server 事件映射为规范事件名，`claim.ts` 保证同一会话只有一个 recorder。持久事件不带位置信封，`opencodeEventDirectory` 保留宿主的多种路径拼写并按会话记住目录，避免丢失正文；`session.text.delta` 累积为带 `messageId` 的 `AgentMessage` 流式快照，最终消息写同一 id（插件 0.0.7）。
+
+### 6.8 Pi
+
+`pi-plugin/` 是零依赖扩展：`mapping.ts` 负责事件映射，`claim.ts` 持久化拥有者 pid，让可恢复会话在 Pi 重启后继续记录；`readPiLiveText().messageId` 同时写入流式快照与 `message_end` 最终消息（插件 0.0.7）。两处长驻适配器都把自身 `package.json` 版本写入 `payload.captureVersion`，漂移判定见 §7.1。
+
 ## 7. 本地存储与实时服务
 
 所有客户端的默认根目录均为 `ASTRO_HOME=~/.astrox`：
@@ -294,15 +314,24 @@ Hook 命令使用 `${CODEBUDDY_PLUGIN_ROOT}`，并保留权限、Elicitation、�
 
 | 方法 | 路径 | 用途 |
 | --- | --- | --- |
-| `GET` | `/api/health` | 健康状态、事件数和 Trace 文件路径 |
+| `GET` | `/api/health` | 健康状态、事件数、Trace 文件路径与按来源聚合的 `captureVersions`（含 `stale`） |
 | `GET` | `/api/events` | 全量事件；支持 `source`、`session` 过滤 |
 | `GET` | `/api/events/:eventId` | 按 ID 精确读取 |
 | `POST` | `/api/events` | 写入单个或批量事件 |
 | `DELETE` | `/api/events` | 清空服务端本地事件 |
+| `GET` | `/api/sessions` | 会话列表与状态摘要 |
 | `GET` | `/api/search?q=` | 跨嵌套字段搜索；支持来源和会话过滤 |
-| `GET` | `/api/stream` | `ready`、`trace`、`reset`、`resume` SSE 事件流 |
+| `GET` | `/api/demo-events` | 示例数据集（生产构建需 `?demo=1` 门禁） |
+| `GET` | `/api/interactions/:id` | 单个交互请求快照 |
+| `POST` | `/api/interactions` | 创建交互请求 |
+| `POST` | `/api/interactions/:id/events` | 追加交互事件，按 seq 幂等 |
+| `POST` | `/api/interactions/:id/close` | 关闭交互并生成结果 |
+| `GET` | `/api/git` | 仓库信息 |
+| `POST` | `/api/config/data-root` | 修改服务使用的数据根目录 |
+| `POST` | `/api/restart` | 重启服务 |
+| `GET` | `/api/stream` | `ready`、`trace`、`reset`、`resume` 与 `interaction.open/update/close` SSE 帧 |
 
-只有写入端点开放浏览器 CORS 预检；读取、搜索和 SSE 默认同源。请求体默认限制为 `5 MiB`。
+只有写入端点开放浏览器 CORS 预检；读取、搜索和 SSE 默认同源。请求体默认限制为 `5 MiB`。`captureVersions` 的单一真相源是适配器自身 manifest；未盖章事件单独计桶，`stale` 由事件时间戳推导而非墙钟新鲜度。交互帧只在当前连接推送，不随快照重放；交互路由默认只监听回环地址。
 
 ## 8. 前端领域模型
 
@@ -644,9 +673,13 @@ localStorage 不可用时回退默认值，Trace 数据和当前页面操作不�
 - active 会话时长刷新、可配置的 24 小时封顶和超时终止；
 - 阈值前、恰好阈值、超过阈值、waiting 以及终态时长保留等精确边界；
 - `ASTROX_` 偏好键、旧键迁移和无效值回退；
-- production 禁止 Demo，以及 Vite 代理环境解析。
+- production 禁止 Demo，以及 Vite 代理环境解析；
+- 采集插件版本盖章、`/api/health.captureVersions` 聚合与漂移判定；
+- 交互契约、存储原子写与 SSE 三帧、安装器 dry-run 和 fail-open 负例；
+- ZCode 适配，OpenCode / Pi 长驻适配器映射与 `messageId` 写入；
+- Agent 视图的流式合并与断裂降级、配对工具 command 的真值读取、thinking 字段兼容。
 
-当前测试套件共 527 项。
+测试数量随用例增长而变化，以 `pnpm test` 输出的通过数为准。
 
 验证命令：
 
@@ -667,3 +700,10 @@ pnpm build
 插件级共享 `config.yaml` 与 `.env` 已接入采集器、CLI、服务、安装器、DeepSeek
 适配器、Vite 代理和原生插件包。安装器在 `<ASTRO_HOME>/plugins/astro` 创建两个
 文件，后续升级保留用户修改。
+
+## 18. 已知架构问题与边界（基于当前代码）
+
+- **采集覆盖不均**：ZCode 与 WorkBuddy / CodeBuddy 的 hook 白名单不含 `Reasoning`，这两类来源没有 thinking 事件；opencode / pi 把思考写入 `payload.message`，ChatGPT rollout 写入 `payload.payload.summary` 数组。读侧统一用 `src/lib/trace-model.ts` 的 `extractText` 收口，不能为某个客户端另写一套解析器。
+- **工具 command 是派生读取**：command 在配对的 `PreToolUse` 的 `tool_input` 上，结果事件通常没有；Agent 视图经 `getToolCallCommand` 从配对事件读取，只读不改 `TraceEvent`，也不从工具名编造值。
+- **宿主通道边界**：观测通道保持 fail-open；决策与交互通道默认关闭、需显式安装。F3 的 Claude `/hooks` 可见性与交互闭环尚未验收，文档不得写成已通过。
+- **版本漂移不由墙钟判断**：`captureVersions` 依赖事件上的 `captureVersion` 与事件时间戳，旧进程的未盖章事件单独计桶；两个版本共存，或未盖章事件晚于最新盖章事件时才标 `stale`。

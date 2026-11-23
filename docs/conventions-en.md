@@ -118,8 +118,12 @@
     sharing a `messageId` merge with the final message into one counted
     ReplyStep, a broken prefix records a diagnostic while every step survives,
     and id-less legacy captures only fold time-adjacent `startsWith` chains.
-    Each Reasoning event stays its own block, and a question binds only to the
-    blocking start event through `parseUserQuestionContent`.
+    Each Reasoning event stays its own block and shows the real captured text
+    by default; `extractText` folds the fields hooks actually write (`message`,
+    nested `summary`, `text`, `content`) without a per-client parser. Tool
+    commands are read only by `getToolCallCommand` from the paired `PreToolUse`,
+    never written back or inferred from a tool name. A question binds only to
+    the blocking start event through `parseUserQuestionContent`.
     `src/components/agent-transcript.tsx` consumes that result read-only;
     bodies still go through `MarkdownView`, `QuestionContent/Preview` and the
     shared per-value-folding `RelatedFields`

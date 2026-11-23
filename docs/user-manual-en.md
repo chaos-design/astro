@@ -681,12 +681,16 @@ The inspector provides:
   token-coloured JSON of the same payload, so both readings stay in one dialog;
   with nothing previewable the overlay says so and `Code` still shows it.
   The default `Agent` view presents the same run as the artifacts an Agent
-  actually produces: every `Reasoning` event is its own collapsed thinking
-  block (no second aggregation rule), throttled snapshots sharing a
-  `messageId` are merged with the final message into one Markdown reply marked
-  "N streamed snapshots merged", tool results and user questions become their
-  own cards, and all other events stay as generic steps so the chain loses
-  nothing. A broken prefix keeps every step and records a diagnostic instead
+  actually produces: every `Reasoning` event is its own thinking block that
+  shows the real captured thinking by default and can be collapsed
+  (no second aggregation rule; text comes from the `message` / `summary` /
+  `content` field the hook actually wrote, never a placeholder), throttled
+  snapshots sharing a `messageId` are merged with the final message into one
+  Markdown reply marked "N streamed snapshots merged", tool-result cards show
+  the command captured on the paired `PreToolUse` as a derived read (never
+  invented from a tool name) alongside the real result and paired duration,
+  user questions become their own cards, and all other events stay as generic
+  steps so the chain loses nothing. A broken prefix keeps every step and records a diagnostic instead
   of silently dropping data. Questions reuse the existing read-only preview
   or the one actionable form; answerability still comes from the interaction
   state. Selecting a step and selecting a rail row are the same state, with
@@ -1851,9 +1855,10 @@ pnpm build
 pnpm build:native-plugins
 ```
 
-The current automated suite contains 527 tests across the event model, hooks,
-continuous turns, SSE reconnects, storage, migration, projection, routing,
-preference persistence, environment boundaries, and Vite proxy configuration.
+The automated suite covers the event model, hooks, continuous turns, SSE
+reconnects, storage, migration, projection, routing, preference persistence,
+environment boundaries, and Vite proxy configuration; `pnpm test` prints the
+current pass count.
 
 Manual checks:
 
