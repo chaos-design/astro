@@ -158,6 +158,14 @@ test("the Agent view keeps a reader's scroll and offers a jump to the newest ste
   assert.match(agentTranscript, /agent-transcript__pending/);
   assert.match(agentTranscript, /agent-transcript__surface/);
   assert.match(agentTranscript, /scrollToTop\(container, container\.scrollHeight\)/);
+  // Opening the overlay / switching chains pins to the newest step before
+  // paint. `atBottomRef` starts optimistic, so without this a long thread
+  // opened at the top while claiming to be at the bottom, and the jump pill
+  // could describe a position the reader never saw.
+  assert.match(agentTranscript, /useLayoutEffect\(/);
+  assert.match(agentTranscript, /initializedChainRef\.current === chainId/);
+  assert.match(agentTranscript, /chainId = view\.steps\[0\]\?\.id/);
+  assert.doesNotMatch(agentTranscript, /firstStepIdRef/);
   assert.doesNotMatch(agentTranscript, /behavior: "smooth"/);
   assert.match(stylesForOverlay, /\.agent-transcript__jump \{[\s\S]*?position: absolute/);
   assert.match(stylesForOverlay, /:not\(\.agent-transcript__jump\) \{/);

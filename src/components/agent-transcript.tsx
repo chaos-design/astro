@@ -9,7 +9,14 @@ import {
   LoaderCircle,
   MessageSquare,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import { MarkdownView } from "@/components/markdown-view";
 import { PairLinkMarker } from "@/components/pair-link-marker";
@@ -69,7 +76,8 @@ export function AgentTranscript({
   const manualUpRef = useRef(false);
   const lastScrollTopRef = useRef(0);
   const stepCountRef = useRef(view.steps.length);
-  const firstStepIdRef = useRef(view.steps[0]?.id ?? "");
+  const chainId = view.steps[0]?.id ?? "";
+  const initializedChainRef = useRef<string | null>(null);
   const lastLocateRef = useRef(locateRequest);
   const scrollFrameRef = useRef<number | null>(null);
   const [showJump, setShowJump] = useState(false);
@@ -143,25 +151,32 @@ export function AgentTranscript({
       step.eventId === selectedEventId,
   );
 
+  // Opening the overlay (or switching to another run's chain) must land on the
+  // newest step, not the oldest line. `atBottomRef` starts optimistic, so
+  // without a real scroll a long thread opens at the top while the view claims
+  // to be at the bottom — new steps would then be appended below the fold and
+  // the "no pill while at the bottom" rule would describe a position the reader
+  // never saw. Pin before paint so the first frame already shows the tail.
+  useLayoutEffect(() => {
+    if (initializedChainRef.current === chainId) {
+      return;
+    }
+    initializedChainRef.current = chainId;
+    const container = scrollRef.current;
+    if (container) {
+      scrollToTop(container, container.scrollHeight);
+    }
+    atBottomRef.current = true;
+    manualUpRef.current = false;
+    stepCountRef.current = view.steps.length;
+    lastScrollTopRef.current = container?.scrollTop ?? 0;
+    setShowJump(false);
+    setPendingCount(0);
+  }, [chainId, scrollToTop]);
+
   // New steps while reading history are counted, never inserted under the
   // reader's scroll position. At the bottom the view stays pinned to the end.
   useEffect(() => {
-    const firstStepId = view.steps[0]?.id ?? "";
-    if (firstStepId !== firstStepIdRef.current) {
-      // Switching runs replaces the chain: an old "N new steps" count would
-      // describe a run the reader is no longer looking at.
-      firstStepIdRef.current = firstStepId;
-      atBottomRef.current = true;
-      manualUpRef.current = false;
-      stepCountRef.current = view.steps.length;
-      const container = scrollRef.current;
-      if (container) {
-        lastScrollTopRef.current = container.scrollTop;
-      }
-      setShowJump(false);
-      setPendingCount(0);
-      return;
-    }
     const count = view.steps.length;
     const previous = stepCountRef.current;
     stepCountRef.current = count;
@@ -172,11 +187,14 @@ export function AgentTranscript({
       const container = scrollRef.current;
       if (container) {
         scrollToTop(container, container.scrollHeight);
+        // Reset synchronously instead of waiting for the scroll event's rAF:
+        // the pill must never flash between the new step landing and the pin.
+        syncScrollState();
       }
     } else {
       setPendingCount((current) => current + (count - previous));
     }
-  }, [view.steps, scrollToTop]);
+  }, [view.steps, scrollToTop, syncScrollState]);
 
   useEffect(() => {
     if (!selectedEventId || !targetStep) {
