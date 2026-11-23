@@ -7,6 +7,7 @@ import {
   formatLogSequence,
   getEventSummary,
   getEventTimestamp,
+  getToolCallCommand,
   type TracePairLink,
 } from "./trace-model.ts";
 import { buildTraceTurnIndex } from "./trajectory-model.ts";
@@ -70,6 +71,8 @@ export interface ToolResultStep extends AgentStepBase {
   readonly payload: TracePayload;
   readonly eventName: string;
   readonly toolName: string | null;
+  /** Captured tool command from the paired start event, never inferred. */
+  readonly command: string | null;
   readonly durationMs: number | null;
   readonly pairLink: TracePairLink | null;
 }
@@ -324,6 +327,12 @@ export function buildAgentView(
       return;
     }
     if (event.eventName === "Stop" || TOOL_RESULT_EVENTS.has(event.eventName)) {
+      const pairLink = pairLinks.get(event.id) ?? null;
+      const partnerIndex = pairLink?.partnerId
+        ? indexById.get(pairLink.partnerId)
+        : undefined;
+      const startEvent =
+        partnerIndex === undefined ? null : events[partnerIndex];
       placement.push({
         index,
         step: {
@@ -332,8 +341,9 @@ export function buildAgentView(
           payload: event.payload ?? {},
           eventName: event.eventName,
           toolName: event.toolName ?? stringValue(event.payload?.tool_name),
+          command: getToolCallCommand(event, startEvent),
           durationMs: pairDurations.get(event.id) ?? null,
-          pairLink: pairLinks.get(event.id) ?? null,
+          pairLink,
         },
       });
       return;

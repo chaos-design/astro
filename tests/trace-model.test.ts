@@ -10,12 +10,14 @@ import {
   extractRunModel,
   formatDuration,
   formatLogSequence,
+  getEventSummary,
   getExecutionInstruction,
   getFlowNodeIdForEvent,
   getPromptInput,
   getSessionTitle,
   getSessionDisplayState,
   getSessionDuration,
+  getToolCallCommand,
   parseImportedTrace,
   searchTraceEvents,
 } from "../src/lib/trace-model.ts";
@@ -668,6 +670,54 @@ test("shows the complete normalized command for paired tool events", () => {
     getExecutionInstruction(end || null, start || null),
     "pnpm test && pnpm build",
   );
+});
+
+test("getToolCallCommand reports only captured commands", () => {
+  const events = createDemoEvents(2_000_000_000_000);
+  const start = events.find(
+    (event) =>
+      event.eventName === "PreToolUse" && event.toolUseId === "tool-test",
+  );
+  const end = events.find(
+    (event) =>
+      event.eventName === "PostToolUse" && event.toolUseId === "tool-test",
+  );
+
+  assert.equal(getToolCallCommand(end || null, start || null), "pnpm test && pnpm build");
+  assert.equal(getToolCallCommand(start || null), "pnpm test && pnpm build");
+  assert.equal(
+    getToolCallCommand(end || null),
+    null,
+    "a result event with no tool_input must not invent a command",
+  );
+  assert.equal(getToolCallCommand(null), null);
+
+  const withArray = { ...(start as NonNullable<typeof start>), payload: { command: ["pnpm", "test"] } };
+  assert.equal(getToolCallCommand(withArray), "pnpm test");
+});
+
+test("reasoning summaries read the payload spellings real hooks write", () => {
+  const [sample] = createDemoEvents(2_000_000_000_000);
+  const reasoning = (payload: Record<string, unknown>) => ({
+    ...sample,
+    id: "reasoning-probe",
+    eventName: "Reasoning",
+    payload: { ...payload },
+  });
+
+  // opencode / pi write the thinking into `message`.
+  assert.equal(
+    getEventSummary(reasoning({ message: "用户让我审查一个 PR" })),
+    "用户让我审查一个 PR",
+  );
+  // ChatGPT rollouts carry a nested array of summary objects.
+  assert.equal(
+    getEventSummary(reasoning({ payload: { summary: [{ text: "nested thinking" }] } })),
+    "nested thinking",
+  );
+  // Older captures still use summary / text / content.
+  assert.equal(getEventSummary(reasoning({ summary: "legacy summary" })), "legacy summary");
+  assert.equal(getEventSummary(reasoning({})), "Reasoning update");
 });
 
 test("combines pre and post hook events into one tool node", () => {

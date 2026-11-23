@@ -10209,6 +10209,24 @@ pre,
   --log-tone: var(--red);
 }
 
+/* Each artifact kind keeps the rail's tone but gets its own surface weight,
+ * so a thinking block, a command and a reply read apart at a glance. */
+.agent-step--thinking {
+  background: color-mix(in srgb, var(--panel) 82%, var(--violet) 18%);
+}
+
+.agent-step--reply {
+  background: color-mix(in srgb, var(--panel) 90%, var(--teal) 10%);
+}
+
+.agent-step--tool-result {
+  background: color-mix(in srgb, var(--panel) 86%, var(--amber) 14%);
+}
+
+.agent-step--question {
+  background: color-mix(in srgb, var(--panel) 86%, var(--blue) 14%);
+}
+
 .agent-step.is-selected {
   border-color: var(--selection-border);
   background: var(--selection-bg);
@@ -10305,6 +10323,28 @@ pre,
   align-items: center;
   gap: 8px;
   margin-bottom: 7px;
+}
+
+.agent-step__command {
+  margin: 0 0 10px;
+  padding: 7px 10px 9px;
+  border: 1px solid var(--line-bright);
+  border-left: 3px solid var(--amber);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--panel) 78%, var(--amber) 22%);
+}
+
+.agent-step__command-label {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--amber);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.625rem;
+  letter-spacing: 0.08em;
+}
+
+.agent-step--thinking .agent-step__body {
+  line-height: 1.6;
 }
 
 .agent-step__related {

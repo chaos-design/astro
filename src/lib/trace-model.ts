@@ -509,11 +509,20 @@ function getSummaryValue(event: TraceEvent): unknown {
     );
   }
   if (event.eventName === "Reasoning") {
+    // Long-lived adapters (opencode / pi) write the captured thinking into
+    // `message`, and ChatGPT rollouts put it in a nested summary array.
+    // Reading only summary/text/content silently replaced real thinking with
+    // this placeholder, so extractText now folds every producer spelling.
     return (
-      payload.summary ||
-      payload.text ||
-      extractText(payload.content || payload.payload?.content) ||
-      "Reasoning update"
+      extractText(
+        payload.summary ||
+          payload.text ||
+          payload.message ||
+          payload.payload?.summary ||
+          payload.payload?.message ||
+          payload.content ||
+          payload.payload?.content,
+      ) || "Reasoning update"
     );
   }
   if (event.eventName === "SessionStart") {
@@ -559,10 +568,16 @@ function getSummaryValue(event: TraceEvent): unknown {
   );
 }
 
-export function getExecutionInstruction(
+/**
+ * The real captured tool command, or `null` when no producer reported one.
+ * Keeping the normalization here (instead of in a view) means the Agent view
+ * and the inspector read the same fields, without inventing a command from a
+ * tool name for a payload that never carried one.
+ */
+export function getToolCallCommand(
   event: TraceEvent | null,
   startEvent?: TraceEvent | null,
-) {
+): string | null {
   const source = startEvent || event;
   const toolInput = source?.payload?.tool_input;
   const rawCommand =
@@ -577,8 +592,16 @@ export function getExecutionInstruction(
     : typeof rawCommand === "string"
       ? rawCommand
       : "";
+  return command.replace(/\s+/g, " ").trim() || null;
+}
+
+export function getExecutionInstruction(
+  event: TraceEvent | null,
+  startEvent?: TraceEvent | null,
+) {
+  const source = startEvent || event;
   return (
-    command.replace(/\s+/g, " ").trim() ||
+    getToolCallCommand(event, startEvent) ||
     source?.toolName ||
     event?.toolName ||
     event?.eventName ||

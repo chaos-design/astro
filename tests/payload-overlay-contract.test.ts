@@ -149,6 +149,15 @@ test("the Agent view keeps a reader's scroll and offers a jump to the newest ste
   assert.match(stylesForOverlay, /:not\(\.agent-transcript__jump\):focus-visible/);
 });
 
+test("agent steps show a captured command and real thinking on first render", () => {
+  assert.match(agentTranscript, /step\.command \?/);
+  assert.match(agentTranscript, /agent-step__command-label/);
+  assert.match(agentTranscript, /contentToMarkdown\(step\.command\)/);
+  assert.match(stylesForOverlay, /\.agent-step__command \{/);
+  assert.match(stylesForOverlay, /\.agent-step--tool-result \{/);
+  assert.match(agentTranscript, /function ThinkingBody[\s\S]{0,600}useState\(true\)/);
+});
+
 test("an answers-only question falls back to the markdown answer preview", () => {
   assert.match(overlay, /parseUserQuestionContent/);
   assert.match(overlay, /showQuestion \?/);

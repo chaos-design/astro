@@ -303,6 +303,7 @@ function StepCard({
     <section
       className={cn(
         "agent-step",
+        `agent-step--${step.kind}`,
         `tone-${step.tone}`,
         selected && "is-selected",
       )}
@@ -343,7 +344,9 @@ function StepCard({
 }
 
 function ThinkingBody({ step }: { step: ThinkingStep }) {
-  const [expanded, setExpanded] = useState(false);
+  // The captured thinking is the point of this block: show it as soon as the
+  // reader opens the view instead of hiding real content behind a disclosure.
+  const [expanded, setExpanded] = useState(true);
   return (
     <>
       <button
@@ -392,6 +395,12 @@ function ToolResultBody({
           <PairLinkMarker link={step.pairLink} onLocate={onLocate} />
         ) : null}
       </div>
+      {step.command ? (
+        <div className="agent-step__command">
+          <span className="agent-step__command-label">COMMAND</span>
+          <MarkdownView source={contentToMarkdown(step.command)} />
+        </div>
+      ) : null}
       {source.trim() ? (
         <MarkdownView source={source} />
       ) : (

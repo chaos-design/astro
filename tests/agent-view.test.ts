@@ -91,6 +91,39 @@ test("a broken prefix keeps all steps and records a diagnostic", () => {
   assert.equal(view.diagnostics[0].messageId, "demo-message-3");
 });
 
+test("tool steps expose the command captured on the paired start event", () => {
+  const events = createDemoEvents(NOW);
+  const view = buildAgentView(events, "chatgpt");
+  const tool = view.steps.find(
+    (step) => step.kind === "tool-result" && step.command !== null,
+  );
+  assert.ok(tool);
+  if (tool?.kind !== "tool-result") return;
+  assert.equal(tool.command, "pnpm test && pnpm build");
+  // The projection is derived: the paired start event keeps its own shape.
+  const raw = events.find((event) => event.id === tool.pairLink?.partnerId);
+  assert.equal(raw?.payload.tool_input?.cmd, "pnpm test && pnpm build");
+  assert.equal("command" in (raw?.payload ?? {}), false);
+});
+
+test("thinking steps carry the real reasoning text from the capture", () => {
+  const events = copyEvents((event) => {
+    if (event.eventName === "Reasoning") {
+      event.payload = { message: "用户让我审查 PR，先看 diff 再定结论" };
+    }
+  });
+  const view = buildAgentView(events);
+  const thinking = view.steps.filter((step) => step.kind === "thinking");
+  assert.equal(thinking.length, 3);
+  assert.ok(
+    thinking.every(
+      (step) =>
+        step.kind === "thinking" &&
+        step.text === "用户让我审查 PR，先看 diff 再定结论",
+    ),
+  );
+});
+
 test("legacy events without messageId still fold adjacent prefixes", () => {
   const events = copyEvents((event) => {
     if (event.eventName === "AgentMessage") {
