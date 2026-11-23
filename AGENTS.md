@@ -945,7 +945,13 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   scroll-to-bottom control. Returning to the newest step resumes automatic
   appending, each content kind carries its own accent with bodies highlighted
   through one `contentToMarkdown`, and the trailing loading row is shown only
-  while the run is still executing. The related-field inventory is
+  while the run is still executing. The displayed message's execution time
+  sits next to the AGENT VIEW label: one clock for two surfaces — the chip
+  reads the root display state the RUN HISTORY row reads (prompt-anchored,
+  timeout-capped), the root's secondly `now` tick advances it while the
+  message executes, and an ended message settles on its recorded total; it
+  formats through the shared stepped ladder (`formatDurationMs`), never a
+  second composite formatter. The related-field inventory is
   shared with Preview in `src/components/related-fields.tsx` and folds long
   values per field, never per pane. `Preview` is split into two panes — the atom's real content
   (Markdown / highlighted code, or the question list) and the related data

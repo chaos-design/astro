@@ -3418,6 +3418,7 @@ function TraceInspector({
   overlayRunningEventId,
   overlayFollowing,
   overlayFollowAvailable,
+  overlayAgentRunDurationMs,
   overlayAgentRunExecuting,
   overlaySearchEvent,
   onOverlayFollowingChange,
@@ -3454,6 +3455,12 @@ function TraceInspector({
   overlayFollowing: boolean;
   /** Whether the open run is executing at all (the follow toggle's gate). */
   overlayFollowAvailable: boolean;
+  /**
+   * The displayed message's execution time for the Agent view's header:
+   * the root display state's duration (prompt-anchored, timeout-capped),
+   * `null` when the message has no clock of its own.
+   */
+  overlayAgentRunDurationMs?: number | null;
   /** Whether the selected message is executing — drives the Agent view's loading / scroll control. */
   overlayAgentRunExecuting: boolean;
   /** Deep payload match for the rail's search (shared per-event haystacks). */
@@ -3725,6 +3732,7 @@ function TraceInspector({
       <PayloadOverlay
         atoms={overlayAtoms}
         agentView={agentView}
+        agentRunDurationMs={overlayAgentRunDurationMs}
         agentRunExecuting={overlayAgentRunExecuting}
         cacheScope={activeTab}
         followAvailable={overlayFollowAvailable}
@@ -6791,6 +6799,12 @@ export default function App() {
           appTimings.activeRunTimeoutMs,
         )
       : undefined;
+  // The Agent view's header clock: the displayed message's execution time
+  // from the same display state the RUN HISTORY row reads (prompt-anchored,
+  // timeout-capped), so the two surfaces can never disagree. The root's
+  // secondly `now` tick advances it while the run is live; an ended message
+  // keeps its recorded total.
+  const overlayAgentRunDurationMs = activeDisplayState?.duration ?? null;
   // Clicking any executing run opens Live: follow mode is allowed while the
   // ACTIVE run executes, not only for the newest session in the window.
   const promptExecuting = isPromptExecuting(
@@ -8684,6 +8698,7 @@ export default function App() {
                 }
                 overlayFollowing={overlayFollowing}
                 overlayFollowAvailable={overlayFollowAvailable}
+                overlayAgentRunDurationMs={overlayAgentRunDurationMs}
                 overlayAgentRunExecuting={executingLive}
                 overlaySearchEvent={overlaySearchEvent}
                 onOverlayFollowingChange={handleOverlayFollowingChange}

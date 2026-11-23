@@ -173,6 +173,7 @@ function preparePreview(
 export function PayloadOverlay({
   atoms,
   agentView,
+  agentRunDurationMs = null,
   agentRunExecuting = false,
   cacheScope = "",
   followAvailable = false,
@@ -195,6 +196,12 @@ export function PayloadOverlay({
   atoms: PayloadOverlayAtom[];
   /** Derived Agent view of the same event sequence as the rail. */
   agentView: AgentView;
+  /**
+   * The displayed message's execution time for the Agent view's header:
+   * advancing while the message executes, the recorded total once it ends.
+   * `null` when the message has no clock of its own.
+   */
+  agentRunDurationMs?: number | null;
   /**
    * Whether the selected *message* is still executing. Distinct from
    * `followAvailable` (a session-level capability): the Agent view's loading
@@ -742,6 +749,7 @@ export function PayloadOverlay({
                 questionEventId={questionEventId}
                 live={agentRunExecuting}
                 locateRequest={agentLocateRequest}
+                runDurationMs={agentRunDurationMs}
               />
             ) : viewMode === "preview" ? (
               <div className="payload-overlay__preview-grid">

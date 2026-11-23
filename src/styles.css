@@ -10087,6 +10087,15 @@ pre,
   color: var(--teal);
 }
 
+/* The displayed message's execution time, read from the same display state
+ * the RUN HISTORY row reads. While the run executes the number still
+ * advances, so the accent marks the reading as live; an ended run settles
+ * on its recorded total in the plain stat treatment. */
+.agent-transcript__duration.is-live {
+  border-color: var(--teal);
+  color: var(--teal);
+}
+
 .agent-transcript__diagnostics {
   padding: 6px 16px;
   border-bottom: 1px solid var(--line);

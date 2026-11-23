@@ -59,6 +59,7 @@ export function AgentTranscript({
   questionEventId,
   live,
   locateRequest,
+  runDurationMs,
 }: {
   view: AgentView;
   selectedEventId: string | null;
@@ -69,6 +70,10 @@ export function AgentTranscript({
   live: boolean;
   /** Bumped by an explicit rail / step / pair pick, never by live follow. */
   locateRequest: number;
+  /** The displayed message's execution time: advancing while the run
+   * executes, the recorded total once it ended; `null` when the message has
+   * no clock of its own. */
+  runDurationMs: number | null;
 }) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const stepRefs = useRef(new Map<string, HTMLElement>());
@@ -251,6 +256,18 @@ export function AgentTranscript({
       <div className="agent-transcript__head">
         <Bot aria-hidden="true" />
         <span>AGENT VIEW</span>
+        {runDurationMs !== null ? (
+          <span
+            className={cn(
+              "agent-transcript__stat",
+              "agent-transcript__duration",
+              live && "is-live",
+            )}
+            title="当前消息执行时间"
+          >
+            执行 {formatDurationMs(runDurationMs)}
+          </span>
+        ) : null}
         <span className="agent-transcript__stat">{view.stats.thinking} 思考</span>
         <span className="agent-transcript__stat">{view.stats.replies} 回复</span>
         <span className="agent-transcript__stat">{view.stats.questions} 提问</span>

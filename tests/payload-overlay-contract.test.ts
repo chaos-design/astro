@@ -183,6 +183,24 @@ test("the Agent view keeps a reader's scroll and offers a jump to the newest ste
   assert.match(stylesForOverlay, /:not\(\.agent-transcript__jump\):focus-visible/);
 });
 
+test("the Agent view's header reads its execution time from the root display state", () => {
+  // One clock for two surfaces: the chip reuses the same display state the
+  // RUN HISTORY row reads (prompt-anchored, timeout-capped), so they can
+  // never disagree. The root's secondly `now` tick advances a live run; an
+  // ended one settles on its recorded total.
+  assert.match(app, /overlayAgentRunDurationMs = activeDisplayState\?\.duration \?\? null/);
+  assert.match(app, /overlayAgentRunDurationMs=\{overlayAgentRunDurationMs\}/);
+  assert.match(app, /agentRunDurationMs=\{overlayAgentRunDurationMs\}/);
+  assert.match(overlay, /runDurationMs=\{agentRunDurationMs\}/);
+  assert.match(agentTranscript, /agent-transcript__duration/);
+  assert.match(agentTranscript, /runDurationMs !== null/);
+  assert.match(agentTranscript, /formatDurationMs\(runDurationMs\)/);
+  // While the message executes the reading still advances, so the accent
+  // marks it live; an ended message keeps the plain stat treatment.
+  assert.match(agentTranscript, /live && "is-live"/);
+  assert.match(stylesForOverlay, /\.agent-transcript__duration\.is-live \{[\s\S]*?color: var\(--teal\)/);
+});
+
 test("agent steps show a captured command and real thinking on first render", () => {
   // All textual bodies share one content-shape decision: prose stays a
   // document, code and captured commands become language-highlighted fences.
