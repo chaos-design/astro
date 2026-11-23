@@ -133,14 +133,14 @@ test("records repeated identical questions and answers after Stop in every hook 
   await repository.initialize();
   repository.start();
 
-  for (const source of ["trae", "claude", "codex", "workbuddy"]) {
+  for (const source of ["trae", "claude", "chatgpt", "workbuddy"]) {
     for (const eventName of ["UserPromptSubmit", "Stop", "UserPromptSubmit", "Stop"]) {
       assert.equal(captureHook(environment, eventName, source).status, 0);
       await repository.discover();
     }
   }
   await t.waitFor(() => assert.equal(repository.getEvents().length, 16));
-  for (const source of ["trae", "claude", "codex", "workbuddy"]) {
+  for (const source of ["trae", "claude", "chatgpt", "workbuddy"]) {
     const events = repository.getEvents().filter((event) => event.source === source);
     assert.deepEqual(events.map((event) => event.eventName), [
       "UserPromptSubmit", "Stop", "UserPromptSubmit", "Stop",
@@ -166,7 +166,7 @@ test("keeps quiet hooks silent on stdout while reporting persistence errors", (t
   const environment = createEnvironment(t);
   const blockedPath = join(environment.ASTRO_HOME, "not-a-directory");
   writeFileSync(blockedPath, "");
-  const result = spawnSync(process.execPath, [recorderFile, "--source=codex", "--quiet"], {
+  const result = spawnSync(process.execPath, [recorderFile, "--source=chatgpt", "--quiet"], {
     input: JSON.stringify({ session_id: "followup-session", hook_event_name: "Stop" }),
     encoding: "utf8",
     env: { ...process.env, ...environment, ASTRO_HOME: blockedPath, ASTRO_AUTO_OPEN: "0" },

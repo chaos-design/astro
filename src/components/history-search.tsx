@@ -2,6 +2,7 @@ import {
   Bot,
   CalendarDays,
   ChevronDown,
+  ChevronUp,
   Clock3,
   FilterX,
   Search,
@@ -566,6 +567,35 @@ export function HistorySearch({
   const inputRef = useRef<HTMLInputElement | null>(null);
   const resultListRef = useRef<HTMLDivElement | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
+  // Both edge controls stay mounted and the row reserves their width, so the
+  // search input never resizes as results stream or the list scrolls. An
+  // unreachable edge is a disabled button, not an unmounted one.
+  const [scrollEdges, setScrollEdges] = useState({
+    canScrollDown: false,
+    canScrollUp: false,
+  });
+  const scrollEdgesRef = useRef(scrollEdges);
+  scrollEdgesRef.current = scrollEdges;
+  const syncScrollEdges = useCallback(() => {
+    const list = resultListRef.current;
+    if (!list) {
+      return;
+    }
+    const next = {
+      canScrollDown:
+        list.scrollHeight - list.clientHeight - list.scrollTop > 2,
+      canScrollUp: list.scrollTop > 2,
+    };
+    const current = scrollEdgesRef.current;
+    if (
+      next.canScrollDown === current.canScrollDown &&
+      next.canScrollUp === current.canScrollUp
+    ) {
+      return;
+    }
+    scrollEdgesRef.current = next;
+    setScrollEdges(next);
+  }, []);
   /*
    * `onSelect` arrives from the app root, which re-renders on every streamed
    * batch — a fresh function identity each time. The rows are memoized, so
@@ -777,6 +807,25 @@ export function HistorySearch({
     return () => observer.disconnect();
   }, [matches.length, visibleCount]);
 
+  // A new result set (or an appended batch) changes the list's scrollable
+  // height, so re-check the edges after the DOM commits — the `onScroll`
+  // handler alone misses a list that grew or shrank without a scroll gesture.
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(syncScrollEdges);
+    return () => window.cancelAnimationFrame(frame);
+  }, [syncScrollEdges, visibleMatches]);
+
+  const scrollResultsToEdge = (edge: "top" | "bottom") => {
+    const list = resultListRef.current;
+    if (!list) {
+      return;
+    }
+    list.scrollTo({
+      behavior: "smooth",
+      top: edge === "top" ? 0 : list.scrollHeight,
+    });
+  };
+
   const resetFilters = () => {
     setQuery("");
     setTimeRange(defaultRange);
@@ -833,6 +882,32 @@ export function HistorySearch({
               <kbd>ESC</kbd>
             </InputGroupAddon>
           </InputGroup>
+          {/* Scroll controls live in the header beside the search box, never
+              floating over the list where a chevron would cover a result row.
+              Both buttons stay mounted; the unreachable edge is disabled so
+              the input beside them never shifts as the list scrolls. */}
+          <div className="history-search__scroll-controls">
+            <button
+              type="button"
+              className="history-search__scroll-button history-search__scroll-button--top"
+              aria-label="Scroll to top"
+              title="Scroll to top"
+              disabled={!scrollEdges.canScrollUp}
+              onClick={() => scrollResultsToEdge("top")}
+            >
+              <ChevronUp aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              className="history-search__scroll-button history-search__scroll-button--bottom"
+              aria-label="Scroll to bottom"
+              title="Scroll to bottom"
+              disabled={!scrollEdges.canScrollDown}
+              onClick={() => scrollResultsToEdge("bottom")}
+            >
+              <ChevronDown aria-hidden="true" />
+            </button>
+          </div>
         </div>
 
         <div className="history-search__filters">
@@ -898,7 +973,11 @@ export function HistorySearch({
           </output>
         </div>
 
-        <div className="history-search__results" ref={resultListRef}>
+        <div
+          className="history-search__results"
+          ref={resultListRef}
+          onScroll={syncScrollEdges}
+        >
           {visibleMatches.map((match) => (
             <SearchResult
               key={match.eventId}

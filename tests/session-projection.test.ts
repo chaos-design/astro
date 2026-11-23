@@ -20,7 +20,7 @@ function makeEvent(
     id,
     payload: { prompt: "do the thing" },
     sessionId,
-    source: "codex",
+    source: "chatgpt",
     workspaceId: "workspace",
   });
 }

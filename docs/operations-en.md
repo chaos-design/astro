@@ -18,7 +18,7 @@ A dashboard failure must not interrupt the agent. A recorder write failure is re
 | --- | --- | --- | --- |
 | Source production | Local use and post-development validation | checkout `dist` and `server` | `~/.astrox` |
 | Development | React, service, or protocol changes | Vite + Node service | `~/.astrox` or override |
-| Native Codex plugin | Codex marketplace/plugin support | embedded `codex-plugin` copy | `~/.astrox` |
+| Native ChatGPT plugin | ChatGPT marketplace/plugin support | embedded `chatgpt-plugin` copy | `~/.astrox` |
 | Native Claude plugin | Claude Code plugin support | embedded `claude-plugin` copy | `~/.astrox` |
 | Native WorkBuddy plugin | CodeBuddy Code plugin support | embedded `workbuddy-plugin` copy | `~/.astrox` |
 | DeepSeek Harness bundle | `dsh` profile plugin | embedded `deepseek-plugin` copy | `~/.astrox` |
@@ -83,7 +83,7 @@ ASTRO_PORT=4320 pnpm dev
   dashboard-5678.pid
   trae/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
   claude/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
-  codex/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
+  chatgpt/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
   deepseek/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
   workbuddy/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
   browser/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
@@ -101,7 +101,7 @@ The client process needs permission to:
 - create, read, and remove `dashboard-<port>.pid`;
 - read the standalone runtime under `~/.astrox/plugins/astro`.
 
-A direct Codex install also writes `$CODEX_HOME/hooks.json`, normally `~/.codex/hooks.json`. A user-scoped Claude install writes `~/.claude/settings.json`. A project-scoped Trae install writes `<workspace>/.trae/hooks.json`. DeepSeek installation uses `dsh plugin` to update `$DSH_HOME/profiles/<profile>`, with `$DSH_HOME=~/.dsh` by default.
+A direct ChatGPT install also writes `$CHATGPT_HOME/hooks.json`, normally `~/.chatgpt/hooks.json`. A user-scoped Claude install writes `~/.claude/settings.json`. A project-scoped Trae install writes `<workspace>/.trae/hooks.json`. DeepSeek installation uses `dsh plugin` to update `$DSH_HOME/profiles/<profile>`, with `$DSH_HOME=~/.dsh` by default.
 
 In a sandboxed IDE, explicitly allow writes to the actual `ASTRO_HOME` and the selected client configuration directory. Do not point `ASTRO_HOME` at a read-only checkout.
 
@@ -128,7 +128,7 @@ If a hook reports `ASTRO event was not recorded`, check permissions and confirm 
 | `ASTRO_AUTO_OPEN` | `1` | Start the dashboard from installation or agent events. |
 | `ASTRO_CORS_ORIGINS` | unset (no CORS) | Origins allowed to read the local API; equivalent config field `server.corsOrigins`. |
 | `ASTRO_DEMO_EVENTS` | unset | Sample-dataset path override for `GET /api/demo-events`. |
-| `CODEX_HOME` | `~/.codex` | Codex configuration and history root. |
+| `CHATGPT_HOME` | `~/.chatgpt` | ChatGPT configuration and history root. |
 
 The full reference (including the internal variables `ASTRO_PID_FILE`,
 `ASTRO_OPEN_BROWSER`, and `ASTRO_TAKEOVER`) lives in the
@@ -293,7 +293,7 @@ The stream should emit `reset` first and `ready` second. New writes produce `tra
 
 ### 7.3 CLI doctor
 
-`astro-trace doctor` verifies the standalone runtime, dashboard, Codex/Claude
+`astro-trace doctor` verifies the standalone runtime, dashboard, ChatGPT/Claude
 native or direct integrations, the DeepSeek Harness profile bundle, and the
 actual file count and byte total under each session-partitioned source
 directory. `DATA` means at least one non-empty `events.jsonl` exists; use
@@ -451,10 +451,11 @@ Before and after upgrade, confirm the data root is unchanged, native recorder co
 | Key | Values | Purpose |
 | --- | --- | --- |
 | `ASTROX_THEME` | `light`, `dark`, `system` | Theme. |
-| `ASTROX_PLATFORM` | `codex`, `claude`, `deepseek`, `trae`, `workbuddy` | Topology platform context. |
+| `ASTROX_PLATFORM` | `chatgpt`, `claude`, `deepseek`, `trae`, `workbuddy` | Topology platform context. |
 | `ASTROX_HISTORY_OPEN` | boolean string | Left History panel. |
 | `ASTROX_CONSOLE_OPEN` | boolean string | Right Events/Inspector panel. |
 | `ASTROX_PERF_HUD` | boolean string | Performance panel on, off by default. |
+| `ASTROX_TASK_COMPLETION_CHIME` | boolean string | Task-completion chime, on by default. |
 
 Legacy `astro-theme` and `astro-platform` values are read and removed after
 writing the new key; `astro:perf-hud` (the on-flag the retired `?perf=1`
@@ -475,6 +476,7 @@ is unavailable, preferences remain page-local and trace data is unaffected.
 | Page does not open | process, port, `dist/index.html` | Start manually and use the printed URL. |
 | UI says offline | `/api/stream`, Vite proxy | Align `ASTRO_HOST/PORT`; restore SSE. |
 | First turn exists, follow-ups do not | loaded hooks and growing JSONL | Reload client configuration; ensure `Stop` did not remove hooks. |
+| Decision hook does not fire, prompt still appears | whether `--apply` ran, `hooks.enabled`, new session, matcher, host log | Re-run `pnpm install:auto-approve -- --client=... --apply`; on ZCode confirm the user-level `~/.zcode/cli/config.json` and start a **new session**, then read `~/.zcode/cli/log/zcode-<date>.jsonl`; keep the matcher to `AskUserQuestion\|ExitPlanMode`; timeouts or non-JSON stdout fall back to the normal prompt; remove with `--remove --apply`. |
 | JSONL grows, UI does not | `dataRoot`, `traceFiles`, SSE reset | Align roots; reconnect or restart service. |
 | Follow-up exists but is not listed | Prompt hierarchy and selected session | Expand the session row; verify each `UserPromptSubmit` has a unique event ID. |
 | Recorder reports no write | permissions and disk state | Restore access/space; re-import history when available. |

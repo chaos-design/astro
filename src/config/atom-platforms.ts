@@ -7,7 +7,11 @@ import type {
   PlatformId,
   TraceEvent,
 } from "@/types/trace";
-import { isUserQuestionEvent } from "../lib/trace-event-kind.ts";
+import {
+  isBlockingUserQuestionStartEvent,
+  isUserQuestionEvent,
+  isUserQuestionStartEvent,
+} from "../lib/trace-event-kind.ts";
 
 export const topologyGeometry = {
   nodeWidth: 180,
@@ -535,7 +539,10 @@ const defaultEventAtomMap: Record<string, string> = {
   PreToolUse: "tool-call",
   PostToolUse: "tool-result",
   PostToolUseFailure: "tool-result",
-  PermissionRequest: "user-question",
+  // A permission gate without question parameters routes through Action Gate.
+  // Answerable requests are redirected to the question atom by
+  // `getAtomIdForEvent` and `userQuestionProjection`.
+  PermissionRequest: "action-gate",
   PermissionDenied: "user-question",
   Elicitation: "user-question",
   ElicitationResult: "user-question",
@@ -551,10 +558,10 @@ const defaultEventAtomMap: Record<string, string> = {
 };
 
 const platformDefinitions: Record<PlatformId, PlatformDefinition> = {
-  codex: {
-    id: "codex",
-    label: "Codex",
-    source: "codex",
+  chatgpt: {
+    id: "chatgpt",
+    label: "ChatGPT",
+    source: "chatgpt",
     runtime: "OpenAI coding runtime",
     eventAtomMap: defaultEventAtomMap,
   },
@@ -682,7 +689,7 @@ export const atomPlatformOptions = Object.values(platformDefinitions);
  */
 const pinnedAgentOrder: readonly PlatformId[] = [
   "claude",
-  "codex",
+  "chatgpt",
   "deepseek",
   "workbuddy",
   "zcode",
@@ -714,11 +721,11 @@ export function getWaitingEventsForSource(
 }
 
 function resolvePlatform(platformId: string): PlatformDefinition {
-  return platformDefinitions[platformId as PlatformId] || platformDefinitions.codex;
+  return platformDefinitions[platformId as PlatformId] || platformDefinitions.chatgpt;
 }
 
 export function getAtomPlatformConfig(
-  platformId: string = "codex",
+  platformId: string = "chatgpt",
 ): PlatformConfig {
   const platform = resolvePlatform(platformId);
   return {
@@ -731,11 +738,19 @@ export function getAtomPlatformConfig(
 
 export function getAtomIdForEvent(
   event: TraceEvent | null,
-  platformId: string = "codex",
+  platformId: string = "chatgpt",
 ) {
   if (!event) return "";
   if (isUserQuestionEvent(event)) {
-    return "harness-user-question";
+    // Only a bare PermissionRequest (a system authorization for an ordinary
+    // tool) routes to Action Gate. A WorkBuddy permission notification naming
+    // a question tool stays on the question atom so the canvas is already at
+    // User Question when the real `questions` arrive; it still never blocks.
+    return isUserQuestionStartEvent(event) &&
+      !isBlockingUserQuestionStartEvent(event) &&
+      event.eventName === "PermissionRequest"
+      ? "harness-action-gate"
+      : "harness-user-question";
   }
   const platform = resolvePlatform(platformId);
   const atomId = platform.eventAtomMap[event.eventName] || "trace-append";

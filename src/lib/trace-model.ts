@@ -4,6 +4,8 @@ import {
   isToolFailureEvent,
 } from "./exception-events.ts";
 import { isWaitingTraceEvent } from "./trace-status.ts";
+import { isUserQuestionStartEvent } from "./trace-event-kind.ts";
+import { userQuestionSummary } from "./user-question-content.ts";
 import { getWaitingEventsForSource } from "../config/atom-platforms.ts";
 import type {
   EventMeta,
@@ -68,7 +70,7 @@ export const eventMeta: Record<string, EventMeta> = {
 export const sourceMeta = {
   trae: { label: "TRAE", tone: "lime" },
   claude: { label: "CLAUDE", tone: "amber" },
-  codex: { label: "CODEX", tone: "cyan" },
+  chatgpt: { label: "CHATGPT", tone: "cyan" },
   deepseek: { label: "DEEPSEEK", tone: "cyan" },
   browser: { label: "BROWSER", tone: "violet" },
   opencode: { label: "OPENCODE", tone: "violet" },
@@ -151,7 +153,7 @@ function stableHash(value: string) {
 function normalizeSource(value: unknown, fallback = "generic") {
   const source = String(value || fallback).trim().toLowerCase();
   if (source.includes("claude")) return "claude";
-  if (source.includes("codex") || source.includes("openai")) return "codex";
+  if (source.includes("chatgpt") || source.includes("openai")) return "chatgpt";
   if (source.includes("deepseek") || source === "dsh") return "deepseek";
   if (source.includes("workbuddy") || source.includes("codebuddy")) {
     return "workbuddy";
@@ -477,6 +479,17 @@ export function getEventSummary(event: TraceEvent): string {
 
 function getSummaryValue(event: TraceEvent): unknown {
   const payload = event.payload || {};
+  // A question row reads as the question the user was asked, not as the tool
+  // that transported it. The same text feeds the LOG, the atomic projection
+  // and the inspector, so the reader cannot see three different labels for one
+  // question. Answer events keep the tool-name summary; only the asking half
+  // (PermissionRequest / question PreToolUse / Elicitation) changes.
+  if (isUserQuestionStartEvent(event)) {
+    const question = userQuestionSummary(payload);
+    if (question) {
+      return question;
+    }
+  }
   if (event.eventName === "UserPromptSubmit") {
     return (
       payload.prompt ||
@@ -1644,7 +1657,7 @@ export function buildPairLinks(
 
 export function buildHarnessFlow(
   inputEvents: Array<TraceEvent | TraceEventInput>,
-  platformId = "codex",
+  platformId = "chatgpt",
 ) {
   return buildExecutionTopology(inputEvents.map(normalizeTraceEvent), platformId);
 }

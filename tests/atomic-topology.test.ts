@@ -13,7 +13,7 @@ import { createDemoEvents } from "./helpers/demo-fixture.ts";
 
 test("projects trace events into a strictly ordered atomic flow", () => {
   const events = createDemoEvents(2_000_000_000_000);
-  const projection = projectTraceEvents(events, "codex");
+  const projection = projectTraceEvents(events, "chatgpt");
   const sequences = projection.events.map((event) => event.sequence);
   const folded = foldAtomicEvents(projection.events);
 
@@ -28,7 +28,7 @@ test("projects trace events into a strictly ordered atomic flow", () => {
 
 test("pairs tool start and end events into completed atomic instances", () => {
   const events = createDemoEvents(2_000_000_000_000);
-  const projection = projectTraceEvents(events, "codex");
+  const projection = projectTraceEvents(events, "chatgpt");
   const folded = foldAtomicEvents(projection.events);
   const toolInstances = [...folded.instances.values()].filter(
     (instance) => instance.atom.key === "tool.call",
@@ -195,7 +195,7 @@ test("keeps rate-limited model atoms waiting instead of failed", () => {
 });
 
 test("routes visible topology edges as orthogonal graph paths", () => {
-  const topology = buildHarnessFlow(createDemoEvents(2_000_000_000_000), "codex");
+  const topology = buildHarnessFlow(createDemoEvents(2_000_000_000_000), "chatgpt");
   const layout = createFlowLayout(topology);
 
   assert.equal(layout.edges.length, topology.edges.length);
@@ -205,7 +205,7 @@ test("routes visible topology edges as orthogonal graph paths", () => {
 });
 
 test("routes tool results into the observation side without shared segments", () => {
-  const topology = buildHarnessFlow(createDemoEvents(2_000_000_000_000), "codex");
+  const topology = buildHarnessFlow(createDemoEvents(2_000_000_000_000), "chatgpt");
   const layout = createFlowLayout(topology);
   const observation = layout.nodes.find((node) => node.id === "harness-observation");
   const edge = layout.edges.find(
@@ -228,7 +228,7 @@ test("routes tool results into the observation side without shared segments", ()
 });
 
 test("routes agent results above the shared section border", () => {
-  const topology = buildHarnessFlow(createDemoEvents(2_000_000_000_000), "codex");
+  const topology = buildHarnessFlow(createDemoEvents(2_000_000_000_000), "chatgpt");
   const layout = createFlowLayout(topology);
   const capabilityLayer = layout.layers.find(
     (layer) => layer.id === "capability-runtime",
@@ -249,7 +249,7 @@ test("routes agent results above the shared section border", () => {
 });
 
 test("keeps the final quality path inside the visible canvas", () => {
-  const topology = buildHarnessFlow(createDemoEvents(2_000_000_000_000), "codex");
+  const topology = buildHarnessFlow(createDemoEvents(2_000_000_000_000), "chatgpt");
   const layout = createFlowLayout(topology);
   const edge = layout.edges.find(
     (candidate) =>
@@ -272,7 +272,7 @@ test("keeps the final quality path inside the visible canvas", () => {
 test("classifies topology paths with the shared route semantics", () => {
   const topology = buildHarnessFlow(
     createDemoEvents(2_000_000_000_000),
-    "codex",
+    "chatgpt",
   );
   const routeKinds = new Set(
     topology.edges.map((edge) => edge.data?.routeKind),

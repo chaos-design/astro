@@ -37,6 +37,13 @@
   `test:`, `chore(plugins):`.
 - PR descriptions use `## 变更点 / ## 验证 / ## 备注`. The verification section
   lists the commands that actually ran, never "tested".
+- Stacked PRs: when a branch is cut from an unmerged feature branch, set the PR
+  base to that branch and state the merge order in the notes. Here
+  `feat/hook-auto-approve-question` (PR #23) was cut from `507edc9` on
+  `feat/user-question-md-preview` (PR #22), so merge #22 before #23. If #22 is
+  squash-merged into `main`, run `git fetch origin` and
+  `git rebase --onto origin/main 507edc9 feat/hook-auto-approve-question`, then
+  change the PR base to `main` to avoid duplicating upstream commits.
 - Do not commit `dist/`, `.astrox` data directories, scratch screenshots, or
   machine-specific paths.
 - Unrelated working-tree changes belong to the user: never revert them, never
@@ -52,13 +59,185 @@
   - error/exception classification lives only in
     `src/lib/exception-events.ts`;
   - RUN HISTORY liveness lives only in `src/lib/run-history-state.ts`
-    (`isLiveRunStatus` + `isFreshLiveRun` + `collectLiveRunKeys`);
+    (`isLiveRunStatus` + `isFreshLiveRun` + `collectLiveRunKeys`); the
+    presentation of a run blocked on a user question also lives there, in
+    `isUserQuestionWaitingRun`: the recorded status stays `waiting` (long
+    freshness window, IDLE stale wording) while RUN HISTORY shows RUNNING; a
+    rate-limit wait keeps its WAITING capsule;
   - the time window lives only in `src/lib/run-history-window.ts`;
   - the preview page's opened state lives only in `plugin/trace-recorder.cjs`
     (`readPreviewState` / `markPreviewOpened`, persisted as
     `preview-state.json` in `ASTRO_HOME`): the service marks it when a console
     page attaches to `/api/stream`, and the hook launch flow consumes it to
     decide whether the browser still gets opened;
+  - turning a payload into a Markdown preview document lives only in
+    `src/lib/payload-markdown.ts` (`payloadToMarkdown`: the real captured result
+    is found at any depth — `captured`, `tool_response`, `output`, `result` and
+    their nested `content` arrays — and returned as its text, so a Markdown tool
+    result renders as Markdown instead of field labels and JSON; a `plan` nested
+    in `tool_input` is read the same way; JSON results are fenced for the
+    highlighter; an `answers` map becomes question → Markdown-answer rows, a
+    `questions` list a numbered list with option bullets, and a captured result
+    with no single text shows as readable field lines rather than a JSON dump —
+    the inspector/overlay's `{ contract, captured }` wrapper previews only
+    `captured`, leaving the `contract` topology metadata to the Raw tab);
+    Markdown parsing, code syntax highlighting and
+    HTML sanitizing live only in `src/lib/markdown-preview.ts`
+    (`renderMarkdownPreview`, with highlight.js registering only the languages
+    captured payloads carry; shell fences use a dedicated escaped tokenizer
+    that colours commands, flags, assignments and variables). A fence that
+    names its language is wrapped in a
+    `.md-code` header: the language badge renders **outside** the scrolling
+    `<pre>` so wide code pans under it, right-aligned mono small caps. The
+    token map in `styles.css` covers every class the registered grammars
+    emit — keywords violet, strings teal, constants amber, and the name
+    family (functions, types, tag names, json/yaml keys) reads on the
+    dedicated `--code-accent` (it used to inherit near-white and disappear
+    into plain code text); diff lines carry addition/deletion tints and
+    comments stay muted italics. Shell fences use a dedicated escaped tokenizer
+    that colours commands, flags, variables and assignments; inline comments
+    and heredoc bodies are not commands. The Code view's `JsonViewer` keys use
+    the same `--code-accent`, so switching tabs never recolours the payload.
+    `.markdown-preview` restores `list-style`
+    and block layout for lists: Tailwind's preflight resets `list-style`
+    globally and a flex column blockifies `li` away from `list-item` — either
+    alone silently dropped every bullet and ordered number; GFM task lists
+    swap their marker for the checkbox, headings scale in em (h2 with an
+    underline), inline code is 0.92em so the chip never inflates the line
+    height, tables collapse borders with a tinted header row and zebra rows,
+    and blockquotes carry the violet border and tint. The inspector's
+    Input/Output/Raw tabs and the
+    global overlay share these two single sources; `src/components/payload-overlay.tsx`
+    only renders them, with one toggle between `Preview` (rendered Markdown —
+    headings, GFM task lists, highlighted code — and question/option/answer
+    lists) and `Code` (the untouched structured JSON), never a second conversion
+    or sanitizer. The overlay's left rail is the run's **message chain in the
+    LOG's own data standard**, fed by `overlayAtoms`, mapped from the same
+    `buildLogEntries(activeEvents, …)` result the LOG list prints (app.tsx):
+    one row per **event** (carrying the harness atom id it commits to), split
+    by the same turn separators `buildTraceTurnIndex` produces. The old
+    pipeline-atom rail (one row per platform atom, bound to each atom's newest
+    event) could not reproduce the chain and must not come back. Per-row
+    previews are cached by event id, **scoped by the inspector tab**
+    (`cacheScope`); `payloadForAtom(atomId, eventId)` resolves the picked row's
+    *own* event's payload, row-event-first — a tool-call row reads its own
+    `tool_input`, a result row its `tool_response`, a prompt row its payload —
+    and `payloadField` (app.tsx) skips the recorder's **empty `{}` placeholder**
+    (the recorder writes `tool_input: {}` when only the camel spelling exists)
+    so it never shadows the real `toolInput.command` — that shadowing once
+    blanked every tool call's Input preview — and the pane previews the
+    payload's **core information**, never the raw
+    envelope: a split with prose renders as Markdown (lists, highlighted code
+    by data type), one without falls to the shared core extractor
+    `payloadToMarkdown` (which reads the camel `toolResponse` spelling and
+    renders a `structuredPatch` as a highlighted diff), and only a payload
+    with nothing to say falls back to highlighted JSON
+    (`fallbackPayloadMarkdown`, dumping only the `captured` half of a
+    `{ contract, captured }` wrapper) — switching rows always
+    changes the pane instead of sitting on one shared empty state. The
+    generic view is **content-only**: metadata keys stay out
+    (`isPayloadMetaKey`; container keys like `tool_input` / `toolResponse`
+    recurse instead), field-name headings are not printed, and a string value
+    is fenced with its inferred language (`inferCodeLanguage` / `fenceCode` —
+    json / diff / xml / typescript / python / bash; weak signals additionally
+    require code punctuation or a multi-line body so prose never gets
+    colourised — a single-line shell command qualifies through flags, chains,
+    variables or a `VAR=value` prefix, a shebang on its own; every unwrapped
+    result text goes through this one fence decision, so a captured tool
+    command never falls back to an uncoloured paragraph; a keyword match is
+    **per-line** evidence, so a text carrying
+    Markdown block structure — headings, lists, emphasis, links, fences,
+    tables — is a *document* and renders as one (its own fenced code stays
+    highlighted, wide code blocks and tables scroll inside their block), never
+    wholesale-fenced into a horizontally scrolling monospace wall because one
+    line inside looks like code (`export type …` sketches in an agent's plan);
+    json / diff / xml self-identify and fence unconditionally, and `#` lines
+    are comments in shell / Python so they never count as document evidence
+    there). The related pane lists **every field** via `collectPayloadFields`
+    (content keys, empty values, null/false/0, nested dotted paths — annotations
+    first; arrays of objects keep their shape — each element opens with an
+    indexed **group row** (`questions[0]`, `questions[0].options[1]`, the
+    walk's `groupHeader`) and its members indent beneath it, so repeated bare
+    keys (`label`, `label`, `label`) stay attributable to their element; only
+    annotations **outside** any array float to the pane top); folding is
+    **per value**, not per pane: only a value past
+    `RELATED_VALUE_MAX_CHARS` (200) gets its own 展开 / 收起 on that row, and the
+    two pane titles stay pinned while their bodies scroll.
+    The rail
+    head is **one row** — search box, two jump-to-edge buttons (both
+    mounted with reserved width, unreachable edge disabled), Live toggle — and
+    the rail has
+    its **own search box** (rail-local state, the LOG's deferred-needle
+    pattern over the rows' display fields AND the row event's payload content
+    via `searchEvent` → `matchesEventQuery`, the shared per-event haystacks the
+    LOG warms; the input carries a clear button; a turn whose rows all miss
+    disappears with its separator). Picking a row goes through
+    `handleOverlaySelectEvent`, which writes the same state the LOG's select
+    handler writes (the event plus `getAtomIdForEvent`); the dialog holds no
+    second selection: it only receives `atoms` / `selectedEventId` /
+    `onSelectAtom`, and its content follows the main console selection
+    reactively. The rail renders newest first (`[...source].reverse()` inside
+    the dialog), so the first-executed event sits at the bottom, and turn
+    separators are keyed by position, never by the turn value. Its rows reuse
+    the LOG row itself (`.atomic-log__row`) — shared sequence, `atomTypeLabel`
+    TYPE badge, event-meta tone, timestamp, action / summary, the closed-pair
+    duration badge (the **same stepped ladder as the LOG list**,
+    `formatDurationMs` in `src/lib/duration-label.ts` — `ms` below 10s, `s`
+    below 1m, then `m` / `h` / `d`, one dominant unit per tier, so the same
+    pair reads with the same unit in both surfaces) and the pair link marker (the shared `PairLinkMarker`
+    component extracted to `src/components/pair-link-marker.tsx`, also rendered
+    by the LOG and the trajectory) — with rail-only CSS overrides that exist
+    for readability: a wider rail, one step larger type, a wrapping key and a
+    two-line summary, a selected row one step larger again with a brighter
+    treatment, and **no hover styling on rows** (selected / running / partner
+    rows keep their own state against the base `:hover` rule); a name must
+    never ellipsize again, and the override selectors carry the
+    `.atomic-log__row` scope so they out-rank the base row rules that follow
+    later in the file. Arrow / Home / End move focus, and
+    `payload-overlay.tsx` must not grow a second row implementation, taxonomy
+    or tone map. The rail header carries a **Live toggle** mirroring the
+    console's live following: availability keys off the *recorded* status
+    (`getRunHistoryDisplayStatus` — the RUNNING capsule the RUN HISTORY card
+    keeps printing, STALE marker included), never the freshness-terminated
+    display, so a run that went silent stays clickable until a terminal event
+    lands; a finished run (recorded terminal status) has nothing to follow.
+    Arming rides the session's newest prompt run with no explicit
+    atom selection (like the footer Live jump) and then only *scrolls* the
+    selected row into view as new events land — never a selection change;
+    picking any row disarms. Armed is the follow posture: a genuinely executing
+    message keeps advancing to its newest atom, a STALE one lands on its newest
+    event and resumes following the moment it produces an event again. Armed it
+    breathes (a `payload-follow-breathe` halo); the label is the console's own
+    Live mark. A follow advance (or any selection change the dialog did not
+    originate) replaces the preview content **under the reader** while keeping
+    both panes' scroll positions (an onScroll memo restored after each commit —
+    a streamed message lands as a new event every ~800ms and grows beneath the
+    reader without moving the line they were on); only a row **the reader
+    picked in the rail** re-anchors both panes to the top, and switching to the
+    Code view resets the memo so coming back opens from the start. The
+    `{ __html }` wrapper handed to `dangerouslySetInnerHTML` is memoized on
+    the html string (`previewHtml`, and `MarkdownView`'s `html`): React
+    compares the wrapper by object identity, so an inline literal made every
+    one-second app tick re-set identical markup and rebuild the children —
+    a horizontal scroll inside a wide code block snapped back to 0 about once
+    a second; with the memo React skips identical markup. The preview
+    and related panes read one step larger than the
+    inspector's, and their titles stay pinned while their bodies scroll. The
+    read-only question preview
+    (`QuestionPreview` → `StaticQuestionContent`) leads with a question count
+    and capture-order hint, numbers each question, marks answered ones and
+    prints the selected labels on their own line; static selected chips read
+    stronger than live option buttons;
+  - a captured answer has one rendering: `src/components/answer-rows.tsx`, shared
+    by the floating card's result, the docked question surface and the
+    inspector's historical Answers section. Selected options are reconstructed
+    from the answer text by `matchAnswerOptions` in `src/lib/question-panel-model.ts`
+    (only comma tokens exactly matching a declared label count, so free text
+    like "Paris, France" never lights a "France" chip), painted as highlighted
+    chips, with any remaining text rendered as Markdown. `QuestionResultList`
+    keeps the request's question order through `resultAnswerRows`; drafts are
+    cleared once the result arrives, so a historical selection must be derived
+    from the answer, never from the draft;
   - the run model (which LLM a prompt executed on) is read only in
     `src/lib/trace-model.ts` (`extractRunModel` + the SessionStart fallback in
     `buildSessionPromptRuns`), which normalizes every client's payload spelling
@@ -112,7 +291,110 @@
     turn", not "most do": a source that names even one turn is authoritative
     for the batch, so its unnumbered later prompts fold into the previous
     turn rather than opening a new one (a partially-stamped source is a
-    contract, not a heuristic — see `docs/event-protocol-en.md` §6).
+    contract, not a heuristic — see `docs/event-protocol-en.md` §6);
+  - the display text for a user question lives only in
+    `src/lib/user-question-content.ts` (`userQuestionSummary`): structured
+    prompts, free-form text and plan approvals are extracted there, and LOG
+    summaries, the atomic projection and the inspector Overview all read it —
+    a question row never falls back to the tool name. What counts as a user
+    question lives only in `src/lib/trace-event-kind.ts` (`isUserQuestionEvent`
+    / `isUserQuestionStartEvent`): named events and a `Pre/PostToolUse` that
+    names the question tool, plus — for a host with no `PermissionRequest`
+    hook — a `notification_type=permission_prompt` `Notification` whose text
+    names the question tool (WorkBuddy offers only that while blocked; its
+    `PreToolUse` lands after the answer). Tool names match **exactly** after
+    normalization (`AskUserQuestion`, `request_user_input`, …, OpenCode's bare
+    `question`); prose matching searches sentences and therefore keeps the
+    unambiguous names only — "question" alone is a noun of every sentence and
+    never joins the prose matcher. `idle_prompt`, `auth_success` and
+    permission prompts for other tools stay runtime signals. Whether it
+    **blocks** is decided only by `isBlockingUserQuestionStartEvent`: a
+    permission request / notification needs non-empty `questions` / `plan` to
+    enter the waiting state and the Flow answer box; without them it is a
+    system authorization displayed as `permission.request`. A bare
+    `PermissionRequest(Bash/Edit)` projects onto Action Gate, while WorkBuddy's
+    notification naming a question tool stays on the User Question atom in the
+    `delta` phase so the later parameterized `PreToolUse` takes it over. The
+    `user-question` atom's bound event is chosen only in
+    `src/lib/execution-topology.ts` (the newest question *start*), while status
+    follows the last matching event;
+  - the binding between a question and an interaction request lives only in
+    `src/lib/question-interaction.ts`: tool id first, then session plus
+    verbatim question text, then — for the textless plan approval — the
+    session's newest open ExitPlanMode request, with the answer key always the
+    request's exact question text. Given a view scope,
+    `questionMatchesCurrentView` additionally requires the event inside the
+    selected prompt run, an atom resolved from that event, and a matching
+    session/source; the inspector and floating card share that strict rule, so
+    switching agent or message hides a stale request. The inspector and the
+    floating panel share one interaction state and never infer "the current
+    question" separately. The inspector has exactly one question surface
+    (`src/components/question-content.tsx`, reused by the dock and the Input
+    tab; Overview mounts no second answer box). One toolbar row owns the
+    Preview / Code switch and the placement switch only — the question itself is
+    never foldable, so the toolbar carries no collapse button: Preview shows the
+    questions and their option chips, Code shows the raw payload only — no
+    options, no submit bar. While a request is open the chips are buttons and
+    the Submit / Cancel bar is a sibling of the scrolling body, so it stays
+    pinned to the bottom; once it closes the same chips become static spans, so
+    a captured question never looks answerable. The surface wraps long text
+    inside the narrow panel and scrolls its body instead of widening the log
+    column. Both answer surfaces build maps only in
+    `src/lib/question-panel-model.ts`: option clicks highlight and fill drafts,
+    typed text overrides an option without a Set step, and one Submit sends
+    every question; the footer order is Submit / Cancel on both surfaces.
+    `dock-full` / `float` is one shared placement
+    (`src/lib/question-panel-model.ts` normalizes the retired `dock-half` /
+    `half` / `bottom` / `side` values). Until the reader switches by hand,
+    `autoQuestionPanelMode` follows the run state: an answerable question floats
+    over the canvas, a finished or captured one docks full; only an explicit
+    switch is persisted, so a derived default is not frozen into the next load.
+    `dock-full` renders the same question surface under the inspector tabs
+    filling the detail area with tighter rows, and only `float` puts the card
+    over the canvas with one option per full-width row — so the card needs the
+    question atom highlighted, while the docked layout also expands a historical
+    question the reader selected. A collapsed EVENTS column has no region to
+    dock into, so the docked layout falls back to the card for the synchronous
+    window. The
+    floating card and the inspector's answer controls are a live affordance:
+    `isQuestionActionable` in `src/lib/question-interaction.ts` (delegating to
+    `isPromptExecuting`, so both `active`/running and `waiting` count) gates
+    them. The gate keys off the *session* status the RUN HISTORY card shows
+    (`getRunHistoryDisplayState` over the active session), not the selected
+    prompt run, so drilling into an older message or atom does not freeze the
+    question while the task is still executing. Once the session reaches a
+    terminal state, or the reader replays a captured snapshot, no card floats
+    and the inspector question goes read-only — the event stays a preview,
+    never an answerable request (the docked layout still expands a historical
+    question for reading, but its controls are disabled). The card's questions
+    never fold, its scrollbar rides the card edge (no outer padding; the rows
+    carry the gutters) and the keyboard shortcut legend sits in the header
+    between the summary and the status, so the footer keeps only the Submit /
+    Cancel buttons. The
+    inspector's batch answer builds its seq chain only in
+    `answerInteractionQuestions` (`src/lib/interaction-client.ts`): one `text`
+    event per question then one `submit` with the full answer map, with the
+    single-question entry point a one-element wrapper. `shouldLocateInteractionRequest`
+    in `question-interaction.ts` decides
+    whether `interaction.open` flashes the question atom: only the same session
+    and source as the run being followed, and only a locate pulse — never a
+    selection change that would switch Live off mid-question. The floating
+    question card follows the request lifecycle instead: it enters with an
+    animation when a request opens, the header chevron folds it to a one-line
+    summary (a new request remounts it by its `requestId` key and re-expands),
+    the question list scrolls while the footer stays pinned to the card's
+    bottom edge, and a closed request keeps the card readable ~2.4s
+    (`--settling`) before it slides away — a stream reset that wiped the
+    record dismisses it at once. The floating card uses the same strict
+    current-message/current-atom binding as the inspector. Its question list
+    has a mode-dependent maximum scroll height. Keyboard answering (digits
+    highlight the first question's options, Enter submits the batch, Escape
+    cancels) is decided only in `resolvePanelKey`, which refuses every
+    shortcut on a read-only card; the listener lives on the card, not
+    `document`, so digits in text fields remain text and Enter submits the
+    batch. The countdown
+    is one CSS animation from the request's own timestamps, with
+    `interactionTimeLeft` the only ratio source for a numeric display.
   New consumers reuse those helpers; do not grow a second failure or live list.
 - Sample (Demo) data lives only in `data/demo-events.json`: the service reads it
   through `server/demo-dataset.mjs` and serves `GET /api/demo-events`, and the
@@ -154,7 +436,10 @@
 - Platform-specific mappings belong in `src/config/atom-platforms.ts` or the
   relevant adapter; domain helpers stay platform-neutral.
 - Prefer Lucide icons for interface actions. Brand glyphs (such as GitHub) ship
-  as inline SVG components instead of adding a dependency.
+  as inline SVG components instead of adding a dependency. Agent marks are built
+  by the local `createBrandIcon` in `src/components/agent-icons.tsx`, which gives
+  every path node a key; do not fall back to lucide's `createLucideIcon`, which
+  leaves path nodes unkeyed in v1.42 and warns on every multi-path mark.
 
 ## 5. The time window
 
@@ -241,26 +526,36 @@
   index with the selected agent's sessions, so the `N LIVE` count, the pin, the
   window exemption and the Live filter always describe the same list. A message
   executing under another agent must not leak into this one's history: the old
-  `historySessions` merged foreign live sessions in, which is how a Codex view
+  `historySessions` merged foreign live sessions in, which is how a ChatGPT view
   showed — pinned, no less — the Claude message that was running at the time.
 - Whether a neighbour is running is signalled by the **live dot in the agent
   picker**: `scopeLiveRunIndex` also returns the machine-wide `sources`, and
   `AgentSelect` marks those entries with a `--status-running` dot. Cross-agent
   messages are reached by switching the dropdown, not by adding their rows here.
 - Switching agent after opening a run clears the selection
-  (`activeSessionKey` / `activePromptRunKey` / `selectedEventId`), so the canvas,
-  the log and the list all land on the new agent's newest message. When a
+  (`activeSessionKey` / `activePromptRunKey` / `selectedEventId`). If the new
+  agent has a message executing now, `selectScopeFallbackRun` lands on that live
+  message instead of the newest finished one — a resumed run may have started
+  days ago, otherwise the footer Live button stays dark and the canvas opens the
+  wrong run. The live candidates use the same newest-message-start ordering as
+  the pinned list, `N LIVE` and the footer Live jump; only an agent with no live
+  run falls back to its newest message. When a
   `?session=` deep link names another agent's run, the dropdown follows it and
   the address bar's `agent` is rewritten — the open run must always be a row of
-  the list beside it.
+  the list beside it. URL writes live only in `src/lib/console-location.ts`:
+  switching drops the old `session` / `event`, writes the new agent's newest
+  session when its filter has data (the canvas lands on the same message), and
+  leaves only `agent` when it has none. Connection parameters such as `?api=`
+  survive untouched.
 
 ## 7. Settings and local preferences
 
 - The settings dialog holds browser-local preferences only. Changes apply
   immediately, with no server round trip and no Apply button.
 - It is a **two-pane card**: a `settings-nav` rail on the left (appearance / run
-  history / canvas / panels / performance / about) and a `settings-pane` on the right that
-  renders only the active section, built on vertical `Tabs` so arrow keys work.
+  history / canvas / panels / performance / notifications / about) and a `settings-pane` on
+  the right that renders only the active section, built on vertical `Tabs` so arrow keys
+  work.
   A single stacked column either scrolled the whole dialog or squeezed every
   control on a short window. The card is 920×672 on a wide viewport (stacked on
   narrow ones); header and footer stay fixed and only the pane scrolls. The
@@ -277,6 +572,28 @@
 - A new preference must update: `storageKeys`, `appDefaults`, the settings
   dialog, the §15.1 table in `docs/user-manual-*.md`, and
   `tests/app-config.test.ts`.
+- **The task-completion chime** is a local preference in Settings → Notifications
+  (`ASTROX_TASK_COMPLETION_CHIME`, on by default so it works without hunting for a
+  switch; that switch is the only off control). The sound is generated locally
+  with a Web Audio oscillator in `src/lib/task-completion-chime.ts` — no audio
+  asset, so a deployed console under a project path needs no `assetUrl()` call.
+  The tone is keyed by the terminal status in that same module (`getChimeTone`):
+  complete ascends, failed descends, terminated is a neutral double tap, so the
+  sound alone tells a success from a failure from a plain stop. A style
+  (`ASTROX_CHIME_STYLE`, option list beside the other preference options in
+  `app-config.ts`) picks the timbre — waveform, loudness and note patterns —
+  and the status contour rule holds within every style; the settings dialog
+  previews the current style with one button per terminal status. A batch plays
+  one sound, chosen by `resolveChimeStatus` (failed > terminated > complete) —
+  a batch that also failed must not be announced with the success chime.
+  Terminal transitions are detected by `collectTerminalTransitions` from the
+  **recorded** status (`getRunHistoryDisplayStatus`), never the freshness/timeout
+  display status, so a live run that merely *looks* terminated cannot chime. The
+  effect in `app.tsx` seeds its known-terminal set from the first real snapshot
+  (history that already finished stays silent), drops a key while the run is live
+  so a resumed run can chime again, and skips Demo entirely. The bookkeeping lives
+  in refs, not React state, so a streamed batch never re-renders the studio just
+  to record a completion.
 - A key whose *meaning* changed is retired (`retiredStorageKeys`) and deleted on
   write instead of migrated. The Live filter is the example: its stored `true`
   meant "show every message", which would arm the new filter on a machine where
@@ -331,6 +648,17 @@
   called out, and `build: "unknown"` renders as "not reported" plus the reason
   (started from source, or an older install without a manifest) instead of a
   bare `unknown` the reader has to interpret.
+ - Long-lived adapters (opencode / pi) stamp their own `package.json` version as
+   `payload.captureVersion`; the service aggregates it per source into
+   `/api/health.captureVersions`. Drift detection MUST bucket unversioned
+   events separately — a process on pre-stamp code writes no version at all, so
+   counting only stamped versions could never see it. `stale` = two stamped
+   versions, or an unstamped event at/after the newest stamped one, derived from
+   event timestamps not wall-clock freshness. The card shows a `v旧(未标记)`
+   bucket and, when stale, a copyable host-specific restart command
+   (`captureRestartCommand`: `opencode service restart` or a Pi session hint);
+   it never claims a browser can restart a process. The adapter's own manifest
+   is the single source of truth; no expected version is hardcoded.
 - Every icon button keeps an `aria-label`, but a **tooltip is opt-in**: add one
   only when the glyph cannot carry the action by itself (the chevrons that say
   *which* panel collapses, the action menu, the topology/trajectory switches)
@@ -338,10 +666,12 @@
   while it is loading). A card that only translates a recognisable mark —
   GitHub, gear, sun/moon, copy — is noise: it trails the pointer across the
   header icon row and covers the panel underneath.
-- In-list scroll controls belong in the panel header, never as a floating
-  overlay: a floating chevron sits on the first visible atom, so the row the
-  reader just scrolled to is the one they cannot read. Render a direction's
-  control only while that edge is out of view.
+- In-list scroll controls belong in the panel header beside the list's search
+  box (LOG, global history search), never as a floating overlay: a floating
+  chevron sits on the first visible row, so the row the reader just scrolled to
+  is the one they cannot read. Both directions stay mounted with their width
+  reserved; an unreachable edge is a `disabled` button rather than an unmount,
+  so the sibling search input never shifts as the list scrolls.
 
 ## 9. First paint, rendering, and feedback
 
@@ -359,6 +689,13 @@
   HISTORY shows skeleton rows and a `loading…` subtitle, and the header marker
   reads `connecting`. `0 runs` and `offline` are statements about confirmed
   facts; neither is true while the snapshot is still on its way.
+- **A virtualized list never measures on the state it writes.** `AtomicLog`
+  reads row / separator heights from a ref and its layout effect follows entry
+  changes only. With `metrics` in the dependencies, `setMetrics` mounted a new
+  slice whose first row had a different height, looping until React threw #185
+  (Maximum update depth exceeded) on the deployed console. The estimate is the
+  tallest mounted row of each kind, so a sliding window neither clips a wrapped
+  row nor flips the height by swapping the first row.
 - **On-demand UI gets its own chunk.** A panel that only appears after an explicit
   action (history search) stays out of the first-paint bundle: `lazy()` plus an
   idle preload (`requestIdleCallback`, falling back to a timer). On a machine
@@ -421,6 +758,13 @@
   3. `AGENTS.md` — the invariants an agent executes against;
   4. `docs/index.md` and `site/src/docs.ts` — catalog and reading order.
 - Docs describe current behavior. Planned work is marked explicitly.
+- The optional hooks are documented in `docs/plugin-installation.md`:
+  auto-approval under "Optional: auto-approve user questions" and console
+  answering under "Optional: answer user questions from the console". The
+  observe-only boundary in `AGENTS.md`, the user manuals and the README must
+  also state that each hook is a separate, off-by-default component, that the
+  capture chain never participates in permission decisions, and that the two
+  hooks must not be installed on the same event.
 - Quote interface copy as it appears on screen; do not invent translations for
   key names.
 

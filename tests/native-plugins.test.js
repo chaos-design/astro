@@ -25,8 +25,8 @@ function getHandlers(hooks) {
 
 test("native plugin manifests and marketplaces reference local packages", () => {
   const packageMetadata = readJson("package.json");
-  const codexManifest = readJson(
-    "codex-plugin/.codex-plugin/plugin.json",
+  const chatgptManifest = readJson(
+    "chatgpt-plugin/.chatgpt-plugin/plugin.json",
   );
   const claudeManifest = readJson(
     "claude-plugin/.claude-plugin/plugin.json",
@@ -38,38 +38,38 @@ test("native plugin manifests and marketplaces reference local packages", () => 
     "zcode-plugin/.zcode-plugin/plugin.json",
   );
   const deepseekManifest = readJson("deepseek-plugin/package.json");
-  const codexMarketplace = readJson(".agents/plugins/marketplace.json");
+  const chatgptMarketplace = readJson(".agents/plugins/marketplace.json");
   const claudeMarketplace = readJson(".claude-plugin/marketplace.json");
   const workbuddyMarketplace = readJson(
     ".codebuddy-plugin/marketplace.json",
   );
   const zcodeMarketplace = readJson("zcode-plugin/marketplace.json");
 
-  assert.equal(codexManifest.name, "astro");
+  assert.equal(chatgptManifest.name, "astro");
   assert.equal(claudeManifest.name, "astro");
   assert.equal(workbuddyManifest.name, "astro");
   assert.equal(zcodeManifest.name, "astro");
   assert.equal(deepseekManifest.name, "dsh-astro-plugin");
-  assert.equal(codexManifest.version, packageMetadata.version);
+  assert.equal(chatgptManifest.version, packageMetadata.version);
   assert.equal(claudeManifest.version, packageMetadata.version);
   assert.equal(workbuddyManifest.version, packageMetadata.version);
   assert.equal(zcodeManifest.version, packageMetadata.version);
   assert.equal(deepseekManifest.version, packageMetadata.version);
-  assert.equal(codexManifest.hooks, "./hooks/hooks.json");
+  assert.equal(chatgptManifest.hooks, "./hooks/hooks.json");
   assert.equal(claudeManifest.hooks, "./hooks/hooks.json");
   assert.equal(workbuddyManifest.hooks, "./hooks/hooks.json");
   assert.equal(zcodeManifest.hooks, "./hooks/hooks.json");
-  assert.equal(codexMarketplace.name, "astro-local");
+  assert.equal(chatgptMarketplace.name, "astro-local");
   assert.equal(claudeMarketplace.name, "astro-local");
   assert.equal(workbuddyMarketplace.name, "astro-local");
   assert.equal(zcodeMarketplace.name, "astro-zcode-local");
-  assert.equal(codexMarketplace.plugins[0].name, "astro");
+  assert.equal(chatgptMarketplace.plugins[0].name, "astro");
   assert.equal(claudeMarketplace.plugins[0].name, "astro");
   assert.equal(workbuddyMarketplace.plugins[0].name, "astro");
   assert.equal(zcodeMarketplace.plugins[0].name, "astro");
   assert.equal(
-    codexMarketplace.plugins[0].source.path,
-    "./codex-plugin",
+    chatgptMarketplace.plugins[0].source.path,
+    "./chatgpt-plugin",
   );
   assert.equal(claudeMarketplace.plugins[0].source, "./claude-plugin");
   assert.equal(
@@ -91,14 +91,14 @@ test("DeepSeek plugin declares an installable Harness bundle", () => {
 });
 
 test("native plugin hooks use portable plugin-root paths", () => {
-  const codexHooks = readJson("codex-plugin/hooks/hooks.json").hooks;
+  const chatgptHooks = readJson("chatgpt-plugin/hooks/hooks.json").hooks;
   const claudeHooks = readJson("claude-plugin/hooks/hooks.json").hooks;
   const workbuddyHooks = readJson("workbuddy-plugin/hooks/hooks.json").hooks;
-  const codexHandlers = getHandlers(codexHooks);
+  const chatgptHandlers = getHandlers(chatgptHooks);
   const claudeHandlers = getHandlers(claudeHooks);
 
   assert.deepEqual(
-    Object.keys(codexHooks),
+    Object.keys(chatgptHooks),
     [
       "SessionStart",
       "SessionEnd",
@@ -115,10 +115,10 @@ test("native plugin hooks use portable plugin-root paths", () => {
     ],
   );
   assert.ok(
-    codexHandlers.every(
+    chatgptHandlers.every(
       (handler) =>
         handler.command.includes("${PLUGIN_ROOT}") &&
-        handler.command.includes("--source=codex") &&
+        handler.command.includes("--source=chatgpt") &&
         handler.command.includes("--quiet"),
     ),
   );
@@ -155,7 +155,7 @@ test("native plugin hooks use portable plugin-root paths", () => {
 
 test("exception hooks are registered only where the capture contract claims", () => {
   const claudeHooks = readJson("claude-plugin/hooks/hooks.json").hooks;
-  const codexHooks = readJson("codex-plugin/hooks/hooks.json").hooks;
+  const chatgptHooks = readJson("chatgpt-plugin/hooks/hooks.json").hooks;
   const workbuddyHooks = readJson("workbuddy-plugin/hooks/hooks.json").hooks;
   const zcodeHooks = readJson("zcode-plugin/hooks/hooks.json").hooks;
 
@@ -171,11 +171,11 @@ test("exception hooks are registered only where the capture contract claims", ()
   // matcher instead of relying on "*" being a valid error-type pattern.
   assert.equal(claudeHooks.StopFailure[0].matcher, undefined);
 
-  // Codex folds tool and turn failures into PostToolUse / Stop with
+  // ChatGPT folds tool and turn failures into PostToolUse / Stop with
   // status=failed, and exposes an explicit Interrupt hook instead.
-  assert.equal(codexHooks.PostToolUseFailure, undefined);
-  assert.equal(codexHooks.StopFailure, undefined);
-  assert.ok(codexHooks.Interrupt);
+  assert.equal(chatgptHooks.PostToolUseFailure, undefined);
+  assert.equal(chatgptHooks.StopFailure, undefined);
+  assert.ok(chatgptHooks.Interrupt);
 
   // WorkBuddy reports the rejection decision as its own hook.
   assert.ok(workbuddyHooks.PostToolUseFailure);
@@ -229,7 +229,7 @@ test("ZCode plugin registers only the events ZCode supports", () => {
 
 test("native plugin recorders stay synchronized with the shared runtime", () => {
   for (const directory of [
-    "codex-plugin",
+    "chatgpt-plugin",
     "claude-plugin",
     "workbuddy-plugin",
     "zcode-plugin",
@@ -239,6 +239,7 @@ test("native plugin recorders stay synchronized with the shared runtime", () => 
       "runtime-config.cjs",
       "storage-paths.cjs",
       "trace-recorder.cjs",
+      "interaction-contract.mjs",
     ]) {
       assert.equal(
         readFileSync(join(projectDir, directory, "plugin", file), "utf8"),
@@ -271,13 +272,13 @@ test("native plugin recorders stay synchronized with the shared runtime", () => 
   }
 });
 
-test("Codex quiet mode records without emitting hook control output", () => {
+test("ChatGPT quiet mode records without emitting hook control output", () => {
   const astroHome = mkdtempSync(join(tmpdir(), "astro-plugin-"));
   const result = spawnSync(
     process.execPath,
     [
-      join(projectDir, "codex-plugin", "plugin", "trace-recorder.cjs"),
-      "--source=codex",
+      join(projectDir, "chatgpt-plugin", "plugin", "trace-recorder.cjs"),
+      "--source=chatgpt",
       "--quiet",
     ],
     {
@@ -295,7 +296,7 @@ test("Codex quiet mode records without emitting hook control output", () => {
 
   assert.equal(result.status, 0);
   assert.equal(result.stdout, "");
-  const traceRoot = join(astroHome, "codex");
+  const traceRoot = join(astroHome, "chatgpt");
   const traceFile = readdirSync(traceRoot, {
     recursive: true,
   })

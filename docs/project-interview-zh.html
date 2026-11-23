@@ -3339,7 +3339,7 @@
             <div class="signal-board">
               <article class="signal"><small>normalized events</small><strong class="accent-green">17</strong><p>覆盖会话、消息、工具、权限、子智能体与停止信号。</p></article>
               <article class="signal"><small>semantic topology</small><strong class="accent-violet">27 / 28</strong><p>27 个基础原子与 28 条稳定定义连线。</p></article>
-              <article class="signal"><small>source families</small><strong class="accent-amber">6</strong><p>Trae、Claude Code、Codex、DeepSeek、Browser 与自定义客户端。</p></article>
+              <article class="signal"><small>source families</small><strong class="accent-amber">6</strong><p>Trae、Claude Code、ChatGPT、DeepSeek、Browser 与自定义客户端。</p></article>
               <article class="signal"><small>regression suite</small><strong class="accent-cyan">182</strong><p>协议、配置、存储、SSE、回放、布局和安装链路自动验证。</p></article>
             </div>
           </div>
@@ -3360,7 +3360,7 @@
               <span class="layer-id">01 / CAPTURE</span>
               <h3>多源采集</h3>
               <p>原生 Hook、Harness 插件、历史 Rollout、Browser SDK 与 HTTP 统一进入 Schema v2。</p>
-              <div class="arch-items"><span>trace-recorder.cjs</span><span>deepseek-plugin/index.js</span><span>codex-adapter.cjs</span><span>browser-client.js</span></div>
+              <div class="arch-items"><span>trace-recorder.cjs</span><span>deepseek-plugin/index.js</span><span>chatgpt-adapter.cjs</span><span>browser-client.js</span></div>
             </article>
             <span class="arch-arrow"><svg fill="none" stroke="currentColor" stroke-width="1.7"><use href="#icon-arrow"></use></svg></span>
             <article class="arch-layer" style="--layer-color: var(--amber)">
@@ -3845,7 +3845,7 @@
           lead: "ASTRO 是一个面向编码智能体的本地优先运行时可观测系统，它把分散在多种 Hook、日志和工具结果中的异构事件，统一为可追溯、可搜索、可确定性回放的执行证据。",
           answer: [
             ["问题背景", "不同编码智能体暴露的事件名称、载荷和会话标识并不一致。只看终端日志，很难回答某次失败前发生了什么、工具结果是否返回、后续 Prompt 是否仍属于同一会话。"],
-            ["核心方案", "采集层先把 Trae、Claude Code、Codex、DeepSeek Harness、Browser SDK 和自定义 HTTP 事件归一化为 Schema v2，再追加写入本地 JSONL。服务层持续跟随文件并通过 SSE 推送，前端从同一事实流构建会话、Prompt 子运行、轨迹和执行拓扑。"],
+            ["核心方案", "采集层先把 Trae、Claude Code、ChatGPT、DeepSeek Harness、Browser SDK 和自定义 HTTP 事件归一化为 Schema v2，再追加写入本地 JSONL。服务层持续跟随文件并通过 SSE 推送，前端从同一事实流构建会话、Prompt 子运行、轨迹和执行拓扑。"],
             ["可验证结果", "用户可以在一个界面中检查原始事件、语义原子、工具输入输出和运行顺序，也可以用事件前缀重建任意历史位置。连续问答、重连补偿、工具配对和稳定布局都有自动化回归覆盖。"],
             ["系统边界", "ASTRO 不调用模型、不调度工具，也不修改 Agent 决策。原始 Trace 是事实源，拓扑与轨迹只是可重建投影；默认数据只落在本机。"],
           ],
@@ -4105,14 +4105,14 @@
           guidance: "强调适配器把差异收敛在边界，不要只回答“统一 JSON”。说明原始字段保留和未知事件兼容。",
           lead: "平台差异集中在采集适配层，适配器输出统一的 Schema v2，后续服务和领域模型只依赖规范字段。",
           answer: [
-            ["来源识别", "source 被规范化为 trae、claude、codex、deepseek、browser 或文件系统安全的自定义名称。"],
-            ["事件映射", "Hook 直接提供事件名时执行标准化；Codex 根据外层 type、内层 payload.type 和 item 类型推断 Prompt、工具、消息与终止语义。"],
+            ["来源识别", "source 被规范化为 trae、claude、chatgpt、deepseek、browser 或文件系统安全的自定义名称。"],
+            ["事件映射", "Hook 直接提供事件名时执行标准化；ChatGPT 根据外层 type、内层 payload.type 和 item 类型推断 Prompt、工具、消息与终止语义。"],
             ["字段补全", "适配器从不同层级提取 sessionId、turnId、toolUseId、toolName、cwd、prompt、message、tool_input 和 tool_response。"],
             ["保真与兼容", "nativeEventName 和 payload 保留来源信息，无法识别的事件转为 Notification 或按原名展示，避免因映射表滞后而丢数据；事件日志把 Notification 归入 AskUserQuestion 的 user.question 标签。"],
           ],
           evidence: [
             ["plugin/trace-recorder.cjs · 归一化入口", "../plugin/trace-recorder.cjs"],
-            ["plugin/codex-adapter.cjs · Codex 历史适配", "../plugin/codex-adapter.cjs"],
+            ["plugin/chatgpt-adapter.cjs · ChatGPT 历史适配", "../plugin/chatgpt-adapter.cjs"],
           ],
           pitfalls: [
             "不要在 React 组件中判断每个平台的原生事件格式。",
@@ -4130,7 +4130,7 @@
           difficulty: "进阶",
           type: "幂等导入",
           minutes: 4,
-          question: "Codex 历史导入为什么使用确定性事件 ID？如何设计这个 ID？",
+          question: "ChatGPT 历史导入为什么使用确定性事件 ID？如何设计这个 ID？",
           guidance: "回答重复导入场景、哈希输入组成和稳定性边界，并主动说明移动文件或修改行会改变 ID。",
           lead: "历史文件可能被用户反复导入，确定性 ID 让同一条未变化记录每次得到相同身份，从而在 Repository 层自然去重。",
           answer: [
@@ -4140,8 +4140,8 @@
             ["稳定性边界", "移动文件、改变行顺序或内容会改变哈希，这是当前定义下的新事实。若希望跨路径稳定，应改用来源原生 ID或内容规范化哈希，并处理真正重复记录。"],
           ],
           evidence: [
-            ["plugin/codex-adapter.cjs · createStableEventId", "../plugin/codex-adapter.cjs"],
-            ["tests/codex-adapter.test.cjs · 重复导入测试", "../tests/codex-adapter.test.cjs"],
+            ["plugin/chatgpt-adapter.cjs · createStableEventId", "../plugin/chatgpt-adapter.cjs"],
+            ["tests/chatgpt-adapter.test.cjs · 重复导入测试", "../tests/chatgpt-adapter.test.cjs"],
           ],
           pitfalls: [
             "不要对实时相同文本事件做内容哈希去重，用户可能确实重复提问。",
@@ -4164,7 +4164,7 @@
           lead: "观测是旁路能力，不能成为主业务单点；但静默失败会制造虚假的完整性，所以策略是“主链路放行、诊断链路显式失败”。",
           answer: [
             ["失败优先级", "写 Trace 的价值低于 Agent 正常执行。解析、目录、写入或控制台启动失败都应被捕获，避免 Hook 非零退出阻断会话。"],
-            ["协议兼容", "Trae 与 Claude Code 可以在 stdout 返回 continue:true 和 systemMessage；Codex quiet 模式必须保持 stdout 为空，避免输出不被支持的控制字段。"],
+            ["协议兼容", "Trae 与 Claude Code 可以在 stdout 返回 continue:true 和 systemMessage；ChatGPT quiet 模式必须保持 stdout 为空，避免输出不被支持的控制字段。"],
             ["可见诊断", "失败原因写入 stderr，且错误文本不回显可能包含敏感信息的 Prompt。测试断言失败时状态仍为 0、继续标志正确并存在明确 not recorded 提示。"],
             ["后续恢复", "下一次 Prompt 可以重新检查 PID、目录和服务；文件写入与服务展示解耦，即使页面启动失败，已经成功落盘的事件仍然保留。"],
           ],
@@ -4657,7 +4657,7 @@
           guidance: "用关键不变量组织测试层次，列举代表性端到端场景，不要只报通过数量。",
           lead: "测试围绕“事件不丢、关联不串、状态可重建、结构不跳变、故障不阻断”这些行为契约，而不是追求组件行覆盖率。",
           answer: [
-            ["协议与适配", "验证事件名、字段补全、脱敏、来源目录、Codex 确定性 ID、DeepSeek 映射和旧数据迁移。"],
+            ["协议与适配", "验证事件名、字段补全、脱敏、来源目录、ChatGPT 确定性 ID、DeepSeek 映射和旧数据迁移。"],
             ["存储与实时", "验证 JSONL 追加、ID 去重、坏行隔离、Repository 聚合、连续问答、同一 SSE 连接增量和重连快照补偿。"],
             ["领域与算法", "验证会话隔离、PromptRun 切分、工具配对、原子严格序列、子智能体拓扑、所有可见路径正交和布局缓存稳定。"],
             ["工程门禁", "node:test 套件之外还执行 TypeScript noEmit 和 Vite production build，分别发现行为、类型和打包边界问题。"],

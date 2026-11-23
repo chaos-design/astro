@@ -72,6 +72,14 @@ export class TraceRepository extends EventEmitter {
     this.knownEventIds = new Set();
     this.unidentifiedEventCount = 0;
     this.sessionRecords = new Map();
+    // Per source, which capture-adapter versions wrote events, with the time
+    // of the newest event for each, plus `unversionedAt`: the newest event that
+    // carried NO version stamp. An old process (code written before stamping
+    // existed) contributes only to `unversionedAt` — without it a reinstall
+    // that the process never picked up produced no signal at all. Two code
+    // generations writing concurrently is then observable: an unstamped event
+    // at or after the newest stamped one, or two distinct stamped versions.
+    this.captureVersions = new Map();
     this.snapshotKey = "";
     this.eventIndexFor = null;
     this.eventIndex = null;
@@ -143,6 +151,29 @@ export class TraceRepository extends EventEmitter {
     return found === undefined ? -1 : found;
   }
 
+  /** Track which capture-adapter generation wrote one event (O(1)). */
+  trackCaptureVersion(event) {
+    const source = String(event?.source || "generic");
+    const at = Date.parse(event?.capturedAt || 0) || 0;
+    let state = this.captureVersions.get(source);
+    if (!state) {
+      state = { versions: new Map(), unversionedAt: 0 };
+      this.captureVersions.set(source, state);
+    }
+    const version = event?.payload?.captureVersion;
+    if (typeof version === "string" && version.trim()) {
+      if (!state.versions.has(version) || state.versions.get(version) < at) {
+        state.versions.set(version, at);
+      }
+    } else {
+      // No stamp = an older capture process that never learned to write one.
+      // Its most recent write is the signal that it is still running.
+      if (at > state.unversionedAt) {
+        state.unversionedAt = at;
+      }
+    }
+  }
+
   /** Fold one event into the per-session state summary. */
   indexEvent(event) {
     if (!event || typeof event !== "object") {
@@ -166,6 +197,7 @@ export class TraceRepository extends EventEmitter {
       this.sessionRecords.set(key, record);
     }
     applySessionEvent(record, event);
+    this.trackCaptureVersion(event);
   }
 
   /** Rebuild every derived view from the current store contents. */
@@ -173,6 +205,7 @@ export class TraceRepository extends EventEmitter {
     this.knownEventIds.clear();
     this.unidentifiedEventCount = 0;
     this.sessionRecords.clear();
+    this.captureVersions.clear();
     this.mergedEvents = null;
     for (const event of this.getEvents()) {
       this.indexEvent(event);
@@ -309,6 +342,34 @@ export class TraceRepository extends EventEmitter {
       );
   }
 
+  /**
+   * Per source, the capture generations that wrote events. `versions` carries
+   * stamped adapters; `unversionedAt` is the newest event with no stamp at all
+   * (a process running code from before stamping existed). `stale` is true when
+   * more than one generation wrote, or when an unstamped event is at least as
+   * recent as the newest stamped one — an old process still writing after a
+   * reinstall. It is derived from event timestamps, not wall-clock freshness,
+   * so it does not flicker as the run ages.
+   */
+  getCaptureVersions() {
+    const result = {};
+    for (const [source, state] of this.captureVersions) {
+      const versions = [...state.versions.entries()]
+        .map(([version, lastSeenAt]) => ({ version, lastSeenAt }))
+        .sort((a, b) => b.lastSeenAt - a.lastSeenAt);
+      const newestStampedAt = versions.length ? versions[0].lastSeenAt : 0;
+      const stale =
+        versions.length > 1 ||
+        (versions.length > 0 && state.unversionedAt >= newestStampedAt);
+      result[source] = {
+        versions,
+        unversionedAt: state.unversionedAt || null,
+        stale,
+      };
+    }
+    return result;
+  }
+
   /** `{ active, waiting, complete, failed, terminated }` counts. */
   getSessionStateCounts() {
     const counts = {
@@ -373,7 +434,15 @@ export class TraceRepository extends EventEmitter {
     const appended = [];
     for (const [traceFile, events] of eventsByFile) {
       const store = await this.ensureStore(traceFile);
-      appended.push(...store.append(events));
+      const written = store.append(events);
+      // Derived session/version views are rebuilt from the store listener on
+      // its next poll. Track capture versions here too so health is correct
+      // immediately; indexEvent de-duplicates by id, so the later poll is a
+      // no-op for the same event.
+      for (const event of written) {
+        this.trackCaptureVersion(event);
+      }
+      appended.push(...written);
     }
     return appended;
   }

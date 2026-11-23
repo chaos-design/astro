@@ -7,7 +7,7 @@ import {
 
 function makeEvent(eventName: string, index: number, extra = {}) {
   return normalizeTraceEvent({
-    id: `event-${index}`, source: "codex", workspaceId: "workspace",
+    id: `event-${index}`, source: "chatgpt", workspaceId: "workspace",
     sessionId: "session", eventName, capturedAt: new Date(1_000 + index * 100).toISOString(),
     payload: {}, ...extra,
   });

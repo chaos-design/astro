@@ -1,9 +1,11 @@
 import type {
   RunTerminalReason,
+  TraceEvent,
   TracePromptRun,
   TraceRunStatus,
 } from "../types/trace";
 import { getSessionDisplayState } from "./trace-model.ts";
+import { isBlockingUserQuestionStartEvent } from "./trace-event-kind.ts";
 
 type RunDurationSource = {
   duration: number;
@@ -299,6 +301,25 @@ export function getPromptAtomSelection(
 /** Whether a run status still counts as the currently executing message. */
 export function isLiveRunStatus(status: string | undefined): boolean {
   return status === "active" || status === "waiting";
+}
+
+/**
+ * A run recorded as `waiting` on a blocking user question is still executing:
+ * the host is waiting for *us*, not the other way round. RUN HISTORY presents
+ * that case as RUNNING, like the trajectory lane overview does, while the
+ * recorded status keeps its much longer waiting freshness window. Only the
+ * newest event decides — an earlier, already answered question must not make
+ * a later `active` / terminal row read as running.
+ */
+export function isUserQuestionWaitingRun(
+  status: string | undefined,
+  events: readonly TraceEvent[] | undefined,
+): boolean {
+  if (status !== "waiting") {
+    return false;
+  }
+  const latest = events?.at(-1);
+  return latest ? isBlockingUserQuestionStartEvent(latest) : false;
 }
 
 /**

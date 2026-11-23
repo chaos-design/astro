@@ -196,9 +196,9 @@ for (let batch = 0; batch < batches; batch += 1) {
     )?.at(-1)?.events ?? [];
   buildFlow(activeEvents);
   const t3 = performance.now();
-  projectTraceEvents(activeEvents, "codex");
+  projectTraceEvents(activeEvents, "chatgpt");
   const t4 = performance.now();
-  buildExecutionTopology(activeEvents, "codex");
+  buildExecutionTopology(activeEvents, "chatgpt");
   const t5 = performance.now();
   totals.sessions += t1 - t0;
   totals["prompt-runs"] += t2 - t1;

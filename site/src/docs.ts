@@ -74,6 +74,7 @@ const sectionBySlug: Record<string, string> = {
   index: "top",
   "user-manual-zh": "zh",
   "event-protocol-zh": "zh",
+  "interaction-hooks-zh": "zh",
   "data-definitions-zh": "zh",
   "architecture-zh": "zh",
   "operations-zh": "zh",
@@ -82,6 +83,7 @@ const sectionBySlug: Record<string, string> = {
   "conventions-zh": "zh",
   "user-manual-en": "en",
   "event-protocol-en": "en",
+  "interaction-hooks-en": "en",
   "data-definitions-en": "en",
   "architecture-en": "en",
   "operations-en": "en",
@@ -96,6 +98,7 @@ const readingOrder: Record<string, string[]> = {
   zh: [
     "user-manual-zh",
     "event-protocol-zh",
+    "interaction-hooks-zh",
     "data-definitions-zh",
     "architecture-zh",
     "operations-zh",
@@ -106,6 +109,7 @@ const readingOrder: Record<string, string[]> = {
   en: [
     "user-manual-en",
     "event-protocol-en",
+    "interaction-hooks-en",
     "data-definitions-en",
     "architecture-en",
     "operations-en",

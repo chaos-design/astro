@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PermissionRequest": [
+      {
+        "matcher": "AskUserQuestion|ExitPlanMode",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node /absolute/path/to/astro/scripts/auto-approve-question-hook.mjs",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

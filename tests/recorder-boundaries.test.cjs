@@ -12,7 +12,7 @@ test("redacts JSON-encoded native arguments as well as parsed tool input", () =>
       call_id: "call-1",
       arguments: JSON.stringify({ apiKey: secret, query: "retain this" }),
     },
-  }, { source: "codex" });
+  }, { source: "chatgpt" });
   assert.ok(!JSON.stringify(event).includes(secret));
   assert.equal(event.payload.tool_input.apiKey, "[redacted]");
   assert.equal(JSON.parse(event.payload.payload.arguments).query, "retain this");

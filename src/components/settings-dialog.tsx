@@ -1,11 +1,14 @@
 import { useState } from "react";
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import {
+  Bell,
   Check,
+  CheckCircle2,
+  CircleStop,
+  CircleX,
   Gauge,
   History,
   Info,
-  Network,
   Palette,
   PanelsTopLeft,
   RotateCcw,
@@ -26,19 +29,34 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   appDefaults,
   appVersion,
+  chimeStyleOptions,
   defaultHistoryRange,
   historyRangeOptions,
   maxSyncOptions,
   storageKeys,
   themeOptions,
   type ActiveView,
+  type ChimeStyleId,
   type HistoryRangeId,
   type MaxSyncId,
+  type QuestionPanelMode,
   type Theme,
 } from "@/config/app-config";
+import { playTaskCompletionChime } from "@/lib/task-completion-chime";
+import {
+  questionPanelModeLabels,
+  questionPanelModes,
+} from "@/lib/question-panel-model";
 import { cn } from "@/lib/utils";
 
 type ChoiceIcon = (typeof themeOptions)[number]["icon"];
+
+/** Terminal states the chime distinguishes, in the same order in every style. */
+const chimePreviewOptions = [
+  { status: "complete", label: "完成音", icon: CheckCircle2 },
+  { status: "failed", label: "失败音", icon: CircleX },
+  { status: "terminated", label: "终止音", icon: CircleStop },
+] as const;
 
 /**
  * Sections are the left rail of the dialog and the anchor of the right pane.
@@ -64,19 +82,11 @@ const settingsSections = [
     icon: History,
   },
   {
-    id: "canvas",
-    label: "画布",
-    hint: "拓扑与轨迹",
-    title: "画布",
-    description: "打开一条消息时默认展示的画布，以及拓扑的原子可见性。",
-    icon: Network,
-  },
-  {
-    id: "panels",
-    label: "面板",
-    hint: "分栏展开状态",
-    title: "面板",
-    description: "左右两列在打开控制台时的展开状态；面板头部的箭头可随时切换。",
+    id: "layout",
+    label: "布局",
+    hint: "画布与面板",
+    title: "布局",
+    description: "画布怎么画、两栏开多大、问答面板停在哪里，都在这一处。",
     icon: PanelsTopLeft,
   },
   {
@@ -87,6 +97,14 @@ const settingsSections = [
     description:
       "页面性能诊断面板：滚动帧率、列表渲染与长任务。只采集、不修改已记录的事件。",
     icon: Gauge,
+  },
+  {
+    id: "notifications",
+    label: "通知",
+    hint: "任务完成提示音",
+    title: "通知",
+    description: "运行进入完成、失败或终止状态时是否播放一段简短提示音。",
+    icon: Bell,
   },
   {
     id: "about",
@@ -147,6 +165,31 @@ function ChoiceGroup<T extends string>({
   );
 }
 
+/**
+ * One labelled cluster inside a section. The layout section holds two kinds of
+ * preference — how the canvas draws and how the panels open — and a reader
+ * should be able to tell them apart without parsing every row.
+ */
+function SettingsGroup({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="settings-group">
+      <header className="settings-group__head">
+        <h4>{title}</h4>
+        <p>{description}</p>
+      </header>
+      {children}
+    </section>
+  );
+}
+
 /** A boolean preference: label and explanation left, switch right. */
 function SwitchField({
   label,
@@ -181,8 +224,8 @@ function SwitchField({
 
 /**
  * Console settings: every browser-local preference the console has, grouped by
- * what it changes — appearance, RUN HISTORY, the canvas, the two panels, and
- * the performance HUD.
+ * what it changes — appearance, RUN HISTORY, the canvas, the two panels,
+ * notifications, and the performance HUD.
  *
  * The dialog edits the same values the panels restore on reload, so there is
  * no apply step and no server round trip. Preferences that also have an inline
@@ -196,6 +239,7 @@ function SwitchField({
  */
 export function SettingsDialog({
   activeView,
+  chimeStyle,
   consoleOpen,
   deepView,
   historyOpen,
@@ -203,8 +247,11 @@ export function SettingsDialog({
   liveView,
   maxSync,
   perfHud,
+  questionPanelMode,
+  taskCompletionChime,
   theme,
   onActiveViewChange,
+  onChimeStyleChange,
   onConsoleOpenChange,
   onDeepViewChange,
   onHistoryOpenChange,
@@ -212,9 +259,12 @@ export function SettingsDialog({
   onLiveViewChange,
   onMaxSyncChange,
   onPerfHudChange,
+  onQuestionPanelModeChange,
+  onTaskCompletionChimeChange,
   onThemeChange,
 }: {
   activeView: ActiveView;
+  chimeStyle: ChimeStyleId;
   consoleOpen: boolean;
   deepView: boolean;
   historyOpen: boolean;
@@ -222,8 +272,11 @@ export function SettingsDialog({
   liveView: boolean;
   maxSync: MaxSyncId;
   perfHud: boolean;
+  questionPanelMode: QuestionPanelMode;
+  taskCompletionChime: boolean;
   theme: Theme;
   onActiveViewChange: (view: ActiveView) => void;
+  onChimeStyleChange: (style: ChimeStyleId) => void;
   onConsoleOpenChange: (open: boolean) => void;
   onDeepViewChange: (deepView: boolean) => void;
   onHistoryOpenChange: (open: boolean) => void;
@@ -231,6 +284,8 @@ export function SettingsDialog({
   onLiveViewChange: (liveView: boolean) => void;
   onMaxSyncChange: (maxSync: MaxSyncId) => void;
   onPerfHudChange: (perfHud: boolean) => void;
+  onQuestionPanelModeChange: (mode: QuestionPanelMode) => void;
+  onTaskCompletionChimeChange: (value: boolean) => void;
   onThemeChange: (theme: Theme) => void;
 }) {
   const [section, setSection] = useState<SettingsSectionId>("appearance");
@@ -243,9 +298,12 @@ export function SettingsDialog({
     liveView === appDefaults.liveView &&
     maxSync === appDefaults.maxSync &&
     perfHud === appDefaults.perfHud &&
+    taskCompletionChime === appDefaults.taskCompletionChime &&
+    chimeStyle === appDefaults.chimeStyle &&
     theme === appDefaults.theme &&
     activeView === appDefaults.activeView &&
     deepView === appDefaults.deepView &&
+    questionPanelMode === appDefaults.questionPanelMode &&
     historyOpen === defaultHistoryOpen &&
     consoleOpen === defaultConsoleOpen;
 
@@ -254,9 +312,12 @@ export function SettingsDialog({
     onLiveViewChange(appDefaults.liveView);
     onMaxSyncChange(appDefaults.maxSync);
     onPerfHudChange(appDefaults.perfHud);
+    onTaskCompletionChimeChange(appDefaults.taskCompletionChime);
+    onChimeStyleChange(appDefaults.chimeStyle);
     onThemeChange(appDefaults.theme);
     onActiveViewChange(appDefaults.activeView);
     onDeepViewChange(appDefaults.deepView);
+    onQuestionPanelModeChange(appDefaults.questionPanelMode);
     onHistoryOpenChange(defaultHistoryOpen);
     onConsoleOpenChange(defaultConsoleOpen);
   };
@@ -395,44 +456,68 @@ export function SettingsDialog({
               </div>
             </TabsContent>
 
-            <TabsContent className="settings-section" value="canvas">
-              <div className="settings-field">
-                <div className="settings-field__copy">
-                  <strong>默认视图</strong>
-                  <span>打开一条消息时先显示哪种画布。</span>
+            <TabsContent className="settings-section" value="layout">
+              <SettingsGroup
+                description="先看哪种画法，以及拓扑里留下哪些原子。"
+                title="画布"
+              >
+                <div className="settings-field">
+                  <div className="settings-field__copy">
+                    <strong>默认视图</strong>
+                    <span>打开消息时先显示哪种；顶栏两个图标可随时切换。</span>
+                  </div>
+                  <ChoiceGroup
+                    label="默认视图"
+                    value={activeView}
+                    columns={2}
+                    onChange={onActiveViewChange}
+                    options={[
+                      { id: "topology" as const, label: "执行拓扑" },
+                      { id: "trajectory" as const, label: "运行轨迹" },
+                    ]}
+                  />
                 </div>
-                <ChoiceGroup
-                  label="默认视图"
-                  value={activeView}
-                  columns={2}
-                  onChange={onActiveViewChange}
-                  options={[
-                    { id: "topology" as const, label: "执行拓扑" },
-                    { id: "trajectory" as const, label: "运行轨迹" },
-                  ]}
+                <SwitchField
+                  label="仅显示运行时原子"
+                  description="拓扑图隐藏不参与本次执行的原子，只保留运行时路径；关闭后显示完整的原子定义。"
+                  value={deepView}
+                  onChange={onDeepViewChange}
                 />
-              </div>
-              <SwitchField
-                label="仅显示运行时原子"
-                description="拓扑图隐藏不参与本次执行的原子，只保留运行时路径。"
-                value={deepView}
-                onChange={onDeepViewChange}
-              />
-            </TabsContent>
+              </SettingsGroup>
 
-            <TabsContent className="settings-section" value="panels">
-              <SwitchField
-                label="展开 RUN HISTORY"
-                description="左侧运行历史列默认展开。"
-                value={historyOpen}
-                onChange={onHistoryOpenChange}
-              />
-              <SwitchField
-                label="展开 EVENTS"
-                description="右侧事件日志与检查器默认展开。"
-                value={consoleOpen}
-                onChange={onConsoleOpenChange}
-              />
+              <SettingsGroup
+                description="两栏开多大，问答面板停在哪里。"
+                title="面板"
+              >
+                <SwitchField
+                  label="展开 RUN HISTORY"
+                  description="左侧运行历史列默认展开。"
+                  value={historyOpen}
+                  onChange={onHistoryOpenChange}
+                />
+                <SwitchField
+                  label="展开 EVENTS"
+                  description="右侧事件日志与检查器默认展开。"
+                  value={consoleOpen}
+                  onChange={onConsoleOpenChange}
+                />
+                <div className="settings-field">
+                  <div className="settings-field__copy">
+                    <strong>问题面板布局</strong>
+                    <span>区域全屏铺满检查器 Tab 以下，悬浮浮在画布上。</span>
+                  </div>
+                  <ChoiceGroup
+                    label="问题面板布局"
+                    value={questionPanelMode}
+                    columns={2}
+                    onChange={onQuestionPanelModeChange}
+                    options={questionPanelModes.map((mode) => ({
+                      id: mode,
+                      label: questionPanelModeLabels[mode],
+                    }))}
+                  />
+                </div>
+              </SettingsGroup>
             </TabsContent>
 
             <TabsContent className="settings-section" value="perf">
@@ -442,6 +527,63 @@ export function SettingsDialog({
                 value={perfHud}
                 onChange={onPerfHudChange}
               />
+            </TabsContent>
+
+            <TabsContent className="settings-section" value="notifications">
+              <SwitchField
+                label="任务完成提示音"
+                description="某条运行进入完成、失败或终止状态时播放一段简短提示音，状态不同音调不同：完成上行、失败下行、终止中性双击；示例数据不会触发。默认开启，可在设置里关闭；浏览器在首次交互后才允许播放声音。"
+                value={taskCompletionChime}
+                onChange={onTaskCompletionChimeChange}
+              />
+              <div className="settings-field">
+                <div className="settings-field__copy">
+                  <strong>提示音音色</strong>
+                  <span>
+                    更换提示音的音色与节奏；无论选哪种，完成上行、失败下行、终止中性的状态区分保持不变。
+                  </span>
+                </div>
+                <ChoiceGroup
+                  label="提示音音色"
+                  columns={3}
+                  value={chimeStyle}
+                  onChange={onChimeStyleChange}
+                  options={chimeStyleOptions.map((option) => ({
+                    id: option.id,
+                    label: option.label,
+                  }))}
+                />
+              </div>
+              <div className="settings-field">
+                <div className="settings-field__copy">
+                  <strong>试听</strong>
+                  <span>
+                    用当前音色播放一次对应终态的声音，挑选时可以先听再选。
+                  </span>
+                </div>
+                <div
+                  aria-label="试听任务完成提示音"
+                  className="settings-chime-preview"
+                  role="group"
+                >
+                  {chimePreviewOptions.map((option) => {
+                    const Icon = option.icon;
+                    return (
+                      <button
+                        className={`settings-option settings-chime-option settings-chime-option--${option.status}`}
+                        key={option.status}
+                        onClick={() =>
+                          playTaskCompletionChime(option.status, chimeStyle)
+                        }
+                        type="button"
+                      >
+                        <Icon aria-hidden="true" />
+                        <span>{option.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             </TabsContent>
 
             <TabsContent className="settings-section" value="about">

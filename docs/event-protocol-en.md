@@ -1,7 +1,7 @@
 # ASTRO Event Protocol Reference
 
 > Protocol version: Schema v2  
-> Scope: hook recorder, Codex history import, Browser SDK, HTTP API, JSONL import/export, and frontend projection
+> Scope: hook recorder, ChatGPT history import, Browser SDK, HTTP API, JSONL import/export, and frontend projection
 
 ## 1. Design Goals
 
@@ -48,9 +48,9 @@ The ASTRO protocol converts lifecycle, message, tool, and subagent signals from 
 | Field | Type | Required | Meaning and generation rule |
 | --- | --- | --- | --- |
 | `schemaVersion` | number | yes | Writers emit `2`; readers normalize older input. |
-| `id` | string | yes | Unique event ID. Live capture normally uses UUIDs; Codex history import uses a deterministic hash. |
+| `id` | string | yes | Unique event ID. Live capture normally uses UUIDs; ChatGPT history import uses a deterministic hash. |
 | `capturedAt` | ISO 8601 string | yes | Source or capture time, normalized to an ISO string. |
-| `source` | string | yes | Normalized producer such as `trae`, `claude`, `codex`, `workbuddy`, or `browser`. |
+| `source` | string | yes | Normalized producer such as `trae`, `claude`, `chatgpt`, `workbuddy`, or `browser`. |
 | `sourceVersion` | string or null | yes | Producer version when available. |
 | `workspaceId` | string | yes | Workspace isolation key; defaults to the first 12 SHA-256 characters of absolute `cwd`. |
 | `sessionId` | string | yes | Native session ID, or `unknown-session`. |
@@ -73,7 +73,7 @@ Source values are lowercased and classified as follows:
 | Input contains | Canonical source |
 | --- | --- |
 | `claude` | `claude` |
-| `codex` or `openai` | `codex` |
+| `chatgpt` or `openai` | `chatgpt` |
 | `deepseek` or exact `dsh` | `deepseek` |
 | `workbuddy` or `codebuddy` | `workbuddy` |
 | `trae` | `trae` |
@@ -110,11 +110,38 @@ Rate-limited `StopFailure` events and waiting notifications retain their
 native semantics so the UI can show a waiting state. Other unknown names
 survive normalization and render with Unknown semantics.
 
+When an interaction hook request closes, the service writes one `Notification`:
+`payload` carries `notification_type` (`answer_applied` / `answer_cancelled` /
+`interaction_timeout` / `fallback_prompt`), `notification_id`,
+`interaction_request_id` and an `answered` count. It describes the outcome and
+the device, never an answer value, and passes through the §10 recursive
+redaction before it is written.
+
 The projection layer maps `PermissionRequest`, `PermissionDenied`,
 `Elicitation`, `ElicitationResult`, and `Notification` to the
 `user.question` display key. Generic tool lifecycles named
 `AskUserQuestion`, `request_user_input`, or `UserQuestion` map to the same
 atom. Their start and completion events open and close one waiting interaction.
+
+**Whether it blocks is decided by answerable parameters**, by the one
+predicate `isBlockingUserQuestionStartEvent` in `src/lib/trace-event-kind.ts`:
+
+- A `PermissionRequest` or a `notification_type=permission_prompt`
+  `Notification` is a question start only when it carries a non-empty
+  `questions` / `plan`. Only then does it enter `user.question`, turn the run
+  `waiting`, and offer an answer box in the Flow inspector.
+- Without parameters it is a host **system authorization** (the many
+  `PermissionRequest(Bash/Edit)` rows in ZCode logs, WorkBuddy's "needs your
+  permission to use AskUserQuestion" notification). It displays as
+  `permission.request`, never blocks or offers an answer. A bare
+  `PermissionRequest(Bash/Edit)` projects onto Action Gate; WorkBuddy's
+  notification naming a question tool stays on the User Question atom in the
+  `delta` phase, so when the real `questions` arrive with a later `PreToolUse`
+  the canvas is already on that atom and the parameterized question is
+  reachable. Naming a tool in prose only recognises the shape.
+- Plain `idle_prompt` / `auth_success` notifications stay runtime signals with
+  their existing display key.
+
 Persisted `eventName` and `nativeEventName` values remain unchanged for
 inspection.
 
@@ -127,6 +154,22 @@ renders the plan as a `Plan` section without rewriting the persisted event. The
 matching `Pre/PostToolUse` rows preview the plan through `hasPlanContent()` but
 stay `tool.call` / `tool.result`, so they never enter the user-question atom.
 
+With the optional auto-approve decision hook enabled, the host injects the
+answer into the tool input: `tool_input.answers` maps each question's text to
+the chosen option label (comma-joined for multi-select), and
+`PostToolUse.tool_response.answers` may carry the same result. **This field is
+injected by the host hook, not produced by the agent.** The `TraceEvent` is
+still persisted verbatim; `src/lib/user-question-content.ts` only parses it for
+the preview, never rewriting the event, its status or its classification.
+Auto-approval introduces no new canonical event name, so the
+`PermissionRequest` / `PostToolUse` pairing and waiting-state rules are unchanged.
+
+The full interaction-hook flow (option clicks, free-text input, cancel, timeout
+and Agent notification), message formats and field constraints are specified in
+`docs/interaction-hooks-en.md`. It reuses the same `answers` payload rule:
+`tool_input.answers` is still injected by the host hook, not a new fact produced
+by the console.
+
 ### 4.1 Error and Exception Events
 
 An exception is not one event but four different blast radii. The same fault
@@ -138,7 +181,7 @@ so the contract fixes scope, event, trigger, and behavior together.
 | Tool | `PostToolUseFailure` | A tool call returned a failure; paired with `PreToolUse` by `toolUseId` | `failed` | `failed` | No |
 | Tool | `PostToolUse` | Success channel carried `tool_response.error` or `exitCode > 0` | producer value | `failed` | No |
 | Turn | `StopFailure` | A model or API fault prevented the turn from finishing | `failed` | `failed`; `waiting` when throttling evidence is present | Yes |
-| Turn | `Stop` + `status=failed` | The client folds the failure into its stop event (Codex `turn.failed`) | `failed` | `failed` | Yes |
+| Turn | `Stop` + `status=failed` | The client folds the failure into its stop event (ChatGPT `turn.failed`) | `failed` | `failed` | Yes |
 | Interaction | `PermissionDenied` | The auto-mode classifier denied a tool call, or the user rejected it | producer value | `failed`; `waiting` when `payload.retry=true` | No |
 | Session/Turn | `Interrupt` | The user aborted or cancelled, or the runtime was stopped | `interrupted` | `terminated` | Yes |
 | Session | `SessionEnd` | The session ended, including abnormal exits | producer value | `terminated` | Yes |
@@ -175,7 +218,7 @@ Five boundaries:
 Exception capture entry points per client (`—` means the client produces none,
 not "not implemented yet"):
 
-| Exception | Claude | Codex | WorkBuddy | Trae | ZCode | DeepSeek | OpenCode | Pi |
+| Exception | Claude | ChatGPT | WorkBuddy | Trae | ZCode | DeepSeek | OpenCode | Pi |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | Tool failure | `PostToolUseFailure` | folded into `PostToolUse` + `failed` | `PostToolUseFailure` | folded into `PostToolUse` | `PostToolUseFailure` | `tool/result` `isError` | `session.tool.failed` | `tool_result` `isError` |
 | Turn/model failure | `StopFailure` | folded into `Stop` + `failed` | `StopFailure` | `StopFailure` | — | `turn/end` `failed` / `blocked` | derived `session.step.failed` | `message_end.stopReason=error` |
@@ -192,9 +235,9 @@ timeout, exit code 0 on every path, and write or configuration failures
 reported on stderr with that single event dropped. **Observability must never
 block the agent.**
 
-## 5. Codex Mapping
+## 5. ChatGPT Mapping
 
-| Codex record | ASTRO event |
+| ChatGPT record | ASTRO event |
 | --- | --- |
 | `session_meta`, `thread.started` | `SessionStart` |
 | `turn.started`, runtime errors, other status signals | `Notification` |
@@ -265,7 +308,7 @@ that same result:
   identity", not "most events do". A source that names even one turn is
   authoritative for the whole batch: unnumbered events ride in the turn that
   was executing, and a later `UserPromptSubmit` does not open a new turn. The
-  official adapters honour this (DeepSeek/Codex stamp every turn,
+  official adapters honour this (DeepSeek/ChatGPT stamp every turn,
   Claude/ZCode/Pi/WorkBuddy stamp none). A *partially*-stamped source — a
   third-party HTTP collector or a future adapter that names only some turns —
   is the documented exception: its unnumbered later prompts fold into the
@@ -351,7 +394,7 @@ With a 24-hour limit:
 - Repository aggregation sorts by `capturedAt`, then `id`.
 - Session construction sorts by `capturedAt`, then `sequence` for equal times.
 - API and repository writes deduplicate by event `id`.
-- Codex history IDs depend on file path, line number, timestamp, type, and call ID, making unchanged imports repeatable.
+- ChatGPT history IDs depend on file path, line number, timestamp, type, and call ID, making unchanged imports repeatable.
 - Live hooks generate a new ID for each real event. Identical follow-up questions and answers remain separate events.
 
 Never deduplicate by message text, and never compare sequence numbers across unrelated producers.
@@ -426,6 +469,15 @@ are answered with `reset-same` (a few dozen bytes), so the page transfers
 nothing and parses nothing; a changed history misses the key and gets the
 regular `reset` plus batched `trace` frames. The key only answers "is this the
 same history" and takes no part in event deduplication.
+
+The interaction channel (the optional interaction hook) reuses the same stream:
+it adds `interaction.open` (`InteractionRequest`), `interaction.update`
+(`InteractionEvent`) and `interaction.close` (`InteractionResult`). Interactions
+are live-only and are not replayed after `reset` / `reset-same`; the write side
+is `POST /api/interactions`, `POST /api/interactions/<id>/events`,
+`POST /api/interactions/<id>/close` and `GET /api/interactions/<id>` — see
+`docs/interaction-hooks-en.md` §5–§6. `POST /api/events` still only writes
+TraceEvents and is not the answer channel.
 
 The server advertises `retry: 1000`. A plain reconnect receives another
 snapshot before live increments, so follow-up turns missed during disconnection

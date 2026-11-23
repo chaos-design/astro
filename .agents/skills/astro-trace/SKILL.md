@@ -1,6 +1,6 @@
 ---
 name: astro-trace
-description: Use when inspecting, verifying, or troubleshooting coding-agent session traces captured by ASTRO — finding the events.jsonl for a run, reading the local trace API, starting or checking the dashboard, importing Codex history, or diagnosing why an agent session was not recorded. Covers all captured clients (ZCode, Claude Code, Codex, OpenCode, Trae, WorkBuddy, DeepSeek).
+description: Use when inspecting, verifying, or troubleshooting coding-agent session traces captured by ASTRO — finding the events.jsonl for a run, reading the local trace API, starting or checking the dashboard, importing ChatGPT history, or diagnosing why an agent session was not recorded. Covers all captured clients (ZCode, Claude Code, ChatGPT, OpenCode, Trae, WorkBuddy, DeepSeek).
 ---
 
 # ASTRO trace inspection
@@ -20,7 +20,7 @@ Every captured session is one directory with one `events.jsonl`:
 
 - `ASTRO_HOME` defaults to `~/.astrox` (override with `ASTRO_HOME` / `AOT_HOME`,
   or `ASTRO_TRACE_DIR` for a per-project trace root).
-- `source` is the lowercase client name: `zcode`, `claude`, `codex`,
+- `source` is the lowercase client name: `zcode`, `claude`, `chatgpt`,
   `opencode`, `trae`, `workbuddy`, `deepseek`, `browser`.
 - Session directory names use underscores in the time part
   (`HH_mm_ss-<sessionId>`), never colons.
@@ -64,7 +64,7 @@ The `astro-trace` binary (repository `bin/astro.mjs`) supports:
 
 - `astro-trace doctor` — reports resolved paths and configuration validity
   without printing configured values. Run it after config changes.
-- `astro-trace import-codex` — idempotent import of existing Codex rollout
+- `astro-trace import-chatgpt` — idempotent import of existing ChatGPT rollout
   JSONL; unchanged re-imports add nothing.
 - `astro-trace migrate` — one-time migration of legacy flat event files into
   the per-session directory layout.

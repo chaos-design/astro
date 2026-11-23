@@ -1,0 +1,17 @@
+{
+  "name": "astro",
+  "version": "0.0.7",
+  "description": "ASTRO captures ChatGPT lifecycle events locally for search, inspection, and replay.",
+  "author": {
+    "name": "ASTRO Contributors"
+  },
+  "keywords": [
+    "chatgpt",
+    "agent-state",
+    "observability",
+    "tracing",
+    "hooks",
+    "replay"
+  ],
+  "hooks": "./hooks/hooks.json"
+}

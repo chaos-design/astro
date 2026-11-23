@@ -35,7 +35,10 @@ a current user promise.
 | Guide observability markers | Implemented | The observability list uses semantic bullets without changing ordered steps | `src/app.tsx`, `src/styles.css` |
 | Topology domain-label readability | Implemented | Larger domain labels improve fitted-canvas readability without geometry changes | `src/styles.css`, `tests/atom-node-typography-contract.test.ts` |
 | Plugin YAML and `.env` configuration | Implemented | One installed, shared configuration source is loaded by every entry point | `config.example.yaml`, `plugin/runtime-config.cjs`, `tests/runtime-config.test.cjs` |
+| Optional auto-approve decision hook | Implemented (off by default) | A separate host-side handler approves user questions and plan approvals; the capture chain stays read-only and fail-open | `scripts/auto-approve-question-hook.mjs`, `scripts/install-auto-approve-hook.mjs`, `tests/auto-approve-hook.test.mjs` |
 | Documentation and HTML synchronization | Documentation | This reference owns delivery status; the decks adapt it for their audiences | `docs/index.md` and the two self-contained HTML files |
+
+The optional decision hook row is a host-side extension, not a capture feature: it is off by default and never changes recorder output.
 
 Runtime configuration is generated automatically during installation, retained
 across upgrades, and packaged with the native integrations.
@@ -133,7 +136,39 @@ dimming. Reduced-motion mode keeps static emphasis.
 `ElicitationResult`, and `Notification` display as `user.question`. Generic
 tool events named `AskUserQuestion`, `request_user_input`, or `UserQuestion`
 also map to that atom. A start waits for user input; its completion closes the
-same instance.
+same instance. **Only a start with answerable parameters blocks**:
+`isBlockingUserQuestionStartEvent` is the one predicate. A `PermissionRequest`
+or a `notification_type=permission_prompt` `Notification` needs a non-empty
+`questions` / `plan` to be a question start. WorkBuddy emits only a permission
+notification naming `AskUserQuestion` while the host asks; its real `questions`
+arrive with a later `PreToolUse`, so that notification is a system authorization
+— it neither blocks nor offers an answer. ZCode's `Bash` / `Edit` permission
+requests also display as `permission.request` and project onto Action Gate.
+WorkBuddy's notification stays on the User Question atom in the `delta` phase,
+so the later parameterized `PreToolUse` takes over the same atom and the
+question with options stays reachable.
+
+Recognizing `AskUserQuestion` rests on one test — "is this a question tool"
+(`isUserQuestionToolEvent` in `src/lib/trace-event-kind.ts`). Its input types
+fall into the dimensions below; any combination must hit the `user.question`
+atom (so the `user-question` node lights up in the Flow, and its waiting state
+is decided by the last event):
+
+| Dimension | Values |
+| --- | --- |
+| Event name | `PreToolUse` / `PostToolUse` (recognized by tool name); `PermissionRequest` (recognized by event name, waiting state) |
+| Notification | `Notification` with `notification_type=permission_prompt` whose `message` / tool fields name a question tool; WorkBuddy's only pre-answer signal while the host asks, but non-blocking without parameters |
+| Blocking parameters | a non-empty `questions` or `plan` turns a question/permission event into a waiting run with a Flow answer box; without it the event is a system authorization |
+| Tool-name field | top-level `toolName`, or snake `payload.tool_name`, or camel `payload.toolName`, or nested in the tool input (`payload.tool_input.name` / `.tool_name` / `payload.toolInput.name` / `.toolName`) |
+| Question location | `payload.tool_input.questions` and its camel mirror `payload.toolInput.questions`; top-level `payload.questions` is also accepted |
+| Options / answers | options are `{ label, description? }` objects or plain strings; `multiSelect` may be boolean; `tool_input.answers` / `tool_response.answers` injected by the auto-approve hook are preview-only and never change event classification |
+
+The camel tool-name spellings (`payload.toolName` / `payload.toolInput.*`) are
+required: real ZCode and WorkBuddy events carry both the snake field and the
+top-level `toolName`, but a collector that writes only the camel fields would
+be misread as a generic `tool.call` without them, darkening the Flow's
+question node. The "every spelling routes to the user.question atom" case in
+`tests/user-question-projection.test.ts` guards this per spelling.
 
 ## 5. Storage Layout and Migration
 
@@ -203,7 +238,7 @@ The agent filter is the **outer** filter, and the live index follows it:
 produce the `liveSessionKeys` the list actually uses — so the count, the pin,
 the window exemption and the Live filter always describe one list. The previous
 implementation merged other agents' live sessions into `historySessions`, which
-is how a Codex view showed the Claude message that was executing at the time,
+is how a ChatGPT view showed the Claude message that was executing at the time,
 pinned on top; that path is gone. A neighbour that is running is signalled by
 the agent picker instead: `scopeLiveRunIndex` also returns the machine-wide
 `sources`, and `AgentSelect` marks those entries with a `--status-running`
@@ -286,7 +321,16 @@ from `package.json` or the installed runtime's `plugin.json`), **process**
 trace files, data root) and **sessions** (`active` / `waiting` / `complete` /
 `failed` / `terminated`). A console/service version mismatch is called out; an
 unreadable manifest reports "not reported" with the reason instead of a bare
-`unknown`.
+`unknown`, and a **capture plugins** group (`/api/health.captureVersions`: the
+long-lived capture-adapter version that actually wrote each source's events).
+opencode / pi stamp their own `package.json` version on every event as
+`payload.captureVersion`. The service also buckets events with no stamp at all
+(a process running pre-stamp code writes none) and reports `stale` when two
+stamped versions coexist or an unstamped event is at least as recent as the
+newest stamped one — derived from event timestamps, not wall-clock freshness.
+The card shows a `v旧(未标记)` bucket and, when stale, a one-click copyable
+host-specific restart command (`opencode service restart` for opencode, a Pi
+session hint for pi); it never claims to have applied the restart itself.
 
 ### Guide and log controls
 

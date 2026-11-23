@@ -203,7 +203,7 @@ export type EdgeDefinition = [
 
 export type PlatformId =
   | "claude"
-  | "codex"
+  | "chatgpt"
   | "deepseek"
   | "llama"
   | "pi"

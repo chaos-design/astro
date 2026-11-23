@@ -52,7 +52,7 @@ writeFileSync(
       name: "astro-plugin",
       version: packageMetadata.version,
       description:
-        "ASTRO local-first trace integrations for Trae, Claude Code, Codex, DeepSeek Harness, and WorkBuddy.",
+        "ASTRO local-first trace integrations for Trae, Claude Code, ChatGPT, DeepSeek Harness, and WorkBuddy.",
       license: "UNLICENSED",
       type: "module",
       bin: {

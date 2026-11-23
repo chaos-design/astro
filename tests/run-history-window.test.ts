@@ -11,11 +11,12 @@ import {
   pinLiveRunHistory,
   scopeLiveRunIndex,
   selectLiveRunHistory,
+  selectScopeFallbackRun,
   selectVisibleRunHistory,
 } from "../src/lib/run-history-window.ts";
 import type { TraceSession } from "../src/types/trace.ts";
 
-function session(start: number, source = "codex"): TraceSession {
+function session(start: number, source = "chatgpt"): TraceSession {
   return {
     key: `${source}::ws::${start}`,
     id: String(start),
@@ -149,6 +150,43 @@ test("pins the executing run above runs that started later", () => {
   );
 });
 
+test("scope fallback picks the executing run, not the newest finished one", () => {
+  const resumed = session(1_000, "claude");
+  const finished = session(9_000, "claude");
+  const newerLive = session(5_000, "claude");
+  const messageStart = (row: TraceSession) =>
+    row.key === resumed.key ? 8_000 : row.start;
+
+  assert.equal(
+    selectScopeFallbackRun(
+      [finished, resumed],
+      new Set([resumed.key]),
+      messageStart,
+    )?.key,
+    resumed.key,
+    "a resumed run executing now outranks a newer finished run",
+  );
+  assert.equal(
+    selectScopeFallbackRun(
+      [finished, resumed, newerLive],
+      new Set([resumed.key, newerLive.key]),
+      messageStart,
+    )?.key,
+    resumed.key,
+    "two live rows use the same newest-message ordering as the pinned list",
+  );
+  assert.equal(
+    selectScopeFallbackRun([finished, resumed], new Set())?.key,
+    finished.key,
+    "without a live run the newest row of the scope stays the fallback",
+  );
+  assert.equal(
+    selectScopeFallbackRun([], new Set()),
+    undefined,
+    "an empty scope has no run to open",
+  );
+});
+
 test("keeps the newest-first order while nothing is executing", () => {
   const first = session(Date.parse("2026-10-09T11:00:00"));
   const second = session(Date.parse("2026-10-09T10:00:00"));
@@ -267,24 +305,24 @@ test("widens the window by doubling and clamps when exhausted", () => {
 });
 
 test("filters sessions to a configured agent source", () => {
-  const configured = new Set(["codex", "claude"]);
+  const configured = new Set(["chatgpt", "claude"]);
   const sessions = [
-    session(1, "codex"),
+    session(1, "chatgpt"),
     session(2, "claude"),
     session(3, "unknown-agent"),
   ];
   assert.deepEqual(
-    filterSessionsByAgent(sessions, "codex", configured).map(
+    filterSessionsByAgent(sessions, "chatgpt", configured).map(
       (entry) => entry.source,
     ),
-    ["codex"],
+    ["chatgpt"],
   );
 });
 
 test("Others keeps only unconfigured sources", () => {
-  const configured = new Set(["codex", "claude"]);
+  const configured = new Set(["chatgpt", "claude"]);
   const sessions = [
-    session(1, "codex"),
+    session(1, "chatgpt"),
     session(2, "unknown-agent"),
     session(3, "workbuddy"),
   ];
@@ -300,13 +338,13 @@ test("the agent scope owns the live index, however the machine is running", () =
   // A live run of another agent is real, but it is not part of this list: the
   // dropdown is the outer filter, and the window / pin / `N LIVE` count all
   // read the scoped set. Mixing it in put a Claude message at the top of the
-  // Codex history.
-  const codex = session(NOW - HOUR, "codex");
+  // ChatGPT history.
+  const chatgpt = session(NOW - HOUR, "chatgpt");
   const claudeLive = session(NOW - 2 * HOUR, "claude");
   claudeLive.status = "active";
   claudeLive.end = NOW;
-  const all = [codex, claudeLive];
-  const scoped = filterSessionsByAgent(all, "codex", new Set(["codex", "claude"]));
+  const all = [chatgpt, claudeLive];
+  const scoped = filterSessionsByAgent(all, "chatgpt", new Set(["chatgpt", "claude"]));
 
   const index = scopeLiveRunIndex(all, new Set([claudeLive.key]), scoped);
 
@@ -322,14 +360,14 @@ test("the agent scope owns the live index, however the machine is running", () =
   );
   assert.deepEqual(
     rows.map((entry) => entry.source),
-    ["codex"],
+    ["chatgpt"],
   );
 
   // The same run inside its own scope is live, pinned and counted.
   const ownScope = filterSessionsByAgent(
     all,
     "claude",
-    new Set(["codex", "claude"]),
+    new Set(["chatgpt", "claude"]),
   );
   const ownIndex = scopeLiveRunIndex(all, new Set([claudeLive.key]), ownScope);
   assert.deepEqual([...ownIndex.keys], [claudeLive.key]);

@@ -2,7 +2,7 @@
 
 ASTRO means **Agent State Trace & Runtime Observations**.
 
-This package installs local trace integrations for Trae, Claude Code, Codex,
+This package installs local trace integrations for Trae, Claude Code, ChatGPT,
 DeepSeek Harness, and WorkBuddy / CodeBuddy Code.
 It does not upload trace data. Portable runtimes bundle the configuration
 parsers they need and do not fetch dependencies while an Agent Hook runs.
@@ -22,12 +22,12 @@ pnpm build:native-plugins
 ```
 
 4. Choose one integration per client. Do not install both the native plugin
-   and direct hooks for the same Codex, Claude Code, or WorkBuddy environment,
+   and direct hooks for the same ChatGPT, Claude Code, or WorkBuddy environment,
    because both receive the same lifecycle events.
 
 5. Confirm the client process can write the data root. The default is
-   `~/.astrox`; Codex direct-hook installation also needs write access to
-   `$CODEX_HOME` (normally `~/.codex`). Sandboxed IDEs may require these
+   `~/.astrox`; ChatGPT direct-hook installation also needs write access to
+   `$CHATGPT_HOME` (normally `~/.chatgpt`). Sandboxed IDEs may require these
    directories to be added to their explicit write allowlist.
 
 ## Native client plugins
@@ -39,30 +39,30 @@ native plugins:
 pnpm build:native-plugins
 ```
 
-### Codex plugin
+### ChatGPT plugin
 
-The Codex package lives in `codex-plugin/` and is listed by
+The ChatGPT package lives in `chatgpt-plugin/` and is listed by
 `.agents/plugins/marketplace.json`.
 
 ```bash
-codex plugin marketplace add /absolute/path/to/astro
-codex plugin add astro@astro-local
+chatgpt plugin marketplace add /absolute/path/to/astro
+chatgpt plugin add astro@astro-local
 ```
 
 Start a new session, open `/hooks`, and trust the ASTRO hooks.
-Codex requires explicit trust when a plugin installs or changes command hooks.
+ChatGPT requires explicit trust when a plugin installs or changes command hooks.
 
 Verify discovery and installation:
 
 ```bash
-codex plugin marketplace list
-codex plugin list --json
+chatgpt plugin marketplace list
+chatgpt plugin list --json
 ```
 
 Remove the plugin:
 
 ```bash
-codex plugin remove astro@astro-local
+chatgpt plugin remove astro@astro-local
 ```
 
 ### Claude Code plugin
@@ -212,26 +212,210 @@ pnpm install-plugins
 The installer preserves unrelated hooks and refreshes the shared standalone
 runtime in `~/.astrox/plugins/astro` for every client.
 
+## Optional: auto-approve user questions
+
+ASTRO's capture hooks are read-only; they never approve permissions. When a
+session stops at `AskUserQuestion` or at plan approval (`ExitPlanMode`), a
+**separate, opt-in** decision hook can answer on your behalf so you do not
+have to switch back to the agent app. It is not installed by
+`pnpm install-plugins` and is off by default.
+
+`scripts/auto-approve-question-hook.mjs` reads the hook's stdin JSON and
+returns `hookSpecificOutput` with `permissionDecision: "allow"` (`PreToolUse`)
+or `decision.behavior: "allow"` (`PermissionRequest`), always with a full
+`updatedInput`. For `AskUserQuestion` it fills `answers` with the first option
+label of each question, keyed by the exact question text; for `ExitPlanMode`
+it echoes `tool_input.plan`. An `allow` without `updatedInput` is ignored for
+these interactive tools, which is why the input must be returned. Unmatched
+events, incomplete payloads and parse errors produce empty stdout and exit
+code 0, so the host falls back to its normal prompt. The script never writes
+to the trace, never returns `continue: false`, and never exits non-zero.
+
+Register it with the dry-run installer, review the printed settings, then add
+`--apply`:
+
+```bash
+pnpm install:auto-approve -- --client=claude            # preview only
+pnpm install:auto-approve -- --client=claude --apply    # save
+pnpm install:auto-approve -- --client=zcode --apply
+pnpm install:auto-approve -- --client=codebuddy --apply
+pnpm install:auto-approve -- --client=zcode --remove --apply   # uninstall
+```
+
+The installer merges one matcher-limited group (`AskUserQuestion|ExitPlanMode`)
+into `~/.claude/settings.json`, `~/.codebuddy/settings.json`, or
+`~/.zcode/cli/config.json`. It preserves every other key and hook group, is
+idempotent, and backs up the target before writing. Before `--apply` writes a
+ZCode config, the installer validates the merged structure (`hooks.enabled`,
+`hooks.events`, and a legal name-list matcher); an invalid structure aborts
+without touching the file. Copy-ready fragments are
+in `scripts/auto-approve-claude.example.json` and
+`scripts/auto-approve-zcode.example.json`; replace the placeholder with the
+absolute path of the script in your checkout.
+
+Host notes:
+
+- Claude Code: `/hooks` lists the group; an approved plan shows
+  `Allowed by PermissionRequest hook` instead of a dialog.
+- ZCode: the user-level config needs `hooks.enabled: true` (the installer sets
+  it), project-level hooks are ignored, and hook configuration is snapshotted
+  at session start — open a **new session**. Failures appear in
+  `~/.zcode/cli/log/zcode-<date>.jsonl`.
+- CodeBuddy Code: its `PreToolUse` uses `modifiedInput` instead of
+  `updatedInput`. Set `ASTRO_AUTO_APPROVE_INPUT_FIELD=modifiedInput` in the
+  host environment and register with `--event=PreToolUse`.
+- ChatGPT, OpenCode, Pi and DeepSeek Harness have no command-hook decision
+  channel; use the host's native permission mode instead.
+
+Keep one decision hook per request. Multiple hooks aggregate as
+`deny > ask > allow`; explicit deny rules, plan-mode write bans and hard tool
+limits are not bypassed by `allow`. Leave ASTRO's recorder commands untouched
+and `--quiet` where required, so their stdout never joins the aggregation.
+Environment overrides inherited from the host process:
+`ASTRO_AUTO_APPROVE_EVENTS`, `ASTRO_AUTO_APPROVE_TOOLS`,
+`ASTRO_AUTO_APPROVE_ANSWER` (`first` by default, `last`, or `all` — `all` joins
+every option label with commas for multi-select),
+`ASTRO_AUTO_APPROVE_ANSWERS` (a JSON map from question text to an answer string
+or array; arrays are comma-joined and take priority over automatic selection),
+and `ASTRO_AUTO_APPROVE_INPUT_FIELD`. The full table is in the deployment guide.
+
+Verification:
+
+1. Pipe a payload into the script and check the JSON decision:
+   `echo '{"hook_event_name":"PermissionRequest","tool_name":"AskUserQuestion","tool_input":{"questions":[{"question":"Pick one","options":[{"label":"Yes"},{"label":"No"}]}]}}' | node scripts/auto-approve-question-hook.mjs`.
+   An unrelated payload must print nothing and exit 0.
+2. Run `node --test tests/auto-approve-hook.test.mjs` for the protocol,
+   fail-open, config merge and installer cases.
+3. In the host, trigger a question or plan approval; the transcript should
+   show the hook's approval and no dialog. Disable the group and confirm the
+   prompt returns; verify a `Bash` permission request still prompts.
+4. In ASTRO, confirm `PermissionRequest` / `PostToolUse` events are still
+   captured, no run stays waiting, and the auto-filled `answers` is visible in
+   the Input/Preview tab.
+
+**Disable and remove**: delete the group from the settings file, or run
+`pnpm install:auto-approve -- --client=zcode --remove --apply`. Removal is also
+dry-run by default; it strips only handlers whose command or args reference
+`auto-approve-question-hook.mjs`, keeps every unrelated hook group and key, and
+backs up the file before writing. No ASTRO data or runtime state needs cleanup.
+
+## Optional: answer user questions from the console
+
+The auto-approve hook answers *for* you. The interaction hook is the human fast
+path: the host asks its normal question, the ASTRO console renders it in a
+floating panel, you click (or type) an answer, and the answer travels back
+inside the host's short hook window so the agent continues without an app
+switch. It is a second, independent opt-in hook — the capture recorder stays
+read-only and is not modified.
+
+`scripts/interaction-hook.mjs` reads the same stdin JSON, registers the request
+at `POST /api/interactions`, then polls `<ASTRO_HOME>/interactions/<id>.json`.
+A `answered` result becomes `allow` with a full `updatedInput` (or
+`modifiedInput` on CodeBuddy) whose `answers` keys are the exact question texts.
+`cancelled`, a timeout or an unreachable service produce empty stdout and exit
+0, so the host's native prompt takes over. The hook never exits non-zero and
+never writes a second `PermissionRequest` row: the recorder already captures the
+same host event.
+
+Register it with the dry-run installer, review the printed settings, then add
+`--apply`:
+
+```bash
+pnpm install:interaction -- --client=claude             # preview only
+pnpm install:interaction -- --client=claude --apply     # save
+pnpm install:interaction -- --client=zcode --apply
+pnpm install:interaction -- --client=codebuddy --apply
+pnpm install:interaction -- --client=zcode --timeout=120 --apply   # custom window
+pnpm install:interaction -- --client=claude --remove --apply   # uninstall
+```
+
+The default event is `PermissionRequest` for Claude Code and ZCode, but
+`PreToolUse` for CodeBuddy Code, because its `modifiedInput` override is only
+documented on `PreToolUse`. Override with `--events=PreToolUse` or
+`--events=PreToolUse,PermissionRequest` when needed. Only `PreToolUse` can carry
+`additionalContext` / `systemMessage` back to the model — `PermissionRequest`
+stdout must keep exactly `decision.behavior` + `decision.updatedInput` for
+ZCode's strict schema.
+`ExitPlanMode` renders as an “Approve this plan?” card: only Approve returns a
+decision, and the plan text is echoed without `answers`. The console's
+inspector answers it with one click on Approve/Reject.
+
+Host notes:
+
+- The service must be running. The answer window **is** the hook's registered
+  timeout: the installer writes the same number of seconds (`--timeout`,
+  default 600) into the host's hook configuration and the hook's `--timeout`
+  argument (`ttlMs = timeout - 500`). While a console page is attached to the
+  stream the whole window is answerable; with no console connected the service
+  closes the request at once, so the native prompt appears immediately instead
+  of the agent waiting out the window unattended.
+- CodeBuddy answers arrive in `modifiedInput`; the installer registers the
+  handler under `PreToolUse` and appends `--input-field=modifiedInput` and
+  `--source=workbuddy` automatically.
+- ZCode needs `hooks.enabled: true` and a new session; the installer sets the
+  flag and validates `hooks.events` before writing.
+- Claude Code: `/hooks` lists the group; the transcript shows the allowed
+  decision instead of a dialog.
+- Do not install the auto-approve hook and the interaction hook on the same
+  event: auto-approve returns `allow` immediately, the interaction hook still
+  waits out its window, and the panel is pointless. Pick one per event.
+- Only Claude Code, ZCode and CodeBuddy have a command-hook decision channel;
+  ChatGPT, OpenCode, Pi and DeepSeek Harness keep their native permission mode.
+
+Environment overrides inherited from the host process (all optional):
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `ASTRO_INTERACTION_SERVICE` | `http://127.0.0.1:5678` | Local service origin |
+| `ASTRO_INTERACTION_TIMEOUT_MS` | installer `--timeout` × 1000 | Answer window; `ttlMs = timeout - 500` |
+| `ASTRO_INTERACTION_POLL_MS` | `100` | Result-file poll interval |
+| `ASTRO_INTERACTION_SOURCE` | derived from the client | Trace source id |
+| `ASTRO_INTERACTION_EVENTS` | `PermissionRequest` | Hook events the script answers |
+| `ASTRO_INTERACTION_TOOLS` | `AskUserQuestion,ExitPlanMode` | Tools it intercepts |
+| `ASTRO_INTERACTION_INPUT_FIELD` | `updatedInput` | `modifiedInput` on CodeBuddy |
+
+Verification:
+
+1. `node --test tests/interaction-hook.test.mjs` covers the window, both stdout
+   shapes, ExitPlanMode, the notification strings and the fail-open cases.
+2. `node --test tests/interaction-integration.test.mjs` runs the real service:
+   `Bash` is never intercepted, `Notification` returns no decision, a timeout
+   falls back, and a dead service still exits 0.
+3. In the host, trigger `AskUserQuestion`; the console panel should appear, the
+   answer should continue the agent, and `PostToolUse` should carry `answers`.
+   Let a second question expire and confirm the native prompt appears.
+4. In ASTRO, confirm the LOG shows one question row and one answer row, and a
+   `Notification` row records who answered (counts and device only).
+
+**Disable and remove**: run
+`pnpm install:interaction -- --client=<client> --remove --apply`. Removal is
+dry-run by default and strips only handlers that reference
+`interaction-hook.mjs`; the recorder group and the auto-approve group keep their
+place. Deleting the group by hand is equivalent.
+
+The full contract (five message shapes, the four `/api/interactions` routes and
+the three SSE frames) is in `docs/interaction-hooks-en.md`.
+
 ## Install and use each client
 
-### Codex
+### ChatGPT
 
 Install for the current user:
 
 ```bash
-pnpm install-plugins -- --clients=codex
+pnpm install-plugins -- --clients=chatgpt
 ```
 
-The hook configuration is `$CODEX_HOME/hooks.json`, normally
-`~/.codex/hooks.json`. Use `--codex-home=/path/to/.codex` when Codex stores its
+The hook configuration is `$CHATGPT_HOME/hooks.json`, normally
+`~/.chatgpt/hooks.json`. Use `--chatgpt-home=/path/to/.chatgpt` when ChatGPT stores its
 configuration elsewhere.
 
-Restart Codex, run `codex` in the project to observe, and start a new session.
-Live events are written to `~/.astrox/codex/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl`. To add active and
+Restart ChatGPT, run `chatgpt` in the project to observe, and start a new session.
+Live events are written to `~/.astrox/chatgpt/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl`. To add active and
 archived sessions created before hook installation:
 
 ```bash
-pnpm import-codex
+pnpm import-chatgpt
 ```
 
 ### Claude Code
@@ -324,7 +508,7 @@ Build the package with `pnpm build:plugin`. The generated `.tgz` is placed in
 PLUGIN_TGZ=/absolute/path/to/astro-plugin.tgz
 
 pnpm dlx "$PLUGIN_TGZ" install \
-  --clients codex,claude,workbuddy \
+  --clients chatgpt,claude,workbuddy \
   --scope user
 
 pnpm dlx "$PLUGIN_TGZ" install \
@@ -433,7 +617,7 @@ For a source installation, inspect the generated configuration and data:
 
 ```bash
 find ~/.astrox -type f -name events.jsonl -print
-tail -n 1 ~/.astrox/codex/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
+tail -n 1 ~/.astrox/chatgpt/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
 tail -n 1 ~/.astrox/claude/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
 tail -n 1 ~/.astrox/deepseek/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
 tail -n 1 ~/.astrox/trae/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
@@ -478,7 +662,7 @@ trajectory, log, replay, and `-prompt-<number>.jsonl` export.
 
 ## How capture works
 
-1. Trae, Claude Code, Codex, or WorkBuddy invokes a command hook with JSON on stdin;
+1. Trae, Claude Code, ChatGPT, or WorkBuddy invokes a command hook with JSON on stdin;
    DeepSeek Harness publishes its native session events to the Cordis plugin.
 2. The recorder normalizes the event and redacts common secrets.
 3. The event is appended to
@@ -505,7 +689,7 @@ captured content to a remote service.
     server/
   dashboard-5678.pid
   claude/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
-  codex/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
+  chatgpt/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
   deepseek/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
   trae/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl
   browser/YYYY/MM-DD/HH_mm_ss-<sessionId>/events.jsonl

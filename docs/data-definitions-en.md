@@ -12,7 +12,7 @@
 | TraceEvent | The smallest persisted fact in ASTRO. Every client signal is normalized into this structure before storage. |
 | Session | One continuous agent execution context within a source, identified by `sessionId`. |
 | Workspace | The spatial isolation dimension of events, identified by `workspaceId`. |
-| Source | The client type that produced the event, e.g. `claude`, `codex`, `workbuddy`. |
+| Source | The client type that produced the event, e.g. `claude`, `chatgpt`, `workbuddy`. |
 | Prompt sub-run | A read-time interval derived by the console from each `UserPromptSubmit`, covering that prompt plus everything before the next one. |
 | Execution domain | A grouping the console dynamically creates for each observed executor (main agent or subagent) within a session. |
 | Atom | The smallest execution node on the topology graph, folded from atom events or paired tool events. |
@@ -44,7 +44,7 @@ The current `schemaVersion` is `2`. Field semantics and generation rules:
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
 | `schemaVersion` | number | yes | Write protocol version; readers normalize older formats. |
-| `id` | string | yes | Unique event ID. UUID for live capture; deterministic hash for Codex history imports. |
+| `id` | string | yes | Unique event ID. UUID for live capture; deterministic hash for ChatGPT history imports. |
 | `capturedAt` | ISO 8601 string | yes | Source time or capture time. |
 | `source` | string | yes | Normalized source name. |
 | `sourceVersion` | string \| null | yes | Source client version, `null` when unknown. |
@@ -77,7 +77,7 @@ The current `schemaVersion` is `2`. Field semantics and generation rules:
 | Input contains | Canonical source |
 | --- | --- |
 | `claude` | `claude` |
-| `codex` or `openai` | `codex` |
+| `chatgpt` or `openai` | `chatgpt` |
 | `deepseek` or exact `dsh` | `deepseek` |
 | `workbuddy` or `codebuddy` | `workbuddy` |
 | `trae` | `trae` |

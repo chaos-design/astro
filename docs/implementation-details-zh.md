@@ -30,9 +30,10 @@
 | Guide 观测列表标记 | 已实现 | 观测列表恢复语义化圆点，不改变有序步骤 | `src/app.tsx`、`src/styles.css` |
 | 拓扑领域标题可读性 | 已实现 | 放大领域标题和说明，不改变几何与布局 | `src/styles.css`、`tests/atom-node-typography-contract.test.ts` |
 | 插件级 YAML 与 `.env` 配置 | 已实现 | 在安装目录统一加载结构化配置与本机私密值 | `config.example.yaml`、`plugin/runtime-config.cjs`、`tests/runtime-config.test.cjs` |
+| 可选自动同意决策 Hook | 已实现（默认关闭） | 宿主侧独立 handler 自动批准用户提问与计划批准；采集链路仍只读、fail-open | `scripts/auto-approve-question-hook.mjs`、`scripts/install-auto-approve-hook.mjs`、`tests/auto-approve-hook.test.mjs` |
 | 文档与 HTML 同步 | 文档治理 | 以本文为状态事实源，分享和面试材料按受众抽象 | `docs/index.md`、两份自包含 HTML |
 
-当前 10 项产品设计均已形成实现与测试证据。本轮同步没有把尚未实现的路线图包装成
+当前 10 项产品设计均已形成实现与测试证据；上表另列默认关闭的可选决策 Hook，属于宿主侧扩展而非采集能力。本轮同步没有把尚未实现的路线图包装成
 现有能力；分页索引、自动归档、远程认证和多租户仍属于后续规划。
 
 ## 3. 运行状态与 Prompt 隔离
@@ -113,7 +114,35 @@ Prompt、状态、来源、时间、事件标签、摘要和规范化可搜索�
 `PermissionRequest`、`PermissionDenied`、`Elicitation`、
 `ElicitationResult` 和 `Notification` 显示为 `user.question`。通用工具事件中的
 `AskUserQuestion`、`request_user_input` 和 `UserQuestion` 也映射到同一原子；
-开始事件进入等待态，结束事件关闭对应实例。
+开始事件进入等待态，结束事件关闭对应实例。**只有带可作答参数的开始事件才阻塞**：
+`PermissionRequest` 与 `notification_type=permission_prompt` 的 `Notification`
+必须有非空 `questions` 或 `plan`，才算提问开始（`isBlockingUserQuestionStartEvent`
+是唯一判定）。WorkBuddy 在宿主弹题时只有一条点名 `AskUserQuestion` 的权限通知，
+真正的 `questions` 随之后的 `PreToolUse` 落盘；这条通知只是系统授权，不阻塞、不
+提供作答入口。其他权限请求（ZCode 的 `Bash` / `Edit` 等）显示键同为
+`permission.request`、投影到 Action Gate；WorkBuddy 那条点名提问工具的通知仍留在
+User Question 原子（delta 阶段），这样后续带选项的 `PreToolUse` 能接管同一个原子，
+不会“到不了有选项的提问”。
+
+`AskUserQuestion` 的识别只依据「这是提问工具」这一判定
+（`src/lib/trace-event-kind.ts` 的 `isUserQuestionToolEvent`），输入类型可归纳为
+下列维度，任意组合都必须命中 `user.question` 原子（Flow 的 `user-question` 节点
+因此会点亮，等待态由「最后一条事件」判定）：
+
+| 维度 | 取值 |
+| --- | --- |
+| 事件名 | `PreToolUse` / `PostToolUse`（按工具名识别）；`PermissionRequest`（按事件名识别，等待态） |
+| 通知事件 | `Notification`（`notification_type=permission_prompt` 且 `message` / 工具字段点名提问工具；WorkBuddy 在宿主弹题时的唯一前置信号，但无参数时不阻塞） |
+| 阻塞参数 | 非空 `questions` 或 `plan`：只有它把提问/权限事件变成等待态与 Flow 作答入口；没有参数则是系统授权 |
+| 工具名字段 | 顶层 `toolName`，或 snake `payload.tool_name`，或 camel `payload.toolName`，或嵌套在工具输入里（`payload.tool_input.name` / `.tool_name` / `payload.toolInput.name` / `.toolName`） |
+| 问题位置 | `payload.tool_input.questions` 与 camel 镜像 `payload.toolInput.questions`；顶层 `payload.questions` 也接受 |
+| 选项/答案 | 选项为 `{ label, description? }` 对象或纯字符串；`multiSelect` 可为布尔；自动同意 Hook 注入的 `tool_input.answers` / `tool_response.answers` 仅作预览展示，不改变事件分类 |
+
+camel 工具名（`payload.toolName` / `payload.toolInput.*`）是识别的必需项：ZCode
+与 WorkBuddy 的真实事件同时带 snake 与顶层 `toolName`，但若某采集端只写 camel
+字段，缺失识别会把该事件误判为通用 `tool.call`，使 Flow 的提问节点变暗
+（`tests/user-question-projection.test.ts` 的「each spelling routes to the
+user.question atom」用例逐条守住）。
 
 ## 5. 存储路径与迁移
 
@@ -169,7 +198,7 @@ Guide 的观测列表保留语义化 `ul` / `li`，使用原生 `disc` 标记。
 智能体筛选是**外层**，实时索引随之收窄：`collectLiveRunKeys` 只回答「这台机器上有
 谁在跑」，`scopeLiveRunIndex` 再把它与所选智能体的会话求交，得到列表真正使用的
 `liveSessionKeys`，计数、置顶、窗口豁免与 Live 筛选因此永远描述同一个列表。早期实现
-把别的智能体的 live 会话直接补进 `historySessions`，于是 Codex 视图里也能看到 Claude
+把别的智能体的 live 会话直接补进 `historySessions`，于是 ChatGPT 视图里也能看到 Claude
 正在执行的那条消息，还被置顶——这条路径已经删掉。别的智能体是否在跑改由智能体下拉框
 提示：`scopeLiveRunIndex` 同时返回全机器的 `sources`，命中项的智能体在 `AgentSelect`
 里带一个 `--status-running` 呼吸圆点。切换智能体时清空当前选中（`activeSessionKey`
@@ -237,8 +266,20 @@ Guide 的观测列表保留语义化 `ul` / `li`，使用原生 `disc` 标记。
 `appVersion`；服务 = `/api/health` 的 `build`，来自 `package.json` 或安装目录的
 `plugin.json`）、**进程**（启动时间、启动耗时、重启次数、SSE 客户端数）、**数据**
 （事件数、轨迹文件数、数据根目录）、**会话**（`active` / `waiting` / `complete` /
-`failed` / `terminated` 五个计数）。两侧版本不一致会提示刷新或重启；`build` 读不到
-清单时为 `unknown`，卡片显示「未上报」并说明原因，而不是把 `unknown` 丢给用户。
+`failed` / `terminated` 五个计数）、**采集插件版本**（`/api/health` 的
+`captureVersions`：按 `source` 列出实际写入事件的长驻采集器版本）。两侧版本不一致会
+提示刷新或重启；`build` 读不到清单时为 `unknown`，卡片显示「未上报」并说明原因，而不是
+把 `unknown` 丢给用户。
+
+opencode / pi 这类长驻采集器在 `enqueue` 时把自己的 `package.json` 版本盖到每条事件的
+`payload.captureVersion`（单一来源就是各自的清单）；服务在 `indexEvent` 与 `append`
+里按 source 汇总版本及最近时间，并单独统计「无版本」事件的最近时间（旧代码进程根本
+不写版本，只数带版本事件会永远看不到漂移）。`/api/health.captureVersions` 对每个
+source 返回 `versions` / `unversionedAt` / `stale`：两个带版本版本并存，或无版本事件
+不早于最新带版本事件，都判为 `stale`（按事件时间推导，不依赖墙上时钟）。卡片显示
+`v旧(未标记)` 桶，`stale` 时给出可一键复制的宿主相关重启指令（`opencode service restart`
+或 Pi 会话提示），绝不假装浏览器能替你重启进程。这让「装没装上、生效没生效」变成
+可观测状态，而不是靠间接症状猜。
 
 ### 指南与日志控件
 

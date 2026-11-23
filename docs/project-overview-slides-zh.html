@@ -2412,7 +2412,7 @@
 
     .integration-client.trae { top: 44px; left: 44px; color: var(--blue); }
     .integration-client.claude { top: 44px; right: 44px; color: var(--amber); }
-    .integration-client.codex { bottom: 44px; left: 44px; color: var(--green); }
+    .integration-client.chatgpt { bottom: 44px; left: 44px; color: var(--green); }
     .integration-client.browser { right: 44px; bottom: 44px; color: var(--violet); }
 
     .deploy-command {
@@ -2979,7 +2979,7 @@
           <div class="stats-band">
             <div class="stat"><strong>4+</strong><span>Hook、历史、Browser SDK、自定义 HTTP 采集路径</span></div>
             <div class="stat"><strong>17</strong><span>规范化生命周期、消息、工具与子智能体事件</span></div>
-            <div class="stat"><strong>27</strong><span>跨 Codex / Claude Code / Trae 稳定基础原子</span></div>
+            <div class="stat"><strong>27</strong><span>跨 ChatGPT / Claude Code / Trae 稳定基础原子</span></div>
             <div class="stat"><strong>6</strong><span>会话、执行、记忆、能力、质量与遥测领域</span></div>
             <div class="stat"><strong>520+</strong><span>自动化回归测试覆盖采集、服务端与前端领域</span></div>
           </div>
@@ -3037,7 +3037,7 @@
               <text class="flow-badge" x="153" y="79" text-anchor="middle" fill="#62a7ff">STDIN</text>
 
               <rect class="flow-node" x="30" y="169" width="156" height="74" rx="5" stroke="#51e3a5"></rect>
-              <text class="flow-label" x="49" y="198">Codex History</text>
+              <text class="flow-label" x="49" y="198">ChatGPT History</text>
               <text class="flow-meta" x="49" y="218">ROLLOUT JSONL</text>
 
               <rect class="flow-node" x="30" y="284" width="156" height="74" rx="5" stroke="#a78bfa"></rect>
@@ -3092,13 +3092,13 @@
               <div class="head">Source</div><div class="head">Live Hook</div><div class="head">History</div><div class="head">Tool Pair</div><div class="head">Subagent</div>
               <div class="row-label">Trae</div><div class="yes">●</div><div>—</div><div class="yes">●</div><div class="partial">◐</div>
               <div class="row-label">Claude Code</div><div class="yes">●</div><div>—</div><div class="yes">●</div><div class="yes">●</div>
-              <div class="row-label">Codex</div><div class="yes">●</div><div class="yes">●</div><div class="yes">●</div><div class="partial">◐</div>
+              <div class="row-label">ChatGPT</div><div class="yes">●</div><div class="yes">●</div><div class="yes">●</div><div class="partial">◐</div>
               <div class="row-label">Browser SDK</div><div class="yes">●</div><div>—</div><div class="yes">●</div><div class="partial">◐</div>
               <div class="row-label">Custom HTTP</div><div class="yes">●</div><div class="yes">●</div><div class="yes">●</div><div class="yes">●</div>
             </div>
             <div class="capture-notes">
               <article class="note-block"><strong>非破坏式安装</strong><p>安装器合并 Hook 配置，不替换已有命令；重复安装保持幂等。</p></article>
-              <article class="note-block"><strong>确定性历史导入</strong><p>Codex rollout 事件 ID 由文件与行内容生成，重复导入不重复落盘。</p></article>
+              <article class="note-block"><strong>确定性历史导入</strong><p>ChatGPT rollout 事件 ID 由文件与行内容生成，重复导入不重复落盘。</p></article>
               <article class="note-block"><strong>无依赖 Browser SDK</strong><p>扩展 Service Worker 和 Web 应用可直接调用 startTool / finishTool。</p></article>
               <article class="note-block"><strong>主链路不被观测阻断</strong><p>Hook 捕获异常后仍返回 continue: true。</p></article>
             </div>
@@ -3113,7 +3113,7 @@
           </header>
           <div class="schema-layout">
             <div class="schema-stack">
-              <div class="schema-step"><b>01</b><div><strong>规范来源与事件名</strong><small>openai → codex，snake_case → canonical name</small></div></div>
+              <div class="schema-step"><b>01</b><div><strong>规范来源与事件名</strong><small>openai → chatgpt，snake_case → canonical name</small></div></div>
               <div class="schema-step"><b>02</b><div><strong>补齐关联字段</strong><small>workspace / session / turn / parent / toolUseId</small></div></div>
               <div class="schema-step"><b>03</b><div><strong>递归脱敏</strong><small>敏感键名、Bearer、sk-、JWT 与常见键值秘密</small></div></div>
               <div class="schema-step"><b>04</b><div><strong>生成可定位身份</strong><small>id + trace://source/session/event</small></div></div>
@@ -3123,7 +3123,7 @@
   <span class="token-key">"schemaVersion"</span>: <span class="token-number">2</span>,
   <span class="token-key">"id"</span>: <span class="token-string">"event-8b0d..."</span>,
   <span class="token-key">"capturedAt"</span>: <span class="token-string">"&lt;ISO-8601 timestamp&gt;"</span>,
-  <span class="token-key">"source"</span>: <span class="token-string">"codex"</span>,
+  <span class="token-key">"source"</span>: <span class="token-string">"chatgpt"</span>,
   <span class="token-key">"workspaceId"</span>: <span class="token-string">"a2f314c9d781"</span>,
   <span class="token-key">"sessionId"</span>: <span class="token-string">"session-42"</span>,
   <span class="token-key">"turnId"</span>: <span class="token-string">"turn-3"</span>,
@@ -3136,7 +3136,7 @@
   <span class="token-key">"payload"</span>: {
     <span class="token-key">"tool_input"</span>: { <span class="token-key">"cmd"</span>: <span class="token-string">"pnpm test"</span> }
   },
-  <span class="token-key">"locator"</span>: <span class="token-string">"trace://codex/session-42/event-8b0d..."</span>
+  <span class="token-key">"locator"</span>: <span class="token-string">"trace://chatgpt/session-42/event-8b0d..."</span>
 }</pre>
             </div>
           </div>
@@ -3564,7 +3564,7 @@
               <div class="integration-core"><strong>ASTRO<br>RUNTIME</strong></div>
               <div class="integration-client trae">TRAE HOOKS</div>
               <div class="integration-client claude">CLAUDE CODE</div>
-              <div class="integration-client codex">CODEX</div>
+              <div class="integration-client chatgpt">CHATGPT</div>
               <div class="integration-client browser">BROWSER SDK</div>
             </figure>
             <div class="deploy-command">

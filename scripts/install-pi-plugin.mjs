@@ -21,7 +21,14 @@ const require = createRequire(import.meta.url);
 const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const pluginSourceDir = join(packageDir, "pi-plugin");
 const runtimeDependencies = ["dotenv", "yaml"];
-const pluginFiles = ["index.ts", "mapping.ts", "claim.ts", "package.json", "README.md"];
+const pluginFiles = [
+  "index.ts",
+  "mapping.ts",
+  "claim.ts",
+  "session.ts",
+  "package.json",
+  "README.md",
+];
 
 export function getPiExtensionsDir(piHome = homedir()) {
   return join(resolve(piHome), ".pi", "agent", "extensions");
