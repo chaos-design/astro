@@ -134,6 +134,35 @@ test("tool steps expose the command captured on the paired start event", () => {
   );
 });
 
+test("a finished question projects its recorded answers and its result step carries them", () => {
+  const view = buildAgentView(createDemoEvents(NOW), "chatgpt");
+  const question = view.steps.find((step) => step.kind === "question");
+  assert.ok(question, "the demo run carries a user question");
+  if (question?.kind !== "question") return;
+  // The recorded answer arrives on the paired result event (or is injected
+  // on the start); the projection merges both halves through the one join,
+  // so a finished question reads as answered instead of 未作答.
+  assert.deepEqual(question.answers, [{ question: "选择部署方式？", answer: "本地" }]);
+
+  // The question tool's own result step carries the answers and the option
+  // sets of the paired start event, for the shared answer-rows rendering.
+  const result = view.steps.find(
+    (step) => step.kind === "tool-result" && step.toolName === "AskUserQuestion",
+  );
+  assert.ok(result, "the question tool's result is its own step");
+  if (result?.kind !== "tool-result") return;
+  assert.deepEqual(result.answers, [{ question: "选择部署方式？", answer: "本地" }]);
+  assert.equal(result.answerQuestions.length, 1);
+  assert.equal(result.answerQuestions[0].question, "选择部署方式？");
+  assert.deepEqual(
+    result.answerQuestions[0].options,
+    [
+      { label: "本地", description: "在本机运行服务与控制台" },
+      { label: "云端", description: "部署静态控制台并连接本地服务" },
+    ],
+  );
+});
+
 test("thinking steps carry the real reasoning text from the capture", () => {
   const events = copyEvents((event) => {
     if (event.eventName === "Reasoning") {

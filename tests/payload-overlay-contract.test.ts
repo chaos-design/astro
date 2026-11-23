@@ -215,6 +215,13 @@ test("agent steps show a captured command and real thinking on first render", ()
   assert.match(agentTranscript, /commandLine \?/);
   assert.match(agentTranscript, /agent-step__command-label/);
   assert.match(agentTranscript, /contentToMarkdown\(commandLine\)/);
+  // A finished question's recorded answers (projected off the paired result
+  // event) light the static preview's chips; a question tool's result step
+  // shows them in the shared answer-rows rendering, not a JSON body.
+  assert.match(agentTranscript, /<QuestionPreview answers=\{step\.answers\} payload=\{step\.payload\} \/>/);
+  assert.match(agentTranscript, /step\.answers\.length > 0/);
+  assert.match(agentTranscript, /<AnswerRows questions=\{step\.answerQuestions\} rows=\{step\.answers\} \/>/);
+  assert.match(stylesForOverlay, /\.agent-step__answers \{[\s\S]*?border-left: 3px solid var\(--teal\)/);
   assert.match(stylesForOverlay, /\.agent-step__command \{/);
   assert.match(stylesForOverlay, /\.agent-step--tool-result \{/);
   assert.match(agentTranscript, /function ThinkingBody[\s\S]{0,600}useState\(true\)/);

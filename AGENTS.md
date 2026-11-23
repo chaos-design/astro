@@ -806,8 +806,11 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   not answers), while the preview follows the display key, so an answer row
   still previews its payload.
 - A captured answer has one rendering: `src/components/answer-rows.tsx`, used
-  by the floating card's result, the docked question surface and the inspector's
-  historical Answers section. It reconstructs selected options through
+  by the floating card's result, the docked question surface, the inspector's
+  historical Answers section and the Agent view (a question tool's result step
+  shows its recorded answers in the same `AnswerRows` rendering, and a
+  finished question's static preview lights the selected chips from the
+  answers projected onto it). It reconstructs selected options through
   `matchAnswerOptions` in `src/lib/question-panel-model.ts` (whole comma tokens
   matching a declared label, so "Paris, France" never lights a "France" chip),
   paints them as highlighted chips, and renders any remaining free text as
@@ -932,7 +935,14 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   diff-carrying `old/new` / `content` fields excluded so the patch keeps its
   own rendering), so a tool-result card always states what was executed;
   questions bind only
-  to the blocking start event through `parseUserQuestionContent`.
+  to the blocking start event through `parseUserQuestionContent`, and a
+  finished question's recorded answers are projected onto that step from the
+  paired result event through the one join in `mergeQuestionAnswers`
+  (`src/lib/user-question-content.ts`), so the static preview lights the
+  selected chips no matter which event the host wrote the answers on; a
+  question tool's result step carries the same answers plus the start
+  event's option sets and shows them in the shared `AnswerRows` rendering
+  (its teal `ANSWERS` block) instead of a JSON body.
   `src/components/agent-transcript.tsx` only consumes that projection; payload
   text still goes through `MarkdownView` / the shared payload helpers and
   questions through `QuestionContent` / `QuestionPreview`. Steps and rail rows

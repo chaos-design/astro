@@ -10376,6 +10376,28 @@ pre,
   letter-spacing: 0.08em;
 }
 
+/* A question-tool result's recorded answers, in the card's own anatomy:
+ * the same answer-rows rendering the inspector uses, so a finished
+ * question reads as answered. Teal (the answer / live tone) sets it apart
+ * from the amber execution block. */
+.agent-step__answers {
+  margin: 0 0 10px;
+  padding: 7px 10px 9px;
+  border: 1px solid var(--line-bright);
+  border-left: 3px solid var(--teal);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--panel) 84%, var(--teal) 16%);
+}
+
+.agent-step__answers-label {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--teal);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.625rem;
+  letter-spacing: 0.08em;
+}
+
 .agent-step--thinking .agent-step__body {
   line-height: 1.6;
 }

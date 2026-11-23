@@ -16,8 +16,11 @@ import {
   getTraceEventKey,
   isUserQuestionStartEvent,
 } from "./trace-event-kind.ts";
+import type { QuestionDescriptor } from "./interaction-contract.ts";
 import {
+  mergeQuestionAnswers,
   parseUserQuestionContent,
+  type UserQuestionAnswer,
   type UserQuestionContent,
 } from "./user-question-content.ts";
 
@@ -81,6 +84,14 @@ export interface ToolResultStep extends AgentStepBase {
    * result.
    */
   readonly invocation: string | null;
+  /**
+   * The recorded answers when this result closes a user-question tool — the
+   * answer-style read the card shows instead of a JSON body. Empty for
+   * every other tool.
+   */
+  readonly answers: readonly UserQuestionAnswer[];
+  /** The paired start event's question prompts, for the answer chips. */
+  readonly answerQuestions: readonly QuestionDescriptor[];
   readonly durationMs: number | null;
   readonly pairLink: TracePairLink | null;
 }
@@ -90,6 +101,13 @@ export interface QuestionStep extends AgentStepBase {
   readonly payload: TracePayload;
   /** The one parser for question prompts, plans and answers. */
   readonly parsed: UserQuestionContent;
+  /**
+   * The question's recorded answers: the answers its own payload carried
+   * first, then the recorded answers of the paired result event (a finished
+   * question's answers usually arrive with the tool's PostToolUse). Empty
+   * while the question is still open.
+   */
+  readonly answers: readonly UserQuestionAnswer[];
 }
 
 export interface GenericStep extends AgentStepBase {
@@ -370,13 +388,27 @@ export function buildAgentView(
       return;
     }
     if (isUserQuestionStartEvent(event)) {
+      const parsed = parseUserQuestionContent(event.payload);
+      // A finished question's recorded answers usually arrive with the
+      // paired result event (the recorder's PostToolUse), not the start.
+      // Project both halves through the one join so the card can highlight
+      // the answer no matter which event the host wrote it on.
+      const startLink = pairLinks.get(event.id);
+      const startPartner = startLink?.partnerId
+        ? indexById.get(startLink.partnerId)
+        : undefined;
+      const recorded =
+        startPartner === undefined
+          ? []
+          : parseUserQuestionContent(events[startPartner].payload ?? {}).answers;
       placement.push({
         index,
         step: {
           ...base(event),
           kind: "question",
           payload: event.payload ?? {},
-          parsed: parseUserQuestionContent(event.payload),
+          parsed,
+          answers: mergeQuestionAnswers(parsed.answers, recorded),
         },
       });
       return;
@@ -388,6 +420,18 @@ export function buildAgentView(
         : undefined;
       const startEvent =
         partnerIndex === undefined ? null : events[partnerIndex];
+      // A result that closes a user-question tool carries the recorded
+      // answers; the option sets that build its answer chips sit on the
+      // paired start event.
+      const answers = parseUserQuestionContent(event.payload ?? {}).answers;
+      const answerQuestions = startEvent
+        ? parseUserQuestionContent(startEvent.payload ?? {}).prompts.map(
+            (prompt) => ({
+              question: prompt.question,
+              options: prompt.options,
+            }),
+          )
+        : [];
       placement.push({
         index,
         step: {
@@ -398,6 +442,8 @@ export function buildAgentView(
           toolName: event.toolName ?? stringValue(event.payload?.tool_name),
           command: getToolCallCommand(event, startEvent),
           invocation: getToolCallInvocation(event, startEvent),
+          answers,
+          answerQuestions,
           durationMs: pairDurations.get(event.id) ?? null,
           pairLink,
         },

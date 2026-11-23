@@ -276,3 +276,21 @@ export function parseUserQuestionContent(
       answers.length > 0,
   };
 }
+
+/**
+ * One join rule for the captured answers of a question: the answers the
+ * question event itself carried first (a host decision hook's injection),
+ * then the recorded answers of its paired result event, deduped by the
+ * verbatim question text so a host that wrote both never prints an answer
+ * twice.
+ */
+export function mergeQuestionAnswers(
+  own: readonly UserQuestionAnswer[],
+  recorded: readonly UserQuestionAnswer[],
+): UserQuestionAnswer[] {
+  if (!recorded.length) {
+    return [...own];
+  }
+  const seen = new Set(own.map((item) => item.question));
+  return [...own, ...recorded.filter((item) => !seen.has(item.question))];
+}

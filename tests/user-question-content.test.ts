@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   hasPlanContent,
+  mergeQuestionAnswers,
   parseUserQuestionContent,
   userQuestionSummary,
 } from "../src/lib/user-question-content.ts";
@@ -248,4 +249,20 @@ test("answers are independent of plan detection", () => {
   assert.equal(content.plan, "# Plan");
   assert.deepEqual(content.answers, [{ question: "Approve?", answer: "Yes" }]);
   assert.equal(hasPlanContent({ tool_input: { plan: "# Plan" } } as unknown as TracePayload), true);
+});
+
+test("mergeQuestionAnswers joins the two captured halves without duplicating", () => {
+  const own = [{ question: "Which db?", answer: "sqlite" }];
+  const recorded = [
+    { question: "Which db?", answer: "sqlite" },
+    { question: "Ship it?", answer: "yes" },
+  ];
+  assert.deepEqual(mergeQuestionAnswers(own, recorded), [
+    { question: "Which db?", answer: "sqlite" },
+    { question: "Ship it?", answer: "yes" },
+  ]);
+  // Nothing recorded: the own answers stay, as a fresh array.
+  const empty = mergeQuestionAnswers(own, []);
+  assert.deepEqual(empty, own);
+  assert.notEqual(empty, own);
 });

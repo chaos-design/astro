@@ -98,7 +98,12 @@
     由同一配对事件经 `getToolCallInvocation` 合成（工具名加全部短输入字段，
     diff 载体的 old/new 与 content 字段除外，补丁走自己的渲染）；提问只绑阻断性
     start 并复用
-    `parseUserQuestionContent`。呈现层 `src/components/agent-transcript.tsx`
+    `parseUserQuestionContent`；已完成问题的已记录答案经
+    `mergeQuestionAnswers`（`src/lib/user-question-content.ts` 的单一合并）
+    从配对的结果事件投影到该步骤上，静态预览因此点亮已选选项，无论宿主
+    把答案写在哪个事件；问题工具的结果步骤携带同一批答案与 start 事件的
+    选项集，用共享的 `AnswerRows` 渲染（卡片内 teal 的 ANSWERS 块）而非
+    JSON 正文。呈现层 `src/components/agent-transcript.tsx`
     只读该结果，正文仍走 `MarkdownView`、`QuestionContent/Preview` 与共享的
     `RelatedFields`（`src/components/related-fields.tsx`，按值折叠），
     步骤与左 rail 共用 `onSelectAtom` 选择态。
@@ -207,8 +212,10 @@
     只读问题预览（`QuestionPreview` → `StaticQuestionContent`）先给问题数与
     捕获顺序提示，再给编号题目、作答状态与单独的已选答案行，静态选中 chip
     比实时选项更醒目；
-  - 捕获答案的展示只在 `src/components/answer-rows.tsx`：悬浮卡结果、停靠检查器
-    与历史 Answers 三处共用；选中选项由 `src/lib/question-panel-model.ts` 的
+  - 捕获答案的展示只在 `src/components/answer-rows.tsx`：悬浮卡结果、停靠检查器、
+    历史 Answers 与 Agent 视图（问题工具的结果步骤用同一 `AnswerRows` 渲染
+    其已记录答案；已完成问题的静态预览用投影到该步骤的答案点亮已选选项）
+    四处共用；选中选项由 `src/lib/question-panel-model.ts` 的
     `matchAnswerOptions` 从答案原文还原（只认与声明标签完全相同的逗号 token，
     自由文本不会被误点亮），以高亮 chip 呈现，余下文本按 Markdown 渲染。
     `QuestionResultList` 通过 `resultAnswerRows` 保持请求的题目顺序；结果到达后

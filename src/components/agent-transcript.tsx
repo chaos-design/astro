@@ -19,6 +19,7 @@ import {
 } from "react";
 
 import { MarkdownView } from "@/components/markdown-view";
+import { AnswerRows } from "@/components/answer-rows";
 import { PairLinkMarker } from "@/components/pair-link-marker";
 import { QuestionContent, QuestionPreview, type QuestionAnswerBinding } from "@/components/question-content";
 import { RelatedFields } from "@/components/related-fields";
@@ -475,10 +476,20 @@ function ToolResultBody({
   step: ToolResultStep;
   onLocate: (eventId: string) => void;
 }) {
+  // A result that closes a user-question tool shows its recorded answers in
+  // the shared answer-rows rendering (highlighted option chips, Markdown
+  // free text) instead of the generic JSON body.
+  const hasAnswers = step.answers.length > 0;
   const split = useMemo(() => splitPayloadPreview(step.payload), [step.payload]);
-  const source = split.content.trim()
-    ? contentToMarkdown(split.content)
-    : payloadToMarkdown(step.payload);
+  const source = useMemo(
+    () =>
+      hasAnswers
+        ? ""
+        : split.content.trim()
+          ? contentToMarkdown(split.content)
+          : payloadToMarkdown(step.payload),
+    [hasAnswers, split.content, step.payload],
+  );
   // A shell tool shows its captured command; a structured tool (Edit,
   // Read, …) shows its complete invocation line instead, so the card never
   // opens with the result and no idea of what was executed.
@@ -499,7 +510,12 @@ function ToolResultBody({
           <MarkdownView source={contentToMarkdown(commandLine)} />
         </div>
       ) : null}
-      {source.trim() ? (
+      {hasAnswers ? (
+        <div className="agent-step__answers">
+          <span className="agent-step__answers-label">ANSWERS</span>
+          <AnswerRows questions={step.answerQuestions} rows={step.answers} />
+        </div>
+      ) : source.trim() ? (
         <MarkdownView source={source} />
       ) : (
         <p className="agent-step__teaser">这条结果没有正文。</p>
@@ -519,7 +535,7 @@ function QuestionBody({
   return answer ? (
     <QuestionContent payload={step.payload} answer={answer} />
   ) : (
-    <QuestionPreview payload={step.payload} />
+    <QuestionPreview answers={step.answers} payload={step.payload} />
   );
 }
 

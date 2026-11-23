@@ -24,7 +24,9 @@ import {
   questionPanelSubmittable,
 } from "../lib/question-panel-model";
 import {
+  mergeQuestionAnswers,
   parseUserQuestionContent,
+  type UserQuestionAnswer,
   type UserQuestionPrompt,
 } from "../lib/user-question-content";
 import type { TracePayload } from "../types/trace";
@@ -433,9 +435,22 @@ function StaticQuestionContent({
  * The read-only question list used by a captured user.question event and by
  * the global overlay's Preview. It is exported so both places render the same
  * question / option / answer shapes instead of growing a second preview.
+ * `answers` carries the recorded answers a caller resolved from elsewhere
+ * (the Agent view projects the paired result event's answers onto the
+ * question step): they merge under the payload's own answers and light the
+ * selected chips, so a finished question reads as answered, not 未作答.
  */
-export function QuestionPreview({ payload }: { payload: TracePayload }) {
-  const content = useMemo(() => parseUserQuestionContent(payload), [payload]);
+export function QuestionPreview({
+  payload,
+  answers = [],
+}: {
+  payload: TracePayload;
+  answers?: readonly UserQuestionAnswer[];
+}) {
+  const content = useMemo(() => {
+    const parsed = parseUserQuestionContent(payload);
+    return { ...parsed, answers: mergeQuestionAnswers(parsed.answers, answers) };
+  }, [payload, answers]);
   return <StaticQuestionContent content={content} />;
 }
 

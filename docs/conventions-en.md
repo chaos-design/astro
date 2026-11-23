@@ -127,7 +127,13 @@
     `getToolCallInvocation` (the tool name plus every short input field, with
     the diff-carrying old/new and content fields left to their own rendering).
     A question binds only to
-    the blocking start event through `parseUserQuestionContent`.
+    the blocking start event through `parseUserQuestionContent`; a finished
+    question's recorded answers are projected onto that step from the paired
+    result event through the one join in `mergeQuestionAnswers`, so the
+    static preview lights the selected chips no matter which event the host
+    wrote the answers on, and a question tool's result step carries the same
+    answers plus the start event's option sets, shown in the shared
+    `AnswerRows` rendering (its teal `ANSWERS` block) instead of a JSON body.
     `src/components/agent-transcript.tsx` consumes that result read-only;
     bodies still go through `MarkdownView`, `QuestionContent/Preview` and the
     shared per-value-folding `RelatedFields`
@@ -274,8 +280,11 @@
     prints the selected labels on their own line; static selected chips read
     stronger than live option buttons;
   - a captured answer has one rendering: `src/components/answer-rows.tsx`, shared
-    by the floating card's result, the docked question surface and the
-    inspector's historical Answers section. Selected options are reconstructed
+    by the floating card's result, the docked question surface, the
+    inspector's historical Answers section and the Agent view (a question
+    tool's result step shows its recorded answers in the same `AnswerRows`
+    rendering, and a finished question's static preview lights the selected
+    chips from the answers projected onto it). Selected options are reconstructed
     from the answer text by `matchAnswerOptions` in `src/lib/question-panel-model.ts`
     (only comma tokens exactly matching a declared label count, so free text
     like "Paris, France" never lights a "France" chip), painted as highlighted
