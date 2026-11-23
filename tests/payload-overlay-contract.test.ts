@@ -143,6 +143,10 @@ test("the Agent view keeps a reader's scroll and offers a jump to the newest ste
   assert.match(overlay, /setAgentLocateRequest\(\(current\) => current \+ 1\)/);
   assert.match(agentTranscript, /if \(!explicit && !atBottomRef\.current\)/);
   assert.match(agentTranscript, /isAgentTranscriptAtBottom\(container\)/);
+  // The pill hides whenever the newest step is on screen, not only within a
+  // few pixels of the bottom: a tall last reply can be visible well above it.
+  assert.match(agentTranscript, /isLatestStepVisible\(/);
+  assert.match(agentTranscript, /isAgentTranscriptAtBottom\(container\) \|\| latestVisible/);
   assert.match(agentTranscript, /isManualUpScroll\(current, previous\)/);
   assert.match(agentTranscript, /manualUpRef\.current = false/);
   assert.match(agentTranscript, /manualUpRef\.current \|\| !live/);

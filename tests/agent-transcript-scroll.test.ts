@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   AGENT_SCROLL_BOTTOM_EPSILON,
   isAgentTranscriptAtBottom,
+  isLatestStepVisible,
   isManualUpScroll,
 } from "../src/lib/agent-transcript-scroll.ts";
 
@@ -41,6 +42,27 @@ test("content shorter than the viewport is always at the bottom", () => {
       scrollHeight: 300,
     }),
     true,
+  );
+});
+
+test("the newest step on screen hides the jump even above the bottom edge", () => {
+  const view = { top: 100, bottom: 400 };
+  // A tall last reply is visible in the viewport although the scroll
+  // position is far from the end of the content.
+  assert.equal(
+    isLatestStepVisible(view, { top: 250, bottom: 900 }),
+    true,
+    "part of the newest step is on screen",
+  );
+  assert.equal(
+    isLatestStepVisible(view, { top: 420, bottom: 900 }),
+    false,
+    "the newest step has scrolled below the viewport",
+  );
+  assert.equal(
+    isLatestStepVisible(view, { top: -50, bottom: 90 }),
+    false,
+    "the newest step has scrolled above the viewport",
   );
 });
 

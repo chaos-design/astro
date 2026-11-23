@@ -24,6 +24,7 @@ import { QuestionContent, QuestionPreview, type QuestionAnswerBinding } from "@/
 import { RelatedFields } from "@/components/related-fields";
 import {
   isAgentTranscriptAtBottom,
+  isLatestStepVisible,
   isManualUpScroll,
 } from "@/lib/agent-transcript-scroll";
 import { cn } from "@/lib/utils";
@@ -101,10 +102,23 @@ export function AgentTranscript({
     const current = container.scrollTop;
     const previous = lastScrollTopRef.current;
     lastScrollTopRef.current = current;
-    const atBottom = isAgentTranscriptAtBottom(container);
+    // "At the newest" is not the same as "at the bottom": a tall last reply
+    // can still be on screen well above the bottom edge. Keep following and
+    // hide the pill whenever that newest step is visible, so a reader looking
+    // at the latest message is never offered a button to jump to it.
+    const lastStep = view.steps.at(-1);
+    const lastElement = lastStep ? stepRefs.current.get(lastStep.id) : null;
+    const latestVisible = lastElement
+      ? isLatestStepVisible(
+          container.getBoundingClientRect(),
+          lastElement.getBoundingClientRect(),
+        )
+      : true;
+    const atBottom =
+      isAgentTranscriptAtBottom(container) || latestVisible;
     atBottomRef.current = atBottom;
     if (atBottom) {
-      // Back at the newest step: disarm the pill and resume live pinning.
+      // At the newest step: disarm the pill and resume live pinning.
       manualUpRef.current = false;
       setShowJump(false);
       setPendingCount(0);
@@ -118,7 +132,7 @@ export function AgentTranscript({
     // can offer a plain quick-scroll instead.
     const scrollable = container.scrollHeight > container.clientHeight + 40;
     setShowJump(scrollable && (manualUpRef.current || !live));
-  }, [live]);
+  }, [live, view.steps]);
 
   const handleScroll = useCallback(() => {
     if (scrollFrameRef.current !== null) {

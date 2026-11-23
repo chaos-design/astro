@@ -31,3 +31,17 @@ export function isManualUpScroll(
 ): boolean {
   return currentTop < previousTop - 1;
 }
+
+/**
+ * Whether the newest step is in the reader's viewport. Being within a few
+ * pixels of the bottom is only an approximation: a tall last reply can still
+ * be on screen while the scroll position is well above the bottom. The jump
+ * pill must stay hidden whenever the newest message is visible — the reader
+ * is already looking at it — and only appear once it has scrolled out of view.
+ */
+export function isLatestStepVisible(
+  viewport: { readonly top: number; readonly bottom: number },
+  step: { readonly top: number; readonly bottom: number },
+): boolean {
+  return step.bottom > viewport.top && step.top < viewport.bottom;
+}
