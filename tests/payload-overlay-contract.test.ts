@@ -387,8 +387,8 @@ test("the overlay's duration badge shares the LOG unit ladder", () => {
  * the rows' display fields AND the row event's payload content (deep match
  * through the shared per-event haystacks the LOG warms), with the same
  * deferred-needle pattern the LOG uses, so a keystroke re-renders only the
- * rail. The head is one row — counter, growing search input with a clear
- * button, jump-to-edge buttons, Live toggle. The jump buttons stay mounted
+ * rail. The head is one row — growing search input with a clear button,
+ * jump-to-edge buttons, Live toggle. The jump buttons stay mounted
  * with reserved width and disable the unreachable edge, beside the search box
  * rather than floating over the chain.
  */
@@ -409,7 +409,7 @@ test("the rail filters its chain through a local search box", () => {
   assert.ok(
     overlay.indexOf('className="payload-overlay__rail-search"') <
       overlay.indexOf("payload-overlay__follow"),
-    "the search box sits between the counter and the Live toggle",
+    "the search box sits before the jump buttons and the Live toggle",
   );
   assert.match(overlay, /aria-label="清空搜索"/);
   assert.match(stylesForOverlay, /\.payload-overlay__rail-search \{\s*\n\s*flex: 1;\s*\n\s*min-width: 0;/);
@@ -434,6 +434,19 @@ test("the rail filters its chain through a local search box", () => {
     stylesForOverlay,
     /\.payload-overlay__rail-scroll-controls \{\s*\n\s*display: flex;\s*\n\s*flex: 0 0 48px;/,
   );
+});
+
+/**
+ * The dialog title is a formal product name plus the inspected content, not a
+ * raw atom label with an uppercase tab suffix. The per-event identity stays in
+ * the rail and the eyebrow; the title reads as a named inspection surface.
+ */
+test("the overlay title names the inspection surface instead of the event label", () => {
+  assert.match(overlayBinding, /label=\{`事件载荷检视 · /);
+  assert.match(overlayBinding, /"输入载荷"/);
+  assert.match(overlayBinding, /"输出载荷"/);
+  assert.match(overlayBinding, /"原始数据"/);
+  assert.doesNotMatch(overlayBinding, /inspectorTitle/);
 });
 
 /**
@@ -578,9 +591,9 @@ test("an empty tool_input placeholder never shadows the real spelling", () => {
 
 /**
  * Reader comfort in the global layer: a live batch must not reset the content
- * pane's scroll, each pane's scroll region keeps its own padding, the LOG · N
- * separator dot stays small, and the Live control is legible at rest with a
- * larger hover response.
+ * pane's scroll, each pane's scroll region keeps its own padding, the jump
+ * buttons carry a tinted surface and a pointer cursor, and the Live control is
+ * legible at rest with a larger hover response.
  */
 test("scroll, padding and control polish keep the reading surface stable", () => {
   // Scroll confined to the rail, never scrollIntoView on all ancestors.
@@ -599,11 +612,19 @@ test("scroll, padding and control polish keep the reading surface stable", () =>
     /\.payload-overlay__pane--related \.payload-overlay__body \{[\s*\S]*?padding: 0 16px 20px;/,
   );
 
-  // The middle dot of "LOG · N" is small and dimmed.
-  assert.match(overlay, /className="payload-overlay__rail-title-dot">·</);
+  // The rail head no longer prints a "LOG · N" counter beside the search box.
+  assert.doesNotMatch(overlay, /payload-overlay__rail-title/);
+  assert.doesNotMatch(stylesForOverlay, /\.payload-overlay__rail-title/);
+
+  // Jump buttons: a tinted resting surface and a pointer cursor, with a dimmer
+  // surface and the plain arrow on the disabled edge.
   assert.match(
     stylesForOverlay,
-    /\.payload-overlay__rail-title-dot \{[\s*\S]*?font-size: 8px;/,
+    /\.payload-overlay__rail-scroll-button \{[\s*\S]*?background: color-mix\(in srgb, var\(--panel-raised\) 82%, transparent\);[\s*\S]*?cursor: pointer;/,
+  );
+  assert.match(
+    stylesForOverlay,
+    /\.payload-overlay__rail-scroll-button:disabled \{[\s*\S]*?background: color-mix\(in srgb, var\(--panel-raised\) 38%, transparent\);[\s*\S]*?cursor: default;/,
   );
 
   // Live: visible default background, stronger hover with a ring.

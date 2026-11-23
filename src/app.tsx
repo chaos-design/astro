@@ -3717,7 +3717,7 @@ function TraceInspector({
         cacheScope={activeTab}
         followAvailable={overlayFollowAvailable}
         following={overlayFollowing}
-        label={`${inspectorTitle} · ${activeTab === "input" ? "INPUT" : activeTab === "output" ? "OUTPUT" : "RAW"}`}
+        label={`事件载荷检视 · ${activeTab === "input" ? "输入载荷" : activeTab === "output" ? "输出载荷" : "原始数据"}`}
         onFollowingChange={onOverlayFollowingChange}
         onOpenChange={setOverlayOpen}
         onSelectAtom={onOverlaySelectEvent}

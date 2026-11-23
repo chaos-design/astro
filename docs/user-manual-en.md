@@ -698,9 +698,11 @@ The inspector provides:
   names the other half's row — so the
   chain of what happened when, and how long it took, is reproducible without
   leaving the dialog. Arrow /
-  Home / End move focus between rows. The head is one row: the run counter, a
-  search box with a clear button, two jump-to-edge buttons (both mounted with
-  reserved width, the unreachable edge greyed out), and the Live toggle. The
+  Home / End move focus between rows. The head is one row: a search box with a
+  clear button, two jump-to-edge buttons (both mounted with reserved width, the
+  unreachable edge greyed out), and the Live toggle. The title is a formal
+  "Event Payload Inspection · Input / Output / Raw" rather than a raw atom
+  label. The
   rail carries its
   own search box (rail-local state): a keyword filters the chain over the
   rows' display fields AND the payload content, and a turn whose rows all miss

@@ -549,9 +549,6 @@ export function PayloadOverlay({
           {atoms.length > 0 ? (
             <nav aria-label="运行的消息链路" className="payload-overlay__rail">
               <header className="payload-overlay__rail-head">
-                <span className="payload-overlay__rail-title">
-                  LOG <i aria-hidden="true" className="payload-overlay__rail-title-dot">·</i> {atoms.length}
-                </span>
                 <InputGroup
                   className="payload-overlay__rail-search"
                   aria-label="搜索消息链路"
