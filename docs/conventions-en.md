@@ -150,7 +150,11 @@
     step has scrolled out of view — a manual gesture or a programmatic
     locate alike — the row is hidden and the bottom-centered pill shows the
     loading state with its pending-step count; when the run has ended the
-    same pill becomes a plain "scroll to bottom" control. Returning to the
+    same pill becomes a plain "scroll to bottom" control. Locating the
+    *newest* step (live follow, jump, or an explicit pick of the last step)
+    pins the container to the absolute bottom (`scrollHeight`) so the tail
+    lands flush with the bottom edge and follow resumes from there; only an
+    *older* step aligns top-12px to keep it in context. Returning to the
     newest step resumes automatic appending. Each content kind carries its
     own accent and routes its body through the same `contentToMarkdown` for
     code/document highlighting. The bottom loading row appears only while
@@ -158,8 +162,13 @@
     time sits after the AGENT VIEW label: it reads the root display state
     (the same source the RUN HISTORY row reads — prompt-anchored,
     timeout-capped), advances on the root's secondly `now` tick while the
-    message executes, and settles on the recorded total once it ends; it is
-    formatted through `formatDurationMs`, never a second composite formatter. The overlay's left rail is the run's **message chain in the
+    message executes, and settles on the recorded total once it ends. The
+    header times *this one* message, so it uses the fine execution clock
+    `formatDurationClock` in `src/lib/duration-label.ts` (a wall-clock
+    `HH:MM:SS` that keeps a tenth of a second under a minute), sitting beside
+    the stepped history ladder `formatDurationMs` that the LOG row badge and
+    the overlay's rail badge share; the header also prints the run's turn
+    count and folded event count (`view.stats.turns` / `view.stats.events`). The overlay's left rail is the run's **message chain in the
     LOG's own data standard**, fed by `overlayAtoms`, mapped from the same
     `buildLogEntries(activeEvents, …)` result the LOG list prints (app.tsx):
     one row per **event** (carrying the harness atom id it commits to), split

@@ -29,3 +29,32 @@ export function formatDurationMs(milliseconds: number): string {
   }
   return `${Math.round(days)}d`;
 }
+
+/**
+ * The Agent view header's execution clock: a finer reading than the unit
+ * ladder, because the reader is timing *this one* message, not scanning a
+ * history. Under a minute it keeps a tenth of a second (`0:00.4`), then the
+ * wall-clock `H:MM:SS` / `HH:MM:SS` form for longer runs. It is a display
+ * reading only — never the pair-span value that feeds colour heat — so it
+ * lives beside, not inside, {@link formatDurationMs}.
+ */
+export function formatDurationClock(milliseconds: number): string {
+  if (!Number.isFinite(milliseconds) || milliseconds < 0) {
+    return "--";
+  }
+  const total = Math.floor(milliseconds / 1000);
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = total % 60;
+  // Under a full minute the whole run is still sub-minute to the reader:
+  // show `M:SS.s` with one decimal so 0.4s and 0.9s are not both `0:00`.
+  if (total < 60) {
+    const tenths = Math.round((milliseconds % 1000) / 100);
+    return `0:${String(total).padStart(2, "0")}.${tenths}`;
+  }
+  const clock =
+    hours > 0
+      ? `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`
+      : `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  return clock;
+}

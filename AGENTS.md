@@ -933,7 +933,13 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   tool's complete execution line is synthesized the same way
   (`getToolCallInvocation`: the tool name plus every short input field,
   diff-carrying `old/new` / `content` fields excluded so the patch keeps its
-  own rendering), so a tool-result card always states what was executed;
+  own rendering), so a tool-result card always states what was executed; a
+  tool-call *start* event (a `PreToolUse` that is not a user question) projects
+  as a generic event step but opens with the same composed line — the
+  `GenericStep.command` / `GenericStep.toolName` fields, resolved through
+  `getToolCallInvocation(event)` (null for every non-tool event), so the card
+  leads with its COMMAND block instead of burying the command in the
+  related-fields dump;
   questions bind only
   to the blocking start event through `parseUserQuestionContent`, and a
   finished question's recorded answers are projected onto that step from the
@@ -957,16 +963,26 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   — a manual gesture or an explicit locate of an older step alike — the bottom
   row is hidden and the centered pinned pill carries the loading state with its
   pending-step count; once the run has ended that same pill becomes a plain
-  scroll-to-bottom control. Returning to the newest step resumes automatic
+  scroll-to-bottom control. Locating the *newest* step — a live follow, a
+  jump, or an explicit pick of the last step alike — pins the container to the
+  absolute bottom (`scrollHeight`) so the tail lands flush with the bottom
+  edge and follow resumes from there; only an *older* step is aligned top-12px
+  to keep it in context. Returning to the newest step resumes automatic
   appending, each content kind carries its own accent with bodies highlighted
   through one `contentToMarkdown`, and the trailing loading row is shown only
   while the run is still executing. The displayed message's execution time
   sits next to the AGENT VIEW label: one clock for two surfaces — the chip
   reads the root display state the RUN HISTORY row reads (prompt-anchored,
   timeout-capped), the root's secondly `now` tick advances it while the
-  message executes, and an ended message settles on its recorded total; it
-  formats through the shared stepped ladder (`formatDurationMs`), never a
-  second composite formatter. The related-field inventory is
+  message executes, and an ended message settles on its recorded total. The
+  header times *this one* message, so it uses the fine execution clock
+  `formatDurationClock` (`src/lib/duration-label.ts`): a wall-clock `HH:MM:SS`
+  reading that keeps a tenth of a second under a minute, sitting beside the
+  stepped history ladder `formatDurationMs` that the LOG row badge and the
+  overlay's rail badge share — the two stay in the one module, the header just
+  reads the finer one. The header also prints the run's turn count and the
+  folded event count (`view.stats.turns` / `view.stats.events`). The
+  related-field inventory is
   shared with Preview in `src/components/related-fields.tsx` and folds long
   values per field, never per pane. `Preview` is split into two panes — the atom's real content
   (Markdown / highlighted code, or the question list) and the related data

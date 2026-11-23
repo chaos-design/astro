@@ -134,6 +134,30 @@ test("tool steps expose the command captured on the paired start event", () => {
   );
 });
 
+test("a tool-call start step opens with its composed command and tool name", () => {
+  const view = buildAgentView(createDemoEvents(NOW), "chatgpt");
+  // A PreToolUse that is not a user-question tool projects as a generic
+  // event step. Its complete execution line (shell command, else the tool
+  // name plus its short inputs) and its tool name now surface on the step,
+  // so the card opens with the COMMAND instead of burying it in the
+  // related-fields dump.
+  const call = view.steps.find(
+    (step) => step.kind === "event" && step.eventName === "PreToolUse",
+  );
+  assert.ok(call, "a PreToolUse start projects as an event step");
+  if (call?.kind !== "event") return;
+  assert.equal(call.toolName, "Read");
+  assert.equal(call.command, "Read path=src/app.tsx");
+  // A non-tool event carries no invented command or tool name.
+  const plain = view.steps.find(
+    (step) => step.kind === "event" && step.eventName !== "PreToolUse",
+  );
+  assert.ok(plain, "the run carries a non-tool event step");
+  if (plain?.kind !== "event") return;
+  assert.equal(plain.toolName, null);
+  assert.equal(plain.command, null);
+});
+
 test("a finished question projects its recorded answers and its result step carries them", () => {
   const view = buildAgentView(createDemoEvents(NOW), "chatgpt");
   const question = view.steps.find((step) => step.kind === "question");

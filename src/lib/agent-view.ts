@@ -14,6 +14,7 @@ import {
 import { buildTraceTurnIndex } from "./trajectory-model.ts";
 import {
   getTraceEventKey,
+  isUserQuestionEvent,
   isUserQuestionStartEvent,
 } from "./trace-event-kind.ts";
 import type { QuestionDescriptor } from "./interaction-contract.ts";
@@ -116,6 +117,16 @@ export interface GenericStep extends AgentStepBase {
   readonly key: string;
   readonly summary: string;
   readonly payload: TracePayload;
+  /**
+   * For a tool-call event (PreToolUse / PostToolUse) the tool's complete
+   * execution line — the captured shell command when one exists, otherwise
+   * the tool name plus every short input. `null` for every other event, so
+   * the generic body only opens with a COMMAND line when a command actually
+   * exists, never invents one from an event name.
+   */
+  readonly command: string | null;
+  /** The captured tool name when this is a tool event; `null` otherwise. */
+  readonly toolName: string | null;
 }
 
 export type AgentStep =
@@ -140,6 +151,10 @@ export interface AgentView {
     readonly replies: number;
     readonly questions: number;
     readonly snapshotsMerged: number;
+    /** Distinct turns the run spans, from the one turn index. */
+    readonly turns: number;
+    /** Total captured events folded into this view. */
+    readonly events: number;
   };
   readonly diagnostics: readonly AgentViewDiagnostic[];
 }
@@ -422,16 +437,21 @@ export function buildAgentView(
         partnerIndex === undefined ? null : events[partnerIndex];
       // A result that closes a user-question tool carries the recorded
       // answers; the option sets that build its answer chips sit on the
-      // paired start event.
-      const answers = parseUserQuestionContent(event.payload ?? {}).answers;
-      const answerQuestions = startEvent
-        ? parseUserQuestionContent(startEvent.payload ?? {}).prompts.map(
-            (prompt) => ({
-              question: prompt.question,
-              options: prompt.options,
-            }),
-          )
+      // paired start event. Only question tools get the projection — the
+      // single classifier keeps every other tool's payload out of the
+      // extractor on each batch.
+      const answers = isUserQuestionEvent(event)
+        ? parseUserQuestionContent(event.payload ?? {}).answers
         : [];
+      const answerQuestions =
+        startEvent && isUserQuestionEvent(startEvent)
+          ? parseUserQuestionContent(startEvent.payload ?? {}).prompts.map(
+              (prompt) => ({
+                question: prompt.question,
+                options: prompt.options,
+              }),
+            )
+          : [];
       placement.push({
         index,
         step: {
@@ -459,12 +479,22 @@ export function buildAgentView(
         key: getTraceEventKey(event),
         summary: getEventSummary(event),
         payload: event.payload ?? {},
+        // A tool-call event (PreToolUse) opens with its complete execution
+        // line — the captured shell command, else the tool name plus its short
+        // inputs — instead of burying the command inside the related-fields
+        // dump. Non-tool events resolve to null and keep the plain body.
+        command: getToolCallInvocation(event),
+        toolName: event.toolName || stringValue(event.payload?.tool_name) || null,
       },
     });
   });
 
   placement.sort((left, right) => left.index - right.index);
   const steps = placement.map((entry) => entry.step);
+  const turnValues = new Set<number>();
+  events.forEach((event) => {
+    turnValues.add(turnByEventId.get(event.id) ?? 1);
+  });
   return {
     steps,
     stats: {
@@ -472,6 +502,8 @@ export function buildAgentView(
       replies: steps.filter((step) => step.kind === "reply").length,
       questions: steps.filter((step) => step.kind === "question").length,
       snapshotsMerged,
+      turns: turnValues.size,
+      events: events.length,
     },
     diagnostics,
   };

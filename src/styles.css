@@ -5757,17 +5757,53 @@ pre,
   margin-bottom: 0;
 }
 
-/* GFM task lists: the checkbox replaces the marker instead of doubling it,
-   and carries the violet accent the rest of the console's interactive
-   controls use. */
-.markdown-preview li:has(> input[type="checkbox"]) {
+/* GFM task lists (a captured `todos` payload reads as a checklist, not a
+   JSON dump): the container reads as one track and each row as a compact
+   card. The checkbox replaces the list marker instead of doubling it. */
+.markdown-preview ul:has(> li > input[type="checkbox"]) {
+  display: grid;
+  gap: 6px;
+  padding-left: 0;
   list-style: none;
 }
 
+.markdown-preview li:has(> input[type="checkbox"]) {
+  position: relative;
+  margin: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--line-bright);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--panel) 84%, var(--bg));
+}
+
 .markdown-preview input[type="checkbox"] {
-  margin: 0 6px 0 0;
-  accent-color: var(--violet);
-  vertical-align: -1px;
+  width: 13px;
+  height: 13px;
+  margin: 0 8px 0 0;
+  flex: 0 0 13px;
+  border: 1.5px solid var(--border);
+  border-radius: 4px;
+  background: var(--panel);
+  accent-color: var(--teal);
+  vertical-align: -2px;
+  cursor: default;
+}
+
+/* A finished todo reads as settled: the row's text dims and strikes, and its
+   left edge carries the teal done marker. An open row keeps full emphasis so
+   the next step pops, and the open checkbox stays hollow. */
+.markdown-preview input[type="checkbox"]:checked {
+  border-color: var(--teal);
+  background: color-mix(in srgb, var(--teal) 18%, var(--panel));
+}
+
+.markdown-preview li:has(> input[type="checkbox"]:checked) {
+  border-left-color: color-mix(in srgb, var(--teal) 60%, var(--line));
+  background: color-mix(in srgb, var(--panel) 90%, var(--teal) 6%);
+  color: var(--muted-soft, var(--muted));
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--muted) 55%, transparent);
 }
 
 .markdown-preview strong {
@@ -6198,9 +6234,22 @@ pre,
   min-width: 0;
   grid-template-columns: minmax(96px, 0.9fr) minmax(0, 1.4fr);
   gap: 10px;
-  padding: 7px 0;
+  padding: 8px 8px;
   border-bottom: 1px solid var(--line);
+  border-radius: 5px;
   font-size: var(--text-meta);
+  transition: background 120ms ease;
+}
+
+/* A 17-field inventory must scan as a table, not a wall of dashes: alternate
+   rows tint and any row highlights on hover, so the key/value columns read
+   down the list without a hard divider on every line. */
+.payload-overlay__field:nth-child(odd):not(.payload-overlay__field--group) {
+  background: color-mix(in srgb, var(--panel-raised, var(--panel)) 55%, transparent);
+}
+
+.payload-overlay__field:hover:not(.payload-overlay__field--group) {
+  background: color-mix(in srgb, var(--panel-raised, var(--panel)) 92%, var(--line-bright));
 }
 
 .payload-overlay__field dt {
@@ -6208,6 +6257,7 @@ pre,
   overflow: hidden;
   color: var(--muted);
   font-family: var(--font-mono);
+  font-weight: var(--weight-medium, 600);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -9797,13 +9847,16 @@ pre,
 .question-preview__answers {
   display: flex;
   align-items: baseline;
+  flex-wrap: wrap;
   gap: 8px;
   margin: 8px 0 0;
-  padding: 6px 8px;
-  border-left: 2px solid var(--teal);
-  border-radius: 0 5px 5px 0;
-  background: color-mix(in srgb, var(--teal) 9%, transparent);
-  color: var(--muted);
+  padding: 7px 10px;
+  border: 1px solid color-mix(in srgb, var(--teal) 40%, transparent);
+  border-left: 3px solid var(--teal);
+  border-radius: 0 6px 6px 0;
+  background: color-mix(in srgb, var(--teal) 14%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--teal) 12%, transparent);
+  color: var(--teal);
   font-size: var(--text-caption);
 }
 
@@ -9811,6 +9864,16 @@ pre,
   color: var(--text-strong);
   font-size: var(--text-meta);
   font-weight: var(--weight-medium, 600);
+}
+
+/* The recorded answer is the point of a finished question: lift it past the
+   teal hint so a reader scanning the Agent reply sees "this was answered
+   here" at a glance, even at small sizes. */
+.question-surface__item.is-answered .question-preview__answers {
+  background: color-mix(in srgb, var(--teal) 22%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--teal) 24%, transparent),
+    0 0 12px color-mix(in srgb, var(--teal) 18%, transparent);
 }
 
 .question-surface__item.is-answered {
@@ -10009,10 +10072,11 @@ pre,
   gap: 4px;
   max-width: 100%;
   padding: 3px 9px;
-  border: 1px solid color-mix(in srgb, var(--teal) 46%, transparent);
+  border: 1px solid color-mix(in srgb, var(--teal) 55%, transparent);
   border-radius: 999px;
   color: var(--teal);
-  background: color-mix(in srgb, var(--teal) 14%, var(--panel));
+  background: color-mix(in srgb, var(--teal) 20%, var(--panel));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--teal) 12%, transparent), 0 0 10px color-mix(in srgb, var(--teal) 22%, transparent);
   font-size: 0.75rem;
   font-weight: var(--weight-medium, 600);
   overflow-wrap: anywhere;
@@ -10359,34 +10423,67 @@ pre,
 }
 
 .agent-step__command {
+  position: relative;
   margin: 0 0 10px;
-  padding: 7px 10px 9px;
-  border: 1px solid var(--line-bright);
+  padding: 9px 12px 11px 24px;
+  border: 1px solid color-mix(in srgb, var(--amber) 30%, var(--line-bright));
   border-left: 3px solid var(--amber);
   border-radius: 6px;
-  background: color-mix(in srgb, var(--panel) 78%, var(--amber) 22%);
+  background: color-mix(in srgb, var(--panel) 80%, var(--amber) 18%);
 }
 
 .agent-step__command-label {
   display: block;
-  margin-bottom: 4px;
+  margin-bottom: 5px;
   color: var(--amber);
   font-family: var(--font-mono, monospace);
   font-size: 0.625rem;
   letter-spacing: 0.08em;
 }
 
+/* A captured shell command opens with its terminal prompt marker, so the
+   complete execution line reads as the line the host actually ran. It sits
+   in the left gutter and never shifts the command text on wide blocks. */
+.agent-step__command-prompt {
+  position: absolute;
+  top: 22px;
+  left: 11px;
+  color: var(--amber);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.75rem;
+  font-weight: var(--weight-medium, 600);
+  user-select: none;
+}
+
+.agent-step__command .markdown-preview pre {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  overflow-x: auto;
+}
+
 /* A question-tool result's recorded answers, in the card's own anatomy:
  * the same answer-rows rendering the inspector uses, so a finished
  * question reads as answered. Teal (the answer / live tone) sets it apart
- * from the amber execution block. */
+ * from the amber execution block; a finished run lights it up so the
+ * recorded answer is unmistakable against the still-executing steps. */
 .agent-step__answers {
   margin: 0 0 10px;
-  padding: 7px 10px 9px;
-  border: 1px solid var(--line-bright);
+  padding: 9px 12px 10px;
+  border: 1px solid color-mix(in srgb, var(--teal) 42%, var(--line-bright));
   border-left: 3px solid var(--teal);
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--panel) 84%, var(--teal) 16%);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--panel) 82%, var(--teal) 20%);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--teal) 14%, transparent);
+}
+
+.agent-step__answers .answer-rows__row {
+  padding: 7px 0;
+}
+
+.agent-step__answers .answer-rows__question {
+  color: var(--teal);
 }
 
 .agent-step__answers-label {

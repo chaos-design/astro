@@ -44,7 +44,7 @@ import {
   splitPayloadPreview,
 } from "@/lib/payload-preview";
 import { payloadToMarkdown } from "@/lib/payload-markdown";
-import { formatDurationMs } from "@/lib/duration-label";
+import { formatDurationClock, formatDurationMs } from "@/lib/duration-label";
 
 /**
  * The Agent view of one run: the captured sequence rendered as the artifacts
@@ -221,11 +221,25 @@ export function AgentTranscript({
     }
     const container = scrollRef.current;
     const element = stepRefs.current.get(targetStep.id);
-    if (!container || !element) {
+    if (!container) {
       return;
     }
-    // Instant positioning: smooth scrolling is interrupted by the re-renders
-    // that keep arriving while a live run appends events.
+    // Locating the *newest* step is the same as jumping to the bottom: the
+    // reader wants the tail on screen, and pinning the step's top 12px down
+    // would leave a blank gap under it while the run keeps appending. Scroll
+    // to the absolute bottom instead so the newest message lands flush with
+    // the bottom edge and live follow can resume from there.
+    const isLastStep =
+      view.steps.length > 0 && view.steps.at(-1)?.id === targetStep.id;
+    if (isLastStep || !element) {
+      scrollToTop(container, container.scrollHeight);
+      atBottomRef.current = true;
+      syncScrollState();
+      return;
+    }
+    // An older step: align its top near the container top so the reader sees
+    // it in context. Instant positioning: smooth scrolling is interrupted by
+    // the re-renders that keep arriving while a live run appends events.
     const top =
       element.getBoundingClientRect().top -
       container.getBoundingClientRect().top +
@@ -264,14 +278,26 @@ export function AgentTranscript({
               "agent-transcript__duration",
               live && "is-live",
             )}
-            title="当前消息执行时间"
+            title="当前消息执行时间（H:MM:SS；不足 1 分钟保留 0.1 秒）"
           >
-            执行 {formatDurationMs(runDurationMs)}
+            执行 {formatDurationClock(runDurationMs)}
           </span>
         ) : null}
         <span className="agent-transcript__stat">{view.stats.thinking} 思考</span>
         <span className="agent-transcript__stat">{view.stats.replies} 回复</span>
         <span className="agent-transcript__stat">{view.stats.questions} 提问</span>
+        <span
+          className="agent-transcript__stat"
+          title="运行跨越的轮次"
+        >
+          {view.stats.turns} 轮
+        </span>
+        <span
+          className="agent-transcript__stat"
+          title="折叠进该视图的捕获事件数"
+        >
+          {view.stats.events} 事件
+        </span>
         {view.stats.snapshotsMerged > 0 ? (
           <span className="agent-transcript__stat is-merged">
             {view.stats.snapshotsMerged} 个流式快照已合并
@@ -384,7 +410,14 @@ function StepCard({
       case "question":
         return { icon: <MessageSquare aria-hidden="true" />, label: "QUESTION", meta: `${step.parsed.prompts.length || 1} 个问题` };
       default:
-        return { icon: <Bot aria-hidden="true" />, label: step.key.toUpperCase(), meta: step.eventName };
+        // A tool-call event (PreToolUse) reads as a TOOL.CALL step named for
+        // the tool it invoked; every other event keeps its own display key.
+        const toolCall = step.toolName ? `TOOL CALL` : step.key.toUpperCase();
+        return {
+          icon: <Bot aria-hidden="true" />,
+          label: toolCall,
+          meta: step.toolName ? `${step.toolName} · ${step.eventName}` : step.eventName,
+        };
     }
   })();
 
@@ -494,6 +527,10 @@ function ToolResultBody({
   // Read, …) shows its complete invocation line instead, so the card never
   // opens with the result and no idea of what was executed.
   const commandLine = step.command ?? step.invocation;
+  // A `$` prompt marker reads as a terminal line only for a real shell
+  // command; a composed structured invocation (`Read path=…`) would be
+  // mislabelled, so it shows the command label without the prompt.
+  const isShell = Boolean(step.command);
   return (
     <>
       <div className="agent-step__toolbar">
@@ -507,6 +544,14 @@ function ToolResultBody({
       {commandLine ? (
         <div className="agent-step__command">
           <span className="agent-step__command-label">COMMAND</span>
+          {isShell ? (
+            <span
+              aria-hidden="true"
+              className="agent-step__command-prompt"
+            >
+              $
+            </span>
+          ) : null}
           <MarkdownView source={contentToMarkdown(commandLine)} />
         </div>
       ) : null}
@@ -541,8 +586,18 @@ function QuestionBody({
 
 function GenericBody({ step }: { step: GenericStep }) {
   const source = useMemo(() => contentToMarkdown(step.summary), [step.summary]);
+  // A tool-call event opens with its complete execution line (the captured
+  // shell command, else the tool name plus its short inputs) so the reader
+  // sees what ran before the summary and the related-fields dump.
+  const commandLine = step.command;
   return (
     <>
+      {commandLine ? (
+        <div className="agent-step__command">
+          <span className="agent-step__command-label">COMMAND</span>
+          <MarkdownView source={contentToMarkdown(commandLine)} />
+        </div>
+      ) : null}
       <MarkdownView source={source} />
       <StepRelated payload={step.payload} resetToken={step.id} />
     </>
