@@ -6378,9 +6378,9 @@ pre,
 /* Quick jump to either end of the chain, beside the rail's search box. The
    container reserves the two-button width, both chevrons stay mounted and an
    unreachable edge is disabled — never an unmount — so the search box beside
-   them never shifts while the list scrolls or a live event lands. A tinted
-   surface and a pointer cursor make them read as controls rather than glyphs;
-   the disabled edge keeps a dimmer surface and the plain arrow. */
+   them never shifts while the list scrolls or a live event lands. A solid
+   selection fill and ink make them unmistakable controls at a glance; the
+   disabled edge keeps a dimmer surface and the plain arrow. */
 .payload-overlay__rail-scroll-controls {
   display: flex;
   flex: 0 0 48px;
@@ -6398,10 +6398,10 @@ pre,
   align-items: center;
   justify-content: center;
   padding: 0;
-  border: 1px solid color-mix(in srgb, var(--line-bright) 90%, transparent);
+  border: 1px solid var(--selection-border);
   border-radius: 5px;
-  color: var(--muted-soft);
-  background: color-mix(in srgb, var(--selection-border) 26%, var(--panel-raised));
+  color: var(--selection-text);
+  background: var(--selection-bg);
   cursor: pointer;
   transition:
     color 120ms ease,
@@ -6425,8 +6425,8 @@ pre,
 .payload-overlay__rail-scroll-button:not(:disabled):hover {
   border-color: var(--selection-border);
   color: var(--selection-text);
-  background: var(--selection-bg);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--selection-border) 14%, transparent);
+  background: color-mix(in srgb, var(--selection-border) 22%, var(--selection-bg));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--selection-border) 18%, transparent);
 }
 
 .payload-overlay__rail-empty {

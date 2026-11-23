@@ -620,7 +620,7 @@ test("scroll, padding and control polish keep the reading surface stable", () =>
   // surface and the plain arrow on the disabled edge.
   assert.match(
     stylesForOverlay,
-    /\.payload-overlay__rail-scroll-button \{[\s*\S]*?background: color-mix\(in srgb, var\(--selection-border\) 26%, var\(--panel-raised\)\);[\s*\S]*?cursor: pointer;/,
+    /\.payload-overlay__rail-scroll-button \{[\s*\S]*?color: var\(--selection-text\);[\s*\S]*?background: var\(--selection-bg\);[\s*\S]*?cursor: pointer;/,
   );
   assert.match(
     stylesForOverlay,
