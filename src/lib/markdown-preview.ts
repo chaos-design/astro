@@ -124,9 +124,22 @@ function highlightShell(code: string): string {
         }
         return escapeHtml(line);
       }
-      const marker = line.match(/<<-?\s*(?:'([^']*)'|"([^"]*)"|([A-Za-z_]\w*))/);
+      // A here-doc operator is a separate token: it must follow whitespace or
+      // a shell operator, never a quote or a word character. Matching `<<`
+      // anywhere made `echo "<<EOF"` and `echo $((1 << SHIFT))` open a phantom
+      // here-doc, so the following real commands lost their colouring.
+      const marker = line.match(
+        /(?:^|[\s;&|(])<<-?[ \t]*(?:'([^']*)'|"([^"]*)"|([A-Za-z_]\w*))/,
+      );
       if (marker) {
-        heredoc = marker[1] || marker[2] || marker[3] || "";
+        // `((x << y))` is an arithmetic shift, not a here-doc. An unmatched
+        // `$((` before the operator means the `<<` is still inside arithmetic.
+        const before = line.slice(0, marker.index! + 1);
+        const arithmeticOpens = (before.match(/\$\(\(/g) ?? []).length;
+        const arithmeticCloses = (before.match(/\)\)/g) ?? []).length;
+        if (arithmeticOpens <= arithmeticCloses) {
+          heredoc = marker[1] || marker[2] || marker[3] || "";
+        }
       }
       if (/^\s*#/.test(line)) {
         return `<span class="hljs-comment">${escapeHtml(line)}</span>`;
@@ -139,9 +152,14 @@ function highlightShell(code: string): string {
           html += escapeHtml(token);
           continue;
         }
-        if (token.startsWith("#")) {
+        if (
+          token.startsWith("#") &&
+          (match.index === 0 || /[\s;&|]/.test(line[match.index! - 1]))
+        ) {
           // A trailing comment runs to end of line; the tokenizer's `.`
-          // fallback would otherwise paint each word as a command.
+          // fallback would otherwise paint each word as a command. In a shell
+          // `#` only opens a comment at a word boundary, so a `#` inside a
+          // token (a URL fragment such as `https://x/y#frag`) stays literal.
           html += `<span class="hljs-comment">${escapeHtml(line.slice(match.index))}</span>`;
           break;
         }

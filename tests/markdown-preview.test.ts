@@ -114,6 +114,25 @@ test("shell comments and heredoc bodies are not painted as commands", () => {
   assert.doesNotMatch(render.html, /<span class="hljs-keyword">plain<\/span>/);
 });
 
+test("a `#` inside a word and a quoted `<<` do not open a comment or here-doc", () => {
+  const fragment = renderMarkdownPreview(
+    "```bash\ncurl https://example.com/path#section\n```",
+  );
+  assert.match(fragment.html, /path#section/);
+  assert.doesNotMatch(fragment.html, /hljs-comment/);
+
+  for (const opening of ['echo "<<EOF"', "echo $((1 << SHIFT))"]) {
+    const quoted = renderMarkdownPreview(
+      `\`\`\`bash\n${opening}\nls -la\nEOF\n\`\`\``,
+    );
+    // A quoted `<<EOF` or an arithmetic shift is not a here-doc, so `ls` is
+    // still a real command; only a genuine here-doc makes the next lines data.
+    assert.match(quoted.html, /<span class="hljs-keyword">ls<\/span>/, opening);
+  }
+  const quoted = renderMarkdownPreview('```bash\necho "<<EOF"\nls -la\nEOF\n```');
+  assert.match(quoted.html, /<span class="hljs-string">.*&lt;&lt;EOF.*<\/span>/);
+});
+
 test("a fence without a language stays a plain pre without a badge", () => {
   const render = renderMarkdownPreview("```\nplain captured text\n```");
   assert.equal(render.valid, true);
