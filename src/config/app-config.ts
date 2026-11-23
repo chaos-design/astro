@@ -247,7 +247,7 @@ export function getMaxSyncLabel(id: MaxSyncId): string {
  * Release string shown in the application header. Kept in sync with the
  * root package.json version and asserted by tests/app-config.test.ts.
  */
-export const appVersion = "0.0.7-alpha.5";
+export const appVersion = "0.0.7";
 
 /**
  * Timing values shared by live UI effects.
