@@ -14,7 +14,10 @@ import { MarkdownView } from "@/components/markdown-view";
 import { PairLinkMarker } from "@/components/pair-link-marker";
 import { QuestionContent, QuestionPreview, type QuestionAnswerBinding } from "@/components/question-content";
 import { RelatedFields } from "@/components/related-fields";
-import { isAgentTranscriptAtBottom } from "@/lib/agent-transcript-scroll";
+import {
+  isAgentTranscriptAtBottom,
+  isManualUpScroll,
+} from "@/lib/agent-transcript-scroll";
 import { cn } from "@/lib/utils";
 import type {
   AgentStep,
@@ -62,12 +65,21 @@ export function AgentTranscript({
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const stepRefs = useRef(new Map<string, HTMLElement>());
   const atBottomRef = useRef(true);
+  const manualUpRef = useRef(false);
+  const lastScrollTopRef = useRef(0);
   const stepCountRef = useRef(view.steps.length);
   const firstStepIdRef = useRef(view.steps[0]?.id ?? "");
   const lastLocateRef = useRef(locateRequest);
   const scrollFrameRef = useRef<number | null>(null);
   const [showJump, setShowJump] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
+
+  // Programmatic positioning records its destination as the previous top, so
+  // the scroll event it fires cannot masquerade as a manual scroll back.
+  const scrollToTop = useCallback((element: HTMLElement, top: number) => {
+    element.scrollTop = top;
+    lastScrollTopRef.current = element.scrollTop;
+  }, []);
 
   // The scroll handler reads layout at most once per frame: a live stream can
   // append several events a second, but a wheel gesture must not turn every
@@ -77,14 +89,25 @@ export function AgentTranscript({
     if (!container) {
       return;
     }
+    const current = container.scrollTop;
+    const previous = lastScrollTopRef.current;
+    lastScrollTopRef.current = current;
     const atBottom = isAgentTranscriptAtBottom(container);
     atBottomRef.current = atBottom;
-    setShowJump(
-      !atBottom && container.scrollHeight > container.clientHeight + 40,
-    );
     if (atBottom) {
+      // Back at the newest step: disarm the pill and resume live pinning.
+      manualUpRef.current = false;
+      setShowJump(false);
       setPendingCount(0);
+      return;
     }
+    if (isManualUpScroll(current, previous)) {
+      manualUpRef.current = true;
+    }
+    setShowJump(
+      manualUpRef.current &&
+        container.scrollHeight > container.clientHeight + 40,
+    );
   }, []);
 
   const handleScroll = useCallback(() => {
@@ -121,7 +144,12 @@ export function AgentTranscript({
       // describe a run the reader is no longer looking at.
       firstStepIdRef.current = firstStepId;
       atBottomRef.current = true;
+      manualUpRef.current = false;
       stepCountRef.current = view.steps.length;
+      const container = scrollRef.current;
+      if (container) {
+        lastScrollTopRef.current = container.scrollTop;
+      }
       setShowJump(false);
       setPendingCount(0);
       return;
@@ -135,12 +163,12 @@ export function AgentTranscript({
     if (atBottomRef.current) {
       const container = scrollRef.current;
       if (container) {
-        container.scrollTop = container.scrollHeight;
+        scrollToTop(container, container.scrollHeight);
       }
     } else {
       setPendingCount((current) => current + (count - previous));
     }
-  }, [view.steps]);
+  }, [view.steps, scrollToTop]);
 
   useEffect(() => {
     if (!selectedEventId || !targetStep) {
@@ -165,20 +193,28 @@ export function AgentTranscript({
       element.getBoundingClientRect().top -
       container.getBoundingClientRect().top +
       container.scrollTop;
-    container.scrollTop = Math.max(0, top - 12);
+    scrollToTop(container, Math.max(0, top - 12));
     syncScrollState();
-  }, [selectedEventId, targetStep?.id, view.steps.length, locateRequest, syncScrollState]);
+  }, [
+    selectedEventId,
+    targetStep?.id,
+    view.steps.length,
+    locateRequest,
+    scrollToTop,
+    syncScrollState,
+  ]);
 
   const jumpToLatest = useCallback(() => {
     const container = scrollRef.current;
     if (!container) {
       return;
     }
-    container.scrollTop = container.scrollHeight;
+    scrollToTop(container, container.scrollHeight);
     atBottomRef.current = true;
+    manualUpRef.current = false;
     setShowJump(false);
     setPendingCount(0);
-  }, []);
+  }, [scrollToTop]);
 
   return (
     <div className="agent-transcript">

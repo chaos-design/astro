@@ -134,6 +134,8 @@ test("the Agent view keeps a reader's scroll and offers a jump to the newest ste
   assert.match(overlay, /setAgentLocateRequest\(\(current\) => current \+ 1\)/);
   assert.match(agentTranscript, /if \(!explicit && !atBottomRef\.current\)/);
   assert.match(agentTranscript, /isAgentTranscriptAtBottom\(container\)/);
+  assert.match(agentTranscript, /isManualUpScroll\(current, previous\)/);
+  assert.match(agentTranscript, /manualUpRef\.current = false/);
   assert.match(agentTranscript, /window\.requestAnimationFrame/);
   assert.match(agentTranscript, /setPendingCount\(\(current\) => current \+ \(count - previous\)\)/);
   // The loading pill is pinned to the surface, not to the scrolled content;
@@ -142,7 +144,7 @@ test("the Agent view keeps a reader's scroll and offers a jump to the newest ste
   assert.match(agentTranscript, /agent-transcript__jump/);
   assert.match(agentTranscript, /agent-transcript__pending/);
   assert.match(agentTranscript, /agent-transcript__surface/);
-  assert.match(agentTranscript, /container\.scrollTop = container\.scrollHeight/);
+  assert.match(agentTranscript, /scrollToTop\(container, container\.scrollHeight\)/);
   assert.doesNotMatch(agentTranscript, /behavior: "smooth"/);
   assert.match(stylesForOverlay, /\.agent-transcript__jump \{[\s\S]*?position: absolute/);
   assert.match(stylesForOverlay, /:not\(\.agent-transcript__jump\) \{/);

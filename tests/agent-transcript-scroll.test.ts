@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   AGENT_SCROLL_BOTTOM_EPSILON,
   isAgentTranscriptAtBottom,
+  isManualUpScroll,
 } from "../src/lib/agent-transcript-scroll.ts";
 
 function viewport(scrollTop: number) {
@@ -41,4 +42,11 @@ test("content shorter than the viewport is always at the bottom", () => {
     }),
     true,
   );
+});
+
+test("only an upward movement counts as a manual scroll back", () => {
+  assert.equal(isManualUpScroll(200, 300), true);
+  assert.equal(isManualUpScroll(300, 200), false, "scrolling down is not a jump request");
+  assert.equal(isManualUpScroll(300, 300), false, "a programmatic pin records its destination");
+  assert.equal(isManualUpScroll(299.5, 300), false, "sub-pixel jitter is not a gesture");
 });

@@ -130,9 +130,12 @@
     (`src/components/related-fields.tsx`), and steps share the rail's
     `onSelectAtom` selection state. The bottom test has one definition,
     `isAgentTranscriptAtBottom` in `src/lib/agent-transcript-scroll.ts` (24px
-    tolerance); the overlay bumps `agentLocateRequest` only for an explicit pick
-    so live follow never steals the reader's scroll, and new steps instead count
-    up on the bottom-centered jump pill. The trailing loading state appears only
+    tolerance), and `isManualUpScroll` marks only a manual upward gesture as
+    history reading (programmatic pinning and step locating record their target
+    top and never trigger it). The overlay bumps `agentLocateRequest` only for
+    an explicit pick so live follow never steals the reader's scroll; new steps
+    count up on the bottom-centered jump pill, and returning to the bottom
+    dismisses it and resumes automatic appending. The trailing loading state appears only
     while the run is still executing (`followAvailable`). The overlay's left rail is the run's **message chain in the
     LOG's own data standard**, fed by `overlayAtoms`, mapped from the same
     `buildLogEntries(activeEvents, …)` result the LOG list prints (app.tsx):

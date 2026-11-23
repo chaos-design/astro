@@ -694,10 +694,13 @@ The inspector provides:
   of silently dropping data. Questions reuse the existing read-only preview
   or the one actionable form; answerability still comes from the interaction
   state. Selecting a step and selecting a rail row are the same state, with
-  instant positioning. Scrolling back through the chain reveals a bottom-centered
-  spinning "back to latest" pill: live events no longer yank the reader down,
+  instant positioning. Only a **manual upward scroll** reveals the
+  bottom-centered spinning "back to latest" pill — programmatic locating and
+  live pinning never trigger it. Live events no longer yank the reader down;
   new steps only count up on the pill, and a click jumps straight to the last
-  step and clears the count. While the run is still executing, a spinning
+  step and clears the count. Scrolling back to the bottom dismisses the pill
+  and resumes automatic following, so new content keeps appending. While the
+  run is still executing, a spinning
   loading state follows the newest step and disappears when it finishes. The
   scroll test is throttled to one layout read per frame, so the console's
   once-a-second refresh never re-lays out the transcript. `Preview` and `Code`

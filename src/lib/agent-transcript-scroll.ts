@@ -19,3 +19,15 @@ export function isAgentTranscriptAtBottom(element: {
     AGENT_SCROLL_BOTTOM_EPSILON
   );
 }
+
+/**
+ * Only a scroll that moves the reader *up* reveals the jump pill. Programmatic
+ * positioning records its destination as the previous top, so locating a step
+ * or pinning a live batch can never be mistaken for a manual scroll back.
+ */
+export function isManualUpScroll(
+  currentTop: number,
+  previousTop: number,
+): boolean {
+  return currentTop < previousTop - 1;
+}

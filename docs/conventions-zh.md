@@ -100,8 +100,10 @@
     `RelatedFields`（`src/components/related-fields.tsx`，按值折叠），
     步骤与左 rail 共用 `onSelectAtom` 选择态；读者向上滚动后由
     `src/lib/agent-transcript-scroll.ts` 的 `isAgentTranscriptAtBottom`（24px 容差）
-    单一判定是否仍在底部，overlay 的 `agentLocateRequest` 只由显式点选递增，
-    实时跟随不抢阅读位置，新步骤累计在底部「回到最新」按钮上；末尾 loading
+    单一判定是否仍在底部，`isManualUpScroll` 只把人为上滚记作阅读回看
+    （程序定位与新事件跟随会记录目标位置，不误触发），overlay 的
+    `agentLocateRequest` 只由显式点选递增，实时跟随不抢阅读位置，新步骤累计在
+    底部「回到最新」按钮上，滚回底部即解除并恢复自动追加；末尾 loading
     态只在运行仍执行（`followAvailable`）时出现，结束即撤；
     `Preview` 分两块区域：「原子内容」（真实文本，代码/JSON 高亮、Markdown 渲染）
     与「相关数据」（**全部**字段：含 content 键、空值、null/false/0 与嵌套路径，
