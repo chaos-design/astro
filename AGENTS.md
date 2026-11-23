@@ -926,7 +926,12 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   `startsWith` chains, every Reasoning event is its own block with the real
   captured text shown by default (all hook spellings folded by `extractText`
   in `trace-model.ts`), tool commands read only from the paired `PreToolUse`
-  through `getToolCallCommand` without mutating events, and questions bind only
+  through `getToolCallCommand` without mutating events, and a structured
+  tool's complete execution line is synthesized the same way
+  (`getToolCallInvocation`: the tool name plus every short input field,
+  diff-carrying `old/new` / `content` fields excluded so the patch keeps its
+  own rendering), so a tool-result card always states what was executed;
+  questions bind only
   to the blocking start event through `parseUserQuestionContent`.
   `src/components/agent-transcript.tsx` only consumes that projection; payload
   text still goes through `MarkdownView` / the shared payload helpers and
@@ -969,8 +974,11 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   preview), and the pane previews the payload's **core information**, never the raw
   envelope: a split with prose renders as Markdown, one without falls to the
   shared core extractor `payloadToMarkdown` (which reads the camel
-  `toolResponse` spelling and renders a `structuredPatch` as a highlighted
-  diff), and only a payload with nothing to say falls back to highlighted
+  `toolResponse` spelling, renders a `structuredPatch` — and an Edit-style
+  `old_string` / `new_string` pair in either snake or camel spelling — as a
+  highlighted diff, and reads an array of compact records (a `todos`
+  payload) as a GFM checklist instead of one fenced JSON blob), and only a
+  payload with nothing to say falls back to highlighted
   JSON (`fallbackPayloadMarkdown` — switching rows must always
   change the pane, never sit empty). The generic view is **content-only**:
   metadata keys stay out (they are labelled in the related-data pane),

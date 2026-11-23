@@ -32,7 +32,7 @@ test("arrays of plain values render as a list and other scalars stay readable", 
   assert.equal(payloadToMarkdown({ blank: "", kept: "yes" }), "yes");
 });
 
-test("a code string in an unnamed field is fenced with its inferred language", () => {
+test("an Edit-style old/new string pair previews as the diff it is", () => {
   const markdown = payloadToMarkdown({
     tool_input: {
       file_path: "/tmp/project/file.test.tsx",
@@ -41,11 +41,51 @@ test("a code string in an unnamed field is fenced with its inferred language", (
       replace_all: false,
     },
   });
-  // Metadata (file_path, replace_all) stays out; the two code strings are
-  // highlighted fences, with no field-name headings.
-  assert.match(markdown, /```typescript\nimport \{ IMPERIAL_EXAM_LADDER \}/);
-  assert.match(markdown, /```typescript\nimport \{ EXAM_STAGES \}/);
-  assert.doesNotMatch(markdown, /###|file_path|replace_all/);
+  // The change is the result the reader came to see: one highlighted diff
+  // (the old line as a deletion, the new one as an addition), with the
+  // metadata (file_path, replace_all) staying out.
+  assert.match(markdown, /```diff\n--- a\/\/tmp\/project\/file\.test\.tsx\n\+\+\+ b\/\/tmp\/project\/file\.test\.tsx\n@@ -1,1 \+1,1 @@\n-import \{ IMPERIAL_EXAM_LADDER \} from "\.\/ladder";\n\+import \{ EXAM_STAGES \} from "\.\/ladder";\n```$/);
+  assert.doesNotMatch(markdown, /###|replace_all|```typescript/);
+});
+
+test("an Edit input in ZCode's camel spelling previews as the same diff", () => {
+  const markdown = payloadToMarkdown({
+    tool_input: {
+      filePath: "src/lib/agent-view.ts",
+      oldString: "const a = 1;",
+      newString: "const a = 2;",
+    },
+  });
+  assert.match(markdown, /--- a\/src\/lib\/agent-view\.ts/);
+  assert.match(markdown, /-const a = 1;/);
+  assert.match(markdown, /\+const a = 2;/);
+});
+
+test("a todos array renders as a GFM checklist, not a JSON dump", () => {
+  const markdown = payloadToMarkdown({
+    todos: [
+      { content: "pnpm test", status: "completed", priority: "high" },
+      { content: "pnpm build", status: "in_progress", priority: "high" },
+      { content: "push the branch", status: "pending", priority: "low" },
+    ],
+  });
+  assert.equal(
+    markdown,
+    "- [x] pnpm test — priority=high\n- [ ] pnpm build — priority=high\n- [ ] push the branch — priority=low",
+  );
+  assert.doesNotMatch(markdown, /```json/);
+});
+
+test("a lone array field is a list, not an unwrapped document", () => {
+  // A `{ todos }` payload has one key, but unwrapping would join the
+  // checklist rows into prose; the list keeps its shape.
+  const markdown = payloadToMarkdown({
+    todos: [
+      { content: "fix the bug", status: "completed" },
+      { content: "ship it", status: "pending" },
+    ],
+  });
+  assert.equal(markdown, "- [x] fix the bug\n- [ ] ship it");
 });
 
 test("a captured shell command is fenced instead of rendered as prose", () => {

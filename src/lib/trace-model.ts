@@ -610,6 +610,62 @@ export function getExecutionInstruction(
 }
 
 /**
+ * The complete tool invocation: the captured shell command when a producer
+ * reported one, otherwise the tool name with every short input field as a
+ * `key=value` pair. Diff-carrying fields (`old_string` / `new_string` and
+ * their camel spellings, `content`, `patch`) are excluded — the change they
+ * carry has its own diff rendering, and inlining it would duplicate a wall of
+ * text into the execution line. Multi-line values stay complete, JSON-escaped
+ * into one line, never truncated.
+ */
+export function getToolCallInvocation(
+  event: TraceEvent | null,
+  startEvent?: TraceEvent | null,
+): string | null {
+  const command = getToolCallCommand(event, startEvent);
+  if (command) {
+    return command;
+  }
+  const source = startEvent || event;
+  const payload = (source?.payload ?? {}) as Record<string, unknown>;
+  const toolInput = (payload.tool_input ?? payload.toolInput ?? {}) as
+    | Record<string, unknown>
+    | unknown;
+  const fields =
+    toolInput && typeof toolInput === "object" && !Array.isArray(toolInput)
+      ? (toolInput as Record<string, unknown>)
+      : {};
+  const toolName =
+    source?.toolName ??
+    (typeof payload.tool_name === "string" ? payload.tool_name : "");
+  // The change-carrying inputs keep their own diff rendering; naming them in
+  // the invocation would print the whole patch twice.
+  const EXCLUDED_INPUT_KEYS = new Set([
+    "old_string", "oldString", "new_string", "newString",
+    "content", "contentText", "patch", "structuredPatch",
+  ]);
+  const pairs = Object.entries(fields)
+    .filter(
+      ([, value]) =>
+        value !== null && value !== undefined,
+    )
+    .map(([key, value]) => {
+      if (EXCLUDED_INPUT_KEYS.has(key)) {
+        return "";
+      }
+      if (typeof value === "string") {
+        return /[\s"'\\]/.test(value) ? `${key}=${JSON.stringify(value)}` : `${key}=${value}`;
+      }
+      if (typeof value === "number" || typeof value === "boolean") {
+        return `${key}=${String(value)}`;
+      }
+      return `${key}=${JSON.stringify(value)}`;
+    });
+  const line = [toolName, ...pairs.filter(Boolean)].filter(Boolean).join(" ");
+  return line.trim() || null;
+}
+
+/**
  * Raw prompt text, without the display placeholder that
  * {@link getEventSummary} falls back to. Empty when the client reported the
  * prompt lifecycle without delivering its input (WorkBuddy, for example).

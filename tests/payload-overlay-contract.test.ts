@@ -208,9 +208,13 @@ test("agent steps show a captured command and real thinking on first render", ()
   assert.match(agentTranscript, /contentToMarkdown\(step\.summary\)/);
   assert.match(stylesForOverlay, /--type-accent: var\(--violet\)/);
   assert.match(stylesForOverlay, /--type-accent: var\(--amber\)/);
-  assert.match(agentTranscript, /step\.command \?/);
+  // A shell tool shows its captured command; a structured tool shows the
+  // complete invocation line the projection derives, so the card always
+  // states what was executed, not only what came back.
+  assert.match(agentTranscript, /step\.command \?\? step\.invocation/);
+  assert.match(agentTranscript, /commandLine \?/);
   assert.match(agentTranscript, /agent-step__command-label/);
-  assert.match(agentTranscript, /contentToMarkdown\(step\.command\)/);
+  assert.match(agentTranscript, /contentToMarkdown\(commandLine\)/);
   assert.match(stylesForOverlay, /\.agent-step__command \{/);
   assert.match(stylesForOverlay, /\.agent-step--tool-result \{/);
   assert.match(agentTranscript, /function ThinkingBody[\s\S]{0,600}useState\(true\)/);

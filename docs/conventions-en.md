@@ -122,7 +122,11 @@
     by default; `extractText` folds the fields hooks actually write (`message`,
     nested `summary`, `text`, `content`) without a per-client parser. Tool
     commands are read only by `getToolCallCommand` from the paired `PreToolUse`,
-    never written back or inferred from a tool name. A question binds only to
+    never written back or inferred from a tool name; a structured tool's
+    complete execution line is synthesized the same way by
+    `getToolCallInvocation` (the tool name plus every short input field, with
+    the diff-carrying old/new and content fields left to their own rendering).
+    A question binds only to
     the blocking start event through `parseUserQuestionContent`.
     `src/components/agent-transcript.tsx` consumes that result read-only;
     bodies still go through `MarkdownView`, `QuestionContent/Preview` and the
@@ -167,8 +171,11 @@
     payload's **core information**, never the raw
     envelope: a split with prose renders as Markdown (lists, highlighted code
     by data type), one without falls to the shared core extractor
-    `payloadToMarkdown` (which reads the camel `toolResponse` spelling and
-    renders a `structuredPatch` as a highlighted diff), and only a payload
+    `payloadToMarkdown` (which reads the camel `toolResponse` spelling,
+    renders a `structuredPatch` — and an Edit-style `old_string` /
+    `new_string` pair in either snake or camel spelling — as a highlighted
+    diff, and reads an array of compact records (a `todos` payload) as a GFM
+    checklist instead of one fenced JSON blob), and only a payload
     with nothing to say falls back to highlighted JSON
     (`fallbackPayloadMarkdown`, dumping only the `captured` half of a
     `{ contract, captured }` wrapper) — switching rows always

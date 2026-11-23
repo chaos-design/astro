@@ -94,7 +94,10 @@
     `startsWith` 回退；每个 Reasoning 独立成块并默认展示真实思考文本，统一经
     `extractText` 读取 hook 实际字段（`message` / 嵌套 `summary` / `text` / `content`），
     不为某个客户端另写解析器；工具 command 只由 `getToolCallCommand` 从配对的
-    `PreToolUse` 读取，不写回事件、不从工具名编造；提问只绑阻断性 start 并复用
+    `PreToolUse` 读取，不写回事件、不从工具名编造，结构化工具的完整执行行
+    由同一配对事件经 `getToolCallInvocation` 合成（工具名加全部短输入字段，
+    diff 载体的 old/new 与 content 字段除外，补丁走自己的渲染）；提问只绑阻断性
+    start 并复用
     `parseUserQuestionContent`。呈现层 `src/components/agent-transcript.tsx`
     只读该结果，正文仍走 `MarkdownView`、`QuestionContent/Preview` 与共享的
     `RelatedFields`（`src/components/related-fields.tsx`，按值折叠），
@@ -131,9 +134,12 @@
     空占位绝不能遮住真实的 `toolInput.command`（那曾让每次工具调用的 Input
     预览变成空白）；拆分后
     没有正文的载荷走共享的核心内容抽取 `payload-markdown.ts` 的
-    `payloadToMarkdown`（读 camel `toolResponse`、把 `structuredPatch` 渲染成
-    高亮 diff——预览的是载荷的**核心信息**：tool result 的结果、prompt input、
-    message content，而不是原始信封）；通用视图是**纯内容的**——metadata 键
+    `payloadToMarkdown`（读 camel `toolResponse`、把 `structuredPatch` 与
+    Edit 型 `old_string`/`new_string`（蛇形/驼峰拼写皆认）渲染成高亮
+    diff，compact 记录数组（如 `todos`）渲染成 GFM 复选列表而非一整块
+    JSON 围栏——预览的是载荷的**核心信息**：tool result 的结果、prompt
+    input、message content，而不是原始信封）；通用视图是**纯内容的**——
+    metadata 键
     不进正文（`isPayloadMetaKey`，容器键 `tool_input`/`toolResponse` 除外，
     它们递归展开），字段名标签不打印，字符串值按推断语言围栏高亮
     （`inferCodeLanguage` / `fenceCode`：json / diff / xml / typescript /

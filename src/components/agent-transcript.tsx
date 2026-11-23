@@ -479,6 +479,10 @@ function ToolResultBody({
   const source = split.content.trim()
     ? contentToMarkdown(split.content)
     : payloadToMarkdown(step.payload);
+  // A shell tool shows its captured command; a structured tool (Edit,
+  // Read, …) shows its complete invocation line instead, so the card never
+  // opens with the result and no idea of what was executed.
+  const commandLine = step.command ?? step.invocation;
   return (
     <>
       <div className="agent-step__toolbar">
@@ -489,10 +493,10 @@ function ToolResultBody({
           <PairLinkMarker link={step.pairLink} onLocate={onLocate} />
         ) : null}
       </div>
-      {step.command ? (
+      {commandLine ? (
         <div className="agent-step__command">
           <span className="agent-step__command-label">COMMAND</span>
-          <MarkdownView source={contentToMarkdown(step.command)} />
+          <MarkdownView source={contentToMarkdown(commandLine)} />
         </div>
       ) : null}
       {source.trim() ? (

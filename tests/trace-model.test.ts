@@ -18,6 +18,7 @@ import {
   getSessionDisplayState,
   getSessionDuration,
   getToolCallCommand,
+  getToolCallInvocation,
   parseImportedTrace,
   searchTraceEvents,
 } from "../src/lib/trace-model.ts";
@@ -694,6 +695,54 @@ test("getToolCallCommand reports only captured commands", () => {
 
   const withArray = { ...(start as NonNullable<typeof start>), payload: { command: ["pnpm", "test"] } };
   assert.equal(getToolCallCommand(withArray), "pnpm test");
+});
+
+test("getToolCallInvocation keeps a shell command complete and builds structured invocations", () => {
+  const events = createDemoEvents(2_000_000_000_000);
+  const start = events.find(
+    (event) =>
+      event.eventName === "PreToolUse" && event.toolUseId === "tool-test",
+  );
+  const end = events.find(
+    (event) =>
+      event.eventName === "PostToolUse" && event.toolUseId === "tool-test",
+  );
+  // A captured shell command is the invocation, verbatim.
+  assert.equal(
+    getToolCallInvocation(end || null, start || null),
+    "pnpm test && pnpm build",
+  );
+  // A structured tool names itself and carries every short input field,
+  // with the diff-carrying old/new strings kept out of the line.
+  const editStart = {
+    ...(start as NonNullable<typeof start>),
+    toolName: "Edit",
+    payload: {
+      tool_input: {
+        file_path: "/tmp/project/file.test.tsx",
+        old_string: "const a = 1;\nconst b = 2;",
+        new_string: "const a = 2;\nconst b = 3;",
+        replace_all: false,
+      },
+    },
+  };
+  assert.equal(
+    getToolCallInvocation(null, editStart),
+    'Edit file_path=/tmp/project/file.test.tsx replace_all=false',
+  );
+  // A long value with no whitespace still reads as a bare assignment.
+  const readStart = {
+    ...(start as NonNullable<typeof start>),
+    toolName: "Read",
+    payload: { tool_input: { file_path: "/tmp/project/file.test.tsx", limit: 200 } },
+  };
+  assert.equal(
+    getToolCallInvocation(null, readStart),
+    "Read file_path=/tmp/project/file.test.tsx limit=200",
+  );
+  // No tool name and no input is no invocation, not a bare "Event".
+  assert.equal(getToolCallInvocation(null, { ...(end as NonNullable<typeof end>), toolName: undefined, payload: {} }), null);
+  assert.equal(getToolCallInvocation(null), null);
 });
 
 test("reasoning summaries read the payload spellings real hooks write", () => {

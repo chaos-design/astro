@@ -101,10 +101,37 @@ test("tool steps expose the command captured on the paired start event", () => {
   assert.ok(tool);
   if (tool?.kind !== "tool-result") return;
   assert.equal(tool.command, "pnpm test && pnpm build");
+  // A shell tool's complete execution line is the captured command itself.
+  assert.equal(tool.invocation, "pnpm test && pnpm build");
   // The projection is derived: the paired start event keeps its own shape.
   const raw = events.find((event) => event.id === tool.pairLink?.partnerId);
   assert.equal(raw?.payload.tool_input?.cmd, "pnpm test && pnpm build");
   assert.equal("command" in (raw?.payload ?? {}), false);
+
+  // A structured tool (no shell command) still gets a complete execution
+  // line: its name plus every short input field, diff-carrying fields out.
+  const structured = copyEvents((event) => {
+    if (event.eventName === "PreToolUse" && event.toolUseId === "tool-test") {
+      event.toolName = "Read";
+      event.payload = {
+        tool_input: { file_path: "/tmp/project/file.test.tsx", limit: 100 },
+        tool_name: "Read",
+      };
+    }
+  });
+  const structuredView = buildAgentView(structured, "chatgpt");
+  const structuredTool = structuredView.steps.find(
+    (step) =>
+      step.kind === "tool-result" &&
+      step.invocation === "Read file_path=/tmp/project/file.test.tsx limit=100",
+  );
+  assert.ok(structuredTool, "the structured tool's result step is projected");
+  if (structuredTool?.kind !== "tool-result") return;
+  assert.equal(structuredTool.command, null);
+  assert.equal(
+    structuredTool.invocation,
+    "Read file_path=/tmp/project/file.test.tsx limit=100",
+  );
 });
 
 test("thinking steps carry the real reasoning text from the capture", () => {

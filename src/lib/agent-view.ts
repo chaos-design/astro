@@ -8,6 +8,7 @@ import {
   getEventSummary,
   getEventTimestamp,
   getToolCallCommand,
+  getToolCallInvocation,
   type TracePairLink,
 } from "./trace-model.ts";
 import { buildTraceTurnIndex } from "./trajectory-model.ts";
@@ -73,6 +74,13 @@ export interface ToolResultStep extends AgentStepBase {
   readonly toolName: string | null;
   /** Captured tool command from the paired start event, never inferred. */
   readonly command: string | null;
+  /**
+   * The tool's complete execution line: the captured shell command when one
+   * exists, otherwise the tool name plus every short input field — so a
+   * structured tool (Edit, Read, …) shows its full invocation, not just its
+   * result.
+   */
+  readonly invocation: string | null;
   readonly durationMs: number | null;
   readonly pairLink: TracePairLink | null;
 }
@@ -389,6 +397,7 @@ export function buildAgentView(
           eventName: event.eventName,
           toolName: event.toolName ?? stringValue(event.payload?.tool_name),
           command: getToolCallCommand(event, startEvent),
+          invocation: getToolCallInvocation(event, startEvent),
           durationMs: pairDurations.get(event.id) ?? null,
           pairLink,
         },
