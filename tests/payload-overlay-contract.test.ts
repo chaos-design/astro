@@ -10,6 +10,10 @@ const relatedFields = readFileSync(
   new URL("../src/components/related-fields.tsx", import.meta.url),
   "utf8",
 );
+const agentTranscript = readFileSync(
+  new URL("../src/components/agent-transcript.tsx", import.meta.url),
+  "utf8",
+);
 const app = readFileSync(new URL("../src/app.tsx", import.meta.url), "utf8");
 const stylesForOverlay = readFileSync(
   new URL("../src/styles.css", import.meta.url),
@@ -118,6 +122,31 @@ test("the global overlay offers Agent, Preview and the raw JSON Code view", () =
   assert.ok(agentBranch >= 0 && agentBranch < previewBranch);
   assert.ok(previewBranch < codeBranch);
   assert.match(overlay, /切到 Code 查看原始载荷/);
+});
+
+test("the Agent view keeps a reader's scroll and offers a jump to the newest step", () => {
+  // Only an explicit pick bumps the locate token; live follow changes the
+  // selection without stealing a reader who scrolled back through the chain.
+  assert.match(overlay, /useState<PayloadViewMode>\("agent"\)/);
+  assert.match(overlay, /const \[agentLocateRequest, setAgentLocateRequest\]/);
+  assert.match(overlay, /locateRequest=\{agentLocateRequest\}/);
+  assert.match(overlay, /live=\{followAvailable\}/);
+  assert.match(overlay, /setAgentLocateRequest\(\(current\) => current \+ 1\)/);
+  assert.match(agentTranscript, /if \(!explicit && !atBottomRef\.current\)/);
+  assert.match(agentTranscript, /isAgentTranscriptAtBottom\(container\)/);
+  assert.match(agentTranscript, /window\.requestAnimationFrame/);
+  assert.match(agentTranscript, /setPendingCount\(\(current\) => current \+ \(count - previous\)\)/);
+  // The loading pill is pinned to the surface, not to the scrolled content;
+  // clicking it jumps instantly to the end instead of animating through a
+  // stream of re-rendering steps.
+  assert.match(agentTranscript, /agent-transcript__jump/);
+  assert.match(agentTranscript, /agent-transcript__pending/);
+  assert.match(agentTranscript, /agent-transcript__surface/);
+  assert.match(agentTranscript, /container\.scrollTop = container\.scrollHeight/);
+  assert.doesNotMatch(agentTranscript, /behavior: "smooth"/);
+  assert.match(stylesForOverlay, /\.agent-transcript__jump \{[\s\S]*?position: absolute/);
+  assert.match(stylesForOverlay, /:not\(\.agent-transcript__jump\) \{/);
+  assert.match(stylesForOverlay, /:not\(\.agent-transcript__jump\):focus-visible/);
 });
 
 test("an answers-only question falls back to the markdown answer preview", () => {

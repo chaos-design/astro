@@ -690,7 +690,14 @@ The inspector provides:
   of silently dropping data. Questions reuse the existing read-only preview
   or the one actionable form; answerability still comes from the interaction
   state. Selecting a step and selecting a rail row are the same state, with
-  instant positioning. `Preview` and `Code` remain one click away.
+  instant positioning. Scrolling back through the chain reveals a bottom-centered
+  spinning "back to latest" pill: live events no longer yank the reader down,
+  new steps only count up on the pill, and a click jumps straight to the last
+  step and clears the count. While the run is still executing, a spinning
+  loading state follows the newest step and disappears when it finishes. The
+  scroll test is throttled to one layout read per frame, so the console's
+  once-a-second refresh never re-lays out the transcript. `Preview` and `Code`
+  remain one click away.
   Escape or the scrim closes the layer. A left rail shows the current run's
   **message chain in the LOG's own data standard**: every event of the run,
   newest first, split by the same turn separators the LOG prints, with the row

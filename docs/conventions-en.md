@@ -124,7 +124,12 @@
     bodies still go through `MarkdownView`, `QuestionContent/Preview` and the
     shared per-value-folding `RelatedFields`
     (`src/components/related-fields.tsx`), and steps share the rail's
-    `onSelectAtom` selection state. The overlay's left rail is the run's **message chain in the
+    `onSelectAtom` selection state. The bottom test has one definition,
+    `isAgentTranscriptAtBottom` in `src/lib/agent-transcript-scroll.ts` (24px
+    tolerance); the overlay bumps `agentLocateRequest` only for an explicit pick
+    so live follow never steals the reader's scroll, and new steps instead count
+    up on the bottom-centered jump pill. The trailing loading state appears only
+    while the run is still executing (`followAvailable`). The overlay's left rail is the run's **message chain in the
     LOG's own data standard**, fed by `overlayAtoms`, mapped from the same
     `buildLogEntries(activeEvents, …)` result the LOG list prints (app.tsx):
     one row per **event** (carrying the harness atom id it commits to), split

@@ -923,7 +923,12 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   `src/components/agent-transcript.tsx` only consumes that projection; payload
   text still goes through `MarkdownView` / the shared payload helpers and
   questions through `QuestionContent` / `QuestionPreview`. Steps and rail rows
-  commit through the same `onSelectAtom` state. The related-field inventory is
+  commit through the same `onSelectAtom` state. A reader scrolled back keeps
+  their position: the overlay's `agentLocateRequest` is bumped only by an
+  explicit pick, live follow counts new steps behind a bottom-centered jump
+  pill, the bottom test lives only in `src/lib/agent-transcript-scroll.ts`
+  (`isAgentTranscriptAtBottom`), and the trailing loading state is shown only
+  while the run is still executing. The related-field inventory is
   shared with Preview in `src/components/related-fields.tsx` and folds long
   values per field, never per pane. `Preview` is split into two panes — the atom's real content
   (Markdown / highlighted code, or the question list) and the related data

@@ -1,10 +1,20 @@
-import { Bot, ChevronDown, ChevronRight, Lightbulb, MessageSquare, AlertCircle } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  AlertCircle,
+  ArrowDown,
+  Bot,
+  ChevronDown,
+  ChevronRight,
+  Lightbulb,
+  LoaderCircle,
+  MessageSquare,
+} from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { MarkdownView } from "@/components/markdown-view";
 import { PairLinkMarker } from "@/components/pair-link-marker";
 import { QuestionContent, QuestionPreview, type QuestionAnswerBinding } from "@/components/question-content";
 import { RelatedFields } from "@/components/related-fields";
+import { isAgentTranscriptAtBottom } from "@/lib/agent-transcript-scroll";
 import { cn } from "@/lib/utils";
 import type {
   AgentStep,
@@ -36,23 +46,112 @@ export function AgentTranscript({
   onSelectEvent,
   questionBinding,
   questionEventId,
+  live,
+  locateRequest,
 }: {
   view: AgentView;
   selectedEventId: string | null;
   onSelectEvent: (eventId: string) => void;
   questionBinding: QuestionAnswerBinding | null;
   questionEventId: string | null;
+  /** The run is still executing: a loading state follows the newest step. */
+  live: boolean;
+  /** Bumped by an explicit rail / step / pair pick, never by live follow. */
+  locateRequest: number;
 }) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const stepRefs = useRef(new Map<string, HTMLElement>());
+  const atBottomRef = useRef(true);
+  const stepCountRef = useRef(view.steps.length);
+  const firstStepIdRef = useRef(view.steps[0]?.id ?? "");
+  const lastLocateRef = useRef(locateRequest);
+  const scrollFrameRef = useRef<number | null>(null);
+  const [showJump, setShowJump] = useState(false);
+  const [pendingCount, setPendingCount] = useState(0);
+
+  // The scroll handler reads layout at most once per frame: a live stream can
+  // append several events a second, but a wheel gesture must not turn every
+  // event into a layout read plus a render.
+  const syncScrollState = useCallback(() => {
+    const container = scrollRef.current;
+    if (!container) {
+      return;
+    }
+    const atBottom = isAgentTranscriptAtBottom(container);
+    atBottomRef.current = atBottom;
+    setShowJump(
+      !atBottom && container.scrollHeight > container.clientHeight + 40,
+    );
+    if (atBottom) {
+      setPendingCount(0);
+    }
+  }, []);
+
+  const handleScroll = useCallback(() => {
+    if (scrollFrameRef.current !== null) {
+      return;
+    }
+    scrollFrameRef.current = window.requestAnimationFrame(() => {
+      scrollFrameRef.current = null;
+      syncScrollState();
+    });
+  }, [syncScrollState]);
+
+  useEffect(
+    () => () => {
+      if (scrollFrameRef.current !== null) {
+        window.cancelAnimationFrame(scrollFrameRef.current);
+      }
+    },
+    [],
+  );
+
   const targetStep = view.steps.find(
     (step) =>
       (step.kind === "reply" ? step.eventIds.includes(selectedEventId ?? "") : false) ||
       step.eventId === selectedEventId,
   );
 
+  // New steps while reading history are counted, never inserted under the
+  // reader's scroll position. At the bottom the view stays pinned to the end.
+  useEffect(() => {
+    const firstStepId = view.steps[0]?.id ?? "";
+    if (firstStepId !== firstStepIdRef.current) {
+      // Switching runs replaces the chain: an old "N new steps" count would
+      // describe a run the reader is no longer looking at.
+      firstStepIdRef.current = firstStepId;
+      atBottomRef.current = true;
+      stepCountRef.current = view.steps.length;
+      setShowJump(false);
+      setPendingCount(0);
+      return;
+    }
+    const count = view.steps.length;
+    const previous = stepCountRef.current;
+    stepCountRef.current = count;
+    if (count <= previous) {
+      return;
+    }
+    if (atBottomRef.current) {
+      const container = scrollRef.current;
+      if (container) {
+        container.scrollTop = container.scrollHeight;
+      }
+    } else {
+      setPendingCount((current) => current + (count - previous));
+    }
+  }, [view.steps]);
+
   useEffect(() => {
     if (!selectedEventId || !targetStep) {
+      return;
+    }
+    const explicit = locateRequest !== lastLocateRef.current;
+    lastLocateRef.current = locateRequest;
+    // Live follow advances the selection on every event. An explicit pick
+    // always locates; a follow advance must not steal a reader who scrolled
+    // back through the chain.
+    if (!explicit && !atBottomRef.current) {
       return;
     }
     const container = scrollRef.current;
@@ -60,14 +159,26 @@ export function AgentTranscript({
     if (!container || !element) {
       return;
     }
-    // Instant positioning: smooth scrolling is interrupted by the virtualized
-    // slices that re-render while a live run keeps appending events.
+    // Instant positioning: smooth scrolling is interrupted by the re-renders
+    // that keep arriving while a live run appends events.
     const top =
       element.getBoundingClientRect().top -
       container.getBoundingClientRect().top +
       container.scrollTop;
     container.scrollTop = Math.max(0, top - 12);
-  }, [selectedEventId, targetStep?.id, view.steps.length]);
+    syncScrollState();
+  }, [selectedEventId, targetStep?.id, view.steps.length, locateRequest, syncScrollState]);
+
+  const jumpToLatest = useCallback(() => {
+    const container = scrollRef.current;
+    if (!container) {
+      return;
+    }
+    container.scrollTop = container.scrollHeight;
+    atBottomRef.current = true;
+    setShowJump(false);
+    setPendingCount(0);
+  }, []);
 
   return (
     <div className="agent-transcript">
@@ -93,29 +204,64 @@ export function AgentTranscript({
           ))}
         </div>
       ) : null}
-      <div className="agent-transcript__scroll" ref={scrollRef}>
-        {view.steps.length ? (
-          view.steps.map((step) => (
-            <StepCard
-              key={step.id}
-              step={step}
-              selected={step.id === targetStep?.id}
-              onSelect={() => onSelectEvent(step.eventId)}
-              onLocate={onSelectEvent}
-              questionBinding={questionBinding}
-              questionIsCurrent={step.kind === "question" && step.eventId === questionEventId}
-              register={(element) => {
-                if (element) {
-                  stepRefs.current.set(step.id, element);
-                } else {
-                  stepRefs.current.delete(step.id);
-                }
-              }}
-            />
-          ))
-        ) : (
-          <p className="payload-overlay__empty">这次运行还没有可呈现的事件。</p>
-        )}
+      <div className="agent-transcript__surface">
+        <div
+          className="agent-transcript__scroll"
+          onScroll={handleScroll}
+          ref={scrollRef}
+        >
+          {view.steps.length ? (
+            view.steps.map((step) => (
+              <StepCard
+                key={step.id}
+                step={step}
+                selected={step.id === targetStep?.id}
+                onSelect={() => onSelectEvent(step.eventId)}
+                onLocate={onSelectEvent}
+                questionBinding={questionBinding}
+                questionIsCurrent={step.kind === "question" && step.eventId === questionEventId}
+                register={(element) => {
+                  if (element) {
+                    stepRefs.current.set(step.id, element);
+                  } else {
+                    stepRefs.current.delete(step.id);
+                  }
+                }}
+              />
+            ))
+          ) : (
+            <p className="payload-overlay__empty">这次运行还没有可呈现的事件。</p>
+          )}
+          {live ? (
+            <div
+              aria-live="polite"
+              className="agent-transcript__pending"
+              role="status"
+            >
+              <LoaderCircle aria-hidden="true" className="animate-spin" />
+              <span>
+                {pendingCount > 0
+                  ? `正在等待 ${pendingCount} 条新消息…`
+                  : "正在等待新消息…"}
+              </span>
+            </div>
+          ) : null}
+        </div>
+        {showJump ? (
+          <button
+            className="agent-transcript__jump"
+            onClick={jumpToLatest}
+            type="button"
+          >
+            <LoaderCircle aria-hidden="true" className="animate-spin" />
+            <span>
+              {pendingCount > 0
+                ? `回到最新 · ${pendingCount} 条新消息`
+                : "回到最新消息"}
+            </span>
+            <ArrowDown aria-hidden="true" />
+          </button>
+        ) : null}
       </div>
     </div>
   );

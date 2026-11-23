@@ -233,6 +233,10 @@ export function PayloadOverlay({
   variantForAtom?: (atomId: string, eventId: string) => "default" | "question";
 }) {
   const [viewMode, setViewMode] = useState<PayloadViewMode>("agent");
+  // Only an explicit rail / step / pair pick locates the Agent transcript.
+  // Live follow changes the selected event without bumping this, so a reader
+  // who scrolled back through the chain is not yanked to the newest step.
+  const [agentLocateRequest, setAgentLocateRequest] = useState(0);
   // The rail's search box is rail-local state (the LOG's own search pattern):
   // a keystroke re-renders only the rail, not the studio. The needle matches
   // the rows' display fields AND the row event's payload content (the caller
@@ -473,10 +477,17 @@ export function PayloadOverlay({
   // Refs are filled in render order; reset the stale tail when the run's row
   // count shrinks (a session switch) so End cannot focus a detached button.
   atomRefs.current.length = rowCount;
+  const selectAtom = useCallback(
+    (atomId: string, eventId: string) => {
+      onSelectAtom(atomId, eventId);
+      setAgentLocateRequest((current) => current + 1);
+    },
+    [onSelectAtom],
+  );
   const handleLocatePartner = (partnerId: string) => {
     const partner = atoms.find((atom) => atom.id === partnerId);
     if (partner) {
-      onSelectAtom(partner.atomId, partner.id);
+      selectAtom(partner.atomId, partner.id);
     }
   };
   // Agent steps and the rail commit through the same selection state: a step
@@ -656,7 +667,7 @@ export function PayloadOverlay({
                         )}
                         onClick={() => {
                           railPickedEventRef.current = atom.id;
-                          onSelectAtom(atom.atomId, atom.id);
+                          selectAtom(atom.atomId, atom.id);
                         }}
                         onKeyDown={(keyEvent) =>
                           handleAtomKeyDown(keyEvent, rowPosition)
@@ -722,6 +733,8 @@ export function PayloadOverlay({
                 onSelectEvent={handleAgentSelectEvent}
                 questionBinding={questionBinding}
                 questionEventId={questionEventId}
+                live={followAvailable}
+                locateRequest={agentLocateRequest}
               />
             ) : viewMode === "preview" ? (
               <div className="payload-overlay__preview-grid">

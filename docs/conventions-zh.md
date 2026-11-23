@@ -95,7 +95,11 @@
     `parseUserQuestionContent`。呈现层 `src/components/agent-transcript.tsx`
     只读该结果，正文仍走 `MarkdownView`、`QuestionContent/Preview` 与共享的
     `RelatedFields`（`src/components/related-fields.tsx`，按值折叠），
-    步骤与左 rail 共用 `onSelectAtom` 选择态；
+    步骤与左 rail 共用 `onSelectAtom` 选择态；读者向上滚动后由
+    `src/lib/agent-transcript-scroll.ts` 的 `isAgentTranscriptAtBottom`（24px 容差）
+    单一判定是否仍在底部，overlay 的 `agentLocateRequest` 只由显式点选递增，
+    实时跟随不抢阅读位置，新步骤累计在底部「回到最新」按钮上；末尾 loading
+    态只在运行仍执行（`followAvailable`）时出现，结束即撤；
     `Preview` 分两块区域：「原子内容」（真实文本，代码/JSON 高亮、Markdown 渲染）
     与「相关数据」（**全部**字段：含 content 键、空值、null/false/0 与嵌套路径，
     注释优先；对象数组保留形状——每个元素自带一行带下标的**分组行**
