@@ -140,6 +140,10 @@ test("the Agent view keeps a reader's scroll and offers a jump to the newest ste
   assert.match(agentTranscript, /isAgentTranscriptAtBottom\(container\)/);
   assert.match(agentTranscript, /isManualUpScroll\(current, previous\)/);
   assert.match(agentTranscript, /manualUpRef\.current = false/);
+  assert.match(agentTranscript, /manualUpRef\.current \|\| !live/);
+  assert.match(agentTranscript, /快速滚动到底部/);
+  assert.match(agentTranscript, /ChevronsDown/);
+  assert.match(stylesForOverlay, /\.agent-transcript__jump\.is-settled \{/);
   assert.match(agentTranscript, /window\.requestAnimationFrame/);
   assert.match(agentTranscript, /setPendingCount\(\(current\) => current \+ \(count - previous\)\)/);
   // The loading pill is pinned to the surface, not to the scrolled content;
@@ -156,6 +160,12 @@ test("the Agent view keeps a reader's scroll and offers a jump to the newest ste
 });
 
 test("agent steps show a captured command and real thinking on first render", () => {
+  // All textual bodies share one content-shape decision: prose stays a
+  // document, code and captured commands become language-highlighted fences.
+  assert.match(agentTranscript, /contentToMarkdown\(step\.text\)/);
+  assert.match(agentTranscript, /contentToMarkdown\(step\.summary\)/);
+  assert.match(stylesForOverlay, /--type-accent: var\(--violet\)/);
+  assert.match(stylesForOverlay, /--type-accent: var\(--amber\)/);
   assert.match(agentTranscript, /step\.command \?/);
   assert.match(agentTranscript, /agent-step__command-label/);
   assert.match(agentTranscript, /contentToMarkdown\(step\.command\)/);

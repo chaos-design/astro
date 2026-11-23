@@ -3,6 +3,7 @@ import {
   ArrowDown,
   Bot,
   ChevronDown,
+  ChevronsDown,
   ChevronRight,
   Lightbulb,
   LoaderCircle,
@@ -104,11 +105,12 @@ export function AgentTranscript({
     if (isManualUpScroll(current, previous)) {
       manualUpRef.current = true;
     }
-    setShowJump(
-      manualUpRef.current &&
-        container.scrollHeight > container.clientHeight + 40,
-    );
-  }, []);
+    // A live run reserves the pill for a manual scroll back. Once the run has
+    // ended there is nothing to follow, so any position above the last step
+    // can offer a plain quick-scroll instead.
+    const scrollable = container.scrollHeight > container.clientHeight + 40;
+    setShowJump(scrollable && (manualUpRef.current || !live));
+  }, [live]);
 
   const handleScroll = useCallback(() => {
     if (scrollFrameRef.current !== null) {
@@ -119,6 +121,12 @@ export function AgentTranscript({
       syncScrollState();
     });
   }, [syncScrollState]);
+
+  // The run can finish while the reader is still up the chain; re-evaluate the
+  // affordance without waiting for another scroll gesture.
+  useEffect(() => {
+    syncScrollState();
+  }, [live, syncScrollState]);
 
   useEffect(
     () => () => {
@@ -285,17 +293,26 @@ export function AgentTranscript({
         </div>
         {showJump ? (
           <button
-            className="agent-transcript__jump"
+            className={cn("agent-transcript__jump", !live && "is-settled")}
             onClick={jumpToLatest}
             type="button"
           >
-            <LoaderCircle aria-hidden="true" className="animate-spin" />
-            <span>
-              {pendingCount > 0
-                ? `回到最新 · ${pendingCount} 条新消息`
-                : "回到最新消息"}
-            </span>
-            <ArrowDown aria-hidden="true" />
+            {live ? (
+              <>
+                <LoaderCircle aria-hidden="true" className="animate-spin" />
+                <span>
+                  {pendingCount > 0
+                    ? `回到最新 · ${pendingCount} 条新消息`
+                    : "回到最新消息"}
+                </span>
+                <ArrowDown aria-hidden="true" />
+              </>
+            ) : (
+              <>
+                <ChevronsDown aria-hidden="true" />
+                <span>快速滚动到底部</span>
+              </>
+            )}
           </button>
         ) : null}
       </div>
@@ -383,6 +400,7 @@ function ThinkingBody({ step }: { step: ThinkingStep }) {
   // The captured thinking is the point of this block: show it as soon as the
   // reader opens the view instead of hiding real content behind a disclosure.
   const [expanded, setExpanded] = useState(true);
+  const source = useMemo(() => contentToMarkdown(step.text), [step.text]);
   return (
     <>
       <button
@@ -394,18 +412,23 @@ function ThinkingBody({ step }: { step: ThinkingStep }) {
         {expanded ? <ChevronDown aria-hidden="true" /> : <ChevronRight aria-hidden="true" />}
         {expanded ? "收起推理" : "展开推理"}
       </button>
-      {expanded ? <MarkdownView source={step.text} /> : <p className="agent-step__teaser">{step.text}</p>}
+      {expanded ? (
+        <MarkdownView source={source} />
+      ) : (
+        <p className="agent-step__teaser">{step.text}</p>
+      )}
     </>
   );
 }
 
 function ReplyBody({ step }: { step: ReplyStep }) {
+  const source = useMemo(() => contentToMarkdown(step.text), [step.text]);
   return (
     <>
       {step.snapshotCount > 0 ? (
         <p className="agent-step__badge">{step.snapshotCount} 个流式快照已合并</p>
       ) : null}
-      <MarkdownView source={step.text} fallback="这条消息没有正文。" />
+      <MarkdownView source={source} fallback="这条消息没有正文。" />
     </>
   );
 }
@@ -462,9 +485,10 @@ function QuestionBody({
 }
 
 function GenericBody({ step }: { step: GenericStep }) {
+  const source = useMemo(() => contentToMarkdown(step.summary), [step.summary]);
   return (
     <>
-      <MarkdownView source={step.summary} />
+      <MarkdownView source={source} />
       <StepRelated payload={step.payload} resetToken={step.id} />
     </>
   );

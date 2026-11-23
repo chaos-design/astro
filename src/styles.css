@@ -10159,6 +10159,17 @@ pre,
   background: color-mix(in srgb, var(--panel) 82%, var(--selection-border) 18%);
 }
 
+/* A finished run has nothing to follow: the same control becomes a plain
+ * quick-scroll affordance instead of a live "back to newest" spinner. */
+.agent-transcript__jump.is-settled {
+  border-color: var(--line-bright);
+  background: var(--panel);
+}
+
+.agent-transcript__jump.is-settled svg {
+  color: var(--muted);
+}
+
 .agent-transcript__pending {
   display: flex;
   flex: 0 0 auto;
@@ -10212,19 +10223,27 @@ pre,
 /* Each artifact kind keeps the rail's tone but gets its own surface weight,
  * so a thinking block, a command and a reply read apart at a glance. */
 .agent-step--thinking {
+  --type-accent: var(--violet);
   background: color-mix(in srgb, var(--panel) 82%, var(--violet) 18%);
 }
 
 .agent-step--reply {
+  --type-accent: var(--teal);
   background: color-mix(in srgb, var(--panel) 90%, var(--teal) 10%);
 }
 
 .agent-step--tool-result {
+  --type-accent: var(--amber);
   background: color-mix(in srgb, var(--panel) 86%, var(--amber) 14%);
 }
 
 .agent-step--question {
+  --type-accent: var(--blue);
   background: color-mix(in srgb, var(--panel) 86%, var(--blue) 14%);
+}
+
+.agent-step--event {
+  --type-accent: var(--muted);
 }
 
 .agent-step.is-selected {
@@ -10261,7 +10280,7 @@ pre,
 }
 
 .agent-step__label {
-  color: var(--log-tone);
+  color: var(--type-accent, var(--log-tone));
 }
 
 .agent-step__meta {
@@ -10280,7 +10299,12 @@ pre,
 }
 
 .agent-step__body {
+  /* The type accent marks the body edge; contentToMarkdown decides whether
+   * the text itself renders as prose or as language-highlighted code. */
+  margin-left: 2px;
   padding: 10px 12px 13px;
+  border-left: 2px solid
+    color-mix(in srgb, var(--type-accent, var(--log-tone)) 45%, transparent);
   color: var(--text);
   font-size: 0.8125rem;
 }

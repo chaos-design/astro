@@ -690,7 +690,11 @@ The inspector provides:
   the command captured on the paired `PreToolUse` as a derived read (never
   invented from a tool name) alongside the real result and paired duration,
   user questions become their own cards, and all other events stay as generic
-  steps so the chain loses nothing. A broken prefix keeps every step and records a diagnostic instead
+  steps so the chain loses nothing. Each kind carries its own accent (thinking violet,
+  reply teal, tool amber, question blue), and every body goes through the same
+  `contentToMarkdown`: code and commands are language-highlighted, ordinary text
+  renders as a Markdown document, with no second parser. A broken prefix keeps
+  every step and records a diagnostic instead
   of silently dropping data. Questions reuse the existing read-only preview
   or the one actionable form; answerability still comes from the interaction
   state. Selecting a step and selecting a rail row are the same state, with
@@ -699,7 +703,9 @@ The inspector provides:
   live pinning never trigger it. Live events no longer yank the reader down;
   new steps only count up on the pill, and a click jumps straight to the last
   step and clears the count. Scrolling back to the bottom dismisses the pill
-  and resumes automatic following, so new content keeps appending. While the
+  and resumes automatic following, so new content keeps appending. Once the
+  run has ended, stopping above the last step turns the same control into a
+  plain "scroll to bottom" button without the spinner. While the
   run is still executing, a spinning
   loading state follows the newest step and disappears when it finishes. The
   scroll test is throttled to one layout read per frame, so the console's
