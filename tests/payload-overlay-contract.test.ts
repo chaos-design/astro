@@ -620,11 +620,11 @@ test("scroll, padding and control polish keep the reading surface stable", () =>
   // surface and the plain arrow on the disabled edge.
   assert.match(
     stylesForOverlay,
-    /\.payload-overlay__rail-scroll-button \{[\s*\S]*?background: color-mix\(in srgb, var\(--panel-raised\) 82%, transparent\);[\s*\S]*?cursor: pointer;/,
+    /\.payload-overlay__rail-scroll-button \{[\s*\S]*?background: color-mix\(in srgb, var\(--selection-border\) 14%, var\(--panel-raised\)\);[\s*\S]*?cursor: pointer;/,
   );
   assert.match(
     stylesForOverlay,
-    /\.payload-overlay__rail-scroll-button:disabled \{[\s*\S]*?background: color-mix\(in srgb, var\(--panel-raised\) 38%, transparent\);[\s*\S]*?cursor: default;/,
+    /\.payload-overlay__rail-scroll-button:disabled \{[\s*\S]*?background: color-mix\(in srgb, var\(--panel-raised\) 72%, transparent\);[\s*\S]*?cursor: default;/,
   );
 
   // Live: visible default background, stronger hover with a ring.
