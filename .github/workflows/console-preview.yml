@@ -168,6 +168,31 @@ jobs:
         with:
           path: dist
 
+      # The upload returns once the artifact is finalized, but the
+      # ListArtifacts metadata that deploy-pages reads is eventually
+      # consistent. On 2026-11-23 the upload succeeded (id 14788888434) and
+      # ~400 ms later deploy-pages saw only `console-dist` and failed with
+      # "No artifacts named github-pages were found". The cleanup above makes
+      # any github-pages artifact in this run the one just uploaded, so a
+      # bounded poll for the name is enough; a genuinely missing upload still
+      # fails loudly instead of hanging.
+      - name: Wait for Pages artifact metadata
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for attempt in $(seq 1 12); do
+            ids="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" \
+              --jq '.artifacts[] | select(.name == "github-pages") | .id' 2>/dev/null || true)"
+            if [ -n "$ids" ]; then
+              echo "Pages artifact metadata visible (id $ids)"
+              exit 0
+            fi
+            echo "Pages artifact metadata not visible yet ($attempt/12)"
+            sleep 5
+          done
+          echo "Pages artifact never appeared in the run metadata" >&2
+          exit 1
+
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4

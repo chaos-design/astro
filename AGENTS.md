@@ -186,7 +186,12 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   artifacts before uploading: a deploy that failed after uploading (a
   transient artifact-metadata hiccup) leaves its artifact behind, a rerun
   uploads a second one, and `deploy-pages` refuses ambiguity — without the
-  cleanup every later rerun of that run keeps failing. The workflow-level
+  cleanup every later rerun of that run keeps failing. The same upload is only
+  *eventually* visible to the ListArtifacts metadata that `deploy-pages` reads:
+  a 2026-11-23 run finalized the artifact and still failed with "No artifacts
+  named github-pages were found" ~400 ms later. After uploading, a bounded poll
+  waits for the name to appear before deploying — the cleanup guarantees the
+  visible artifact is the one just uploaded. The workflow-level
   group is ref-agnostic
   (`console-preview-ci-<lane>`, `cancel-in-progress`): a newly triggered
   push/dispatch run cancels every in-flight push/dispatch run across all
