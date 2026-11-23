@@ -90,15 +90,19 @@ export function selectVisibleRunHistory(
  * prompt that is executing *right now* would sort below every session that
  * merely started later.
  *
- * The default order is the latest activity (`end`), so the run that just
- * received a message is the first row. The console passes a more stable key
- * instead — the start of the run's newest message. `end` moves on every
- * streaming batch while a run executes, so two concurrently running rows
- * swapped places batch after batch and the list read as "jumping". Ordering
- * by message start is stable for the whole execution of a message: rows only
- * move when a new message actually starts (which takes the top) or finishes
- * (which drops the row to the finished group). Finished rows keep their
- * newest-first order underneath.
+ * The two groups use different clocks on purpose:
+ *
+ * - Executing rows use the console's `orderKey` — the start of the run's newest
+ *   message. `end` moves on every streaming batch, so two running rows would
+ *   trade places batch after batch and the list would read as "jumping". The
+ *   message start is stable for the whole execution; a *new* message takes the
+ *   top the moment it starts.
+ * - Finished rows use `end`, the last execution time. A thread that began days
+ *   ago but just received and completed a follow-up rises above threads that
+ *   merely started later. Without this, finished rows kept their input order
+ *   (`start` desc) and a fresh follow-up on an old thread stayed buried.
+ *
+ * `orderKey` defaults to `end` when a caller has no message-start resolver.
  */
 export function pinLiveRunHistory<
   T extends { key: string; start: number; end: number },
@@ -107,9 +111,6 @@ export function pinLiveRunHistory<
   liveKeys: ReadonlySet<string>,
   orderKey?: (session: T) => number,
 ): T[] {
-  if (liveKeys.size === 0) {
-    return [...sessions];
-  }
   const live: T[] = [];
   const finished: T[] = [];
   for (const session of sessions) {
@@ -119,6 +120,14 @@ export function pinLiveRunHistory<
   live.sort(
     (left, right) => order(right) - order(left) || right.start - left.start,
   );
+  // A completed follow-up makes `end` the last execution time; sorting by it
+  // keeps the row that just advanced at the top of the finished group.
+  finished.sort(
+    (left, right) => right.end - left.end || right.start - left.start,
+  );
+  if (liveKeys.size === 0) {
+    return finished;
+  }
   return [...live, ...finished];
 }
 
@@ -241,7 +250,15 @@ export function selectScopeFallbackRun<
   liveKeys: ReadonlySet<string>,
   orderKey?: (session: T) => number,
 ): T | undefined {
-  return selectLiveRunHistory(scopedSessions, liveKeys, orderKey)[0] ?? scopedSessions[0];
+  // With no live run, land on the same row the list shows first: a finished
+  // thread that just received a follow-up is ordered by its last execution
+  // time, not by when the thread first started.
+  return (
+    selectLiveRunHistory(scopedSessions, liveKeys, orderKey)[0] ??
+    [...scopedSessions].sort(
+      (left, right) => right.end - left.end || right.start - left.start,
+    )[0]
+  );
 }
 
 export function filterSessionsByAgent(

@@ -280,7 +280,12 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   pin its new prompt would sort below every run that merely started later, and
   the window would drop it mid-execution. The message that started executing
   last sits on top; a newly sent message takes the top the moment it starts.
-  Finished runs fall back to newest-first order.
+  Finished runs are ordered by **last execution time** (`end`, `pinLiveRunHistory`
+  sorts that group too): a thread that began days ago but just received and
+  completed a follow-up rises above runs that merely started later. Without it
+  the finished group kept its `start`-descending input order and a fresh reply
+  on an old thread stayed buried. `selectScopeFallbackRun` uses the same key so
+  the row opened on a scope change matches the row the list shows first.
 - The same live key set drives the pin, the window exemption, the `N LIVE`
   count, and the Live filter's rows. Do not derive a second one — a row that is
   pinned but not counted (or the reverse) reads as a bug.

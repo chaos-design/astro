@@ -411,7 +411,10 @@
   `selectScopeFallbackRun` 选那条 Live 消息而不是最新完成的消息——被恢复的会话可能
   几天前才开始，否则底部 Live 按钮会是暗的、画布停在错误的运行上。落点按最新消息
   开始时间排序，与 RUN HISTORY 置顶、`N LIVE`、底部 Live 跳转共用同一顺序；
-  没有 Live 时才退回新智能体最新一条。深链
+  已完成的消息统一按最后执行时间（`end`）排序——`pinLiveRunHistory` 对 finished 组
+  同样排序，`selectScopeFallbackRun` 也用这个键，保证落点与列表首行一致；一个几天前
+  发起、刚完成后续消息的会话会升到只是「开始得更晚」的会话之上。没有 Live 时才退回
+  新智能体最后执行的一条。深链
   `?session=` 指向别的智能体时，下拉框跟着跳到该智能体，地址栏的 `agent` 同步重写，
   保证“打开的运行一定在列表里”。地址栏的参数写入只在 `src/lib/console-location.ts`
   一处完成：切换时旧 `session` / `event` 丢弃，新智能体有数据时画布定位到它的

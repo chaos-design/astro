@@ -567,7 +567,11 @@
   days ago, otherwise the footer Live button stays dark and the canvas opens the
   wrong run. The live candidates use the same newest-message-start ordering as
   the pinned list, `N LIVE` and the footer Live jump; only an agent with no live
-  run falls back to its newest message. When a
+  run falls back to its most recently executed message — `pinLiveRunHistory`
+  orders the finished group by `end` (last execution time) too, and
+  `selectScopeFallbackRun` uses that same key so the opened row matches the first
+  row the list shows. A thread started days ago that just completed a follow-up
+  rises above runs that merely started later. When a
   `?session=` deep link names another agent's run, the dropdown follows it and
   the address bar's `agent` is rewritten — the open run must always be a row of
   the list beside it. URL writes live only in `src/lib/console-location.ts`:
