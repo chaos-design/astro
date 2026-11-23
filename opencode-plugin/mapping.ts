@@ -195,7 +195,14 @@ export function mapOpenCodeEvent(
   }
 
   if (type === "session.text.ended") {
-    return [{ eventName: "AgentMessage", message: data?.text }];
+    const messageId = data?.messageID || data?.partID;
+    return [
+      {
+        eventName: "AgentMessage",
+        message: data?.text,
+        ...(messageId ? { messageId: String(messageId) } : {}),
+      },
+    ];
   }
 
   if (type === "session.step.ended") {

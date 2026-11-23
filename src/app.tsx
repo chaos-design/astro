@@ -224,6 +224,7 @@ import {
   describeWorkspacePath,
 } from "./lib/workspace-path";
 import { formatDurationMs } from "./lib/duration-label";
+import { buildAgentView, type AgentView } from "./lib/agent-view";
 import {
   OTHERS_AGENT_ID,
   canLoadMoreRunHistory,
@@ -3406,6 +3407,7 @@ function InspectorOverview({
 
 function TraceInspector({
   activeTab,
+  agentView,
   atom,
   event,
   index,
@@ -3421,6 +3423,7 @@ function TraceInspector({
   onOverlaySelectEvent,
   overlayPayloadForAtom,
   overlayVariantForAtom,
+  overlayQuestionEventId,
   matchedQuestion,
   answerDrafts,
   onAnswerDraftChange,
@@ -3433,6 +3436,8 @@ function TraceInspector({
   settledQuestion,
 }: {
   activeTab: string;
+  /** Same events as the overlay rail, projected as the Agent artifacts. */
+  agentView: AgentView;
   atom: HarnessNodeData | null;
   event: TraceEvent | null;
   index: number;
@@ -3454,6 +3459,8 @@ function TraceInspector({
   onOverlaySelectEvent: (atomId: string, eventId: string) => void;
   overlayPayloadForAtom: (atomId: string, eventId?: string) => unknown;
   overlayVariantForAtom: (atomId: string, eventId?: string) => "default" | "question";
+  /** The question that matches the current view, for the Agent view's form. */
+  overlayQuestionEventId: string | null;
   matchedQuestion: MatchedQuestionInteraction | null;
   answerDrafts: Readonly<Record<string, string>>;
   onAnswerDraftChange: (question: string, text: string) => void;
@@ -3714,6 +3721,7 @@ function TraceInspector({
       </Tabs>
       <PayloadOverlay
         atoms={overlayAtoms}
+        agentView={agentView}
         cacheScope={activeTab}
         followAvailable={overlayFollowAvailable}
         following={overlayFollowing}
@@ -3723,6 +3731,8 @@ function TraceInspector({
         onSelectAtom={onOverlaySelectEvent}
         open={overlayOpen}
         payloadForAtom={overlayPayloadForAtom}
+        questionBinding={questionBinding}
+        questionEventId={overlayQuestionEventId}
         variantForAtom={overlayVariantForAtom}
         runningEventId={overlayRunningEventId}
         searchEvent={overlaySearchEvent}
@@ -6757,6 +6767,12 @@ export default function App() {
   const latestPromptRun = activePromptRuns.at(-1);
   const activeEvents =
     activePromptRun?.events ?? activeSession?.events ?? EMPTY_EVENTS;
+  // The Agent view is a pure projection of the same events the overlay rail
+  // uses. Memoize it so a once-per-second `now` tick never rebuilds the steps.
+  const overlayAgentView = useMemo(
+    () => buildAgentView(activeEvents, platformId),
+    [activeEvents, platformId],
+  );
   const activeDisplayState = activePromptRun
     ? getRunDisplayState(
         activePromptRun,
@@ -8651,6 +8667,7 @@ export default function App() {
               />
               <TraceInspector
                 activeTab={inspectorTab}
+                agentView={overlayAgentView}
                 node={selectedNode}
                 event={selectedEvent}
                 atom={selectedAtom}
@@ -8668,6 +8685,7 @@ export default function App() {
                 onOverlaySelectEvent={handleOverlaySelectEvent}
                 overlayPayloadForAtom={overlayPayloadForAtom}
                 overlayVariantForAtom={overlayVariantForAtom}
+                overlayQuestionEventId={inspectedQuestionEvent?.id ?? null}
                 matchedQuestion={matchedQuestionInteraction}
                 answerDrafts={questionAnswerDrafts}
                 onAnswerDraftChange={(question, text) =>

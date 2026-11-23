@@ -85,8 +85,17 @@
     （h2 带下划线），行内代码 0.92em 不撑行高，表格塌陷边框 + 表头底色 +
     偶数行斑马纹，引用块紫边 + 底色。检查器的 Input/Output/Raw 与全局浮层共用这两个
     单一来源，浮层组件 `src/components/payload-overlay.tsx` 只负责展示，并用同一个
-    切换提供 `Preview`（渲染后的 Markdown：标题、GFM 任务列表、高亮代码、问题/选项/答案）
-    与 `Code`（未加工的原始 JSON）两种形态，不再另写一份转换或消毒逻辑；
+    切换提供 `Agent`（默认：把同一事件序列投影为思考块、合并后的回复、工具结果与提问）、
+    `Preview`（渲染后的 Markdown：标题、GFM 任务列表、高亮代码、问题/选项/答案）
+    与 `Code`（未加工的原始 JSON）三种形态，不再另写一份转换或消毒逻辑；
+    Agent 投影唯一入口是纯函数 `buildAgentView(events, platformId)`
+    （`src/lib/agent-view.ts`）：同 `messageId` 的流式前缀与最终消息合并为一个
+    ReplyStep 并计数，前缀断裂记诊断且保留每一步，无 id 的老数据只用时间邻近 +
+    `startsWith` 回退；每个 Reasoning 独立成块，提问只绑阻断性 start 并复用
+    `parseUserQuestionContent`。呈现层 `src/components/agent-transcript.tsx`
+    只读该结果，正文仍走 `MarkdownView`、`QuestionContent/Preview` 与共享的
+    `RelatedFields`（`src/components/related-fields.tsx`，按值折叠），
+    步骤与左 rail 共用 `onSelectAtom` 选择态；
     `Preview` 分两块区域：「原子内容」（真实文本，代码/JSON 高亮、Markdown 渲染）
     与「相关数据」（**全部**字段：含 content 键、空值、null/false/0 与嵌套路径，
     注释优先；对象数组保留形状——每个元素自带一行带下标的**分组行**

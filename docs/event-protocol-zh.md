@@ -371,6 +371,8 @@ max(已记录跨度, 当前时间 - 开始时间)
 | `PreToolUse` | `tool_input` | item.arguments、item.command 或 item 本身 |
 | `PostToolUse*` | `tool_response` | item.output、item.result 或 item 本身 |
 
+`AgentMessage` 另带可选 `messageId` 与 `streamed`：同一消息的流式累积快照与最终完整消息共享同一个 `messageId`，快照以 `streamed: true` 标记；消费端据此把多个前缀快照合并为一条回复，老数据缺少这些字段时按独立事件呈现。
+
 字符串形式的工具参数会优先尝试 JSON 解析，解析失败则保留原字符串。
 
 ## 10. 写入前脱敏

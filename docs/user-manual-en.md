@@ -634,7 +634,8 @@ The inspector provides:
 - copy control for structured JSON;
 - an expand control in the inspector header, available on `Input` / `Output` /
   `Raw`, opens a **global overlay** that shows the same payload in a much larger
-  area. The overlay has a `Preview` / `Code` switch: `Preview` splits into two
+  area. The overlay has an `Agent` / `Preview` / `Code` switch, defaulting to
+  `Agent`: `Preview` splits into two
   panes — "Atom content" (the text the atom actually carried; a payload that
   carries a structured `questions` list shows the question / option / answer
   list the reader saw whatever the row's display key, other payloads render as
@@ -679,6 +680,17 @@ The inspector provides:
   `captured`, keeping topology metadata out of the layer. `Code` is the raw,
   token-coloured JSON of the same payload, so both readings stay in one dialog;
   with nothing previewable the overlay says so and `Code` still shows it.
+  The default `Agent` view presents the same run as the artifacts an Agent
+  actually produces: every `Reasoning` event is its own collapsed thinking
+  block (no second aggregation rule), throttled snapshots sharing a
+  `messageId` are merged with the final message into one Markdown reply marked
+  "N streamed snapshots merged", tool results and user questions become their
+  own cards, and all other events stay as generic steps so the chain loses
+  nothing. A broken prefix keeps every step and records a diagnostic instead
+  of silently dropping data. Questions reuse the existing read-only preview
+  or the one actionable form; answerability still comes from the interaction
+  state. Selecting a step and selecting a rail row are the same state, with
+  instant positioning. `Preview` and `Code` remain one click away.
   Escape or the scrim closes the layer. A left rail shows the current run's
   **message chain in the LOG's own data standard**: every event of the run,
   newest first, split by the same turn separators the LOG prints, with the row

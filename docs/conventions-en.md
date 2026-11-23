@@ -108,10 +108,23 @@
     and blockquotes carry the violet border and tint. The inspector's
     Input/Output/Raw tabs and the
     global overlay share these two single sources; `src/components/payload-overlay.tsx`
-    only renders them, with one toggle between `Preview` (rendered Markdown —
-    headings, GFM task lists, highlighted code — and question/option/answer
-    lists) and `Code` (the untouched structured JSON), never a second conversion
-    or sanitizer. The overlay's left rail is the run's **message chain in the
+    only renders them, with one toggle between `Agent` (the default: the same
+    event sequence projected as thinking blocks, merged replies, tool results
+    and questions), `Preview` (rendered Markdown — headings, GFM task lists,
+    highlighted code — and question/option/answer lists) and `Code` (the
+    untouched structured JSON), never a second conversion or sanitizer.
+    The single Agent projection entry is the pure function
+    `buildAgentView(events, platformId)` (`src/lib/agent-view.ts`): snapshots
+    sharing a `messageId` merge with the final message into one counted
+    ReplyStep, a broken prefix records a diagnostic while every step survives,
+    and id-less legacy captures only fold time-adjacent `startsWith` chains.
+    Each Reasoning event stays its own block, and a question binds only to the
+    blocking start event through `parseUserQuestionContent`.
+    `src/components/agent-transcript.tsx` consumes that result read-only;
+    bodies still go through `MarkdownView`, `QuestionContent/Preview` and the
+    shared per-value-folding `RelatedFields`
+    (`src/components/related-fields.tsx`), and steps share the rail's
+    `onSelectAtom` selection state. The overlay's left rail is the run's **message chain in the
     LOG's own data standard**, fed by `overlayAtoms`, mapped from the same
     `buildLogEntries(activeEvents, …)` result the LOG list prints (app.tsx):
     one row per **event** (carrying the harness atom id it commits to), split

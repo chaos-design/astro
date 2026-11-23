@@ -52,7 +52,7 @@ test("reads the sample dataset shipped with the repository", () => {
   const result = reader.read();
   assert.equal(result.ok, true);
   assert.equal(result.path, "data/demo-events.json");
-  assert.equal(result.dataset.events.length, 16);
+  assert.equal(result.dataset.events.length, 20);
   assert.equal(result.dataset.session.id, "demo-runtime-7f31");
 });
 

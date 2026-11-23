@@ -27,7 +27,8 @@ test("groups events by session and calculates duration", () => {
   const sessions = buildSessions(events);
 
   assert.equal(sessions.length, 1);
-  assert.equal(sessions[0].toolCount, 4);
+  // The sample's AskUserQuestion lifecycle is a fifth closed tool pair.
+  assert.equal(sessions[0].toolCount, 5);
   assert.equal(sessions[0].status, "complete");
   assert.equal(sessions[0].duration, 9200);
 });
@@ -676,7 +677,7 @@ test("combines pre and post hook events into one tool node", () => {
     (node) => node.data.eventName === "PreToolUse",
   );
 
-  assert.equal(toolNodes.length, 4);
+  assert.equal(toolNodes.length, 5);
   assert.ok(toolNodes.every((node) => node.data.endEvent));
   assert.ok(toolNodes.every((node) => node.data.duration > 0));
   assert.equal(flow.edges.length, flow.nodes.length - 1);
@@ -776,7 +777,8 @@ test("labels each pair half with the other half's LOG row number", () => {
   assert.equal(startLink.pairId, start.id);
   assert.equal(endLink.pairId, start.id);
   assert.match(startLink.label, /^T\d+·#\d+$/);
-  assert.equal(startLink.ordinal, 1);
+  // The question pair opens turn 3 first, so the test pair is its second.
+  assert.equal(startLink.ordinal, 2);
   assert.ok(startIndex < endIndex);
   assert.equal(startLink.partnerIndex, endIndex);
   assert.equal(endLink.partnerIndex, startIndex);
@@ -1000,8 +1002,10 @@ test("does not count child tool events as main-agent tool calls", () => {
   const flow = buildHarnessFlow([...events, start, childTool]);
   const mainTool = flow.nodes.find((node) => node.data.key === "tool.call");
 
+  // AskUserQuestion binds to the user.question atom, not the tool.call atom,
+  // but it is still a captured tool lifecycle in the session's tool count.
   assert.equal(mainTool.data.count, 4);
-  assert.equal(flow.meta.toolCount, 4);
+  assert.equal(flow.meta.toolCount, 5);
 });
 
 test("keeps atom semantics stable across platform configurations", () => {

@@ -142,9 +142,11 @@ export function mapPiEvent(
       }
       const text = joinBlocks(message.content, "text", "text");
       if (text) {
+        const messageId = readPiLiveText(event).messageId;
         payloads.push({
           eventName: "AgentMessage",
           message: text,
+          ...(messageId ? { messageId } : {}),
           model: message.model,
           provider: message.provider,
           usage: message.usage,

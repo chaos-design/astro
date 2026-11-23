@@ -308,6 +308,13 @@ test("terminal lifecycle events map to canonical names", () => {
   );
   assert.deepEqual(
     mapOpenCodeEvent({
+      type: "session.text.ended",
+      data: { sessionID: session, messageID: "m1", text: "done" },
+    }),
+    [{ eventName: "AgentMessage", message: "done", messageId: "m1" }],
+  );
+  assert.deepEqual(
+    mapOpenCodeEvent({
       type: "session.execution.interrupted",
       data: { sessionID: session, reason: "user" },
     }),

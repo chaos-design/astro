@@ -441,6 +441,8 @@ test("streams accumulated text while the agent is still executing", async () => 
     );
     assert.equal(final.length, 1, "one final complete message");
     assert.equal(final[0].payload.message, "Hello world");
+    assert.equal(streamed[0].payload.messageId, "msg-live");
+    assert.equal(final[0].payload.messageId, "msg-live");
     // Every in-flight snapshot must be a prefix of the final text: that is
     // what "consistent" means here — no drift between live and recorded.
     assert.ok("Hello world".startsWith(streamed[0].payload.message));

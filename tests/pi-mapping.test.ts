@@ -52,6 +52,13 @@ test("assistant message_end with text stops the run", () => {
   assert.equal(payloads[0].message, "All done.");
   assert.equal(payloads[0].model, "claude-sonnet-4-5");
   assert.equal(payloads[1].eventName, "Stop");
+
+  const identified = mapPiEvent(
+    "message_end",
+    { message: assistantMessage({ id: "msg-9" }) },
+    {},
+  );
+  assert.equal(identified[0].messageId, "msg-9");
 });
 
 test("assistant thinking blocks map to Reasoning before AgentMessage", () => {

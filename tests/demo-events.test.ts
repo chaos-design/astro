@@ -43,10 +43,10 @@ test("ships one multi-turn sample run as a local dataset document", () => {
   assert.equal(dataset.session.id, "demo-runtime-7f31");
   assert.equal(dataset.session.source, "chatgpt");
   assert.equal(dataset.session.cwd, "/workspace/astro");
-  assert.equal(dataset.events.length, 16);
+  assert.equal(dataset.events.length, 20);
 
   const events = createDemoEvents(NOW);
-  assert.equal(events.length, 16);
+  assert.equal(events.length, 20);
   assert.equal(events[0].eventName, "SessionStart");
   assert.equal(events.at(-1)?.eventName, "Stop");
   assert.equal(events[0].sessionId, "demo-runtime-7f31");
@@ -165,14 +165,14 @@ test("rejects a malformed dataset by naming the field at fault", () => {
 test("loads the dataset from the local service and reports where it came from", async () => {
   const { impl, calls } = fakeFetch({
     "/api/demo-events": () =>
-      jsonResponse({ dataset: fixtureDocument(), eventCount: 16, path: "data/demo-events.json" }),
+      jsonResponse({ dataset: fixtureDocument(), eventCount: 20, path: "data/demo-events.json" }),
   });
   const result = await loadDemoEvents({ fetchImpl: impl, now: NOW });
   assert.equal(result.status, "ready");
   assert.deepEqual(calls, ["/api/demo-events"]);
   if (result.status !== "ready") return;
   assert.equal(result.sessionId, "demo-runtime-7f31");
-  assert.equal(result.events.length, 16);
+  assert.equal(result.events.length, 20);
   assert.equal(result.events[0].capturedAt, new Date(NOW - 9200).toISOString());
 });
 

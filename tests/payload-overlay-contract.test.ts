@@ -6,6 +6,10 @@ const overlay = readFileSync(
   new URL("../src/components/payload-overlay.tsx", import.meta.url),
   "utf8",
 );
+const relatedFields = readFileSync(
+  new URL("../src/components/related-fields.tsx", import.meta.url),
+  "utf8",
+);
 const app = readFileSync(new URL("../src/app.tsx", import.meta.url), "utf8");
 const stylesForOverlay = readFileSync(
   new URL("../src/styles.css", import.meta.url),
@@ -42,7 +46,8 @@ test("the preview splits the atom's content from its related data", () => {
   assert.match(overlay, /contentToMarkdown/);
   assert.match(overlay, /payload-overlay__pane--content/);
   assert.match(overlay, /payload-overlay__pane--related/);
-  assert.match(overlay, /payload-overlay__fields/);
+  assert.match(overlay, /<RelatedFields fields=\{preview\.related\} \/>/);
+  assert.match(relatedFields, /payload-overlay__fields/);
   assert.match(stylesForOverlay, /\.payload-overlay__preview-grid/);
   assert.match(stylesForOverlay, /\.payload-overlay__field\.is-annotation/);
 });
@@ -56,9 +61,9 @@ test("related data renders array elements as indexed group rows", () => {
     "utf8",
   );
   assert.match(previewLib, /groupHeader: true/);
-  assert.match(overlay, /field\.groupHeader/);
-  assert.match(overlay, /payload-overlay__field--group/);
-  assert.match(overlay, /paddingInlineStart/);
+  assert.match(relatedFields, /field\.groupHeader/);
+  assert.match(relatedFields, /payload-overlay__field--group/);
+  assert.match(relatedFields, /paddingInlineStart/);
   assert.match(stylesForOverlay, /\.payload-overlay__field--group \{/);
 });
 
@@ -94,15 +99,24 @@ test("prepared previews are cached per row and scoped by the inspector tab", () 
   assert.match(overlayBinding, /cacheScope=\{activeTab\}/);
 });
 
-test("the global overlay keeps both Preview and the raw JSON Code view", () => {
+test("the global overlay offers Agent, Preview and the raw JSON Code view", () => {
   assert.match(overlay, /<JsonViewer value=\{activePayload\} \/>/);
   assert.match(overlay, /Code2/);
   assert.match(overlay, /ToggleGroup/);
   assert.match(overlay, /viewMode/);
+  assert.match(overlay, /value="agent"/);
   assert.match(overlay, /value="preview"/);
   assert.match(overlay, /value="code"/);
-  // The rendered content leads; Code is the raw form one toggle away.
-  assert.ok(overlay.indexOf("viewMode === \"preview\"") < overlay.indexOf("payload-overlay__body--code"));
+  // Agent is the default and shares the rail's selection; Preview and Code
+  // remain one click away.
+  assert.match(overlay, /useState<PayloadViewMode>\("agent"\)/);
+  assert.match(overlay, /<AgentTranscript/);
+  assert.match(overlay, /onSelectEvent=\{handleAgentSelectEvent\}/);
+  const agentBranch = overlay.indexOf("viewMode === \"agent\"");
+  const previewBranch = overlay.indexOf("viewMode === \"preview\"");
+  const codeBranch = overlay.indexOf("payload-overlay__body--code");
+  assert.ok(agentBranch >= 0 && agentBranch < previewBranch);
+  assert.ok(previewBranch < codeBranch);
   assert.match(overlay, /切到 Code 查看原始载荷/);
 });
 
@@ -486,12 +500,12 @@ test("related values fold individually, never the whole pane", () => {
   assert.match(preview, /export const RELATED_VALUE_MAX_CHARS = 200;/);
   assert.match(preview, /export function isFoldableRelatedValue/);
   // A per-value component owns its own expanded state.
-  assert.match(overlay, /function RelatedValue\(\{ value \}: \{ value: string \}\)/);
-  assert.match(overlay, /const \[expanded, setExpanded\] = useState\(false\)/);
-  assert.match(overlay, /isFoldableRelatedValue\(value\)/);
-  assert.match(overlay, /value\.slice\(0, RELATED_VALUE_MAX_CHARS\)/);
-  assert.match(overlay, /<dd><RelatedValue value=\{field\.value\} \/><\/dd>/);
-  assert.match(overlay, /className="payload-overlay__field-more"/);
+  assert.match(relatedFields, /function RelatedValue\(\{ value \}: \{ value: string \}\)/);
+  assert.match(relatedFields, /const \[expanded, setExpanded\] = useState\(false\)/);
+  assert.match(relatedFields, /isFoldableRelatedValue\(value\)/);
+  assert.match(relatedFields, /value\.slice\(0, RELATED_VALUE_MAX_CHARS\)/);
+  assert.match(relatedFields, /<RelatedValue value=\{field\.value\} \/>/);
+  assert.match(relatedFields, /className="payload-overlay__field-more"/);
   // The old section-wide fold is gone.
   assert.doesNotMatch(overlay, /relatedExpanded/);
   assert.doesNotMatch(overlay, /related-toggle/);

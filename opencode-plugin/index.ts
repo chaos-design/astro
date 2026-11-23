@@ -184,9 +184,10 @@ export default {
         return;
       }
 
-      const textKey = `${sessionId}:${
-        event?.data?.messageID || event?.data?.partID || "default"
-      }`;
+      const messageId = String(
+        event?.data?.messageID || event?.data?.partID || "default",
+      );
+      const textKey = `${sessionId}:${messageId}`;
       if (event?.type === "session.text.delta") {
         const delta = event?.data?.delta;
         if (typeof delta === "string" && delta) {
@@ -204,6 +205,9 @@ export default {
               cwd: eventDirectory,
               message: state.text,
               streamed: true,
+              // Snapshots and the final message share one id so the console
+              // can merge the accumulated prefixes into a single reply.
+              messageId,
             });
           }
           liveText.set(textKey, state);

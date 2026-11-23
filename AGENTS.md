@@ -910,11 +910,22 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   each second while the dialog is open — and every rewrite recreated the
   children, resetting a horizontal scroll inside a wide code block about
   once a second. The memo lets React skip identical markup.
-  The layer keeps **both readings behind one
-  toggle**: `Preview` is the rendered content (Markdown headings, GFM task lists,
-  highlighted code, question/option/answer lists) and `Code` is the untouched
-  structured JSON, so a reader can check either shape without leaving the
-  dialog. `Preview` is split into two panes — the atom's real content
+  The layer keeps **three readings behind one
+  toggle**: `Agent` (the default) is the event sequence projected as the
+  artifacts an Agent produced, `Preview` is the rendered content (Markdown
+  headings, GFM task lists, highlighted code, question/option/answer lists)
+  and `Code` is the untouched structured JSON. The Agent projection lives only
+  in `src/lib/agent-view.ts` (`buildAgentView`, a pure function): snapshots with
+  one `messageId` merge into one reply with a count, a broken prefix records a
+  diagnostic and keeps every step, legacy id-less captures only fold adjacent
+  `startsWith` chains, every Reasoning event is its own block, and questions
+  bind only to the blocking start event through `parseUserQuestionContent`.
+  `src/components/agent-transcript.tsx` only consumes that projection; payload
+  text still goes through `MarkdownView` / the shared payload helpers and
+  questions through `QuestionContent` / `QuestionPreview`. Steps and rail rows
+  commit through the same `onSelectAtom` state. The related-field inventory is
+  shared with Preview in `src/components/related-fields.tsx` and folds long
+  values per field, never per pane. `Preview` is split into two panes — the atom's real content
   (Markdown / highlighted code, or the question list) and the related data
   (timestamps, paths, ids, annotations / explanations) — and the pane titles
   stay **pinned** while their bodies scroll under them. The split lives only

@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronUp, Code2, Eye, Radio, Search, X } from "lucide-react";
+import { Bot, ChevronDown, ChevronUp, Code2, Eye, Radio, Search, X } from "lucide-react";
 import {
   useCallback,
   useDeferredValue,
@@ -10,6 +10,7 @@ import {
   type KeyboardEvent,
   type UIEvent,
 } from "react";
+import { AgentTranscript } from "@/components/agent-transcript";
 import { JsonViewer } from "@/components/json-viewer";
 import { PairLinkMarker } from "@/components/pair-link-marker";
 import { cn } from "@/lib/utils";
@@ -29,15 +30,18 @@ import {
   InputGroupButton,
   InputGroupInput,
 } from "@/components/ui/input-group";
-import { QuestionPreview } from "@/components/question-content";
+import {
+  QuestionPreview,
+  type QuestionAnswerBinding,
+} from "@/components/question-content";
+import { RelatedFields } from "@/components/related-fields";
+import type { AgentView } from "@/lib/agent-view";
 import { renderMarkdownPreview } from "@/lib/markdown-preview";
 import {
   contentToMarkdown,
   fallbackPayloadMarkdown,
   collectPayloadFields,
-  isFoldableRelatedValue,
   orderRelated,
-  RELATED_VALUE_MAX_CHARS,
   splitPayloadPreview,
 } from "@/lib/payload-preview";
 import { payloadToMarkdown } from "@/lib/payload-markdown";
@@ -45,47 +49,7 @@ import { parseUserQuestionContent } from "@/lib/user-question-content";
 import type { TracePairLink } from "@/lib/trace-model";
 import type { TracePayload } from "@/types/trace";
 
-type PayloadViewMode = "preview" | "code";
-
-/**
- * One related-data value. Long values fold behind their own control so a
- * single captured path or blob cannot force the whole pane to be expanded —
- * short timestamps and ids beside it stay readable either way. The fold is
- * local to this value and resets when the row changes (keyed by field key).
- */
-function RelatedValue({ value }: { value: string }) {
-  const foldable = isFoldableRelatedValue(value);
-  const [expanded, setExpanded] = useState(false);
-  if (!foldable) {
-    return <>{value}</>;
-  }
-  return (
-    <>
-      <span
-        className={cn(
-          "payload-overlay__field-text",
-          !expanded && "is-folded",
-        )}
-      >
-        {expanded ? value : `${value.slice(0, RELATED_VALUE_MAX_CHARS)}…`}
-      </span>
-      <button
-        aria-expanded={expanded}
-        className="payload-overlay__field-more"
-        onClick={() => setExpanded((current) => !current)}
-        title={expanded ? "收起该值" : "展开该值全文"}
-        type="button"
-      >
-        {expanded ? "收起" : "展开"}
-        {expanded ? (
-          <ChevronUp aria-hidden="true" />
-        ) : (
-          <ChevronDown aria-hidden="true" />
-        )}
-      </button>
-    </>
-  );
-}
+type PayloadViewMode = "agent" | "preview" | "code";
 
 /**
  * One row of the overlay's left rail: a LOG-standard view of one trace event
@@ -208,6 +172,7 @@ function preparePreview(
  */
 export function PayloadOverlay({
   atoms,
+  agentView,
   cacheScope = "",
   followAvailable = false,
   following = false,
@@ -218,6 +183,8 @@ export function PayloadOverlay({
   open,
   payload,
   payloadForAtom,
+  questionBinding = null,
+  questionEventId = null,
   runningEventId = "",
   searchEvent,
   selectedEventId,
@@ -225,6 +192,8 @@ export function PayloadOverlay({
   variantForAtom,
 }: {
   atoms: PayloadOverlayAtom[];
+  /** Derived Agent view of the same event sequence as the rail. */
+  agentView: AgentView;
   /**
    * Scope of the per-row preview cache. The payload of one row also depends
    * on which inspector tab the layer was opened from (Input / Output / Raw
@@ -244,6 +213,10 @@ export function PayloadOverlay({
   payload: unknown;
   /** Resolve an atom row's payload directly. Enables per-row preview caching. */
   payloadForAtom?: (atomId: string, eventId: string) => unknown;
+  /** The live answer binding, only for the question matching the current view. */
+  questionBinding?: QuestionAnswerBinding | null;
+  /** Event id of that question; the transcript must not answer an older one. */
+  questionEventId?: string | null;
   /** The event the LOG marks as executing right now (its START row). */
   runningEventId?: string;
   /**
@@ -259,7 +232,7 @@ export function PayloadOverlay({
   /** Per-row variant so a question row keeps its QuestionPreview after a switch. */
   variantForAtom?: (atomId: string, eventId: string) => "default" | "question";
 }) {
-  const [viewMode, setViewMode] = useState<PayloadViewMode>("preview");
+  const [viewMode, setViewMode] = useState<PayloadViewMode>("agent");
   // The rail's search box is rail-local state (the LOG's own search pattern):
   // a keystroke re-renders only the rail, not the studio. The needle matches
   // the rows' display fields AND the row event's payload content (the caller
@@ -506,6 +479,11 @@ export function PayloadOverlay({
       onSelectAtom(partner.atomId, partner.id);
     }
   };
+  // Agent steps and the rail commit through the same selection state: a step
+  // only knows an event id and resolves its atom here, never a second store.
+  const handleAgentSelectEvent = (eventId: string) => {
+    handleLocatePartner(eventId);
+  };
 
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
@@ -518,8 +496,8 @@ export function PayloadOverlay({
             <DialogTitle>{label}</DialogTitle>
             <DialogDescription>
               {variant === "question"
-                ? "Preview 按用户问题的形态展示问题、选项与答案；Code 查看原始载荷。"
-                : "Preview 分两块：原子的真实内容与时间、路径、注释等相关数据；Code 查看原始载荷。"}
+                ? "Agent 按真实产出展示思考、回复、工具结果与提问；Preview 展示问题、选项与答案；Code 查看原始载荷。"
+                : "Agent 按真实产出展示思考、回复、工具结果与提问；Preview 分两块展示原子内容与相关数据；Code 查看原始载荷。"}
             </DialogDescription>
           </div>
           <ToggleGroup
@@ -535,6 +513,10 @@ export function PayloadOverlay({
             value={viewMode}
             variant="outline"
           >
+            <ToggleGroupItem aria-label="Agent data view" value="agent">
+              <Bot data-icon="inline-start" />
+              Agent
+            </ToggleGroupItem>
             <ToggleGroupItem aria-label="Preview as markdown" value="preview">
               <Eye data-icon="inline-start" />
               Preview
@@ -733,7 +715,15 @@ export function PayloadOverlay({
             </nav>
           ) : null}
           <div className="payload-overlay__content">
-            {viewMode === "preview" ? (
+            {viewMode === "agent" ? (
+              <AgentTranscript
+                view={agentView}
+                selectedEventId={selectedEventId || null}
+                onSelectEvent={handleAgentSelectEvent}
+                questionBinding={questionBinding}
+                questionEventId={questionEventId}
+              />
+            ) : viewMode === "preview" ? (
               <div className="payload-overlay__preview-grid">
                 {preview.showQuestion ? (
                   <section className="payload-overlay__pane payload-overlay__pane--content">
@@ -776,44 +766,7 @@ export function PayloadOverlay({
                     onScroll={handleRelatedScroll}
                     ref={relatedBodyRef}
                   >
-                    {preview.related.length ? (
-                      <dl className="payload-overlay__fields">
-                        {preview.related.map((field) => {
-                          // Array elements open with their own indexed row
-                          // (`questions[0]`, `options[1]`) and their members
-                          // indent beneath it, so a repeated bare key
-                          // (`description`, `label`) still reads inside the
-                          // element it belongs to. Headers carry no value.
-                          const indent = field.groupHeader
-                            ? field.level ?? 0
-                            : field.level === undefined
-                              ? 0
-                              : field.level + 1;
-                          return (
-                            <div
-                              className={cn(
-                                "payload-overlay__field",
-                                field.groupHeader && "payload-overlay__field--group",
-                                field.annotation && "is-annotation",
-                              )}
-                              key={field.key}
-                              style={
-                                indent > 0
-                                  ? { paddingInlineStart: `${indent * 14}px` }
-                                  : undefined
-                              }
-                            >
-                              <dt title={field.key}>{field.label}</dt>
-                              {field.groupHeader ? null : (
-                                <dd><RelatedValue value={field.value} /></dd>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </dl>
-                    ) : (
-                      <p className="payload-overlay__empty">没有关联数据。</p>
-                    )}
+                    <RelatedFields fields={preview.related} />
                   </div>
                 </section>
               </div>

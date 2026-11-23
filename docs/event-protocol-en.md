@@ -408,6 +408,8 @@ Never deduplicate by message text, and never compare sequence numbers across unr
 | `PreToolUse` | `tool_input` | item arguments, command, or the item itself |
 | `PostToolUse*` | `tool_response` | item output, result, or the item itself |
 
+`AgentMessage` also carries optional `messageId` and `streamed`. Throttled accumulated snapshots and the final complete message of one reply share the same `messageId`; snapshots are marked `streamed: true` so consumers can merge the prefixes into a single reply. Older events without these fields are still shown as independent events.
+
 String tool arguments are parsed as JSON when possible and otherwise preserved verbatim.
 
 ## 10. Redaction Before Write

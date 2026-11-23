@@ -232,7 +232,8 @@ export default function (pi: PiExtensionApi) {
           return;
         }
         const live = readPiLiveText(event);
-        const key = `${sessionId}:${live.messageId || "default"}`;
+        const messageId = live.messageId || "default";
+        const key = `${sessionId}:${messageId}`;
         if (type === "message_start") {
           liveText.delete(key);
           return;
@@ -257,6 +258,9 @@ export default function (pi: PiExtensionApi) {
               cwd,
               message: state.text,
               streamed: true,
+              // Same id as the final message: the accumulated snapshots are
+              // merged by the console instead of shown as repeated replies.
+              messageId,
               ...attribution,
             });
           }
