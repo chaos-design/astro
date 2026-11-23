@@ -244,7 +244,7 @@ import {
   resolveDisplayedUptime,
   type UptimePause,
 } from "./lib/sync-budget";
-import { atomLevel, projectTraceEvents } from "./lib/atomic-projection";
+import { atomLevel, createAtomicProjection, projectTraceEvents } from "./lib/atomic-projection";
 import {
   atomTypeLabel,
   eventAtomType,
@@ -6964,9 +6964,13 @@ export default function App() {
     () => buildHarnessFlow(canvasEvents, platformId),
     [canvasEvents, platformId],
   );
+  // One long-lived fold: a streaming batch re-projects only the events
+  // appended since the last one; a session switch, a replay jump or a
+  // platform change rebuilds from scratch inside the closure.
+  const atomicProject = useMemo(() => createAtomicProjection(), []);
   const atomicProjection = useMemo(
-    () => projectTraceEvents(canvasEvents, platformId),
-    [canvasEvents, platformId],
+    () => atomicProject(canvasEvents, platformId),
+    [atomicProject, canvasEvents, platformId],
   );
   const inspectionFlow = flow;
   const selectedEvent =

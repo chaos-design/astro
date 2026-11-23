@@ -7,7 +7,9 @@ import type {
   AtomicValue,
 } from "../vendor/atomic-flow/browser.ts";
 import { getAtomPlatformConfig } from "../config/atom-platforms.ts";
-import type { PlatformId, TraceEvent } from "../types/trace.ts";
+import type { PlatformConfig, PlatformId, TraceEvent } from "../types/trace.ts";
+
+type AtomById = Map<string, PlatformConfig["atoms"][number]>;
 import {
   isBlockingUserQuestionStartEvent,
   isUserQuestionEvent,
@@ -149,27 +151,50 @@ export type AtomicTraceProjection = {
   traceIdBySequence: ReadonlyMap<number, string>;
 };
 
-export function projectTraceEvents(
-  traceEvents: readonly TraceEvent[],
-  platformId: PlatformId,
-): AtomicTraceProjection {
-  const config = getAtomPlatformConfig(platformId);
-  const atomById = new Map(config.atoms.map((atom) => [atom.id, atom]));
-  const projectedEvents: AtomicFlowEvent[] = [];
-  const primarySequenceByTraceId = new Map<string, number>();
-  const traceIdBySequence = new Map<number, string>();
-  const activeModelByContext = new Map<string, string>();
-  const runId = traceEvents[0]?.sessionId ?? "empty-run";
-  let sequence = 0;
+/**
+ * The running state of one forward fold: everything a later event may
+ * depend on (the sequence counter, the open model spans per context, the
+ * sequence index and the projected list itself). A fresh fold starts from
+ * the empty state; the incremental projection folds an appended slice on top
+ * of the previous fold's state, so a stable prefix is never re-projected.
+ */
+type AtomicFoldState = {
+  events: AtomicFlowEvent[];
+  primarySequenceByTraceId: Map<string, number>;
+  traceIdBySequence: Map<number, string>;
+  activeModelByContext: Map<string, string>;
+  sequence: number;
+};
 
-  traceEvents.forEach((traceEvent, traceIndex) => {
+function emptyAtomicFoldState(): AtomicFoldState {
+  return {
+    events: [],
+    primarySequenceByTraceId: new Map(),
+    traceIdBySequence: new Map(),
+    activeModelByContext: new Map(),
+    sequence: 0,
+  };
+}
+
+function foldTraceEvents(
+  traceEvents: readonly TraceEvent[],
+  start: number,
+  runId: string,
+  state: AtomicFoldState,
+  atomById: AtomById,
+  config: ReturnType<typeof getAtomPlatformConfig>,
+): void {
+  for (let traceIndex = start; traceIndex < traceEvents.length; traceIndex += 1) {
+    const traceEvent = traceEvents[traceIndex];
     const context = contextKey(
       traceEvent.source,
       traceEvent.workspaceId,
       traceEvent.sessionId,
       traceEvent.parentId,
     );
-    if (traceEvent.eventName === "UserPromptSubmit") activeModelByContext.delete(context);
+    if (traceEvent.eventName === "UserPromptSubmit") {
+      state.activeModelByContext.delete(context);
+    }
     const fallbackAtomId = config.eventAtomMap[traceEvent.eventName] ?? "trace-append";
     const answerableQuestion =
       isUserQuestionEvent(traceEvent) &&
@@ -183,11 +208,18 @@ export function projectTraceEvents(
         : EVENT_PROJECTIONS[traceEvent.eventName] ?? [
             { atomId: fallbackAtomId, phase: fallbackPhase(traceEvent) },
           ];
-    const closesModel = CLOSES_MODEL_EVENTS.has(traceEvent.eventName) &&
-      activeModelByContext.has(context);
+    const closesModel =
+      CLOSES_MODEL_EVENTS.has(traceEvent.eventName) &&
+      state.activeModelByContext.has(context);
     const effectiveSteps: readonly ProjectionStep[] = closesModel
-      ? [{ atomId: "model-invoke", phase: traceEvent.status === "failed" ? "error" : "end",
-          instanceGroup: "model" }, ...steps]
+      ? [
+          {
+            atomId: "model-invoke",
+            phase: traceEvent.status === "failed" ? "error" : "end",
+            instanceGroup: "model",
+          },
+          ...steps,
+        ]
       : steps;
 
     // The primary atom's key for this event; tracking the last sequence that
@@ -196,18 +228,22 @@ export function projectTraceEvents(
     const primaryKey = atomById.get(fallbackAtomId)?.key;
     let lastPrimarySequence = 0;
     effectiveSteps.forEach((step) => {
-      const sourceAtom = atomById.get(step.atomId) ?? atomById.get(fallbackAtomId);
+      const sourceAtom =
+        atomById.get(step.atomId) ?? atomById.get(fallbackAtomId);
       if (sourceAtom === undefined) {
         return;
       }
-      sequence += 1;
+      state.sequence += 1;
+      const sequence = state.sequence;
       let id = instanceId(traceEvent, step, traceIndex);
       if (step.instanceGroup === "model") {
-        id = activeModelByContext.get(context) ?? `${traceEvent.sessionId}:model:${traceEvent.id}`;
+        id =
+          state.activeModelByContext.get(context) ??
+          `${traceEvent.sessionId}:model:${traceEvent.id}`;
         if (step.phase === "end" || step.phase === "error") {
-          activeModelByContext.delete(context);
+          state.activeModelByContext.delete(context);
         } else {
-          activeModelByContext.set(context, id);
+          state.activeModelByContext.set(context, id);
         }
       }
       if (sourceAtom.key === primaryKey) {
@@ -234,22 +270,143 @@ export function projectTraceEvents(
         runId,
         sequence,
       };
-      projectedEvents.push(event);
-      traceIdBySequence.set(sequence, traceEvent.id);
+      state.events.push(event);
+      state.traceIdBySequence.set(sequence, traceEvent.id);
     });
 
     // `sequence` counts every push, so after this event's steps it is the
     // sequence of the last projected step overall — exactly what the old
     // `projectedEvents.at(-1)` fallback read.
-    if (sequence > 0) {
-      primarySequenceByTraceId.set(traceEvent.id, lastPrimarySequence || sequence);
+    if (state.sequence > 0) {
+      state.primarySequenceByTraceId.set(
+        traceEvent.id,
+        lastPrimarySequence || state.sequence,
+      );
     }
-  });
+  }
+}
 
+export function projectTraceEvents(
+  traceEvents: readonly TraceEvent[],
+  platformId: PlatformId,
+): AtomicTraceProjection {
+  const config = getAtomPlatformConfig(platformId);
+  const atomById = new Map(config.atoms.map((atom) => [atom.id, atom]));
+  const state = emptyAtomicFoldState();
+  const runId = traceEvents[0]?.sessionId ?? "empty-run";
+  foldTraceEvents(traceEvents, 0, runId, state, atomById, config);
   return {
-    events: projectedEvents,
-    primarySequenceByTraceId,
-    traceIdBySequence,
+    events: state.events,
+    primarySequenceByTraceId: state.primarySequenceByTraceId,
+    traceIdBySequence: state.traceIdBySequence,
+  };
+}
+
+/**
+ * The incremental atomic projection: the same fold as {@link projectTraceEvents},
+ * but one instance folds only the slice appended since its last call when the
+ * prefix is unchanged, so a streaming batch re-projects a few hundred events
+ * instead of the whole session. The stable-prefix rule mirrors
+ * `createSessionProjection`: an equal-length call whose first / mid / last ids
+ * all match is the same history and reuses the cached state as-is; a longer
+ * call that still starts with the same prefix folds just the tail; anything
+ * else (a session switch, a replay, a shorter list) rebuilds from scratch.
+ *
+ * The result wraps fresh `events` array each call (consumers compare it by
+ * reference), while the two sequence maps keep their identity — they have
+ * no readers outside this module, and copying them would cost a second O(n)
+ * pass the fold just saved.
+ */
+export function createAtomicProjection(): (
+  traceEvents: readonly TraceEvent[],
+  platformId: PlatformId,
+) => AtomicTraceProjection {
+  type Cache = {
+    platformId: PlatformId;
+    config: ReturnType<typeof getAtomPlatformConfig>;
+    atomById: AtomById;
+    count: number;
+    firstId: string;
+    lastId: string;
+    midId: string;
+    state: AtomicFoldState;
+    runId: string;
+  };
+  let cache: Cache | null = null;
+
+  const fullBuild = (
+    traceEvents: readonly TraceEvent[],
+    platformId: PlatformId,
+  ): void => {
+    const config = getAtomPlatformConfig(platformId);
+    const atomById = new Map(config.atoms.map((atom) => [atom.id, atom]));
+    const state = emptyAtomicFoldState();
+    const runId = traceEvents[0]?.sessionId ?? "empty-run";
+    foldTraceEvents(traceEvents, 0, runId, state, atomById, config);
+    cache = {
+      platformId,
+      config,
+      atomById,
+      count: traceEvents.length,
+      firstId: traceEvents[0]?.id || "",
+      lastId: traceEvents.at(-1)?.id || "",
+      midId: traceEvents[traceEvents.length >> 1]?.id || "",
+      state,
+      runId,
+    };
+  };
+
+  return (traceEvents, platformId) => {
+    const current = cache;
+    if (current === null || current.platformId !== platformId) {
+      fullBuild(traceEvents, platformId);
+    } else if (traceEvents.length === current.count) {
+      // Same length: the same history only when the first / mid / last ids
+      // still name the cached list; otherwise rebuild from scratch.
+      const unchanged =
+        traceEvents.length === 0 ||
+        ((traceEvents[0]?.id || "") === current.firstId &&
+          (traceEvents.at(-1)?.id || "") === current.lastId &&
+          (traceEvents[traceEvents.length >> 1]?.id || "") === current.midId);
+      if (!unchanged) {
+        fullBuild(traceEvents, platformId);
+      }
+    } else {
+      const appendedOnly =
+        traceEvents.length > current.count &&
+        (traceEvents[0]?.id || "") === current.firstId &&
+        (traceEvents[current.count - 1]?.id || "") === current.lastId;
+      // `midId` names the cached prefix's middle, so a list that rewrote the
+      // middle (a replay, a session switch) cannot masquerade as an append.
+      if (
+        appendedOnly &&
+        (current.count === 0 ||
+          (traceEvents[current.count >> 1]?.id || "") === current.midId)
+      ) {
+        foldTraceEvents(
+          traceEvents,
+          current.count,
+          current.runId,
+          current.state,
+          current.atomById,
+          current.config,
+        );
+        cache = {
+          ...current,
+          count: traceEvents.length,
+          lastId: traceEvents.at(-1)?.id || "",
+          midId: traceEvents[traceEvents.length >> 1]?.id || "",
+        };
+      } else {
+        fullBuild(traceEvents, platformId);
+      }
+    }
+    const state = cache!.state;
+    return {
+      events: [...state.events],
+      primarySequenceByTraceId: state.primarySequenceByTraceId,
+      traceIdBySequence: state.traceIdBySequence,
+    };
   };
 }
 

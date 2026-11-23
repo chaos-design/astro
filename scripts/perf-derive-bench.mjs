@@ -19,8 +19,10 @@
  *   sessions        createSessionProjection over the growing event list
  *   prompt-runs     buildSessionPromptRuns for every session (WeakMap cached)
  *   flow            buildFlow over the active prompt run's events
- *   projection      projectTraceEvents over the same events
+ *   projection      createAtomicProjection over the active prompt run's
+ *                   events (stable-prefix fold, the app's own path)
  *   topology        buildExecutionTopology over the same events
+ *   agent-view      buildAgentView over the same events (the overlay's chain)
  *   first-derive    the one-off full projection over the fixture (ms, total)
  */
 
@@ -89,12 +91,16 @@ const {
   buildSessionPromptRuns,
   buildFlow,
 } = await import(new URL("../src/lib/trace-model.ts", import.meta.url));
-const { projectTraceEvents } = await import(
+const { createAtomicProjection } = await import(
   new URL("../src/lib/atomic-projection.ts", import.meta.url)
 );
 const { buildExecutionTopology } = await import(
   new URL("../src/lib/execution-topology.ts", import.meta.url)
 );
+const { buildAgentView } = await import(
+  new URL("../src/lib/agent-view.ts", import.meta.url)
+);
+const atomicProject = createAtomicProjection();
 
 // The live session is the one carrying the most events (the fixture's open
 // prompt run); its tail is what a streaming agent would keep appending.
@@ -170,7 +176,14 @@ for (let index = 0; index < batches * chunk; index += 1) {
   );
 }
 
-const totals = { sessions: 0, "prompt-runs": 0, flow: 0, projection: 0, topology: 0 };
+const totals = {
+  sessions: 0,
+  "prompt-runs": 0,
+  flow: 0,
+  projection: 0,
+  topology: 0,
+  "agent-view": 0,
+};
 let counted = 0;
 let events = base;
 let offset = 0;
@@ -196,15 +209,18 @@ for (let batch = 0; batch < batches; batch += 1) {
     )?.at(-1)?.events ?? [];
   buildFlow(activeEvents);
   const t3 = performance.now();
-  projectTraceEvents(activeEvents, "chatgpt");
+  atomicProject(activeEvents, "chatgpt");
   const t4 = performance.now();
   buildExecutionTopology(activeEvents, "chatgpt");
   const t5 = performance.now();
+  buildAgentView(activeEvents, "chatgpt");
+  const t6 = performance.now();
   totals.sessions += t1 - t0;
   totals["prompt-runs"] += t2 - t1;
   totals.flow += t3 - t2;
   totals.projection += t4 - t3;
   totals.topology += t5 - t4;
+  totals["agent-view"] += t6 - t5;
 }
 
 const report = {
@@ -214,7 +230,14 @@ const report = {
     "first-derive": Number(firstMs.toFixed(2)),
   },
 };
-for (const phase of ["sessions", "prompt-runs", "flow", "projection", "topology"]) {
+for (const phase of [
+  "sessions",
+  "prompt-runs",
+  "flow",
+  "projection",
+  "topology",
+  "agent-view",
+]) {
   report.msPerBatch[phase] = Number((totals[phase] / Math.max(1, counted)).toFixed(3));
 }
 console.log(JSON.stringify(report, null, 2));

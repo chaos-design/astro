@@ -217,9 +217,23 @@ export function userQuestionSummary(
   );
 }
 
+/**
+ * Per-payload parse cache: captured payloads are immutable and stable
+ * object references, so the projection layers may hand the same payload to
+ * the extractor on every streaming batch. Caching the result keeps a long
+ * live run from re-walking every question shape once per batch.
+ */
+const parsedContentCache = new WeakMap<object, UserQuestionContent>();
+
 export function parseUserQuestionContent(
   payload: TracePayload | null | undefined,
 ): UserQuestionContent {
+  if (payload && typeof payload === "object") {
+    const cached = parsedContentCache.get(payload);
+    if (cached) {
+      return cached;
+    }
+  }
   const record = asRecord(payload) ?? {};
   // Some clients nest the native payload one level down; ZCode delivers both
   // `tool_input` and its camelCase twin on the top level.
@@ -264,7 +278,7 @@ export function parseUserQuestionContent(
     toolResponse?.answers,
     nested?.answers,
   ]);
-  return {
+  const content: UserQuestionContent = {
     prompts,
     message,
     plan,
@@ -275,6 +289,10 @@ export function parseUserQuestionContent(
       Boolean(plan.trim()) ||
       answers.length > 0,
   };
+  if (payload && typeof payload === "object") {
+    parsedContentCache.set(payload, content);
+  }
+  return content;
 }
 
 /**
