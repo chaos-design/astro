@@ -649,6 +649,16 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   `getExceptionOutcome`, `isUserQuestionToolEvent`) may only consult
   module-level `Set`s. A `[...].includes(...)` inside them allocates once per
   event per pass, and a load runs two passes over every event.
+- A streaming batch never re-walks the full history: the derive folds carry a
+  stable prefix forward, so an appended slice is the only work a batch pays.
+  `createSessionProjection` folds sessions that way, and
+  `createAtomicProjection` (the app's canvas path) re-folds only the events
+  appended since its last call — the app holds one long-lived fold instance;
+  a session switch, a replay jump or a shorter list rebuilds from scratch
+  inside the closure. `parseUserQuestionContent` caches its result per
+  payload object (captured payloads are immutable references), so question /
+  answer extraction is a lookup after the first pass. A hot per-batch path
+  must not call the full `projectTraceEvents` or re-parse stable payloads.
 - A count that is not known yet is not reported as zero: while the first
   snapshot is in flight RUN HISTORY renders skeleton rows with a `loading…`
   subtitle, and the header marker reads `connecting`. `offline` means a

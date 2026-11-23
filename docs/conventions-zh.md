@@ -532,6 +532,12 @@
   `getExceptionOutcome`、`isUserQuestionToolEvent`）只查模块级 `Set`，不在循环里
   写 `[...].includes(...)`。一次加载要为每个事件跑两遍这些判定，临时数组会直接变成
   主线程长任务。
+- **流式批不重走全量历史**：derive 折叠都携带稳定前缀，一个批次只为追加的切片
+  付钱。`createSessionProjection` 与画布路径的 `createAtomicProjection`
+  （app 持一个长生命周期折叠实例；切会话 / 回放跳转 / 更短的列表在闭包内全量重建）
+  都只折叠自上次以来追加的事件。`parseUserQuestionContent` 按 payload 对象缓存
+  结果（捕获的 payload 是不可变引用），首遍之后提问 / 答案抽取就是查表；热路径
+  不得再调全量 `projectTraceEvents` 或重解析稳定 payload。
 - **首屏不按"0"报数**：数据没到之前，RUN HISTORY 头部写 `loading…` 并画骨架行，
   顶栏连接标记写 `connecting`。`0 runs` 与 `offline` 都是关于"已经确认的事实"的陈述，
   在快照还没到时不成立。

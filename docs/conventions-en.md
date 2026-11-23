@@ -752,6 +752,16 @@
   `isWaitingTraceEvent`, `getExceptionOutcome`, `isUserQuestionToolEvent` — only
   look at module-level `Set`s. A `[...].includes(...)` inside those loops runs
   twice per event during a load and turns into a long main-thread task.
+- **A streaming batch never re-walks the full history.** Every derive fold
+  carries its stable prefix forward, so a batch pays only for the appended
+  slice: `createSessionProjection` and the canvas path's
+  `createAtomicProjection` (the app holds one long-lived fold instance; a
+  session switch, a replay jump or a shorter list rebuilds from scratch inside
+  the closure) fold only what arrived since the last call.
+  `parseUserQuestionContent` caches its result per payload object (captured
+  payloads are immutable references), so after the first pass the extraction
+  is a lookup — a hot per-batch path must not call the full
+  `projectTraceEvents` or re-parse stable payloads.
 - **Never report a count that is not known yet.** Until the snapshot lands RUN
   HISTORY shows skeleton rows and a `loading…` subtitle, and the header marker
   reads `connecting`. `0 runs` and `offline` are statements about confirmed
