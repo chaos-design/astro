@@ -132,10 +132,10 @@ function highlightShell(code: string): string {
         /(?:^|[\s;&|(])<<-?[ \t]*(?:'([^']*)'|"([^"]*)"|([A-Za-z_]\w*))/,
       );
       if (marker) {
-        // `((x << y))` is an arithmetic shift, not a here-doc. An unmatched
-        // `$((` before the operator means the `<<` is still inside arithmetic.
+        // `((x << y))` and `$((x << y))` are arithmetic shifts, not here-docs.
+        // An unmatched `((` before the operator means the `<<` is arithmetic.
         const before = line.slice(0, marker.index! + 1);
-        const arithmeticOpens = (before.match(/\$\(\(/g) ?? []).length;
+        const arithmeticOpens = (before.match(/\$?\(\(/g) ?? []).length;
         const arithmeticCloses = (before.match(/\)\)/g) ?? []).length;
         if (arithmeticOpens <= arithmeticCloses) {
           heredoc = marker[1] || marker[2] || marker[3] || "";
