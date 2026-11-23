@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { buildAgentView } from "../src/lib/agent-view.ts";
+import { formatLogSequence } from "../src/lib/trace-model.ts";
 import type { TraceEvent } from "../src/types/trace.ts";
 import { createDemoEvents } from "./helpers/demo-fixture.ts";
 
@@ -138,4 +139,55 @@ test("legacy events without messageId still fold adjacent prefixes", () => {
   if (reply?.kind !== "reply") return;
   assert.equal(reply.messageId, null);
   assert.equal(reply.eventIds.length, 3);
+});
+
+test("a literal default id is treated as absent so the reply merges once", () => {
+  // Producers that fall back to "default" must not split the snapshots from
+  // the final message into two replies.
+  const events = copyEvents((event) => {
+    if (event.eventName === "AgentMessage") {
+      event.payload.messageId = "default";
+    }
+  });
+  const view = buildAgentView(events);
+  assert.equal(view.stats.replies, 1);
+  assert.equal(view.stats.snapshotsMerged, 2);
+  const reply = view.steps.find((step) => step.kind === "reply");
+  assert.ok(reply);
+  if (reply?.kind !== "reply") return;
+  assert.equal(reply.messageId, null);
+  assert.equal(reply.eventIds.length, 3);
+});
+
+test("a subagent reusing a messageId is not folded into the main reply", () => {
+  const events = copyEvents((event) => {
+    if (event.eventName === "AgentMessage") {
+      event.payload.messageId = "shared-id";
+    }
+  });
+  // Pi writes child events under the parent session with their own origin.
+  const final = events.find(
+    (event) => event.eventName === "AgentMessage" && event.payload.streamed !== true,
+  );
+  assert.ok(final);
+  if (final) {
+    (final as TraceEvent & { subagentSessionId?: string }).subagentSessionId =
+      "child-session-1";
+  }
+  const view = buildAgentView(events);
+  assert.equal(view.stats.replies, 2);
+  const replies = view.steps.filter((step) => step.kind === "reply");
+  assert.equal(new Set(replies.map((step) => step.eventId)).size, 2);
+});
+
+test("a merged reply's sequence and rail anchor name the same first event", () => {
+  const events = createDemoEvents(NOW);
+  const view = buildAgentView(events, "chatgpt");
+  const reply = view.steps.find((step) => step.kind === "reply");
+  assert.ok(reply);
+  if (reply?.kind !== "reply") return;
+  const anchorIndex = events.findIndex((event) => event.id === reply.eventId);
+  assert.ok(anchorIndex >= 0);
+  assert.equal(reply.sequence, formatLogSequence(anchorIndex + 1));
+  assert.equal(events[anchorIndex].payload.streamed, true);
 });

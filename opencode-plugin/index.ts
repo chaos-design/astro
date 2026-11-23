@@ -184,10 +184,12 @@ export default {
         return;
       }
 
-      const messageId = String(
-        event?.data?.messageID || event?.data?.partID || "default",
-      );
-      const textKey = `${sessionId}:${messageId}`;
+      const rawMessageId = event?.data?.messageID || event?.data?.partID;
+      const messageId = rawMessageId ? String(rawMessageId) : null;
+      // Keep the accumulator keyed when the host omits an id, but never write
+      // "default" into the trace: the console treats a missing id as absent
+      // and merges the snapshots with the final message through its fallback.
+      const textKey = `${sessionId}:${messageId ?? "default"}`;
       if (event?.type === "session.text.delta") {
         const delta = event?.data?.delta;
         if (typeof delta === "string" && delta) {
@@ -207,7 +209,7 @@ export default {
               streamed: true,
               // Snapshots and the final message share one id so the console
               // can merge the accumulated prefixes into a single reply.
-              messageId,
+              ...(messageId ? { messageId } : {}),
             });
           }
           liveText.set(textKey, state);

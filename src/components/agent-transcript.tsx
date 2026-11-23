@@ -442,7 +442,7 @@ function ToolResultBody({
       ) : (
         <p className="agent-step__teaser">这条结果没有正文。</p>
       )}
-      <StepRelated payload={step.payload} />
+      <StepRelated payload={step.payload} resetToken={step.id} />
     </>
   );
 }
@@ -465,12 +465,18 @@ function GenericBody({ step }: { step: GenericStep }) {
   return (
     <>
       <MarkdownView source={step.summary} />
-      <StepRelated payload={step.payload} />
+      <StepRelated payload={step.payload} resetToken={step.id} />
     </>
   );
 }
 
-function StepRelated({ payload }: { payload: unknown }) {
+function StepRelated({
+  payload,
+  resetToken,
+}: {
+  payload: unknown;
+  resetToken: string;
+}) {
   const fields = useMemo(
     () => orderRelated(collectPayloadFields(payload)),
     [payload],
@@ -481,7 +487,7 @@ function StepRelated({ payload }: { payload: unknown }) {
   return (
     <details className="agent-step__related">
       <summary>相关字段 · {fields.length}</summary>
-      <RelatedFields fields={fields} />
+      <RelatedFields fields={fields} resetToken={resetToken} />
     </details>
   );
 }

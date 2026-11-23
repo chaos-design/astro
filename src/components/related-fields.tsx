@@ -12,7 +12,9 @@ import {
  * One related-data value. Long values fold behind their own control so a
  * single captured path or blob cannot force the whole pane to be expanded —
  * short timestamps and ids beside it stay readable either way. The fold is
- * local to this value and resets when the row changes (keyed by field key).
+ * local to this value; the caller's `resetToken` (the event / step id) scopes
+ * the list key so a switch to another row never inherits an expanded field
+ * that happens to share the same key.
  */
 export function RelatedValue({ value }: { value: string }) {
   const foldable = isFoldableRelatedValue(value);
@@ -54,8 +56,11 @@ export function RelatedValue({ value }: { value: string }) {
  */
 export function RelatedFields({
   fields,
+  resetToken = "",
 }: {
   fields: readonly RelatedField[];
+  /** Stable identity of the row being shown; changes reset per-value folds. */
+  resetToken?: string;
 }) {
   if (!fields.length) {
     return <p className="payload-overlay__empty">没有关联数据。</p>;
@@ -79,7 +84,7 @@ export function RelatedFields({
               field.groupHeader && "payload-overlay__field--group",
               field.annotation && "is-annotation",
             )}
-            key={field.key}
+            key={`${resetToken}\u0000${field.key}`}
             style={
               indent > 0 ? { paddingInlineStart: `${indent * 14}px` } : undefined
             }

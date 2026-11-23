@@ -779,7 +779,7 @@ export function PayloadOverlay({
                     onScroll={handleRelatedScroll}
                     ref={relatedBodyRef}
                   >
-                    <RelatedFields fields={preview.related} />
+                    <RelatedFields fields={preview.related} resetToken={selectedEventId} />
                   </div>
                 </section>
               </div>

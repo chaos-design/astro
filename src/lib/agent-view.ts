@@ -142,11 +142,31 @@ function messageIdOf(event: TraceEvent): string | null {
   const payload = event.payload ?? {};
   const value = payload.messageId ?? payload.messageID;
   const id = typeof value === "string" ? value.trim() : "";
-  return id || null;
+  // Some producers write "default" when the host omits an id. Treat it as no
+  // id so snapshots and the final message take the same legacy merge path
+  // instead of becoming two separate replies.
+  return id && id !== "default" ? id : null;
 }
 
 function isStreamSnapshot(event: TraceEvent): boolean {
   return (event.payload ?? {}).streamed === true;
+}
+
+/**
+ * Pi subagents are written under the parent session with their own origin in
+ * the event envelope. Two processes can reuse a short message id, so the
+ * origin must scope a reply group: otherwise a child's reply is folded into
+ * the main agent's and one of them disappears.
+ */
+function replyScopeKey(event: TraceEvent): string {
+  const scoped = event as TraceEvent & {
+    subagentSessionId?: string;
+    subagentHandle?: string;
+    subagentAgent?: string;
+  };
+  const origin =
+    scoped.subagentSessionId || scoped.subagentHandle || scoped.subagentAgent || "";
+  return `${event.sessionId}\u0000${origin}\u0000`;
 }
 
 interface Placement {
@@ -167,6 +187,26 @@ export function buildAgentView(
   const pairLinks = buildPairLinks(events, turnByEventId);
   const indexById = new Map<string, number>();
   events.forEach((event, index) => indexById.set(event.id, index));
+
+  // One pass buckets AgentMessages by (session, subagent origin, messageId).
+  // A per-event `events.filter` here was O(n²) on long streaming runs.
+  const replyGroups = new Map<string, TraceEvent[]>();
+  events.forEach((event) => {
+    if (event.eventName !== "AgentMessage") {
+      return;
+    }
+    const messageId = messageIdOf(event);
+    if (!messageId) {
+      return;
+    }
+    const key = `${replyScopeKey(event)}${messageId}`;
+    const group = replyGroups.get(key);
+    if (group) {
+      group.push(event);
+    } else {
+      replyGroups.set(key, [event]);
+    }
+  });
 
   const placement: Placement[] = [];
   const diagnostics: AgentViewDiagnostic[] = [];
@@ -237,15 +277,24 @@ export function buildAgentView(
     const anchor = final ?? ordered[ordered.length - 1];
     const streamed = ordered.filter(isStreamSnapshot);
     snapshotsMerged += streamed.length;
-    const firstIndex = Math.min(
-      ...ordered.map((event) => indexById.get(event.id) ?? 0),
-    );
-    const anchorSequence = formatLogSequence(firstIndex + 1);
+    // The badge sequence and the rail anchor must name the same event. Pick
+    // the earliest event by *LOG position* (not timestamp), so the card always
+    // points at the first line of the reply it represents.
+    let firstIndex = Infinity;
+    let firstEvent = ordered[0];
+    for (const event of ordered) {
+      const index = indexById.get(event.id) ?? 0;
+      if (index < firstIndex) {
+        firstIndex = index;
+        firstEvent = event;
+      }
+    }
     placement.push({
       index: firstIndex,
       step: {
         ...base(anchor),
-        sequence: anchorSequence,
+        eventId: firstEvent.id,
+        sequence: formatLogSequence(firstIndex + 1),
         id: messageId ? `stream:${messageId}` : `event:${anchor.id}`,
         kind: "reply",
         text: replyText(final ?? anchor),
@@ -276,12 +325,9 @@ export function buildAgentView(
     if (event.eventName === "AgentMessage") {
       const messageId = messageIdOf(event);
       if (messageId) {
-        const group = events.filter(
-          (candidate) =>
-            candidate.eventName === "AgentMessage" &&
-            messageIdOf(candidate) === messageId &&
-            candidate.sessionId === event.sessionId,
-        );
+        const group = replyGroups.get(`${replyScopeKey(event)}${messageId}`) ?? [
+          event,
+        ];
         group.forEach((member) => consumed.add(member.id));
         addReplyGroup(group, messageId);
       } else {
@@ -300,6 +346,7 @@ export function buildAgentView(
           }
           const next = replyText(candidate);
           if (
+            replyScopeKey(candidate) !== replyScopeKey(last) ||
             !next.startsWith(replyText(last)) ||
             getEventTimestamp(candidate) - getEventTimestamp(last) >
               LEGACY_SNAPSHOT_GAP_MS

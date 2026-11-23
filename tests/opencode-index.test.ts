@@ -109,6 +109,19 @@ test("session.text.delta emits a throttled streamed AgentMessage snapshot", asyn
   }
 });
 
+test("a delta without a host id does not persist a default messageId", async () => {
+  const events = await runEvents([
+    located("session.created", {}),
+    located("session.text.delta", { delta: "Hel" }),
+  ]);
+  const streamed = events.filter(
+    (event) =>
+      event.eventName === "AgentMessage" && event.payload.streamed === true,
+  );
+  assert.equal(streamed.length, 1);
+  assert.equal("messageId" in streamed[0].payload, false);
+});
+
 test("durable events without a location envelope use the remembered directory", async () => {
   // A main session created before the plugin loaded has text deltas with no
   // location. They must inherit the directory learned from session.created;

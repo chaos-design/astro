@@ -232,8 +232,11 @@ export default function (pi: PiExtensionApi) {
           return;
         }
         const live = readPiLiveText(event);
-        const messageId = live.messageId || "default";
-        const key = `${sessionId}:${messageId}`;
+        const messageId = live.messageId || null;
+        // Keep the accumulator keyed when the host omits an id, but never
+        // persist "default" — the console's fallback merges id-less snapshots
+        // with the final message, while a literal id would split them.
+        const key = `${sessionId}:${messageId ?? "default"}`;
         if (type === "message_start") {
           liveText.delete(key);
           return;
@@ -260,7 +263,7 @@ export default function (pi: PiExtensionApi) {
               streamed: true,
               // Same id as the final message: the accumulated snapshots are
               // merged by the console instead of shown as repeated replies.
-              messageId,
+              ...(messageId ? { messageId } : {}),
               ...attribution,
             });
           }

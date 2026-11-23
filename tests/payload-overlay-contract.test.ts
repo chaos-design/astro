@@ -50,8 +50,12 @@ test("the preview splits the atom's content from its related data", () => {
   assert.match(overlay, /contentToMarkdown/);
   assert.match(overlay, /payload-overlay__pane--content/);
   assert.match(overlay, /payload-overlay__pane--related/);
-  assert.match(overlay, /<RelatedFields fields=\{preview\.related\} \/>/);
+  assert.match(
+    overlay,
+    /<RelatedFields fields=\{preview\.related\} resetToken=\{selectedEventId\} \/>/,
+  );
   assert.match(relatedFields, /payload-overlay__fields/);
+  assert.match(relatedFields, /key=\{`\$\{resetToken\}\\u0000\$\{field\.key\}`\}/);
   assert.match(stylesForOverlay, /\.payload-overlay__preview-grid/);
   assert.match(stylesForOverlay, /\.payload-overlay__field\.is-annotation/);
 });
