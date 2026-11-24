@@ -985,12 +985,12 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   reads the root display state the RUN HISTORY row reads (prompt-anchored,
   timeout-capped), the root's secondly `now` tick advances it while the
   message executes, and an ended message settles on its recorded total. The
-  header times *this one* message, so it uses the fine execution clock
-  `formatDurationClock` (`src/lib/duration-label.ts`): a wall-clock `HH:MM:SS`
-  reading that keeps a tenth of a second under a minute, sitting beside the
-  stepped history ladder `formatDurationMs` that the LOG row badge and the
-  overlay's rail badge share — the two stay in the one module, the header just
-  reads the finer one. The header also prints the run's turn count and the
+  header times *this one* message, so it reads the shared compound duration
+  formatter `formatDuration` (`src/lib/trace-model.ts`) — `43s`, `1m 50s`,
+  `1h 2m 5s`, each higher unit shown only when it has a value — rather than a
+  second clock formatter or the stepped history ladder `formatDurationMs`
+  that the LOG row badge and the overlay's rail badge share. The header also
+  prints the run's turn count and the
   folded event count (`view.stats.turns` / `view.stats.events`). The
   related-field inventory is
   shared with Preview in `src/components/related-fields.tsx` and folds long

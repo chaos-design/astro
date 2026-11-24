@@ -163,12 +163,13 @@
     (the same source the RUN HISTORY row reads — prompt-anchored,
     timeout-capped), advances on the root's secondly `now` tick while the
     message executes, and settles on the recorded total once it ends. The
-    header times *this one* message, so it uses the fine execution clock
-    `formatDurationClock` in `src/lib/duration-label.ts` (a wall-clock
-    `HH:MM:SS` that keeps a tenth of a second under a minute), sitting beside
-    the stepped history ladder `formatDurationMs` that the LOG row badge and
-    the overlay's rail badge share; the header also prints the run's turn
-    count and folded event count (`view.stats.turns` / `view.stats.events`). The overlay's left rail is the run's **message chain in the
+    header times *this one* message, so it reads the shared compound duration
+    formatter `formatDuration` in `src/lib/trace-model.ts` (`43s`, `1m 50s`,
+    `1h 2m 5s` — each higher unit only when it has a value) rather than a
+    second clock formatter or the stepped history ladder `formatDurationMs`
+    that the LOG row badge and the overlay's rail badge share; the header also
+    prints the run's turn count and folded event count
+    (`view.stats.turns` / `view.stats.events`). The overlay's left rail is the run's **message chain in the
     LOG's own data standard**, fed by `overlayAtoms`, mapped from the same
     `buildLogEntries(activeEvents, …)` result the LOG list prints (app.tsx):
     one row per **event** (carrying the harness atom id it commits to), split

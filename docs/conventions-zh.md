@@ -123,11 +123,11 @@
     （`live`）时出现，结束即撤；当前消息的执行时间显示在 AGENT VIEW 标签
     之后：读根级 display state（与 RUN HISTORY 行同源，Prompt 起算、
     超时封顶），消息执行中由根级 1s `now` tick 推进、结束停在记录的
-    总时长。该头部计时的是**这一条**消息，故用细粒度执行时钟
-    `formatDurationClock`（`src/lib/duration-label.ts`，`HH:MM:SS`，不足
-    1 分钟保留 0.1 秒），与 LOG 行徽标 / 浮层 rail 徽标共用的阶梯
-    `formatDurationMs` 同处一个模块、互不替代；头部另显示本轮跨的
-    轮次数与折叠事件数（`view.stats.turns` / `view.stats.events`）；
+    总时长。该头部计时的是**这一条**消息，故用共享的复合时长格式器
+    `formatDuration`（`src/lib/trace-model.ts`，如 `43s`、`1m 50s`、
+    `1h 2m 5s`，高单位有值才显示），而非另写第二套时钟格式器或 LOG 行
+    徽标 / 浮层 rail 徽标共用的阶梯 `formatDurationMs`；头部另显示本轮
+    跨的轮次数与折叠事件数（`view.stats.turns` / `view.stats.events`）；
     `Preview` 分两块区域：「原子内容」（真实文本，代码/JSON 高亮、Markdown 渲染）
     与「相关数据」（**全部**字段：含 content 键、空值、null/false/0 与嵌套路径，
     注释优先；对象数组保留形状——每个元素自带一行带下标的**分组行**

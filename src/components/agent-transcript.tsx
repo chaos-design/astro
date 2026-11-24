@@ -44,7 +44,8 @@ import {
   splitPayloadPreview,
 } from "@/lib/payload-preview";
 import { payloadToMarkdown } from "@/lib/payload-markdown";
-import { formatDurationClock, formatDurationMs } from "@/lib/duration-label";
+import { formatDurationMs } from "@/lib/duration-label";
+import { formatDuration } from "@/lib/trace-model";
 
 /**
  * The Agent view of one run: the captured sequence rendered as the artifacts
@@ -278,9 +279,9 @@ export function AgentTranscript({
               "agent-transcript__duration",
               live && "is-live",
             )}
-            title="当前消息执行时间（H:MM:SS；不足 1 分钟保留 0.1 秒）"
+            title="当前消息执行时间（s / m / h 复合单位，高单位有值才显示）"
           >
-            执行 {formatDurationClock(runDurationMs)}
+            执行 {formatDuration(runDurationMs)}
           </span>
         ) : null}
         <span className="agent-transcript__stat">{view.stats.thinking} 思考</span>

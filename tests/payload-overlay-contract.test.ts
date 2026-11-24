@@ -194,10 +194,10 @@ test("the Agent view's header reads its execution time from the root display sta
   assert.match(overlay, /runDurationMs=\{agentRunDurationMs\}/);
   assert.match(agentTranscript, /agent-transcript__duration/);
   assert.match(agentTranscript, /runDurationMs !== null/);
-  // The header uses the fine execution clock (H:MM:SS, a tenth under a
-  // minute) for the one displayed message, not the unit ladder that scans
-  // history — the two live side by side in duration-label.ts.
-  assert.match(agentTranscript, /formatDurationClock\(runDurationMs\)/);
+  // The header reads the shared compound duration formatter (43s / 1m 50s /
+  // 1h 2m 5s — each higher unit only when it has a value), not the stepped
+  // unit ladder that scans a history.
+  assert.match(agentTranscript, /formatDuration\(runDurationMs\)/);
   // While the message executes the reading still advances, so the accent
   // marks it live; an ended message keeps the plain stat treatment.
   assert.match(agentTranscript, /live && "is-live"/);
