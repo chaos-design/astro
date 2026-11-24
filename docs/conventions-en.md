@@ -178,13 +178,22 @@
     (`platformLabel` via `getAtomPlatformConfig`) and its captured client
     version (`sourceVersion`, threaded from the active events), so the run's
     identity lives in the header rather than a native title tooltip. No native
-    `title` hover tooltips remain in the Agent view or the overlay rail — the
-    rail row itself carries turn / sequence / event / type / status / duration
-    and still jumps on click. A tool step's header row carries its duration
-    and pair marker inline (`agent-step__head-row`), not on a separate line,
-    and its execution line renders in a mac-terminal frame (`CommandBlock`:
-    window dots + `$` prompt for a real shell command) that **wraps at word
-    boundaries** (`overflow-wrap: break-word`, `white-space: pre-wrap`)
+    `title` hover tooltips remain in the Agent view or the overlay rail. The
+    global popup's rail instead has one controlled `AtomHoverCardLayer`
+    (`payload-overlay.tsx`): hovering a log atom anchors a single fixed card
+    showing that row's own turn / sequence / event / key / type / status / time /
+    duration / pair / summary, the card stays open as the pointer moves onto
+    it, and the row still jumps on click. A tool step's header row carries its
+    duration and pair marker inline (`agent-step__head-row`), not on a separate
+    line, and its call renders in a mac window frame (`CallBlock`: window dots
+    + tool name + `TOOL.CALL` badge; a real shell command with a `$` prompt,
+    otherwise a labelled list of fields) — never `field=value` text. Every
+    call comes from the one extractor `getToolCallInputs`
+    (`src/lib/trace-model.ts`), producing `ToolCallInputs`
+    (`command` / `toolName` / `fields: {key, value, literal}[]`); the `invocation`
+    string is a thin formatter over it. Diff-carrying fields and a command's
+    own `command` / `cmd` key are excluded so nothing prints twice. Both wrap
+    at word boundaries (`overflow-wrap: break-word`, `white-space: pre-wrap`)
     instead of truncating mid-word or scrolling sideways. The overlay's left rail is the run's **message chain in the
     LOG's own data standard**, fed by `overlayAtoms`, mapped from the same
     `buildLogEntries(activeEvents, …)` result the LOG list prints (app.tsx):
@@ -777,7 +786,12 @@
   the closure) fold only what arrived since the last call.
   `parseUserQuestionContent` caches its result per payload object (captured
   payloads are immutable references), so after the first pass the extraction
-  is a lookup — a hot per-batch path must not call the full
+  is a lookup. `createFlowEntries` (`trace-model.ts`) caches its folded entries
+  in a module-level `WeakMap` keyed by the events array, so `buildFlow`,
+  `buildPairDurations`, `buildPairLinks` and the `buildAgentView` that calls the
+  latter two share one fold per array (a replaced array is collected, not
+  pinned); the excluded tool-input keys are one module-level `Set`, never
+  rebuilt per event — a hot per-batch path must not call the full
   `projectTraceEvents` or re-parse stable payloads.
 - **Never report a count that is not known yet.** Until the snapshot lands RUN
   HISTORY shows skeleton rows and a `loading…` subtitle, and the header marker

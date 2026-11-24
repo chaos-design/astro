@@ -46,7 +46,7 @@ import {
 } from "@/lib/payload-preview";
 import { payloadToMarkdown } from "@/lib/payload-markdown";
 import { formatDurationMs } from "@/lib/duration-label";
-import { formatDuration } from "@/lib/trace-model";
+import { formatDuration, type ToolCallInputs } from "@/lib/trace-model";
 import { getAtomPlatformConfig } from "@/config/atom-platforms";
 import type { PlatformId } from "@/types/trace";
 
@@ -62,27 +62,58 @@ function platformLabel(platform: PlatformId): string {
  * boundaries (CSS `overflow-wrap`) instead of scrolling off — a reader sees
  * the whole command, broken at a space, not an arbitrary mid-word cut.
  */
-function CommandBlock({
-  command,
-  isShell,
-}: {
-  command: string;
-  isShell?: boolean;
-}) {
+/**
+ * A structured tool call reads as arguments, not as `field=value` text. The
+ * captured shell command still opens with a terminal `$` prompt; otherwise
+ * the tool name is a header and each short input is its own labelled row,
+ * wrapping at word boundaries. Diff-carrying fields never reach here — the
+ * single extractor leaves them out so their patch keeps its own rendering.
+ */
+function CallBlock({ inputs }: { inputs: ToolCallInputs }) {
+  if (inputs.command) {
+    return (
+      <div className="agent-step__call agent-step__call--shell">
+        <div className="agent-step__call-bar" aria-hidden="true">
+          <span className="agent-step__command-dots">
+            <i />
+            <i />
+            <i />
+          </span>
+          <span className="agent-step__call-name">{inputs.toolName || "Bash"}</span>
+          <span className="agent-step__command-label">COMMAND</span>
+        </div>
+        <div className="agent-step__command-line">
+          <span className="agent-step__command-prompt" aria-hidden="true">
+            $
+          </span>
+          <MarkdownView source={contentToMarkdown(inputs.command)} />
+        </div>
+      </div>
+    );
+  }
   return (
-    <div className="agent-step__command">
-      <div className="agent-step__command-bar" aria-hidden="true">
+    <div className="agent-step__call agent-step__call--fields">
+      <div className="agent-step__call-bar" aria-hidden="true">
         <span className="agent-step__command-dots">
           <i />
           <i />
           <i />
         </span>
-        <span className="agent-step__command-label">COMMAND</span>
+        <span className="agent-step__call-name">{inputs.toolName}</span>
+        <span className="agent-step__command-label">CALL</span>
       </div>
-      <div className="agent-step__command-line">
-        {isShell ? <span className="agent-step__command-prompt">$</span> : null}
-        <MarkdownView source={contentToMarkdown(command)} />
-      </div>
+      {inputs.fields.length ? (
+        <dl className="agent-step__call-fields">
+          {inputs.fields.map((field) => (
+            <div className="agent-step__call-field" key={field.key}>
+              <dt>{field.key}</dt>
+              <dd>{field.value}</dd>
+            </div>
+          ))}
+        </dl>
+      ) : (
+        <div className="agent-step__call-empty">无入参</div>
+      )}
     </div>
   );
 }
@@ -580,21 +611,33 @@ function StepCard({
   const header = (() => {
     switch (step.kind) {
       case "thinking":
-        return { icon: <Lightbulb aria-hidden="true" />, label: "THINKING", meta: "推理摘要" };
+        return { icon: <Lightbulb aria-hidden="true" />, label: "THINKING", tool: null, meta: "推理摘要" };
       case "reply":
-        return { icon: <MessageSquare aria-hidden="true" />, label: "REPLY", meta: "助手回复" };
+        return { icon: <MessageSquare aria-hidden="true" />, label: "REPLY", tool: null, meta: "助手回复" };
       case "tool-result":
-        return { icon: <Bot aria-hidden="true" />, label: "TOOL RESULT", meta: step.toolName || step.eventName };
+        return {
+          icon: <Bot aria-hidden="true" />,
+          label: "TOOL.RESULT",
+          tool: step.toolName,
+          meta: step.eventName,
+        };
       case "question":
-        return { icon: <MessageSquare aria-hidden="true" />, label: "QUESTION", meta: `${step.parsed.prompts.length || 1} 个问题` };
+        return {
+          icon: <MessageSquare aria-hidden="true" />,
+          label: "QUESTION",
+          tool: null,
+          meta: `${step.parsed.prompts.length || 1} 个问题`,
+        };
       default:
-        // A tool-call event (PreToolUse) reads as a TOOL.CALL step named for
-        // the tool it invoked; every other event keeps its own display key.
-        const toolCall = step.toolName ? `TOOL CALL` : step.key.toUpperCase();
+        // A tool-call event (PreToolUse) reads as a TOOL.CALL step: the kind
+        // is a badge, the tool name its own chip, the event name quiet meta —
+        // the three reads the screenshot asks to tell apart at a glance.
+        const toolCall = step.toolName ? "TOOL.CALL" : step.key.toUpperCase();
         return {
           icon: <Bot aria-hidden="true" />,
           label: toolCall,
-          meta: step.toolName ? `${step.toolName} · ${step.eventName}` : step.eventName,
+          tool: step.toolName,
+          meta: step.toolName ? step.eventName : "",
         };
     }
   })();
@@ -620,6 +663,9 @@ function StepCard({
         >
           {header.icon}
           <span className="agent-step__label">{header.label}</span>
+          {header.tool ? (
+            <span className="agent-step__tool">{header.tool}</span>
+          ) : null}
           <span className="agent-step__meta">{header.meta}</span>
           <span className="agent-step__code">{step.sequence}</span>
           <span className="agent-step__turn">T{step.turn}</span>
@@ -707,17 +753,12 @@ function ToolResultBody({ step }: { step: ToolResultStep }) {
           : payloadToMarkdown(step.payload),
     [hasAnswers, split.content, step.payload],
   );
-  // A shell tool shows its captured command; a structured tool (Edit,
-  // Read, …) shows its complete invocation line instead, so the card never
-  // opens with the result and no idea of what was executed.
-  const commandLine = step.command ?? step.invocation;
-  // A `$` prompt marker reads as a terminal line only for a real shell
-  // command; a composed structured invocation (`Read path=…`) would be
-  // mislabelled, so it shows the command label without the prompt.
-  const isShell = Boolean(step.command);
+  // The one structured extractor drives the call block: a captured shell
+  // command is a terminal line, every other tool is a list of named inputs —
+  // never a flattened `field=value` string.
   return (
     <>
-      {commandLine ? <CommandBlock command={commandLine} isShell={isShell} /> : null}
+      {step.inputs ? <CallBlock inputs={step.inputs} /> : null}
       {hasAnswers ? (
         <div className="agent-step__answers">
           <span className="agent-step__answers-label">ANSWERS</span>
@@ -749,13 +790,11 @@ function QuestionBody({
 
 function GenericBody({ step }: { step: GenericStep }) {
   const source = useMemo(() => contentToMarkdown(step.summary), [step.summary]);
-  // A tool-call event opens with its complete execution line (the captured
-  // shell command, else the tool name plus its short inputs) so the reader
-  // sees what ran before the summary and the related-fields dump.
-  const commandLine = step.command;
+  // A tool-call event opens with its structured invocation so the reader sees
+  // what ran before the summary and the related-fields dump.
   return (
     <>
-      {commandLine ? <CommandBlock command={commandLine} /> : null}
+      {step.inputs ? <CallBlock inputs={step.inputs} /> : null}
       <MarkdownView source={source} />
       <StepRelated payload={step.payload} resetToken={step.id} />
     </>

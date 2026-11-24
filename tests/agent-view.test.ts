@@ -96,25 +96,32 @@ test("tool steps expose the command captured on the paired start event", () => {
   const events = createDemoEvents(NOW);
   const view = buildAgentView(events, "chatgpt");
   const tool = view.steps.find(
-    (step) => step.kind === "tool-result" && step.command !== null,
+    (step) =>
+      step.kind === "tool-result" && step.inputs?.command !== null && step.inputs !== null,
   );
   assert.ok(tool);
   if (tool?.kind !== "tool-result") return;
-  assert.equal(tool.command, "pnpm test && pnpm build");
-  // A shell tool's complete execution line is the captured command itself.
-  assert.equal(tool.invocation, "pnpm test && pnpm build");
+  // A captured shell command is the call's command, with no flattened fields.
+  assert.equal(tool.inputs?.command, "pnpm test && pnpm build");
+  assert.deepEqual(tool.inputs?.fields, []);
   // The projection is derived: the paired start event keeps its own shape.
   const raw = events.find((event) => event.id === tool.pairLink?.partnerId);
   assert.equal(raw?.payload.tool_input?.cmd, "pnpm test && pnpm build");
   assert.equal("command" in (raw?.payload ?? {}), false);
 
-  // A structured tool (no shell command) still gets a complete execution
-  // line: its name plus every short input field, diff-carrying fields out.
+  // A structured tool (no shell command) carries each short input as its own
+  // field — never flattened into `field=value` text — with diff-carrying
+  // fields kept out so their patch keeps its own rendering.
   const structured = copyEvents((event) => {
     if (event.eventName === "PreToolUse" && event.toolUseId === "tool-test") {
       event.toolName = "Read";
       event.payload = {
-        tool_input: { file_path: "/tmp/project/file.test.tsx", limit: 100 },
+        tool_input: {
+          file_path: "/tmp/project/file.test.tsx",
+          limit: 100,
+          old_string: "a",
+          new_string: "b",
+        },
         tool_name: "Read",
       };
     }
@@ -123,39 +130,41 @@ test("tool steps expose the command captured on the paired start event", () => {
   const structuredTool = structuredView.steps.find(
     (step) =>
       step.kind === "tool-result" &&
-      step.invocation === "Read file_path=/tmp/project/file.test.tsx limit=100",
+      step.inputs?.fields.some((field) => field.key === "limit"),
   );
   assert.ok(structuredTool, "the structured tool's result step is projected");
   if (structuredTool?.kind !== "tool-result") return;
-  assert.equal(structuredTool.command, null);
-  assert.equal(
-    structuredTool.invocation,
-    "Read file_path=/tmp/project/file.test.tsx limit=100",
-  );
+  assert.equal(structuredTool.inputs?.command, null);
+  assert.deepEqual(structuredTool.inputs?.fields, [
+    { key: "file_path", value: "/tmp/project/file.test.tsx", literal: "file_path=/tmp/project/file.test.tsx" },
+    { key: "limit", value: "100", literal: "limit=100" },
+  ]);
 });
 
-test("a tool-call start step opens with its composed command and tool name", () => {
+test("a tool-call start step opens with its structured call and tool name", () => {
   const view = buildAgentView(createDemoEvents(NOW), "chatgpt");
   // A PreToolUse that is not a user-question tool projects as a generic
-  // event step. Its complete execution line (shell command, else the tool
-  // name plus its short inputs) and its tool name now surface on the step,
-  // so the card opens with the COMMAND instead of burying it in the
-  // related-fields dump.
+  // event step. Its structured call (shell command, else the tool name plus
+  // its short inputs) and its tool name surface on the step, so the card
+  // opens with the CALL instead of burying it in the related-fields dump.
   const call = view.steps.find(
     (step) => step.kind === "event" && step.eventName === "PreToolUse",
   );
   assert.ok(call, "a PreToolUse start projects as an event step");
   if (call?.kind !== "event") return;
   assert.equal(call.toolName, "Read");
-  assert.equal(call.command, "Read path=src/app.tsx");
-  // A non-tool event carries no invented command or tool name.
+  assert.equal(call.inputs?.command, null);
+  assert.deepEqual(call.inputs?.fields, [
+    { key: "path", value: "src/app.tsx", literal: "path=src/app.tsx" },
+  ]);
+  // A non-tool event carries no invented call or tool name.
   const plain = view.steps.find(
     (step) => step.kind === "event" && step.eventName !== "PreToolUse",
   );
   assert.ok(plain, "the run carries a non-tool event step");
   if (plain?.kind !== "event") return;
   assert.equal(plain.toolName, null);
-  assert.equal(plain.command, null);
+  assert.equal(plain.inputs, null);
 });
 
 test("a finished question projects its recorded answers and its result step carries them", () => {

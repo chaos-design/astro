@@ -6682,6 +6682,98 @@ pre,
   --log-tone: var(--red);
 }
 
+/* One fixed hover card for the whole global-popup rail. It follows the row
+   under the pointer and shows that log atom's own data (turn, key, type,
+   status, time, paired duration and summary), replacing the native `title`
+   tooltip that could neither be styled nor read in full. */
+.payload-overlay__atom-hover {
+  position: fixed;
+  z-index: 70;
+  top: 0;
+  left: 0;
+  visibility: hidden;
+  animation: run-history-hovercard-in 120ms ease-out;
+}
+
+.payload-overlay__atom-hover-card {
+  max-width: min(360px, calc(100vw - 24px));
+  max-height: min(340px, calc(100vh - 24px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 10px 12px 9px;
+  border: 1px solid var(--line-bright);
+  border-radius: 7px;
+  background: var(--panel-raised);
+  box-shadow: 0 12px 30px rgb(0 0 0 / 42%);
+  color: var(--text);
+  font-size: var(--text-caption);
+}
+
+.payload-overlay__atom-hover-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 7px;
+  padding-bottom: 7px;
+  border-bottom: 1px solid var(--line);
+}
+
+.payload-overlay__atom-hover-sequence {
+  color: var(--violet);
+  font-family: var(--font-mono, monospace);
+  font-weight: var(--weight-medium, 600);
+}
+
+.payload-overlay__atom-hover-turn {
+  color: var(--muted);
+  font-family: var(--font-mono, monospace);
+}
+
+.payload-overlay__atom-hover-event {
+  color: var(--text-strong);
+  font-weight: var(--weight-medium, 600);
+  overflow-wrap: anywhere;
+}
+
+.payload-overlay__atom-hover-fields {
+  display: grid;
+  gap: 4px;
+  margin: 8px 0 0;
+}
+
+.payload-overlay__atom-hover-fields > div {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.payload-overlay__atom-hover-fields dt {
+  color: var(--muted);
+  font-family: var(--font-mono, monospace);
+}
+
+.payload-overlay__atom-hover-fields dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.payload-overlay__atom-hover-summary {
+  margin: 9px 0 0;
+  padding-top: 7px;
+  border-top: 1px solid var(--line);
+  color: var(--text);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.payload-overlay__atom-hover-hint {
+  margin: 7px 0 0;
+  color: var(--muted);
+  font-size: 0.6875rem;
+}
+
 .payload-overlay__content {
   display: flex;
   flex: 1;
@@ -10456,8 +10548,30 @@ pre,
   letter-spacing: 0.08em;
 }
 
+/* The kind is a quiet outlined badge, the tool name a filled chip and the
+   event name plain meta — three distinct reads in one header row. */
 .agent-step__label {
+  flex: 0 0 auto;
+  padding: 2px 6px;
+  border: 1px solid color-mix(in srgb, var(--type-accent, var(--log-tone)) 42%, transparent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--type-accent, var(--log-tone)) 12%, transparent);
   color: var(--type-accent, var(--log-tone));
+  letter-spacing: 0.06em;
+}
+
+.agent-step__tool {
+  flex: 0 0 auto;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--violet) 20%, var(--panel));
+  color: var(--text-strong);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.6875rem;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .agent-step__meta {
@@ -10536,26 +10650,51 @@ pre,
   padding-right: 10px;
 }
 
-/* A captured execution line wears a mac-terminal frame: a title bar with the
-   three window dots, then the `$` prompt and the command body. The command
-   wraps at word boundaries — a long `&&` chain breaks at a space, never
-   mid-word — so the complete line stays readable without horizontal scroll. */
+/* A tool call wears a mac window frame: a title bar with the three dots, the
+   tool name and a CALL / COMMAND badge. A captured shell command follows with
+   a `$` prompt; a structured tool instead lists each input as its own row —
+   never flattened into `field=value` text. Both wrap at word boundaries, so
+   a long value breaks at a space, never mid-word or into a horizontal scroll. */
+.agent-step__call,
 .agent-step__command {
   position: relative;
   margin: 0 0 10px;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--amber) 30%, var(--line-bright));
+  border: 1px solid color-mix(in srgb, var(--violet) 30%, var(--line-bright));
   border-radius: 7px;
+  background: color-mix(in srgb, var(--panel) 82%, var(--violet) 14%);
+}
+
+.agent-step__call--shell {
+  border-color: color-mix(in srgb, var(--amber) 30%, var(--line-bright));
   background: color-mix(in srgb, var(--panel) 78%, var(--amber) 16%);
 }
 
+.agent-step__call-bar,
 .agent-step__command-bar {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 5px 10px 4px;
-  border-bottom: 1px solid color-mix(in srgb, var(--amber) 22%, var(--line));
+  border-bottom: 1px solid color-mix(in srgb, var(--violet) 22%, var(--line));
+  background: color-mix(in srgb, var(--panel) 70%, var(--violet) 18%);
+}
+
+.agent-step__call--shell .agent-step__call-bar {
+  border-color: color-mix(in srgb, var(--amber) 22%, var(--line));
   background: color-mix(in srgb, var(--panel) 66%, var(--amber) 20%);
+}
+
+.agent-step__call-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-strong);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.75rem;
+  font-weight: var(--weight-medium, 600);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .agent-step__command-dots {
@@ -10609,7 +10748,8 @@ pre,
   min-width: 0;
 }
 
-.agent-step__command .markdown-preview pre {
+.agent-step__command .markdown-preview pre,
+.agent-step__call .markdown-preview pre {
   margin: 0;
   padding: 0;
   border: 0;
@@ -10620,6 +10760,55 @@ pre,
   overflow-wrap: break-word;
   word-break: normal;
   overflow-x: hidden;
+}
+
+/* Structured tool inputs: a two-column definition list. Keys are a quiet
+   mono gutter, values wrap at word boundaries — so a long `description` no
+   longer reads as an unbroken `description="…"` run in a terminal line. */
+.agent-step__call-fields {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 3px 11px 7px;
+}
+
+.agent-step__call-field {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(88px, 0.7fr) minmax(0, 1.6fr);
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.agent-step__call-field:last-child {
+  border-bottom: 0;
+}
+
+.agent-step__call-field dt {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--violet);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.6875rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-step__call-field dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--text);
+  font-size: 0.75rem;
+  overflow-wrap: break-word;
+  white-space: pre-wrap;
+  word-break: normal;
+}
+
+.agent-step__call-empty {
+  padding: 8px 11px 10px;
+  color: var(--muted);
+  font-size: 0.75rem;
 }
 
 /* A question-tool result's recorded answers, in the card's own anatomy:

@@ -135,11 +135,19 @@
     以 Agent 品牌的 `PlatformIcon` + 标签（`platformLabel` 经 `getAtomPlatformConfig`）
     及捕获的客户端版本（`sourceVersion`，由当前事件串入）开头，运行身份在
     头部而非原生 title 提示；Agent 视图与浮层 rail 均不保留原生 `title` 悬浮
-    提示——rail 行本身即带轮次/行号/事件/类型/状态/耗时，点击即跳转。工具步骤
-    的头部同一行内联耗时与成对标记（`agent-step__head-row`），不再单占一行；
-    执行行渲染成 mac 终端框（`CommandBlock`：窗口圆点 + 真实 shell 命令的
-    `$` 提示），按**词边界换行**（`overflow-wrap: break-word`、
-    `white-space: pre-wrap`），不在词中间截断也不横向滚动；
+    提示——全局弹窗的 rail 改为**单个受控** `AtomHoverCardLayer`
+    （`payload-overlay.tsx`）：悬浮 log 原子即锚定一张固定卡片，显示该行的
+    轮次/行号/事件/键/类型/状态/时间/耗时/成对/摘要，指针移到卡上仍保持，
+    点击仍跳转。工具步骤的头部同一行内联耗时与成对标记
+    （`agent-step__head-row`），不再单占一行；调用渲染成 mac 窗口框
+    （`CallBlock`：窗口圆点 + 工具名 + `TOOL.CALL` 徽标；真实 shell 命令带
+    `$` 提示、结构化工具则是逐项带标签的字段列表），**不展示 `字段=值`
+    文本**；每次调用由唯一提取器 `getToolCallInputs`（`src/lib/trace-model.ts`）
+    产出 `ToolCallInputs`（`command`/`toolName`/`fields:{key,value,literal}[]`），
+    `invocation` 字符串只是它的薄封装；diff 字段（`old/new`/`content`）与命令
+    自带的 `command`/`cmd` 键均排除，不重复打印；按**词边界换行**
+    （`overflow-wrap: break-word`、`white-space: pre-wrap`），不在词中间截断
+    也不横向滚动；
     `Preview` 分两块区域：「原子内容」（真实文本，代码/JSON 高亮、Markdown 渲染）
     与「相关数据」（**全部**字段：含 content 键、空值、null/false/0 与嵌套路径，
     注释优先；对象数组保留形状——每个元素自带一行带下标的**分组行**
@@ -548,8 +556,12 @@
   付钱。`createSessionProjection` 与画布路径的 `createAtomicProjection`
   （app 持一个长生命周期折叠实例；切会话 / 回放跳转 / 更短的列表在闭包内全量重建）
   都只折叠自上次以来追加的事件。`parseUserQuestionContent` 按 payload 对象缓存
-  结果（捕获的 payload 是不可变引用），首遍之后提问 / 答案抽取就是查表；热路径
-  不得再调全量 `projectTraceEvents` 或重解析稳定 payload。
+  结果（捕获的 payload 是不可变引用），首遍之后提问 / 答案抽取就是查表；
+  `createFlowEntries`（`trace-model.ts`）把折叠结果以事件数组为键存入模块级
+  `WeakMap`，`buildFlow` / `buildPairDurations` / `buildPairLinks` 及调用后两者的
+  `buildAgentView` 对同一数组只折叠一次（数组被换掉即随 GC 回收，不缓存前缀），
+  工具入参排除键是模块级 `Set`，不按事件重建；热路径不得再调全量
+  `projectTraceEvents` 或重解析稳定 payload。
 - **首屏不按"0"报数**：数据没到之前，RUN HISTORY 头部写 `loading…` 并画骨架行，
   顶栏连接标记写 `connecting`。`0 runs` 与 `offline` 都是关于"已经确认的事实"的陈述，
   在快照还没到时不成立。

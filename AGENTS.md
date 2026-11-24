@@ -657,8 +657,14 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   a session switch, a replay jump or a shorter list rebuilds from scratch
   inside the closure. `parseUserQuestionContent` caches its result per
   payload object (captured payloads are immutable references), so question /
-  answer extraction is a lookup after the first pass. A hot per-batch path
-  must not call the full `projectTraceEvents` or re-parse stable payloads.
+  answer extraction is a lookup after the first pass. `createFlowEntries`
+  (`trace-model.ts`) caches its folded entries in a module-level `WeakMap`
+  keyed by the events array, so `buildFlow`, `buildPairDurations`,
+  `buildPairLinks` and the `buildAgentView` that calls the latter two share a
+  single fold per array (a replaced array is collected, not pinned); the
+  excluded tool-input keys are one module-level `Set`, never rebuilt per
+  event. A hot per-batch path must not call the full `projectTraceEvents` or
+  re-parse stable payloads.
 - A count that is not known yet is not reported as zero: while the first
   snapshot is in flight RUN HISTORY renders skeleton rows with a `loading…`
   subtitle, and the header marker reads `connecting`. `offline` means a
@@ -938,18 +944,20 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   diagnostic and keeps every step, legacy id-less captures only fold adjacent
   `startsWith` chains, every Reasoning event is its own block with the real
   captured text shown by default (all hook spellings folded by `extractText`
-  in `trace-model.ts`), tool commands read only from the paired `PreToolUse`
-  through `getToolCallCommand` without mutating events, and a structured
-  tool's complete execution line is synthesized the same way
-  (`getToolCallInvocation`: the tool name plus every short input field,
-  diff-carrying `old/new` / `content` fields excluded so the patch keeps its
-  own rendering), so a tool-result card always states what was executed; a
-  tool-call *start* event (a `PreToolUse` that is not a user question) projects
-  as a generic event step but opens with the same composed line — the
-  `GenericStep.command` / `GenericStep.toolName` fields, resolved through
-  `getToolCallInvocation(event)` (null for every non-tool event), so the card
-  leads with its COMMAND block instead of burying the command in the
-  related-fields dump;
+  in `trace-model.ts`), and every tool call — a captured shell command or a
+  structured tool's name plus short inputs — comes from the one extractor
+  `getToolCallInputs` (`src/lib/trace-model.ts`), which returns a `ToolCallInputs`
+  shape (`command`, `toolName`, `fields: {key, value, literal}[]`) instead of a
+  flattened `field=value` string. Diff-carrying `old/new` / `content` fields
+  are excluded so the patch keeps its own rendering; when a command exists its
+  raw `command` / `cmd` key is excluded too, so the terminal line never prints
+  the same text twice. `getToolCallInvocation` is a thin formatter *over* that
+  shape, not a second extractor. Both `ToolResultStep.inputs` and
+  `GenericStep.inputs` carry the shape (null for every non-tool event), and the
+  shared `CallBlock` (`agent-transcript.tsx`) renders a captured command in a
+  mac terminal frame with a `$` prompt, otherwise each input as its own
+  labelled, word-wrapping field — never `field=xxx` text; the header separates
+  the `TOOL.CALL` badge, the tool-name chip and the event-name meta;
   questions bind only
   to the blocking start event through `parseUserQuestionContent`, and a
   finished question's recorded answers are projected onto that step from the
@@ -1000,13 +1008,17 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   and its captured client version (`sourceVersion`, threaded from the active
   events), so the run's identity sits in the header instead of a native title
   tooltip. No native `title` hover tooltips remain in the Agent view or the
-  overlay rail — the rail row itself carries turn / sequence / event / type /
-  status / duration, and each row still jumps on click. A tool step's header
-  row carries its duration and pair marker inline (`agent-step__head-row`),
-  not on a separate line, and its execution line renders in a mac-terminal
-  frame (`CommandBlock`: window dots + `$` prompt for a real shell command)
-  that **wraps at word boundaries** (`overflow-wrap: break-word`,
-  `white-space: pre-wrap`) rather than truncating mid-word or scrolling
+  overlay rail. Instead the global popup's rail has one controlled
+  `AtomHoverCardLayer` (`payload-overlay.tsx`): hovering a log atom anchors a
+  single fixed card that shows that row's own turn / sequence / event / key /
+  type / status / time / duration / pair / summary, the card stays open while
+  the pointer moves onto it, and the row still jumps on click. A tool step's
+  header row carries its duration and pair marker inline
+  (`agent-step__head-row`), not on a separate line, and its call renders in a
+  mac window frame (`CallBlock`: window dots + `$` prompt for a real shell
+  command, otherwise a labelled field list) that **wraps at word boundaries**
+  (`overflow-wrap: break-word`, `white-space: pre-wrap`) rather than truncating
+  mid-word or scrolling
   sideways. The related-field inventory is
   shared with Preview in `src/components/related-fields.tsx` and folds long
   values per field, never per pane. `Preview` is split into two panes — the atom's real content

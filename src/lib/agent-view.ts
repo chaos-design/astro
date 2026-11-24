@@ -7,8 +7,8 @@ import {
   formatLogSequence,
   getEventSummary,
   getEventTimestamp,
-  getToolCallCommand,
-  getToolCallInvocation,
+  getToolCallInputs,
+  type ToolCallInputs,
   type TracePairLink,
 } from "./trace-model.ts";
 import { buildTraceTurnIndex } from "./trajectory-model.ts";
@@ -76,15 +76,12 @@ export interface ToolResultStep extends AgentStepBase {
   readonly payload: TracePayload;
   readonly eventName: string;
   readonly toolName: string | null;
-  /** Captured tool command from the paired start event, never inferred. */
-  readonly command: string | null;
   /**
-   * The tool's complete execution line: the captured shell command when one
-   * exists, otherwise the tool name plus every short input field — so a
-   * structured tool (Edit, Read, …) shows its full invocation, not just its
-   * result.
+   * The tool's complete invocation, structured: a captured shell command or
+   * the tool name plus each short input as its own field. The card renders
+   * the fields as a list rather than flattening them into `key=value` text.
    */
-  readonly invocation: string | null;
+  readonly inputs: ToolCallInputs | null;
   /**
    * The recorded answers when this result closes a user-question tool — the
    * answer-style read the card shows instead of a JSON body. Empty for
@@ -119,12 +116,12 @@ export interface GenericStep extends AgentStepBase {
   readonly payload: TracePayload;
   /**
    * For a tool-call event (PreToolUse / PostToolUse) the tool's complete
-   * execution line — the captured shell command when one exists, otherwise
-   * the tool name plus every short input. `null` for every other event, so
-   * the generic body only opens with a COMMAND line when a command actually
-   * exists, never invents one from an event name.
+   * invocation, structured — a captured shell command or the name plus each
+   * short input. `null` for every other event, so the generic body only opens
+   * with a call line when a call actually exists, never invents one from an
+   * event name.
    */
-  readonly command: string | null;
+  readonly inputs: ToolCallInputs | null;
   /** The captured tool name when this is a tool event; `null` otherwise. */
   readonly toolName: string | null;
 }
@@ -460,8 +457,7 @@ export function buildAgentView(
           payload: event.payload ?? {},
           eventName: event.eventName,
           toolName: event.toolName ?? stringValue(event.payload?.tool_name),
-          command: getToolCallCommand(event, startEvent),
-          invocation: getToolCallInvocation(event, startEvent),
+          inputs: getToolCallInputs(event, startEvent),
           answers,
           answerQuestions,
           durationMs: pairDurations.get(event.id) ?? null,
@@ -479,11 +475,11 @@ export function buildAgentView(
         key: getTraceEventKey(event),
         summary: getEventSummary(event),
         payload: event.payload ?? {},
-        // A tool-call event (PreToolUse) opens with its complete execution
-        // line — the captured shell command, else the tool name plus its short
-        // inputs — instead of burying the command inside the related-fields
-        // dump. Non-tool events resolve to null and keep the plain body.
-        command: getToolCallInvocation(event),
+        // A tool-call event (PreToolUse) opens with its structured invocation
+        // — the captured shell command, else the tool name plus its short
+        // inputs — instead of burying the call inside the related-fields dump.
+        // Non-tool events resolve to null and keep the plain body.
+        inputs: getToolCallInputs(event),
         toolName: event.toolName || stringValue(event.payload?.tool_name) || null,
       },
     });

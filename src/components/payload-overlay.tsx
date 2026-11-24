@@ -7,7 +7,10 @@ import {
   useMemo,
   useRef,
   useState,
+  memo,
   type KeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+  type RefObject,
   type UIEvent,
 } from "react";
 import { AgentTranscript } from "@/components/agent-transcript";
@@ -89,6 +92,151 @@ export type PayloadOverlayAtom = {
   turn: number;
   type: string;
 };
+
+/**
+ * One controlled hover card serves the whole rail. A tooltip root per row
+ * would multiply into hundreds of portals that re-render on every stream tick;
+ * a single layer that follows the hovered row swaps its content in place and
+ * stays open while the pointer moves onto it, so long summaries can be read.
+ */
+const AtomHoverCardLayer = memo(function AtomHoverCardLayer({
+  anchorRef,
+  card,
+  cardRef,
+  onCardPointerEnter,
+  onCardPointerLeave,
+}: {
+  anchorRef: RefObject<HTMLElement | null>;
+  card: PayloadOverlayAtom | null;
+  cardRef: RefObject<HTMLDivElement | null>;
+  onCardPointerEnter: () => void;
+  onCardPointerLeave: (event: ReactPointerEvent<HTMLDivElement>) => void;
+}) {
+  useLayoutEffect(() => {
+    if (!card) {
+      return undefined;
+    }
+    const element = cardRef.current;
+    if (!element) {
+      return undefined;
+    }
+    let frame = 0;
+    const place = () => {
+      frame = 0;
+      const anchor = anchorRef.current;
+      if (!anchor || !anchor.isConnected) {
+        element.style.visibility = "hidden";
+        return;
+      }
+      // Hide once the anchored row scrolls out of the rail's own viewport.
+      const listBounds = anchor
+        .closest(".payload-overlay__atom-list")
+        ?.getBoundingClientRect();
+      const anchorBounds = anchor.getBoundingClientRect();
+      if (
+        listBounds &&
+        (anchorBounds.bottom < listBounds.top ||
+          anchorBounds.top > listBounds.bottom)
+      ) {
+        element.style.visibility = "hidden";
+        return;
+      }
+      const cardBounds = element.getBoundingClientRect();
+      const gap = 8;
+      // The rail sits at the window's left edge, so always open to its right;
+      // clamp vertically so a tall card never leaves the viewport.
+      const left = Math.min(
+        anchorBounds.right + gap,
+        Math.max(gap, window.innerWidth - gap - cardBounds.width),
+      );
+      const top = Math.min(
+        Math.max(gap, anchorBounds.top),
+        Math.max(gap, window.innerHeight - gap - cardBounds.height),
+      );
+      element.style.transform = `translate3d(${Math.round(left)}px, ${Math.round(top)}px, 0)`;
+      element.style.visibility = "visible";
+    };
+    const schedule = () => {
+      if (frame) {
+        return;
+      }
+      frame = window.requestAnimationFrame(place);
+    };
+    place();
+    document.addEventListener("scroll", schedule, true);
+    window.addEventListener("resize", schedule);
+    return () => {
+      if (frame) {
+        window.cancelAnimationFrame(frame);
+      }
+      document.removeEventListener("scroll", schedule, true);
+      window.removeEventListener("resize", schedule);
+    };
+  }, [anchorRef, card, cardRef]);
+
+  if (!card) {
+    return null;
+  }
+  return (
+    <div
+      className="payload-overlay__atom-hover"
+      onPointerEnter={onCardPointerEnter}
+      onPointerLeave={onCardPointerLeave}
+      ref={cardRef}
+      role="tooltip"
+    >
+      <div className="payload-overlay__atom-hover-card">
+        <div className="payload-overlay__atom-hover-head">
+          <span className="payload-overlay__atom-hover-sequence">{card.sequence}</span>
+          <span className="payload-overlay__atom-hover-turn">Turn {card.turn}</span>
+          <span className="payload-overlay__atom-hover-event">{card.eventName}</span>
+        </div>
+        <dl className="payload-overlay__atom-hover-fields">
+          {card.type?.trim() ? (
+            <div>
+              <dt>TYPE</dt>
+              <dd>{card.type}</dd>
+            </div>
+          ) : null}
+          <div>
+            <dt>KEY</dt>
+            <dd>{card.key}</dd>
+          </div>
+          <div>
+            <dt>STATUS</dt>
+            <dd>{card.status}</dd>
+          </div>
+          <div>
+            <dt>ACTION</dt>
+            <dd>{card.action}</dd>
+          </div>
+          <div>
+            <dt>TIME</dt>
+            <dd>
+              {card.dateLabel} {card.clockLabel}
+            </dd>
+          </div>
+          {card.durationLabel !== null ? (
+            <div>
+              <dt>DURATION</dt>
+              <dd>{card.durationLabel}</dd>
+            </div>
+          ) : null}
+          {card.pairLink ? (
+            <div>
+              <dt>PAIR</dt>
+              <dd>{card.pairLink.label}</dd>
+            </div>
+          ) : null}
+        </dl>
+        {card.summary ? (
+          <p className="payload-overlay__atom-hover-summary">{card.summary}</p>
+        ) : null}
+        <p className="payload-overlay__atom-hover-hint">点击该行跳转到此原子</p>
+      </div>
+    </div>
+  );
+});
 
 /** A rail list item: either a turn separator or one event row. */
 type PayloadOverlayRailItem =
@@ -303,6 +451,44 @@ export function PayloadOverlay({
   });
   const railEdgesRef = useRef(railEdges);
   railEdgesRef.current = railEdges;
+  // The rail's one hover card: the anchor follows the hovered row and the card
+  // holds that row's atom. A debounce timer lets the pointer travel from the
+  // row onto the card itself without the card vanishing mid-read.
+  const [hoveredAtom, setHoveredAtom] = useState<PayloadOverlayAtom | null>(null);
+  const atomAnchorRef = useRef<HTMLElement | null>(null);
+  const atomCardRef = useRef<HTMLDivElement | null>(null);
+  const atomHoverTimerRef = useRef<number | null>(null);
+  const openAtomHover = useCallback((atom: PayloadOverlayAtom, anchor: HTMLElement) => {
+    if (atomHoverTimerRef.current !== null) {
+      window.clearTimeout(atomHoverTimerRef.current);
+      atomHoverTimerRef.current = null;
+    }
+    atomAnchorRef.current = anchor;
+    setHoveredAtom((current) => (current?.id === atom.id ? current : atom));
+  }, []);
+  const closeAtomHover = useCallback(() => {
+    if (atomHoverTimerRef.current !== null) {
+      window.clearTimeout(atomHoverTimerRef.current);
+    }
+    atomHoverTimerRef.current = window.setTimeout(() => {
+      atomHoverTimerRef.current = null;
+      setHoveredAtom(null);
+    }, 120);
+  }, []);
+  const cancelAtomHoverClose = useCallback(() => {
+    if (atomHoverTimerRef.current !== null) {
+      window.clearTimeout(atomHoverTimerRef.current);
+      atomHoverTimerRef.current = null;
+    }
+  }, []);
+  useEffect(
+    () => () => {
+      if (atomHoverTimerRef.current !== null) {
+        window.clearTimeout(atomHoverTimerRef.current);
+      }
+    },
+    [],
+  );
   const syncRailEdges = useCallback(() => {
     const list = railListRef.current;
     if (!list) {
@@ -685,6 +871,10 @@ export function PayloadOverlay({
                         onKeyDown={(keyEvent) =>
                           handleAtomKeyDown(keyEvent, rowPosition)
                         }
+                        onPointerEnter={(pointerEvent) =>
+                          openAtomHover(atom, pointerEvent.currentTarget)
+                        }
+                        onPointerLeave={closeAtomHover}
                         ref={(node) => {
                           if (selected) {
                             selectedRowRef.current = node;
@@ -802,6 +992,13 @@ export function PayloadOverlay({
           </div>
         </div>
       </DialogContent>
+      <AtomHoverCardLayer
+        anchorRef={atomAnchorRef}
+        card={hoveredAtom}
+        cardRef={atomCardRef}
+        onCardPointerEnter={cancelAtomHoverClose}
+        onCardPointerLeave={closeAtomHover}
+      />
     </Dialog>
   );
 }

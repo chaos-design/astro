@@ -18,6 +18,7 @@ import {
   getSessionDisplayState,
   getSessionDuration,
   getToolCallCommand,
+  getToolCallInputs,
   getToolCallInvocation,
   parseImportedTrace,
   searchTraceEvents,
@@ -743,6 +744,49 @@ test("getToolCallInvocation keeps a shell command complete and builds structured
   // No tool name and no input is no invocation, not a bare "Event".
   assert.equal(getToolCallInvocation(null, { ...(end as NonNullable<typeof end>), toolName: undefined, payload: {} }), null);
   assert.equal(getToolCallInvocation(null), null);
+});
+
+test("getToolCallInputs keeps each input separate instead of flattening field=value", () => {
+  const inputs = getToolCallInputs(null, {
+    toolName: "TaskCreate",
+    payload: {
+      tool_input: {
+        subject: "Hover shows data + click quick-jump",
+        description: "On hover show the data; on click jump.",
+        activeForm: "Adding hover data",
+        old_string: "kept out",
+        new_string: "kept out",
+      },
+    },
+  } as Parameters<typeof getToolCallInputs>[0]);
+  assert.ok(inputs);
+  assert.equal(inputs.command, null);
+  assert.equal(inputs.toolName, "TaskCreate");
+  // Readable values stay unquoted for the field list; the literal keeps the
+  // exact quoting the compact line needs. Diff-carrying fields never appear.
+  assert.deepEqual(inputs.fields, [
+    {
+      key: "subject",
+      value: "Hover shows data + click quick-jump",
+      literal: 'subject="Hover shows data + click quick-jump"',
+    },
+    {
+      key: "description",
+      value: "On hover show the data; on click jump.",
+      literal: 'description="On hover show the data; on click jump."',
+    },
+    { key: "activeForm", value: "Adding hover data", literal: 'activeForm="Adding hover data"' },
+  ]);
+  // A captured shell command stays verbatim and its raw `cmd` key is not
+  // listed twice as a field.
+  const shell = getToolCallInputs(null, {
+    toolName: "Bash",
+    payload: { tool_input: { cmd: "pnpm test", description: "run tests" } },
+  } as Parameters<typeof getToolCallInputs>[0]);
+  assert.equal(shell?.command, "pnpm test");
+  assert.deepEqual(shell?.fields, [
+    { key: "description", value: "run tests", literal: 'description="run tests"' },
+  ]);
 });
 
 test("reasoning summaries read the payload spellings real hooks write", () => {

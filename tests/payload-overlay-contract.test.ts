@@ -211,19 +211,20 @@ test("agent steps show a captured command and real thinking on first render", ()
   assert.match(agentTranscript, /contentToMarkdown\(step\.summary\)/);
   assert.match(stylesForOverlay, /--type-accent: var\(--violet\)/);
   assert.match(stylesForOverlay, /--type-accent: var\(--amber\)/);
-  // A shell tool shows its captured command; a structured tool shows the
-  // complete invocation line the projection derives, so the card always
-  // states what was executed, not only what came back.
-  assert.match(agentTranscript, /step\.command \?\? step\.invocation/);
-  assert.match(agentTranscript, /commandLine \?/);
-  // A shared CommandBlock renders the line inside a mac-terminal frame, with
-  // the $ prompt only for a real shell command; contentToMarkdown still feeds
-  // the shared MarkdownView so shell tokens keep their colouring.
-  assert.match(agentTranscript, /<CommandBlock command=\{commandLine\} isShell=\{isShell\} \/>/);
-  assert.match(agentTranscript, /function CommandBlock/);
-  assert.match(agentTranscript, /contentToMarkdown\(command\)/);
-  assert.match(stylesForOverlay, /\.agent-step__command-bar/);
-  assert.match(stylesForOverlay, /\.agent-step__command .markdown-preview pre \{[\s\S]*?white-space: pre-wrap/);
+  // One structured CallBlock renders either a captured shell command (terminal
+  // frame + `$`) or a structured tool's inputs as a labelled field list —
+  // never flattened `field=value` text. The single extractor in trace-model
+  // feeds both shapes, so a field is never parsed out of a flattened string.
+  assert.match(agentTranscript, /step\.inputs \? <CallBlock inputs=\{step\.inputs\} \/>/);
+  assert.match(agentTranscript, /function CallBlock\(\{ inputs \}: \{ inputs: ToolCallInputs \}\)/);
+  assert.match(agentTranscript, /inputs\.fields\.map\(\(field\) =>/);
+  assert.match(agentTranscript, /<dt>\{field\.key\}<\/dt>/);
+  assert.match(agentTranscript, /<dd>\{field\.value\}<\/dd>/);
+  assert.match(agentTranscript, /contentToMarkdown\(inputs\.command\)/);
+  assert.match(stylesForOverlay, /\.agent-step__call-bar/);
+  assert.match(stylesForOverlay, /\.agent-step__call-fields \{/);
+  assert.match(stylesForOverlay, /\.agent-step__call-field dd \{[\s\S]*?overflow-wrap: break-word/);
+  assert.match(stylesForOverlay, /\.agent-step__command \.markdown-preview pre,[\s\S]*?\.agent-step__call \.markdown-preview pre \{[\s\S]*?white-space: pre-wrap/);
   // A finished question's recorded answers (projected off the paired result
   // event) light the static preview's chips; a question tool's result step
   // shows them in the shared answer-rows rendering, not a JSON body.
@@ -316,6 +317,15 @@ test("the rail row is the LOG row, not a second row imitation", () => {
   // "Turn N · #NNN / event / TYPE / STATUS" hover title is gone).
   assert.match(overlay, /atomic-log__duration heat-\$\{atom\.durationHeat\}/);
   assert.doesNotMatch(overlay, /title=\{details\}/);
+  // The native tooltip is replaced by one controlled hover card for the whole
+  // rail: the pointer follows a row's atom, shows its own data, and the click
+  // still commits through the same rail selection.
+  assert.match(overlay, /const AtomHoverCardLayer = memo\(/);
+  assert.match(overlay, /onPointerEnter=\{\(pointerEvent\) =>/);
+  assert.match(overlay, /openAtomHover\(atom, pointerEvent\.currentTarget\)/);
+  assert.match(overlay, /<AtomHoverCardLayer/);
+  assert.match(overlay, /payload-overlay__atom-hover-fields/);
+  assert.match(stylesForOverlay, /\.payload-overlay__atom-hover \{[\s\S]*?position: fixed/);
   assert.match(agentTranscript, /agent-transcript__stat-card/);
   // Pair cross-reference marker, shared with the LOG and trajectory.
   assert.match(overlay, /<PairLinkMarker/);

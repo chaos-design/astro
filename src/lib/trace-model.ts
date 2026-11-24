@@ -610,22 +610,58 @@ export function getExecutionInstruction(
 }
 
 /**
- * The complete tool invocation: the captured shell command when a producer
- * reported one, otherwise the tool name with every short input field as a
- * `key=value` pair. Diff-carrying fields (`old_string` / `new_string` and
- * their camel spellings, `content`, `patch`) are excluded — the change they
- * carry has its own diff rendering, and inlining it would duplicate a wall of
- * text into the execution line. Multi-line values stay complete, JSON-escaped
- * into one line, never truncated.
+ * The change-carrying inputs keep their own diff rendering; naming them in
+ * an invocation would print the whole patch twice. One Set at module scope —
+ * building it per event was measurable on a streaming batch.
  */
-export function getToolCallInvocation(
+const EXCLUDED_INPUT_KEYS = new Set([
+  "old_string", "oldString", "new_string", "newString",
+  "content", "contentText", "patch", "structuredPatch",
+]);
+
+function describeInputValue(value: unknown): { value: string; literal: string } {
+  if (typeof value === "string") {
+    return {
+      value,
+      literal: /[\s"'\\]/.test(value) ? JSON.stringify(value) : value,
+    };
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    const text = String(value);
+    return { value: text, literal: text };
+  }
+  const text = JSON.stringify(value);
+  return { value: text, literal: text };
+}
+
+/** One short input of a structured tool call. */
+export type ToolInputField = {
+  readonly key: string;
+  /** Readable value, without the JSON quotes the compact line needs. */
+  readonly value: string;
+  /** The exact `key=value` token used in the compact invocation line. */
+  readonly literal: string;
+};
+
+/**
+ * The structured shape of a tool call: the captured shell command when a
+ * producer reported one, otherwise the tool name and every short input as a
+ * separate field. This is the one extraction — the compact string below and
+ * the Agent view's field rendering both read it, so a field is never parsed
+ * out of a string that was flattened for a different surface. Multi-line
+ * values stay complete, JSON-escaped in `literal`, never truncated.
+ */
+export type ToolCallInputs = {
+  readonly command: string | null;
+  readonly toolName: string;
+  readonly fields: readonly ToolInputField[];
+};
+
+export function getToolCallInputs(
   event: TraceEvent | null,
   startEvent?: TraceEvent | null,
-): string | null {
+): ToolCallInputs | null {
   const command = getToolCallCommand(event, startEvent);
-  if (command) {
-    return command;
-  }
   const source = startEvent || event;
   const payload = (source?.payload ?? {}) as Record<string, unknown>;
   const toolInput = (payload.tool_input ?? payload.toolInput ?? {}) as
@@ -638,31 +674,43 @@ export function getToolCallInvocation(
   const toolName =
     source?.toolName ??
     (typeof payload.tool_name === "string" ? payload.tool_name : "");
-  // The change-carrying inputs keep their own diff rendering; naming them in
-  // the invocation would print the whole patch twice.
-  const EXCLUDED_INPUT_KEYS = new Set([
-    "old_string", "oldString", "new_string", "newString",
-    "content", "contentText", "patch", "structuredPatch",
-  ]);
-  const pairs = Object.entries(fields)
-    .filter(
-      ([, value]) =>
-        value !== null && value !== undefined,
-    )
-    .map(([key, value]) => {
-      if (EXCLUDED_INPUT_KEYS.has(key)) {
-        return "";
-      }
-      if (typeof value === "string") {
-        return /[\s"'\\]/.test(value) ? `${key}=${JSON.stringify(value)}` : `${key}=${value}`;
-      }
-      if (typeof value === "number" || typeof value === "boolean") {
-        return `${key}=${String(value)}`;
-      }
-      return `${key}=${JSON.stringify(value)}`;
-    });
-  const line = [toolName, ...pairs.filter(Boolean)].filter(Boolean).join(" ");
-  return line.trim() || null;
+  const inputs: ToolInputField[] = [];
+  for (const [key, value] of Object.entries(fields)) {
+    // A captured command is already shown as the terminal line; repeating its
+    // raw `command` / `cmd` key as a field would print the same text twice.
+    if (
+      value === null ||
+      value === undefined ||
+      EXCLUDED_INPUT_KEYS.has(key) ||
+      (command !== null && (key === "command" || key === "cmd"))
+    ) {
+      continue;
+    }
+    const shown = describeInputValue(value);
+    inputs.push({ key, value: shown.value, literal: `${key}=${shown.literal}` });
+  }
+  if (!command && !toolName && inputs.length === 0) {
+    return null;
+  }
+  return { command, toolName, fields: inputs };
+}
+
+/** The compact invocation line, formatted from the one structured extractor. */
+export function getToolCallInvocation(
+  event: TraceEvent | null,
+  startEvent?: TraceEvent | null,
+): string | null {
+  const inputs = getToolCallInputs(event, startEvent);
+  if (!inputs) {
+    return null;
+  }
+  if (inputs.command) {
+    return inputs.command;
+  }
+  return [inputs.toolName, ...inputs.fields.map((field) => field.literal)]
+    .filter(Boolean)
+    .join(" ")
+    .trim() || null;
 }
 
 /**
@@ -1443,7 +1491,21 @@ function getToolStatus(postEvent: TraceEvent | null) {
   return isToolFailureEvent(postEvent) ? "failed" : "complete";
 }
 
+/**
+ * Flow entries are rebuilt by four derivations on every streaming batch —
+ * `buildFlow`, `buildPairDurations`, `buildPairLinks` and, through those two,
+ * `buildAgentView`. Captured events and their arrays are immutable references
+ * (the app memoizes each derive on the same array), so one fold per array can
+ * serve all of them. The cache is weak: a replaced array is collected with
+ * its entries instead of pinning every replayed prefix in memory.
+ */
+const flowEntriesCache = new WeakMap<object, FlowEntry[]>();
+
 function createFlowEntries(events: readonly TraceEvent[]): FlowEntry[] {
+  const cached = flowEntriesCache.get(events);
+  if (cached) {
+    return cached;
+  }
   const entries: FlowEntry[] = [];
   const toolEntries = new Map<string, FlowEntry[]>();
   const usedIds = new Set<string>();
@@ -1497,7 +1559,9 @@ function createFlowEntries(events: readonly TraceEvent[]): FlowEntry[] {
     });
   });
 
-  return entries.sort((left, right) => left.timestamp - right.timestamp);
+  const ordered = entries.sort((left, right) => left.timestamp - right.timestamp);
+  flowEntriesCache.set(events, ordered);
+  return ordered;
 }
 
 export function getFlowNodeIdForEvent(
