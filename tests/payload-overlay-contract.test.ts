@@ -151,12 +151,19 @@ test("the Agent view keeps a reader's scroll and offers a jump to the newest ste
   // few pixels of the bottom: a tall last reply can be visible well above it.
   assert.match(agentTranscript, /isLatestStepVisible\(/);
   assert.match(agentTranscript, /atBottomRef\.current = absoluteBottom \|\| latestVisible/);
-  // The centered pill is armed by an upward scroll gesture, not merely by the
-  // newest step leaving the viewport. Any upward move arms it (including a
-  // programmatic locate to an older step); downward / absolute bottom disarm.
+  // The centered pill offers itself by position — a little height above the
+  // bottom edge — not only by the last gesture. An upward move arms it
+  // (including a programmatic locate to an older step); the absolute bottom
+  // disarms it.
   assert.match(agentTranscript, /setShowJump\(live \|\| scrollable\)/);
   assert.match(agentTranscript, /scrolledUpRef\.current = top < lastScrollTopRef\.current - 1/);
-  assert.match(agentTranscript, /if \(scrolledUpRef\.current\) \{[\s\S]{0,120}setShowJump\(live \|\| scrollable\)/);
+  assert.match(
+    agentTranscript,
+    /if \(scrolledUpRef\.current \|\| scrolledUp\) \{[\s\S]{0,40}setShowJump\(live \|\| scrollable\)/,
+  );
+  // The position rule is a named threshold, shared with the tests, not a
+  // magic number inline in the component.
+  assert.match(agentTranscript, /distanceFromBottom > AGENT_SCROLL_JUMP_THRESHOLD/);
   // The bottom loading row is only the "reader is at the newest step" read;
   // once the newest step leaves the viewport the centered pill owns the
   // loading state instead, so the two never show at once.
