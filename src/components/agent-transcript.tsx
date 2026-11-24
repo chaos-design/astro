@@ -42,6 +42,7 @@ import type {
 import {
   collectPayloadFields,
   contentToMarkdown,
+  inferCodeLanguage,
   orderRelated,
   splitPayloadPreview,
 } from "@/lib/payload-preview";
@@ -99,6 +100,56 @@ function bodyPayloadOf(payload: unknown, dropCommand: boolean): unknown {
     out[key] = item;
   }
   return out;
+}
+
+/**
+ * The shell's *output* for a tool result, read from the host-specific shapes
+ * without re-classifying the payload: a `tool_response` / `toolResponse`
+ * record carries `stdout` (zcode) or an array of `text` parts, and a result
+ * body may live on `tool_result` / `toolResult` / `output`. A non-empty
+ * value is what the terminal frame shows; `null` means the capture had no
+ * readable output and the frame stays out of the way.
+ */
+const SHELL_OUTPUT_CONTAINERS = [
+  "tool_response", "toolResponse",
+  "tool_result", "toolResult",
+  "output", "result",
+];
+function shellOutputOf(payload: unknown): string | null {
+  if (payload === null || typeof payload !== "object") {
+    return null;
+  }
+  const record = payload as Record<string, unknown>;
+  for (const key of SHELL_OUTPUT_CONTAINERS) {
+    if (!(key in record)) {
+      continue;
+    }
+    const node = record[key];
+    if (typeof node === "string") {
+      const text = node.trim();
+      if (text) {
+        return text;
+      }
+      break;
+    }
+    if (Array.isArray(node)) {
+      const text = node
+        .map((part) => (typeof part === "string" ? part : part && typeof part === "object" && "text" in part ? String((part as { text: unknown }).text ?? "") : ""))
+        .join("\n")
+        .trim();
+      if (text) {
+        return text;
+      }
+      break;
+    }
+    if (node !== null && typeof node === "object") {
+      const text = String((node as Record<string, unknown>).stdout ?? (node as Record<string, unknown>).output ?? "").trim();
+      if (text) {
+        return text;
+      }
+    }
+  }
+  return null;
 }
 
 /**
@@ -184,8 +235,24 @@ function CallFieldValue({ field }: { field: ToolInputField }) {
   return <>{field.value}</>;
 }
 
-function CallBlock({ inputs }: { inputs: ToolCallInputs }) {
+function CallBlock({
+  inputs,
+  output,
+}: {
+  inputs: ToolCallInputs;
+  /** The shell's captured stdout, when a host provides it — rendered in a
+   * terminal frame below the command. Omitted for a call with no output. */
+  output?: string | null;
+}) {
   if (inputs.command) {
+    // The far-right badge reads the language, not the tool name: the reader
+    // wants to know *what runs*, and a captured shell line is `bash` even
+    // when the host labelled the tool `Bash`. Fall back to the tool name
+    // when the language cannot be inferred.
+    const language =
+      inferCodeLanguage(inputs.command)?.toUpperCase() ||
+      inputs.toolName ||
+      "BASH";
     return (
       <div className="agent-step__call agent-step__call--shell">
         <div className="agent-step__call-bar" aria-hidden="true">
@@ -195,13 +262,21 @@ function CallBlock({ inputs }: { inputs: ToolCallInputs }) {
             <i />
           </span>
           <span className="agent-step__command-label">COMMAND</span>
-          <span className="agent-step__call-name agent-step__call-name--right">
-            {inputs.toolName || "Bash"}
-          </span>
+          <span className="agent-step__call-lang">{language}</span>
         </div>
         <div className="agent-step__command-line">
           <MarkdownView source={contentToMarkdown(inputs.command)} />
         </div>
+        {output ? (
+          <div className="agent-step__terminal">
+            <div className="agent-step__terminal-bar" aria-hidden="true">
+              <span className="agent-step__command-label">OUTPUT</span>
+            </div>
+            <pre className="agent-step__terminal-body">
+              <code>{output}</code>
+            </pre>
+          </div>
+        ) : null}
       </div>
     );
   }
@@ -261,6 +336,44 @@ function statCardRowLabel(step: AgentStep): string {
   }
 }
 
+/**
+ * A one-line preview that makes a hover-card row readable without jumping in:
+ * a tool call shows its captured shell command (or first input field), a
+ * thinking / reply step shows the head of its text, and a plain event shows
+ * its summary. Empty for a row that has nothing useful to preview, so the
+ * card keeps one calm column instead of a blank second line.
+ */
+function statCardRowHint(step: AgentStep): string {
+  const collapse = (value: string): string =>
+    value.replace(/\s+/g, " ").trim().slice(0, 72);
+  switch (step.kind) {
+    case "thinking":
+    case "reply":
+      return collapse(step.text);
+    case "tool-result":
+      if (step.inputs?.command) {
+        return collapse(step.inputs.command);
+      }
+      if (step.inputs?.fields?.length) {
+        return collapse(
+          step.inputs.fields
+            .map((field) => `${field.key}: ${String(field.value)}`)
+            .join("  "),
+        );
+      }
+      return "";
+    case "question":
+      // A question's text is its own prompt, not a command; leave the row's
+      // preview to the name so the card stays one calm line.
+      return "";
+    case "event":
+      if (step.inputs?.command) {
+        return collapse(step.inputs.command);
+      }
+      return collapse(step.summary || "");
+  }
+}
+
 function StatChip({
   name,
   label,
@@ -297,18 +410,29 @@ function StatChip({
         <span className="agent-transcript__stat-card" role="tooltip">
           <span className="agent-transcript__stat-card-title">{label}</span>
           <span className="agent-transcript__stat-card-list">
-            {steps.map((step) => (
-              <button
-                className="agent-transcript__stat-card-row"
-                key={step.id}
-                onClick={() => onJump(step.eventId)}
-                type="button"
-              >
-                <span>{step.sequence}</span>
-                <span>{statCardRowLabel(step)}</span>
-                <span>T{step.turn}</span>
-              </button>
-            ))}
+            {steps.map((step) => {
+              const hint = statCardRowHint(step);
+              return (
+                <button
+                  className={cn(
+                    "agent-transcript__stat-card-row",
+                    hint && "has-hint",
+                  )}
+                  key={step.id}
+                  onClick={() => onJump(step.eventId)}
+                  type="button"
+                >
+                  <span>{step.sequence}</span>
+                  <span className="agent-transcript__stat-card-name">
+                    <strong>{statCardRowLabel(step)}</strong>
+                    {hint ? (
+                      <em title={hint}>{hint}</em>
+                    ) : null}
+                  </span>
+                  <span>T{step.turn}</span>
+                </button>
+              );
+            })}
           </span>
         </span>
       ) : null}
@@ -413,6 +537,13 @@ export function AgentTranscript({
     const distanceFromBottom =
       container.scrollHeight - container.scrollTop - container.clientHeight;
     const scrolledUp = distanceFromBottom > AGENT_SCROLL_JUMP_THRESHOLD;
+    // Reconcile the gesture latch with position: settling back within the
+    // threshold of the bottom means the reader is no longer reading history,
+    // so the show button tracks where the reader *is*, not where they *were*
+    // — an earlier wheel-up no longer lingers after scrolling back down.
+    if (!scrolledUp) {
+      scrolledUpRef.current = false;
+    }
     if (scrolledUpRef.current || scrolledUp) {
       setShowJump(live || scrollable);
     } else if (!latestVisible) {
@@ -889,21 +1020,31 @@ function ToolResultBody({ step }: { step: ToolResultStep }) {
     () => bodyPayloadOf(step.payload, Boolean(step.inputs?.command)),
     [step.inputs?.command, step.payload],
   );
+  // A shell call's captured stdout renders in the call frame's terminal
+  // block; when it is there the body must not dump the same text a second
+  // time (the `split.content` for a bash result is that very output).
+  const shellOutput = useMemo(
+    () =>
+      step.inputs?.command ? shellOutputOf(step.payload) : null,
+    [step.inputs?.command, step.payload],
+  );
   const source = useMemo(
     () =>
-      hasAnswers
+      hasAnswers || shellOutput
         ? ""
         : split.content.trim()
           ? contentToMarkdown(split.content)
           : payloadToMarkdown(bodyPayload),
-    [hasAnswers, split.content, bodyPayload],
+    [hasAnswers, shellOutput, split.content, bodyPayload],
   );
   // The one structured extractor drives the call block: a captured shell
   // command is a terminal line, every other tool is a list of named inputs —
   // never a flattened `field=value` string.
   return (
     <>
-      {step.inputs ? <CallBlock inputs={step.inputs} /> : null}
+      {step.inputs ? (
+        <CallBlock inputs={step.inputs} output={shellOutput} />
+      ) : null}
       {hasAnswers ? (
         <div className="agent-step__answers">
           <span className="agent-step__answers-label">ANSWERS</span>

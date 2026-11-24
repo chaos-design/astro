@@ -10395,11 +10395,11 @@ pre,
   left: 0;
   z-index: 20;
   display: flex;
-  min-width: 210px;
-  max-width: 320px;
+  min-width: 190px;
+  max-width: 264px;
   flex-direction: column;
   gap: 2px;
-  padding: 7px;
+  padding: 6px;
   border: 1px solid var(--line-bright);
   border-radius: 7px;
   background: var(--panel);
@@ -10417,7 +10417,7 @@ pre,
 .agent-transcript__stat-card-row {
   display: grid;
   width: 100%;
-  padding: 4px 5px;
+  padding: 3px 4px;
   border: 0;
   border-radius: 4px;
   background: transparent;
@@ -10426,7 +10426,7 @@ pre,
   font-family: inherit;
   font-size: inherit;
   grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 7px;
+  gap: 6px;
   text-align: left;
 }
 
@@ -10439,6 +10439,37 @@ pre,
 .agent-transcript__stat-card-row span:last-child {
   color: var(--muted-soft, var(--muted));
   font-family: var(--font-mono, monospace);
+}
+
+/* A richer row: the name on its own line and a quiet one-line preview under
+   it, so a tool call reads as `Bash · pnpm test …` instead of a bare token. */
+.agent-transcript__stat-card-row.has-hint {
+  row-gap: 2px;
+}
+
+.agent-transcript__stat-card-name {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.agent-transcript__stat-card-name strong {
+  overflow: hidden;
+  color: var(--text-strong);
+  font-family: var(--font-mono, monospace);
+  font-weight: var(--weight-medium, 600);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-transcript__stat-card-name em {
+  overflow: hidden;
+  color: var(--muted-soft, var(--muted));
+  font-family: var(--font-mono, monospace);
+  font-style: normal;
+  font-size: 0.6875rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* The card opens over the header as a full dropdown: every step behind the
@@ -10456,18 +10487,18 @@ pre,
   gap: 2px;
   /* A hard cap so the dropdown never swallows the whole header; the list
      scrolls inside instead. */
-  max-height: min(40vh, 340px);
+  max-height: min(34vh, 288px);
   overflow-y: auto;
-  /* Reserve a right gutter so the (macOS overlay) scrollbar and its thumb
-     never sit over the turn column; a visible thin scrollbar keeps the
-     affordance readable on any platform. */
-  padding-right: 10px;
+  /* The thin scrollbar hugs the card's far-right edge: only a sliver of
+     padding separates it from the turn column, and the thumb is drawn
+     flush so the affordance reads as the edge of the card, not a gap. */
+  padding-right: 4px;
   scrollbar-width: thin;
   scrollbar-color: var(--line-bright) transparent;
 }
 
 .agent-transcript__stat-card-list::-webkit-scrollbar {
-  width: 8px;
+  width: 6px;
 }
 
 .agent-transcript__stat-card-list::-webkit-scrollbar-track {
@@ -10863,11 +10894,48 @@ pre,
   letter-spacing: 0.08em;
 }
 
-/* The shell frame's tool name sits on the far right of the bar; the
-   `COMMAND` label stays by the window dots. */
-.agent-step__call-name--right {
+/* The shell frame's far-right badge reads the *language* of the captured
+   line (BASH / JAVASCRIPT / …), not the tool name — it hugs the edge and
+   carries the terminal's own amber tone so it reads as the frame's tag. */
+.agent-step__call-lang {
   flex: 0 0 auto;
   margin-inline-start: auto;
+  padding: 1px 7px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--amber) 22%, transparent);
+  color: var(--amber);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.625rem;
+  font-weight: var(--weight-medium, 600);
+  letter-spacing: 0.06em;
+}
+
+/* The shell's captured stdout sits in its own terminal block under the
+   command: a quiet bar reading `OUTPUT` and a monospace body that keeps the
+   raw line breaks and word-wraps long tokens. No border of its own — the
+   parent frame's border encloses the whole call + output. */
+.agent-step__terminal {
+  border-top: 1px solid color-mix(in srgb, var(--amber) 22%, var(--line));
+}
+
+.agent-step__terminal-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  background: color-mix(in srgb, var(--panel) 78%, var(--amber) 10%);
+}
+
+.agent-step__terminal-body {
+  margin: 0;
+  padding: 8px 11px 10px;
+  overflow-x: auto;
+  color: var(--text);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.75rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .agent-step__command-line {

@@ -228,11 +228,12 @@ test("agent steps show a captured command and real thinking on first render", ()
   assert.match(stylesForOverlay, /--type-accent: var\(--violet\)/);
   assert.match(stylesForOverlay, /--type-accent: var\(--amber\)/);
   // One structured CallBlock renders either a captured shell command (terminal
-  // frame + `$`) or a structured tool's inputs as a labelled field list —
-  // never flattened `field=value` text. The single extractor in trace-model
-  // feeds both shapes, so a field is never parsed out of a flattened string.
-  assert.match(agentTranscript, /step\.inputs \? <CallBlock inputs=\{step\.inputs\} \/>/);
-  assert.match(agentTranscript, /function CallBlock\(\{ inputs \}: \{ inputs: ToolCallInputs \}\)/);
+  // frame + language badge + an optional OUTPUT block) or a structured tool's
+  // inputs as a labelled field list — never flattened `field=value` text. The
+  // single extractor in trace-model feeds both shapes, so a field is never
+  // parsed out of a flattened string.
+  assert.match(agentTranscript, /<CallBlock inputs=\{step\.inputs\} output=\{shellOutput\} \/>/);
+  assert.match(agentTranscript, /function CallBlock\(\{\s*inputs,\s*output,?\s*\}/);
   assert.match(agentTranscript, /inputs\.fields\.map\(\(field\) =>/);
   assert.match(agentTranscript, /<dt>\{field\.key\}<\/dt>/);
   // Call fields render through CallFieldValue so a captured image path /
