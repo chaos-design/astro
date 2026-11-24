@@ -46,12 +46,54 @@ import {
 } from "@/lib/payload-preview";
 import { payloadToMarkdown } from "@/lib/payload-markdown";
 import { formatDurationMs } from "@/lib/duration-label";
-import { formatDuration, type ToolCallInputs } from "@/lib/trace-model";
+import { formatExecutionClock, type ToolCallInputs } from "@/lib/trace-model";
 import { getAtomPlatformConfig } from "@/config/atom-platforms";
 import type { PlatformId } from "@/types/trace";
 
 function platformLabel(platform: PlatformId): string {
   return getAtomPlatformConfig(platform).label;
+}
+
+/**
+ * What a tool result's *body* should not re-print. The call frame already
+ * shows the shell command, and the related-fields pane already labels the
+ * metadata, so the body dump feeds from a copy of the payload with:
+ *  - the `command` / `cmd` leaves dropped (input containers and top level),
+ *    so the command reads once, not twice;
+ *  - the top-level client identity (`client` / `version`) dropped, so a
+ *    result never re-stamps the agent name and recorder version.
+ * The captured event is never mutated — this returns a display copy.
+ */
+const BODY_INPUT_CONTAINERS = [
+  "tool_input", "toolInput", "input", "payload", "arguments", "args",
+];
+const BODY_ROOT_DROP = new Set(["client", "version"]);
+function bodyPayloadOf(payload: unknown, dropCommand: boolean): unknown {
+  if (payload === null || typeof payload !== "object" || Array.isArray(payload)) {
+    return payload;
+  }
+  const record = payload as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(record)) {
+    const name = key.toLowerCase();
+    if (dropCommand && (name === "command" || name === "cmd")) {
+      continue;
+    }
+    if (BODY_ROOT_DROP.has(name)) {
+      continue;
+    }
+    if (
+      item !== null &&
+      typeof item === "object" &&
+      !Array.isArray(item) &&
+      BODY_INPUT_CONTAINERS.includes(key)
+    ) {
+      out[key] = bodyPayloadOf(item, dropCommand);
+      continue;
+    }
+    out[key] = item;
+  }
+  return out;
 }
 
 /**
@@ -79,13 +121,12 @@ function CallBlock({ inputs }: { inputs: ToolCallInputs }) {
             <i />
             <i />
           </span>
-          <span className="agent-step__call-name">{inputs.toolName || "Bash"}</span>
           <span className="agent-step__command-label">COMMAND</span>
+          <span className="agent-step__call-name agent-step__call-name--right">
+            {inputs.toolName || "Bash"}
+          </span>
         </div>
         <div className="agent-step__command-line">
-          <span className="agent-step__command-prompt" aria-hidden="true">
-            $
-          </span>
           <MarkdownView source={contentToMarkdown(inputs.command)} />
         </div>
       </div>
@@ -124,6 +165,27 @@ function CallBlock({ inputs }: { inputs: ToolCallInputs }) {
  * be read by keyboard or carry a jump); clicking lands on the first step.
  * The whole list lives in one popup per chip, scoped to this header.
  */
+/**
+ * The kind label one hover-card row shows: the two semantic kinds keep their
+ * own name; a tool-result names its tool; a plain event keeps the captured
+ * event name. One place decides the row text so the list and the card never
+ * drift.
+ */
+function statCardRowLabel(step: AgentStep): string {
+  switch (step.kind) {
+    case "reply":
+      return "REPLY";
+    case "thinking":
+      return "THINKING";
+    case "question":
+      return "QUESTION";
+    case "tool-result":
+      return step.toolName || step.eventName;
+    default:
+      return step.eventName;
+  }
+}
+
 function StatChip({
   name,
   label,
@@ -139,7 +201,6 @@ function StatChip({
   onOpenChange: (name: string | null) => void;
   onJump: (eventId: string) => void;
 }) {
-  const preview = steps.slice(0, 12);
   return (
     <span
       className={cn("agent-transcript__stat-wrap", open && "is-open")}
@@ -160,23 +221,20 @@ function StatChip({
       {open && steps.length ? (
         <span className="agent-transcript__stat-card" role="tooltip">
           <span className="agent-transcript__stat-card-title">{label}</span>
-          {preview.map((step) => (
-            <button
-              className="agent-transcript__stat-card-row"
-              key={step.id}
-              onClick={() => onJump(step.eventId)}
-              type="button"
-            >
-              <span>{step.sequence}</span>
-              <span>{step.kind === "reply" ? "REPLY" : step.kind === "thinking" ? "THINKING" : step.kind === "question" ? "QUESTION" : step.kind === "tool-result" ? (step.toolName || step.eventName) : step.eventName}</span>
-              <span>T{step.turn}</span>
-            </button>
-          ))}
-          {steps.length > preview.length ? (
-            <span className="agent-transcript__stat-card-more">
-              还有 {steps.length - preview.length} 步
-            </span>
-          ) : null}
+          <span className="agent-transcript__stat-card-list">
+            {steps.map((step) => (
+              <button
+                className="agent-transcript__stat-card-row"
+                key={step.id}
+                onClick={() => onJump(step.eventId)}
+                type="button"
+              >
+                <span>{step.sequence}</span>
+                <span>{statCardRowLabel(step)}</span>
+                <span>T{step.turn}</span>
+              </button>
+            ))}
+          </span>
         </span>
       ) : null}
     </span>
@@ -464,7 +522,7 @@ export function AgentTranscript({
               live && "is-live",
             )}
           >
-            执行 {formatDuration(runDurationMs)}
+            执行 {formatExecutionClock(runDurationMs)}
           </span>
         ) : null}
         <StatChip
@@ -744,14 +802,23 @@ function ToolResultBody({ step }: { step: ToolResultStep }) {
   // free text) instead of the generic JSON body.
   const hasAnswers = step.answers.length > 0;
   const split = useMemo(() => splitPayloadPreview(step.payload), [step.payload]);
+  // The shell command is already shown by the CallBlock frame, and the
+  // related-fields pane already labels the client identity — so the body dump
+  // runs over a display copy that drops the command leaves (when a call
+  // carries one) and the top-level client / version, while the captured event
+  // stays immutable. The description and the real result still read.
+  const bodyPayload = useMemo(
+    () => bodyPayloadOf(step.payload, Boolean(step.inputs?.command)),
+    [step.inputs?.command, step.payload],
+  );
   const source = useMemo(
     () =>
       hasAnswers
         ? ""
         : split.content.trim()
           ? contentToMarkdown(split.content)
-          : payloadToMarkdown(step.payload),
-    [hasAnswers, split.content, step.payload],
+          : payloadToMarkdown(bodyPayload),
+    [hasAnswers, split.content, bodyPayload],
   );
   // The one structured extractor drives the call block: a captured shell
   // command is a terminal line, every other tool is a list of named inputs —

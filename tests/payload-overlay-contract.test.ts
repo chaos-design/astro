@@ -15,6 +15,10 @@ const agentTranscript = readFileSync(
   "utf8",
 );
 const app = readFileSync(new URL("../src/app.tsx", import.meta.url), "utf8");
+const traceModel = readFileSync(
+  new URL("../src/lib/trace-model.ts", import.meta.url),
+  "utf8",
+);
 const stylesForOverlay = readFileSync(
   new URL("../src/styles.css", import.meta.url),
   "utf8",
@@ -194,10 +198,15 @@ test("the Agent view's header reads its execution time from the root display sta
   assert.match(overlay, /runDurationMs=\{agentRunDurationMs\}/);
   assert.match(agentTranscript, /agent-transcript__duration/);
   assert.match(agentTranscript, /runDurationMs !== null/);
-  // The header reads the shared compound duration formatter (43s / 1m 50s /
-  // 1h 2m 5s — each higher unit only when it has a value), not the stepped
-  // unit ladder that scans a history.
-  assert.match(agentTranscript, /formatDuration\(runDurationMs\)/);
+  // The header's execution clock reads a fixed two-digit `HH:MM:SS` from the
+  // shared display state — every tick is the same eight characters, so a live
+  // run advancing each second never shifts the chip width (no jitter).
+  assert.match(agentTranscript, /formatExecutionClock\(runDurationMs\)/);
+  assert.match(traceModel, /export function formatExecutionClock/);
+  assert.match(
+    traceModel,
+    /formatExecutionClock[\s\S]*?padStart\(2, "0"\)/,
+  );
   // While the message executes the reading still advances, so the accent
   // marks it live; an ended message keeps the plain stat treatment.
   assert.match(agentTranscript, /live && "is-live"/);

@@ -6273,6 +6273,34 @@ pre,
   color: var(--text);
 }
 
+/* A scalar array (`["a", "b", "c"]`) is a list-shaped value: render it one
+   item per line rather than a comma-joined string, so the data reads as the
+   list it is. */
+.payload-overlay__field-list ul {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.payload-overlay__field-list li {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.payload-overlay__field-list li::before {
+  content: "–";
+  flex: 0 0 auto;
+  color: var(--violet);
+  font-size: 0.625rem;
+}
+
 /* A long value folds to its first 200 characters with its own 展开 control;
    the short fields around it are never hidden by a pane-wide fold. */
 .payload-overlay__field-text.is-folded {
@@ -10260,6 +10288,9 @@ pre,
   border-radius: 999px;
   color: var(--muted);
   letter-spacing: 0;
+  /* Counts and the live clock advance every second: tabular digits keep each
+     chip a fixed width, so the header row never shifts as numbers tick. */
+  font-variant-numeric: tabular-nums;
 }
 
 .agent-transcript__stat.is-merged {
@@ -10342,9 +10373,21 @@ pre,
   font-family: var(--font-mono, monospace);
 }
 
-.agent-transcript__stat-card-more {
-  padding: 3px 5px 1px;
-  color: var(--muted-soft, var(--muted));
+/* The card opens over the header as a full dropdown: every step behind the
+   count is listed, and the list scrolls inside a bounded area instead of
+   being truncated to a number. The card is pinned to the chip's right edge
+   so it never overflows the header on the left. */
+.agent-transcript__stat-card {
+  left: auto;
+  right: 0;
+}
+
+.agent-transcript__stat-card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: min(58vh, 520px);
+  overflow: auto;
 }
 
 /* The displayed message's execution time, read from the same display state
@@ -10646,8 +10689,11 @@ pre,
   display: inline-flex;
   flex: 0 0 auto;
   align-items: center;
-  gap: 6px;
-  padding-right: 10px;
+  /* The duration chip and the pair marker sit side by side at the header's
+     right edge; a little more room keeps the two from touching when the row
+     is wide enough that the badges would otherwise press together. */
+  gap: 8px;
+  padding-right: 12px;
 }
 
 /* A tool call wears a mac window frame: a title bar with the three dots, the
@@ -10728,20 +10774,18 @@ pre,
   letter-spacing: 0.08em;
 }
 
+/* The shell frame's tool name sits on the far right of the bar; the
+   `COMMAND` label stays by the window dots. */
+.agent-step__call-name--right {
+  flex: 0 0 auto;
+  margin-inline-start: auto;
+}
+
 .agent-step__command-line {
   display: flex;
   align-items: flex-start;
   gap: 6px;
   padding: 8px 11px 10px;
-}
-
-.agent-step__command-prompt {
-  flex: 0 0 auto;
-  color: var(--amber);
-  font-family: var(--font-mono, monospace);
-  font-size: 0.75rem;
-  font-weight: var(--weight-medium, 600);
-  user-select: none;
 }
 
 .agent-step__command .markdown-preview {

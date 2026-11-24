@@ -9,6 +9,7 @@ import {
   buildSessions,
   extractRunModel,
   formatDuration,
+  formatExecutionClock,
   formatLogSequence,
   getEventSummary,
   getExecutionInstruction,
@@ -565,6 +566,20 @@ test("formats run durations with second, minute, and hour precision", () => {
   assert.equal(formatDuration(3_725_000), "1h 2m 5s");
   assert.equal(formatDuration(59_600), "1m 0s");
   assert.equal(formatDuration(4_379_600), "1h 13m 0s");
+});
+
+test("the header execution clock is a fixed-width two-digit HH:MM:SS", () => {
+  // Every reading is the same eight characters so a live run ticking each
+  // second never shifts the chip — no layout jitter as the number advances.
+  assert.equal(formatExecutionClock(1034_000), "00:17:14");
+  assert.equal(formatExecutionClock(43_000), "00:00:43");
+  assert.equal(formatExecutionClock(3_725_000), "01:02:05");
+  assert.equal(formatExecutionClock(0), "00:00:00");
+  assert.equal(formatExecutionClock(99_999_999_999), "27777:46:39");
+  assert.equal(formatExecutionClock(Number.NaN), "--:--:--");
+  assert.equal(formatExecutionClock(-1000), "--:--:--");
+  // Fixed width across the second boundaries that would otherwise shift:
+  assert.equal(formatExecutionClock(59_000).length, formatExecutionClock(60_000).length);
 });
 
 test("updates active and waiting session durations against the current time", () => {

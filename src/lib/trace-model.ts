@@ -398,6 +398,24 @@ export function formatDuration(milliseconds: number) {
   return `${hours}h ${minutes}m ${seconds}s`;
 }
 
+/**
+ * The Agent header's execution clock: a fixed `HH:MM:SS` with two digits per
+ * unit and leading zeros. Unlike the stepped `formatDuration`, the string is
+ * always the same eight characters, so a live run ticking each second never
+ * shifts the chip — the header row stays put while the number advances.
+ */
+export function formatExecutionClock(milliseconds: number) {
+  if (!Number.isFinite(milliseconds) || milliseconds < 0) {
+    return "--:--:--";
+  }
+  const totalSeconds = Math.max(0, Math.floor(milliseconds / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
+}
+
 type SessionDisplayStateSource = {
   duration: number;
   start: number;

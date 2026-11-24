@@ -222,3 +222,37 @@ test("the field inventory handles cycles without recursing forever", () => {
   const fields = collectPayloadFields(cyclic);
   assert.deepEqual(fields, [{ key: "id", label: "id", value: "root", annotation: false }]);
 });
+
+test("a scalar array carries its items so the pane can render a list", () => {
+  const fields = collectPayloadFields({
+    todos: ["first", "second"],
+  });
+  const row = fields.find((field) => field.key === "todos");
+  assert.deepEqual(row?.items, ["first", "second"], "the items are kept for one-per-line");
+  assert.equal(row?.value, "first, second", "the joined value still copies verbatim");
+});
+
+test("the root client identity is dropped but a nested version field is kept", () => {
+  const fields = collectPayloadFields({
+    client: "WorkBuddy",
+    version: "5.11.3",
+    tool_response: { version: "1.0.0" },
+  });
+  const keys = fields.map((field) => field.key);
+  assert.ok(!keys.includes("client"), "the agent name does not leak into the list");
+  assert.ok(!keys.includes("version"), "the recorder version does not leak");
+  assert.ok(keys.includes("tool_response.version"), "a deeper version field is genuine data");
+});
+
+test("a tool result that echoes its inputs back is shown once", () => {
+  // `tool_input.description` and the response's copy of it read as the same
+  // bare `description` with the same value; the inventory keeps one row.
+  const fields = collectPayloadFields({
+    tool_input: { description: "on hover show the full list" },
+    tool_response: { task: { description: "on hover show the full list" } },
+  });
+  const descriptions = fields.filter(
+    (field) => field.label === "description",
+  );
+  assert.equal(descriptions.length, 1, "the echoed value is not printed twice");
+});

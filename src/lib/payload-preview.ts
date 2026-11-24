@@ -87,6 +87,16 @@ const CONTAINER_KEYS = [
   "payload", "input", "arguments", "args",
 ];
 
+/**
+ * The client's own identity, not per-event data: a tool result should not
+ * re-print the agent name and the recorder's version beside the fields that
+ * matter. These are top-level envelope keys the recorder stamps on every
+ * event; dropping them here keeps the related-field inventory on the event
+ * itself. Matched by exact normalized name so a real `version` field inside
+ * a tool payload (a deeper path) is not caught.
+ */
+const IDENTITY_KEYS = new Set(["client", "version"]);
+
 type UnknownRecord = Record<string, unknown>;
 
 function isRecord(value: unknown): value is UnknownRecord {
@@ -192,6 +202,13 @@ export type RelatedField = {
   key: string;
   label: string;
   value: string;
+  /**
+   * The items that made up a scalar-array value (`["a", "b"]`). Present only
+   * for such fields; the renderer lists them one per line instead of a single
+   * comma-joined string, so a list-shaped value reads as a list. `value`
+   * keeps the joined form for copy / non-list surfaces.
+   */
+  items?: readonly string[];
   /** `annotation` fields are shown first and carry a distinct tone. */
   annotation: boolean;
   /**
@@ -330,10 +347,12 @@ export function collectPayloadFields(
       (item) => item !== null && typeof item === "object",
     );
     if (!hasObjects) {
+      const items = value.map((item) => scalarFieldValue(item));
       fields.push({
         key: prefix,
         label: prefix,
-        value: value.map(scalarFieldValue).filter(Boolean).join(", "),
+        value: items.filter(Boolean).join(", "),
+        items,
         annotation: false,
         ...(level === undefined ? {} : { level }),
       });
@@ -361,6 +380,14 @@ export function collectPayloadFields(
     return mergeRelated(fields);
   }
   for (const [key, item] of Object.entries(value as UnknownRecord)) {
+    const name = normalized(key);
+    // The top-level client identity (agent name + recorder version) is stamped
+    // on every event by the source; a result's field inventory should stay on
+    // the event, so only the root level drops it. A deeper payload that
+    // genuinely records a version field keeps it.
+    if (prefix === "" && IDENTITY_KEYS.has(name)) {
+      continue;
+    }
     const path = prefix ? `${prefix}.${key}` : key;
     if (item !== null && typeof item === "object") {
       fields.push(...collectPayloadFields(item, path, depth + 1, seen, level));
@@ -394,13 +421,34 @@ function scalarFieldValue(value: unknown): string {
   return "";
 }
 
-/** Later duplicates (e.g. `transcript_path` after `transcriptPath`) win. */
+/**
+ * Later duplicates (e.g. `transcript_path` after `transcriptPath`) win. A tool
+ * also echoes its own inputs back in the result (`tool_input.description` and
+ * `tool_response.task.description` both read as a bare `description` with the
+ * same value), so rows that repeat the same label *and* value are collapsed
+ * to one — the data is not printed twice. Group headers and array members
+ * carry their own identity (a `level`) and are never merged.
+ */
 function mergeRelated(fields: RelatedField[]): RelatedField[] {
   const byKey = new Map<string, RelatedField>();
   for (const field of fields) {
     byKey.set(normalized(field.key), field);
   }
-  return [...byKey.values()];
+  const byLabelValue = new Map<string, RelatedField>();
+  const out: RelatedField[] = [];
+  for (const field of byKey.values()) {
+    if (field.groupHeader || field.level !== undefined) {
+      out.push(field);
+      continue;
+    }
+    const id = `${normalized(field.label)}\u0000${field.value}`;
+    if (byLabelValue.has(id)) {
+      continue;
+    }
+    byLabelValue.set(id, field);
+    out.push(field);
+  }
+  return out;
 }
 
 /**

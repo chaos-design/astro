@@ -90,7 +90,17 @@ export function RelatedFields({
             }
           >
             <dt title={field.key}>{field.label}</dt>
-            {field.groupHeader ? null : (
+            {field.groupHeader ? null : field.items ? (
+              <dd className="payload-overlay__field-list">
+                <ul>
+                  {field.items.map((item, index) => (
+                    <li key={index} title={item}>
+                      {item || "—"}
+                    </li>
+                  ))}
+                </ul>
+              </dd>
+            ) : (
               <dd>
                 <RelatedValue value={field.value} />
               </dd>
