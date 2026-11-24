@@ -6682,6 +6682,17 @@ export default function App() {
     // it. An agent with nothing recorded leaves the pool empty and the canvas
     // empty; borrowing another agent's run is exactly the leak this prevents.
     const fallbackPool = filteredSessions;
+    // The fallback must land on a row the list actually shows. The list is
+    // windowed by `start` before it is sorted by `end`, so a days-old thread
+    // that just got a follow-up can top the `end` ordering yet be absent from
+    // the panel. Resolve the fallback inside that same visible pool; the deep
+    // link above still uses the full pool so a cross-scope `?session=` works.
+    const fallbackVisiblePool = selectVisibleRunHistory(
+      filteredSessions,
+      Date.now(),
+      runHistoryHours,
+      liveSessionKeys,
+    );
     // The session id wins over the agent scope: a shared link to a run of
     // another agent must still land on that run.
     const deepLinkedSession =
@@ -6705,7 +6716,7 @@ export default function App() {
     const nextSession =
       currentSession ||
       deepLinkedSession ||
-      selectScopeFallbackRun(fallbackPool, liveSessionKeys, (session) =>
+      selectScopeFallbackRun(fallbackVisiblePool, liveSessionKeys, (session) =>
         promptRunsBySession.get(session.key)?.at(-1)?.start ?? session.start,
       );
     if (!nextSession) {
@@ -6768,6 +6779,7 @@ export default function App() {
     liveSessionKeys,
     platformId,
     promptRunsBySession,
+    runHistoryHours,
     sessions,
   ]);
 
@@ -8028,7 +8040,12 @@ export default function App() {
         activeSession && promptExecuting
           ? activeSession
           : selectScopeFallbackRun(
-              filteredSessions,
+              selectVisibleRunHistory(
+                filteredSessions,
+                Date.now(),
+                runHistoryHours,
+                liveSessionKeys,
+              ),
               liveSessionKeys,
               (session) =>
                 promptRunsBySession.get(session.key)?.at(-1)?.start ??
@@ -8057,6 +8074,7 @@ export default function App() {
     liveSessionKeys,
     promptExecuting,
     promptRunsBySession,
+    runHistoryHours,
   ]);
 
   // Widening the window is usually pure filtering over already-loaded
@@ -8524,7 +8542,12 @@ export default function App() {
                         scoped,
                       ).keys;
                       const fallback = selectScopeFallbackRun(
-                        scoped,
+                        selectVisibleRunHistory(
+                          scoped,
+                          Date.now(),
+                          runHistoryHours,
+                          scopedLiveKeys,
+                        ),
                         scopedLiveKeys,
                         (session) =>
                           promptRunsBySession.get(session.key)?.at(-1)?.start ??

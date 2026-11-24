@@ -61,6 +61,21 @@ test("an Edit input in ZCode's camel spelling previews as the same diff", () => 
   assert.match(markdown, /\+const a = 2;/);
 });
 
+test("an Edit input with trailing newlines previews a minimal diff", () => {
+  const markdown = payloadToMarkdown({
+    tool_input: {
+      file_path: "src/lib/agent-view.ts",
+      old_string: "line1\n",
+      new_string: "line2\n",
+    },
+  });
+  // The trailing newline is a terminator, not a blank line: the hunk stays
+  // 1→1 with no ghost empty deletion/addition.
+  assert.match(markdown, /@@ -1,1 \+1,1 @@/);
+  assert.match(markdown, /-line1\n\+line2/);
+  assert.doesNotMatch(markdown, /-\n\+\n/);
+});
+
 test("a todos array renders as a GFM checklist, not a JSON dump", () => {
   const markdown = payloadToMarkdown({
     todos: [
@@ -74,6 +89,17 @@ test("a todos array renders as a GFM checklist, not a JSON dump", () => {
     "- [x] pnpm test — priority=high\n- [ ] pnpm build — priority=high\n- [ ] push the branch — priority=low",
   );
   assert.doesNotMatch(markdown, /```json/);
+});
+
+test("a boolean status drives the todo checkbox too", () => {
+  const markdown = payloadToMarkdown({
+    todos: [
+      { content: "A", done: true },
+      { content: "B", done: false },
+    ],
+  });
+  // `done` is a status key; boolean true maps to the done value "true".
+  assert.equal(markdown, "- [x] A\n- [ ] B");
 });
 
 test("a lone array field is a list, not an unwrapped document", () => {

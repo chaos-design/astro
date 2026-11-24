@@ -54,6 +54,31 @@ export function isTerminalEventName(eventName: string): boolean {
   return terminalEventNames.has(eventName);
 }
 
+/**
+ * Reply identity for a `session.text.delta` / `session.text.ended` event.
+ *
+ * OpenCode publishes `assistantMessageID` plus a per-text-part identity —
+ * `ordinal` on the durable event wire, `textID` on the newer `session.next`
+ * wire. A single assistant message may contain several text parts (text →
+ * tool → text), so the part identity is part of the key: folding on the bare
+ * message id would concatenate part 1's delta onto part 0 and break the
+ * prefix check on replay. `messageID` / `partID` are internal processor
+ * fields, not event payload fields, but are read as a compatibility fallback
+ * for producers that did surface them.
+ */
+export function openCodeTextMessageId(data: unknown): string {
+  const record = (data ?? {}) as Record<string, unknown>;
+  const message = record.assistantMessageID ?? record.messageID;
+  if (message === undefined || message === null || message === "") {
+    return "";
+  }
+  const part = record.ordinal ?? record.textID ?? record.partID;
+  const base = String(message);
+  return part === undefined || part === null || part === ""
+    ? base
+    : `${base}:${part}`;
+}
+
 function isAborted(error: unknown): boolean {
   const type = String(
     (error as any)?.type || (error as any)?.name || "",
@@ -195,12 +220,12 @@ export function mapOpenCodeEvent(
   }
 
   if (type === "session.text.ended") {
-    const messageId = data?.messageID || data?.partID;
+    const messageId = openCodeTextMessageId(data);
     return [
       {
         eventName: "AgentMessage",
         message: data?.text,
-        ...(messageId ? { messageId: String(messageId) } : {}),
+        ...(messageId ? { messageId } : {}),
       },
     ];
   }

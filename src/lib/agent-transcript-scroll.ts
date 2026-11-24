@@ -13,6 +13,18 @@
  */
 export const AGENT_SCROLL_BOTTOM_EPSILON = 24;
 
+/**
+ * How far above the bottom a reader must sit before the centered jump pill
+ * offers itself. A few pixels short of the last step is still "the bottom"
+ * (live follow keeps pinning, the pill stays out of the way); a deliberate
+ * scroll up past this line is a request to read history, and the pill shows.
+ * It is a position rule, not a gesture one — the reader can arrive up there
+ * scrolling up *or* settle there scrolling down; what matters is the
+ * distance from the bottom, so the pill never flickers with the last wheel
+ * direction.
+ */
+export const AGENT_SCROLL_JUMP_THRESHOLD = 64;
+
 export function isAgentTranscriptAtBottom(element: {
   readonly clientHeight: number;
   readonly scrollHeight: number;

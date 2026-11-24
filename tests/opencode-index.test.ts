@@ -91,8 +91,8 @@ const located = (type: string, data: Record<string, unknown>) => ({
 test("session.text.delta emits a throttled streamed AgentMessage snapshot", async () => {
   const events = await runEvents([
     located("session.created", {}),
-    located("session.text.delta", { messageID: "m1", delta: "Hel" }),
-    located("session.text.delta", { messageID: "m1", delta: "Hello" }),
+    located("session.text.delta", { assistantMessageID: "m1", ordinal: 0, delta: "Hel" }),
+    located("session.text.delta", { assistantMessageID: "m1", ordinal: 0, delta: "Hello" }),
   ]);
   const streamed = events.filter(
     (event) =>
@@ -100,13 +100,35 @@ test("session.text.delta emits a throttled streamed AgentMessage snapshot", asyn
   );
   assert.equal(streamed.length, 1, "one in-flight snapshot inside the window");
   assert.equal(streamed[0].payload.message, "Hel");
-  assert.equal(streamed[0].payload.messageId, "m1");
+  // The snapshot shares its final message's reply id (message + text part).
+  assert.equal(streamed[0].payload.messageId, "m1:0");
   assert.equal(streamed[0].sessionId, "ses_index");
   // Every event carries the installed adapter's own version, making a stale
   // (reinstalled but not restarted) process observable in /api/health.
   for (const event of events) {
     assert.equal(event.payload.captureVersion, "0.0.7", event.eventName);
   }
+});
+
+test("a streamed snapshot and its final message share one reply id", async () => {
+  const events = await runEvents([
+    located("session.created", {}),
+    located("session.text.delta", {
+      assistantMessageID: "m2",
+      ordinal: 0,
+      delta: "Hi",
+    }),
+    located("session.text.ended", {
+      assistantMessageID: "m2",
+      ordinal: 0,
+      text: "Hi there",
+    }),
+  ]);
+  const messages = events.filter((event) => event.eventName === "AgentMessage");
+  assert.equal(messages.length, 2);
+  // The whole point of messageId: the console folds these into one reply.
+  assert.equal(messages[0].payload.messageId, "m2:0");
+  assert.equal(messages[0].payload.messageId, messages[1].payload.messageId);
 });
 
 test("a delta without a host id does not persist a default messageId", async () => {

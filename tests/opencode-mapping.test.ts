@@ -306,12 +306,19 @@ test("terminal lifecycle events map to canonical names", () => {
     mapOpenCodeEvent({ type: "session.text.ended", data: { sessionID: session, text: "done" } }),
     [{ eventName: "AgentMessage", message: "done" }],
   );
+  // Real OpenCode text events carry assistantMessageID + ordinal (a text
+  // part identity), not the internal messageID/partID processor fields.
   assert.deepEqual(
     mapOpenCodeEvent({
       type: "session.text.ended",
-      data: { sessionID: session, messageID: "m1", text: "done" },
+      data: {
+        sessionID: session,
+        assistantMessageID: "m1",
+        ordinal: 0,
+        text: "done",
+      },
     }),
-    [{ eventName: "AgentMessage", message: "done", messageId: "m1" }],
+    [{ eventName: "AgentMessage", message: "done", messageId: "m1:0" }],
   );
   assert.deepEqual(
     mapOpenCodeEvent({

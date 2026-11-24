@@ -426,9 +426,19 @@ function scalarFieldValue(value: unknown): string {
  * also echoes its own inputs back in the result (`tool_input.description` and
  * `tool_response.task.description` both read as a bare `description` with the
  * same value), so rows that repeat the same label *and* value are collapsed
- * to one — the data is not printed twice. Group headers and array members
- * carry their own identity (a `level`) and are never merged.
+ * to one — the data is not printed twice. Only fields rooted in a tool's
+ * input / result containers take part: two unrelated branches that happen to
+ * share a label and value (`a.note`, `b.note`) keep their own rows and path,
+ * as the field inventory promises. Group headers and array members carry
+ * their own identity (a `level`) and are never merged.
  */
+const ECHO_CONTAINERS = new Set([
+  "toolinput", "toolresponse", "toolresult", "input", "output",
+  "result", "captured", "arguments", "args",
+]);
+function inEchoContainer(key: string): boolean {
+  return ECHO_CONTAINERS.has(normalized(key.split(".")[0] ?? ""));
+}
 function mergeRelated(fields: RelatedField[]): RelatedField[] {
   const byKey = new Map<string, RelatedField>();
   for (const field of fields) {
@@ -437,7 +447,7 @@ function mergeRelated(fields: RelatedField[]): RelatedField[] {
   const byLabelValue = new Map<string, RelatedField>();
   const out: RelatedField[] = [];
   for (const field of byKey.values()) {
-    if (field.groupHeader || field.level !== undefined) {
+    if (field.groupHeader || field.level !== undefined || !inEchoContainer(field.key)) {
       out.push(field);
       continue;
     }
@@ -511,7 +521,52 @@ function inferStructuralLanguage(body: string): string | null {
   return null;
 }
 
+/**
+ * Whether a body is *structured* as a shell command, as opposed to a source
+ * file that merely contains a shell keyword on a line. Command chaining
+ * (`&&` / `||`), a substitution (`$( …)` or backticks) or an env-assignment
+ * prefix are unambiguous: a `node -e "…script…"` line is bash that quotes a
+ * script, not a TypeScript document, so it must label bash. A real source
+ * file that happens to hold `&&` inside one expression has none of these, so
+ * it keeps its own language.
+ */
+function hasShellStructure(body: string, commandBody: string): boolean {
+  if (/\$\(/.test(body)) {
+    return true;
+  }
+  if (/\`/.test(body)) {
+    return true;
+  }
+  if (/\s(?:&&|\|\|)\s/.test(body)) {
+    return true;
+  }
+  // An env-assignment prefix was stripped for the keyword match: that itself
+  // is shell structure (`FOO=1 cmd …`), so the original and the stripped body
+  // differ.
+  return commandBody !== body;
+}
+
+/** One shared list of the shell verbs a captured command opens with. */
+const SHELL_VERB_RE =
+  /^\s*(?:ls|cat|wc|head|tail|grep|find|sed|awk|chmod|chown|mkdir|touch|rm|cp|mv|ln|cd|echo|export|source|printf|pwd|which|kill|env|time|sleep|curl|wget|git|npm|pnpm|yarn|npx|node|python3?|pip3?|docker|make|brew|sudo|ssh|scp|tar|sort|uniq|cut|tr|xargs|tee|du|df)\s+\S/m;
+
 function inferKeywordLanguage(body: string): string | null {
+  // A command may be prefixed by env assignments (`ASTRO_PORT=4401 pnpm …`).
+  // Strip them only for the match: the original body keeps the `=` that makes
+  // the shell evidence unambiguous, and the related-data pane still shows the
+  // assignment verbatim.
+  const commandBody = body.replace(
+    /^(?:[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|[^\s]*)\s+)+/gm,
+    "",
+  );
+  // A shell *command* claims the label before an embedded-language keyword, so
+  // `cd … && node -e "…JS…"` reads bash (the script is quoted data) instead of
+  // the TypeScript that one embedded `=> {` would otherwise trip. Only a
+  // structured command takes this path; a bare keyword on a source line still
+  // falls through to its own language below and to the caller's code gate.
+  if (SHELL_VERB_RE.test(commandBody) && hasShellStructure(body, commandBody)) {
+    return "bash";
+  }
   // `export FOO=bar` is a shell assignment, not a TypeScript export statement;
   // without this guard the TS matcher claims it before the bash list is seen.
   const shellExport = /^\s*export\s+[A-Za-z_]\w*=[^\n]*$/m.test(body);
@@ -530,19 +585,9 @@ function inferKeywordLanguage(body: string): string | null {
   ) {
     return "python";
   }
-  // A command may be prefixed by env assignments (`ASTRO_PORT=4401 pnpm …`).
-  // Strip them only for the match: the original body keeps the `=` that makes
-  // the shell evidence unambiguous, and the related-data pane still shows the
-  // assignment verbatim.
-  const commandBody = body.replace(
-    /^(?:[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|[^\s]*)\s+)+/gm,
-    "",
-  );
-  if (
-    /^\s*(?:ls|cat|wc|head|tail|grep|find|sed|awk|chmod|chown|mkdir|touch|rm|cp|mv|ln|cd|echo|export|source|printf|pwd|which|kill|env|time|sleep|curl|wget|git|npm|pnpm|yarn|npx|node|python3?|pip3?|docker|make|brew|sudo|ssh|scp|tar|sort|uniq|cut|tr|xargs|tee|du|df)\s+\S/m.test(
-      commandBody,
-    )
-  ) {
+  // An unstructured shell verb on a line is only a weak signal: it still goes
+  // through the caller's code gate so `git status shows changes` stays prose.
+  if (SHELL_VERB_RE.test(commandBody)) {
     return "bash";
   }
   return null;

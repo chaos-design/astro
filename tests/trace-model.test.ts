@@ -804,6 +804,24 @@ test("getToolCallInputs keeps each input separate instead of flattening field=va
   ]);
 });
 
+test("an empty tool_input placeholder does not hide the camel toolInput command", () => {
+  // The recorder writes `tool_input: {}` when only the camel spelling exists;
+  // `??` would treat that empty object as the input and lose the real command.
+  const event = {
+    toolName: "Bash",
+    payload: {
+      tool_input: {},
+      toolInput: { command: "pnpm test", description: "run tests" },
+    },
+  } as Parameters<typeof getToolCallInputs>[0];
+  assert.equal(getToolCallCommand(event), "pnpm test");
+  const inputs = getToolCallInputs(event);
+  assert.equal(inputs?.command, "pnpm test");
+  assert.deepEqual(inputs?.fields, [
+    { key: "description", value: "run tests", literal: 'description="run tests"' },
+  ]);
+});
+
 test("reasoning summaries read the payload spellings real hooks write", () => {
   const [sample] = createDemoEvents(2_000_000_000_000);
   const reasoning = (payload: Record<string, unknown>) => ({

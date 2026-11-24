@@ -6656,16 +6656,15 @@ pre,
   margin-top: 4px;
 }
 
-/* Rail rows deliberately carry no hover styling: a list the reader scans for
-   one selected step reads calmer when sweeping the pointer changes nothing,
-   and the selection — not the pointer — is the state that matters here.
-   Selected / running / partner rows keep their state under the pointer
-   (the base :hover rule would otherwise out-rank their own class). */
+/* Rail rows get one soft hover highlight: the list is still scanned for the
+   selected step, but the pointer shows which row is under it (a subtle
+   background wash and an inset tone bar). Selected / running / partner rows
+   keep their stronger state, which the base :hover rule must not out-rank. */
 .payload-overlay__rail
   .atomic-log__row:hover:not(.is-selected):not(.is-running):not(.is-pair-partner) {
-  border-color: transparent;
-  background: transparent;
-  box-shadow: none;
+  border-color: color-mix(in srgb, var(--log-tone) 42%, var(--line-bright));
+  background: color-mix(in srgb, var(--log-tone) 8%, var(--panel-hover));
+  box-shadow: inset 2px 0 var(--log-tone);
 }
 
 /* The selected row is the reason the reader opened the layer: one more step
@@ -10819,8 +10818,11 @@ pre,
 .agent-step__call-field {
   display: grid;
   min-width: 0;
-  grid-template-columns: minmax(88px, 0.7fr) minmax(0, 1.6fr);
-  gap: 10px;
+  /* The key is a quiet gutter, not a half-column: short keys (`query`,
+     `image_path`) sit in a bounded column so the value owns the width. A
+     bounded max keeps a long key from eating the row; it ellipsizes instead. */
+  grid-template-columns: minmax(56px, 128px) minmax(0, 1fr);
+  gap: 12px;
   padding: 6px 0;
   border-bottom: 1px solid var(--line);
 }
@@ -10847,6 +10849,76 @@ pre,
   overflow-wrap: break-word;
   white-space: pre-wrap;
   word-break: normal;
+}
+
+/* An image-valued field (`image_path` / `image_url`) renders as an image, not
+   a raw path string: a loadable source (http/https or a data-URL) shows a
+   thumbnail with the source beneath it, a local path the browser cannot open
+   becomes a labelled chip instead of an inert string. */
+.agent-step__call-image {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 9px;
+}
+
+.agent-step__call-image__thumb {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  object-fit: cover;
+  border: 1px solid var(--line-bright);
+  border-radius: 6px;
+  background: var(--panel);
+}
+
+.agent-step__call-image__src {
+  min-width: 0;
+  color: var(--muted);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.6875rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-step__call-image--local {
+  padding: 5px 9px;
+  border: 1px solid color-mix(in srgb, var(--violet) 34%, var(--line-bright));
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--violet) 8%, transparent);
+}
+
+.agent-step__call-image__glyph {
+  flex: 0 0 auto;
+  font-size: 0.9rem;
+  line-height: 1;
+}
+
+.agent-step__call-image__path {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.agent-step__call-image__path strong {
+  color: var(--text-strong);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.75rem;
+  font-weight: var(--weight-medium, 600);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-step__call-image__path code {
+  color: var(--muted);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.625rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .agent-step__call-empty {

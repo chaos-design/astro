@@ -25,6 +25,7 @@ import { PlatformIcon } from "@/components/platform-icon";
 import { QuestionContent, QuestionPreview, type QuestionAnswerBinding } from "@/components/question-content";
 import { RelatedFields } from "@/components/related-fields";
 import {
+  AGENT_SCROLL_JUMP_THRESHOLD,
   isAgentTranscriptAtBottom,
   isLatestStepVisible,
 } from "@/lib/agent-transcript-scroll";
@@ -46,7 +47,11 @@ import {
 } from "@/lib/payload-preview";
 import { payloadToMarkdown } from "@/lib/payload-markdown";
 import { formatDurationMs } from "@/lib/duration-label";
-import { formatExecutionClock, type ToolCallInputs } from "@/lib/trace-model";
+import {
+  formatExecutionClock,
+  type ToolCallInputs,
+  type ToolInputField,
+} from "@/lib/trace-model";
 import { getAtomPlatformConfig } from "@/config/atom-platforms";
 import type { PlatformId } from "@/types/trace";
 
@@ -111,6 +116,74 @@ function bodyPayloadOf(payload: unknown, dropCommand: boolean): unknown {
  * wrapping at word boundaries. Diff-carrying fields never reach here — the
  * single extractor leaves them out so their patch keeps its own rendering.
  */
+
+/**
+ * A field whose value is an image is read as one: `image_url` / `image_path`
+ * (and the OpenAI-style `input_image`) name the image an agent looked at, so
+ * a raw path or data-URL should render as the image — a thumbnail when the
+ * source is loadable, a labelled chip when it is a local path the browser
+ * cannot open. Only these keys count, so an ordinary `url` / `path` field
+ * that happens to hold text keeps its plain rendering.
+ */
+const IMAGE_FIELD_KEYS = new Set([
+  "image_url", "imageUrl", "image_path", "imagePath",
+  "input_image", "image", "img",
+]);
+const IMAGE_SOURCE_EXT = /\.(png|jpe?g|gif|webp|avif|bmp|svg)([?#]|$)/i;
+
+function imageFieldKind(key: string, value: string): "remote" | "data" | "local" | null {
+  if (!IMAGE_FIELD_KEYS.has(key)) {
+    return null;
+  }
+  if (value.startsWith("data:image/")) {
+    return "data";
+  }
+  if (/^https?:\/\//i.test(value)) {
+    return "remote";
+  }
+  // A bare path (or any value naming an image file) is a local capture the
+  // console cannot load into an <img>; it still renders as a distinct chip.
+  if (IMAGE_SOURCE_EXT.test(value) || /[\\/][^\\/]+\.[a-z]{2,4}$/.test(value)) {
+    return "local";
+  }
+  return null;
+}
+
+function CallFieldValue({ field }: { field: ToolInputField }) {
+  const kind = imageFieldKind(field.key, field.value);
+  if (kind === "remote" || kind === "data") {
+    return (
+      <span className="agent-step__call-image">
+        <img
+          alt={field.value}
+          className="agent-step__call-image__thumb"
+          loading="lazy"
+          referrerPolicy="no-referrer"
+          src={field.value}
+        />
+        <code className="agent-step__call-image__src" title={field.value}>
+          {field.value}
+        </code>
+      </span>
+    );
+  }
+  if (kind === "local") {
+    const base = field.value.split(/[\\/]/).pop() || field.value;
+    return (
+      <span className="agent-step__call-image agent-step__call-image--local">
+        <span aria-hidden="true" className="agent-step__call-image__glyph">
+          🖼
+        </span>
+        <span className="agent-step__call-image__path">
+          <strong>{base}</strong>
+          <code title={field.value}>{field.value}</code>
+        </span>
+      </span>
+    );
+  }
+  return <>{field.value}</>;
+}
+
 function CallBlock({ inputs }: { inputs: ToolCallInputs }) {
   if (inputs.command) {
     return (
@@ -148,7 +221,9 @@ function CallBlock({ inputs }: { inputs: ToolCallInputs }) {
           {inputs.fields.map((field) => (
             <div className="agent-step__call-field" key={field.key}>
               <dt>{field.key}</dt>
-              <dd>{field.value}</dd>
+              <dd>
+                <CallFieldValue field={field} />
+              </dd>
             </div>
           ))}
         </dl>
@@ -329,13 +404,16 @@ export function AgentTranscript({
       scrolledUpRef.current = false;
       return;
     }
-    // Between the bottom and the newest step being visible, an upward gesture
-    // is the only thing that arms the jump — a programmatic scroll to an older
-    // step must not offer it, matching the "scroll up" ask. A live run keeps
-    // its loading state in the pill with the pending-step count; a finished
-    // run becomes a plain quick-scroll button when the chain overflows.
+    // The pill offers itself by *position*, not only by the last gesture: the
+    // reader is a little height above the bottom edge, so reading history is
+    // plausible and the jump reads as available. A live run keeps its loading
+    // state in the pill with the pending-step count; a finished run becomes a
+    // plain quick-scroll button when the chain overflows.
     const scrollable = container.scrollHeight > container.clientHeight + 40;
-    if (scrolledUpRef.current) {
+    const distanceFromBottom =
+      container.scrollHeight - container.scrollTop - container.clientHeight;
+    const scrolledUp = distanceFromBottom > AGENT_SCROLL_JUMP_THRESHOLD;
+    if (scrolledUpRef.current || scrolledUp) {
       setShowJump(live || scrollable);
     } else if (!latestVisible) {
       // Scrolled down but the newest step is still off screen (e.g. located

@@ -228,7 +228,10 @@ test("agent steps show a captured command and real thinking on first render", ()
   assert.match(agentTranscript, /function CallBlock\(\{ inputs \}: \{ inputs: ToolCallInputs \}\)/);
   assert.match(agentTranscript, /inputs\.fields\.map\(\(field\) =>/);
   assert.match(agentTranscript, /<dt>\{field\.key\}<\/dt>/);
-  assert.match(agentTranscript, /<dd>\{field\.value\}<\/dd>/);
+  // Call fields render through CallFieldValue so a captured image path /
+  // data-URL reads as an image (a thumbnail when loadable, a labelled chip
+  // otherwise) instead of a raw string.
+  assert.match(agentTranscript, /<dd>\s*<CallFieldValue field=\{field\} \/>\s*<\/dd>/);
   assert.match(agentTranscript, /contentToMarkdown\(inputs\.command\)/);
   assert.match(stylesForOverlay, /\.agent-step__call-bar/);
   assert.match(stylesForOverlay, /\.agent-step__call-fields \{/);
@@ -488,15 +491,21 @@ test("the follow toggle reads as the console's Live mark with a breathing halo",
 });
 
 /**
- * Rail rows carry no hover styling: the list is scanned for one selected step,
- * and sweeping the pointer must not repaint rows (selected / running / pair
- * partner rows keep their own state, which the base :hover rule would
- * otherwise out-rank).
+ * Rail rows carry one soft hover highlight: the list is scanned for one
+ * selected step, and the pointer washes the row under it. Selected / running
+ * / pair-partner rows keep their stronger state, which the base :hover rule
+ * must not out-rank.
  */
-test("rail rows keep no hover styling but the selected row reads strongly", () => {
+test("rail rows highlight on hover but the selected row reads strongly", () => {
   assert.match(
     stylesForOverlay,
     /\.payload-overlay__rail\s*\n\s*\.atomic-log__row:hover:not\(\.is-selected\):not\(\.is-running\):not\(\.is-pair-partner\)/,
+  );
+  // The hover is a real highlight (tone background + inset bar), not the
+  // old "no hover styling" rule that wiped the base row's hover.
+  assert.match(
+    stylesForOverlay,
+    /\.payload-overlay__rail\s*\n\s*\.atomic-log__row:hover:not\(\.is-selected\):not\(\.is-running\):not\(\.is-pair-partner\)\s*\{[\s\S]*?background: color-mix\(in srgb, var\(--log-tone\) 8%, var\(--panel-hover\)/,
   );
   assert.match(
     stylesForOverlay,

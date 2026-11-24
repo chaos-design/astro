@@ -7,6 +7,7 @@ import { claimSession } from "./claim.ts";
 import {
   isTerminalEventName,
   mapOpenCodeEvent,
+  openCodeTextMessageId,
   opencodeEventDirectory,
   type AstroPayload,
 } from "./mapping.ts";
@@ -184,8 +185,11 @@ export default {
         return;
       }
 
-      const rawMessageId = event?.data?.messageID || event?.data?.partID;
-      const messageId = rawMessageId ? String(rawMessageId) : null;
+      // Use the same reply identity as the final `session.text.ended` event:
+      // `assistantMessageID` + the per-part `ordinal` / `textID`, so a streamed
+      // snapshot and its final message share one id and multi-part replies do
+      // not merge into one.
+      const messageId = openCodeTextMessageId(event?.data) || null;
       // Keep the accumulator keyed when the host omits an id, but never write
       // "default" into the trace: the console treats a missing id as absent
       // and merges the snapshots with the final message through its fallback.

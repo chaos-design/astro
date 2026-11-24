@@ -130,6 +130,12 @@ export default function (pi: PiExtensionApi) {
   // keeps every snapshot a prefix of the final message_end text.
   const liveText = new Map<string, { text: string; lastAt: number }>();
   const liveTextIntervalMs = 800;
+  // Pi's assistant messages carry no stable id of their own, so synthesize one
+  // per message and reuse it across its snapshots and final AgentMessage. The
+  // origin session id scopes subagents; the counter keeps consecutive messages
+  // of a resumed session distinct.
+  const messageSeqBySession = new Map<string, number>();
+  const liveMessageIdBySession = new Map<string, string>();
   // Subagent identity is read once per child session: the launch payload is
   // cheap, the persisted delegation entry is read only on a continuation.
   const subagentIdentities = new Map<string, ReturnType<typeof readSubagentIdentity>>();
@@ -231,18 +237,27 @@ export default function (pi: PiExtensionApi) {
         if (role && role !== "assistant") {
           return;
         }
-        const live = readPiLiveText(event);
-        const messageId = live.messageId || null;
-        // Keep the accumulator keyed when the host omits an id, but never
-        // persist "default" — the console's fallback merges id-less snapshots
-        // with the final message, while a literal id would split them.
-        const key = `${sessionId}:${messageId ?? "default"}`;
+        // Pi gives assistants no stable per-message id, so allocate one at
+        // message_start and reuse it for the throttled snapshots and the final
+        // message. The origin `sessionId` already separates subagents.
         if (type === "message_start") {
-          liveText.delete(key);
+          const seq = (messageSeqBySession.get(sessionId) ?? 0) + 1;
+          messageSeqBySession.set(sessionId, seq);
+          const id = `pi-${sessionId}-${seq}`;
+          liveMessageIdBySession.set(sessionId, id);
+          mappingContext.messageId = id;
+          liveText.delete(`${sessionId}:${id}`);
           return;
         }
+        const messageId = liveMessageIdBySession.get(sessionId) ?? null;
+        // The final message is written through mapPiEvent below; hand it the
+        // same id so the console folds every snapshot into that one reply.
+        mappingContext.messageId = messageId ?? undefined;
+        const live = readPiLiveText(event, messageId ?? undefined);
+        const key = `${sessionId}:${messageId ?? "default"}`;
         if (type === "message_end") {
           liveText.delete(key);
+          liveMessageIdBySession.delete(sessionId);
         } else {
           const state = liveText.get(key) ?? { text: "", lastAt: 0 };
           if (live.text !== null) {
@@ -261,8 +276,8 @@ export default function (pi: PiExtensionApi) {
               cwd,
               message: state.text,
               streamed: true,
-              // Same id as the final message: the accumulated snapshots are
-              // merged by the console instead of shown as repeated replies.
+              // Same synthesized id as the final message: the accumulated
+              // snapshots are merged by the console into a single reply.
               ...(messageId ? { messageId } : {}),
               ...attribution,
             });

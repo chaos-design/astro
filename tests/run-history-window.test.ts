@@ -229,6 +229,26 @@ test("finished fallback lands on the row the list shows first", () => {
   );
 });
 
+test("the fallback pool must be windowed, or an old follow-up opens a hidden row", () => {
+  // The list filters by `start` before sorting finished rows by `end`. A
+  // days-old thread that just got a follow-up tops the `end` order but is
+  // outside the window — the console must not open it as the fallback, because
+  // no RUN HISTORY row points at it.
+  const now = Date.parse("2026-10-09T14:00:00");
+  const oldWithFollowUp = session(Date.parse("2026-10-01T08:00:00"));
+  oldWithFollowUp.end = Date.parse("2026-10-09T13:30:00");
+  const inWindow = session(Date.parse("2026-10-09T12:00:00"));
+  inWindow.end = Date.parse("2026-10-09T12:30:00");
+
+  const visible = selectVisibleRunHistory(
+    [inWindow, oldWithFollowUp],
+    now,
+    3,
+  );
+  assert.deepEqual(visible.map((entry) => entry.key), [inWindow.key]);
+  assert.equal(selectScopeFallbackRun(visible, new Set())?.key, inWindow.key);
+});
+
 type PinnedRun = TraceSession & { messageStart: number };
 
 // The console pins by the start of a run's newest message, not by its latest

@@ -391,8 +391,9 @@ test("streams accumulated text while the agent is still executing", async () => 
     await handlers.get("session_start")!({}, ctx);
     await handlers.get("input")!({ text: "write code" }, ctx);
     await handlers.get("before_agent_start")!({ prompt: "write code" }, ctx);
+    // Real Pi assistant messages carry no id — the recorder synthesizes one.
     await handlers.get("message_start")!(
-      { message: { id: "msg-live", role: "assistant" } },
+      { message: { role: "assistant" } },
       ctx,
     );
     // First update emits immediately; the next one lands inside the throttle
@@ -402,7 +403,6 @@ test("streams accumulated text while the agent is still executing", async () => 
     await handlers.get("message_end")!(
       {
         message: {
-          id: "msg-live",
           role: "assistant",
           content: [{ type: "text", text: "Hello world" }],
           stopReason: "stop",
@@ -441,8 +441,10 @@ test("streams accumulated text while the agent is still executing", async () => 
     );
     assert.equal(final.length, 1, "one final complete message");
     assert.equal(final[0].payload.message, "Hello world");
-    assert.equal(streamed[0].payload.messageId, "msg-live");
-    assert.equal(final[0].payload.messageId, "msg-live");
+    // The snapshot and final message share the recorder-synthesized id even
+    // though Pi's own message carried none.
+    assert.match(streamed[0].payload.messageId, /^pi-/);
+    assert.equal(streamed[0].payload.messageId, final[0].payload.messageId);
     // Every in-flight snapshot must be a prefix of the final text: that is
     // what "consistent" means here — no drift between live and recorded.
     assert.ok("Hello world".startsWith(streamed[0].payload.message));

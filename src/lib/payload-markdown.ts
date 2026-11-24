@@ -339,8 +339,19 @@ function editStringsToDiff(record: UnknownRecord): string {
     return "";
   }
   const file = firstString("file_path", "filePath") ?? "";
-  const oldLines = oldText ? oldText.split("\n") : [];
-  const newLines = newText ? newText.split("\n") : [];
+  // A trailing newline is a line terminator, not an empty line: `split("\n")`
+  // would leave a trailing "" and render a ghost deletion/addition plus an
+  // inflated hunk count. Normalize CRLF first, then drop exactly one trailing
+  // empty element (an intentionally blank last line keeps its own "\n\n").
+  const splitLines = (text: string): string[] => {
+    if (!text) {
+      return [];
+    }
+    const normalized = text.replace(/\r\n/g, "\n").replace(/\n$/, "");
+    return normalized ? normalized.split("\n") : [];
+  };
+  const oldLines = splitLines(oldText ?? "");
+  const newLines = splitLines(newText ?? "");
   const lines = [
     `--- ${file ? `a/${file}` : "a/"}`,
     `+++ ${file ? `b/${file}` : "b/"}`,
@@ -450,8 +461,17 @@ function isCompactRecord(value: unknown): boolean {
 
 function compactRecordStatus(record: UnknownRecord): string | undefined {
   for (const [key, value] of Object.entries(record)) {
-    if (LIST_STATUS_KEYS.has(key.toLowerCase()) && typeof value === "string") {
-      return value;
+    // Status is commonly a boolean (`done: true`) or a number, not just a
+    // string. Normalize scalars so the checklist checkbox works for those
+    // shapes too (`true` is already in LIST_DONE_VALUES); objects/arrays are
+    // not a status and are left for the rest of the renderer.
+    if (
+      LIST_STATUS_KEYS.has(key.toLowerCase()) &&
+      value !== null &&
+      value !== undefined &&
+      typeof value !== "object"
+    ) {
+      return String(value);
     }
   }
   return undefined;
