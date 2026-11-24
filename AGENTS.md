@@ -967,13 +967,15 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   explicit pick, live follow counts new steps behind a bottom-centered pill
   without moving the reader, and the bottom / latest-step tests live only in
   `src/lib/agent-transcript-scroll.ts` (`isAgentTranscriptAtBottom`,
-  `isLatestStepVisible`). The affordance has exactly three reads, never two at
-  once: while the reader sits on the newest step the trailing loading row
-  shows only at the bottom; whenever the newest step has scrolled out of view
-  — a manual gesture or an explicit locate of an older step alike — the bottom
-  row is hidden and the centered pinned pill carries the loading state with its
-  pending-step count; once the run has ended that same pill becomes a plain
-  scroll-to-bottom control. Locating the *newest* step — a live follow, a
+  `isLatestStepVisible`). The centered pill is armed by an **upward scroll
+  gesture** (`scrolledUpRef` from consecutive `scrollTop` reads), not merely
+  by the newest step leaving view: any upward scroll arms it, including a
+  programmatic locate to an older step; downward movement and reaching the
+  absolute bottom disarm it. Live pinning still follows while the newest step
+  is on screen (`atBottomRef = absoluteBottom ||
+  latestVisible`); the absolute bottom resets the gesture baseline. Once armed, a live run's pill carries the pending-step
+  count and an ended run's becomes a plain scroll-to-bottom control. Locating
+  the *newest* step — a live follow, a
   jump, or an explicit pick of the last step alike — pins the container to the
   absolute bottom (`scrollHeight`) so the tail lands flush with the bottom
   edge and follow resumes from there; only an *older* step is aligned top-12px
@@ -991,8 +993,21 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   second clock formatter or the stepped history ladder `formatDurationMs`
   that the LOG row badge and the overlay's rail badge share. The header also
   prints the run's turn count and the
-  folded event count (`view.stats.turns` / `view.stats.events`). The
-  related-field inventory is
+  folded event count (`view.stats.turns` / `view.stats.events`); those counts
+  are also jump targets — hovering a stat chip opens a card naming the steps
+  behind it and clicking lands on the first. The head opens with the agent's
+  brand `PlatformIcon` + label (`platformLabel` via `getAtomPlatformConfig`)
+  and its captured client version (`sourceVersion`, threaded from the active
+  events), so the run's identity sits in the header instead of a native title
+  tooltip. No native `title` hover tooltips remain in the Agent view or the
+  overlay rail — the rail row itself carries turn / sequence / event / type /
+  status / duration, and each row still jumps on click. A tool step's header
+  row carries its duration and pair marker inline (`agent-step__head-row`),
+  not on a separate line, and its execution line renders in a mac-terminal
+  frame (`CommandBlock`: window dots + `$` prompt for a real shell command)
+  that **wraps at word boundaries** (`overflow-wrap: break-word`,
+  `white-space: pre-wrap`) rather than truncating mid-word or scrolling
+  sideways. The related-field inventory is
   shared with Preview in `src/components/related-fields.tsx` and folds long
   values per field, never per pane. `Preview` is split into two panes — the atom's real content
   (Markdown / highlighted code, or the question list) and the related data

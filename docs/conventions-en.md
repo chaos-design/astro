@@ -145,13 +145,16 @@
     bottom). The overlay bumps `agentLocateRequest` only for an explicit pick
     so live follow never steals the reader's scroll; arriving steps never
     push a reader who is above the newest step — they only add up the count.
-    The reads are mutually exclusive: while the reader sits on the newest
-    step the bottom loading row is the only loading read; once the newest
-    step has scrolled out of view — a manual gesture or a programmatic
-    locate alike — the row is hidden and the bottom-centered pill shows the
-    loading state with its pending-step count; when the run has ended the
-    same pill becomes a plain "scroll to bottom" control. Locating the
-    *newest* step (live follow, jump, or an explicit pick of the last step)
+    The centered pill is armed by an upward scroll gesture (`scrolledUpRef`
+    from consecutive `scrollTop` reads), not merely by the newest step
+    leaving view: any upward scroll arms it, including a programmatic locate
+    to an older step; downward movement and the absolute bottom disarm it.
+    Live pinning keeps following while the newest step is visible
+    (`atBottomRef = absoluteBottom || latestVisible`); the absolute bottom
+    also resets the gesture baseline. Once
+    armed, a live run's pill carries the pending-step count and an ended
+    run's becomes a plain "scroll to bottom" control. Locating the *newest*
+    step (live follow, jump, or an explicit pick of the last step)
     pins the container to the absolute bottom (`scrollHeight`) so the tail
     lands flush with the bottom edge and follow resumes from there; only an
     *older* step aligns top-12px to keep it in context. Returning to the
@@ -169,7 +172,20 @@
     second clock formatter or the stepped history ladder `formatDurationMs`
     that the LOG row badge and the overlay's rail badge share; the header also
     prints the run's turn count and folded event count
-    (`view.stats.turns` / `view.stats.events`). The overlay's left rail is the run's **message chain in the
+    (`view.stats.turns` / `view.stats.events`); those counts double as jump
+    targets — hover opens a card naming the steps behind a count, click lands
+    on the first. The head opens with the agent's brand `PlatformIcon` + label
+    (`platformLabel` via `getAtomPlatformConfig`) and its captured client
+    version (`sourceVersion`, threaded from the active events), so the run's
+    identity lives in the header rather than a native title tooltip. No native
+    `title` hover tooltips remain in the Agent view or the overlay rail — the
+    rail row itself carries turn / sequence / event / type / status / duration
+    and still jumps on click. A tool step's header row carries its duration
+    and pair marker inline (`agent-step__head-row`), not on a separate line,
+    and its execution line renders in a mac-terminal frame (`CommandBlock`:
+    window dots + `$` prompt for a real shell command) that **wraps at word
+    boundaries** (`overflow-wrap: break-word`, `white-space: pre-wrap`)
+    instead of truncating mid-word or scrolling sideways. The overlay's left rail is the run's **message chain in the
     LOG's own data standard**, fed by `overlayAtoms`, mapped from the same
     `buildLogEntries(activeEvents, …)` result the LOG list prints (app.tsx):
     one row per **event** (carrying the harness atom id it commits to), split

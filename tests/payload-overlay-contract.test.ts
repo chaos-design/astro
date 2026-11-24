@@ -146,13 +146,13 @@ test("the Agent view keeps a reader's scroll and offers a jump to the newest ste
   // The pill hides whenever the newest step is on screen, not only within a
   // few pixels of the bottom: a tall last reply can be visible well above it.
   assert.match(agentTranscript, /isLatestStepVisible\(/);
-  assert.match(agentTranscript, /isAgentTranscriptAtBottom\(container\) \|\| latestVisible/);
-  // The centered pill is gated by the newest step's visibility, not by a
-  // manual gesture: a programmatic locate of an older step scrolls it away
-  // too, so the loading state follows it into the middle as well.
+  assert.match(agentTranscript, /atBottomRef\.current = absoluteBottom \|\| latestVisible/);
+  // The centered pill is armed by an upward scroll gesture, not merely by the
+  // newest step leaving the viewport. Any upward move arms it (including a
+  // programmatic locate to an older step); downward / absolute bottom disarm.
   assert.match(agentTranscript, /setShowJump\(live \|\| scrollable\)/);
-  assert.doesNotMatch(agentTranscript, /isManualUpScroll/);
-  assert.doesNotMatch(agentTranscript, /manualUpRef/);
+  assert.match(agentTranscript, /scrolledUpRef\.current = top < lastScrollTopRef\.current - 1/);
+  assert.match(agentTranscript, /if \(scrolledUpRef\.current\) \{[\s\S]{0,120}setShowJump\(live \|\| scrollable\)/);
   // The bottom loading row is only the "reader is at the newest step" read;
   // once the newest step leaves the viewport the centered pill owns the
   // loading state instead, so the two never show at once.
@@ -179,8 +179,8 @@ test("the Agent view keeps a reader's scroll and offers a jump to the newest ste
   assert.doesNotMatch(agentTranscript, /firstStepIdRef/);
   assert.doesNotMatch(agentTranscript, /behavior: "smooth"/);
   assert.match(stylesForOverlay, /\.agent-transcript__jump \{[\s\S]*?position: absolute/);
-  assert.match(stylesForOverlay, /:not\(\.agent-transcript__jump\) \{/);
-  assert.match(stylesForOverlay, /:not\(\.agent-transcript__jump\):focus-visible/);
+  assert.match(stylesForOverlay, /:not\(\.agent-transcript__jump\):not\(\.agent-transcript__stat-button\):not\(\.agent-transcript__stat-card-row\) \{/);
+  assert.match(stylesForOverlay, /:not\(\.agent-transcript__jump\):not\(\.agent-transcript__stat-button\):not\(\.agent-transcript__stat-card-row\):focus-visible/);
 });
 
 test("the Agent view's header reads its execution time from the root display state", () => {
@@ -216,8 +216,14 @@ test("agent steps show a captured command and real thinking on first render", ()
   // states what was executed, not only what came back.
   assert.match(agentTranscript, /step\.command \?\? step\.invocation/);
   assert.match(agentTranscript, /commandLine \?/);
-  assert.match(agentTranscript, /agent-step__command-label/);
-  assert.match(agentTranscript, /contentToMarkdown\(commandLine\)/);
+  // A shared CommandBlock renders the line inside a mac-terminal frame, with
+  // the $ prompt only for a real shell command; contentToMarkdown still feeds
+  // the shared MarkdownView so shell tokens keep their colouring.
+  assert.match(agentTranscript, /<CommandBlock command=\{commandLine\} isShell=\{isShell\} \/>/);
+  assert.match(agentTranscript, /function CommandBlock/);
+  assert.match(agentTranscript, /contentToMarkdown\(command\)/);
+  assert.match(stylesForOverlay, /\.agent-step__command-bar/);
+  assert.match(stylesForOverlay, /\.agent-step__command .markdown-preview pre \{[\s\S]*?white-space: pre-wrap/);
   // A finished question's recorded answers (projected off the paired result
   // event) light the static preview's chips; a question tool's result step
   // shows them in the shared answer-rows rendering, not a JSON body.
@@ -306,8 +312,11 @@ test("the rail row is the LOG row, not a second row imitation", () => {
   assert.match(overlay, /<time dateTime=\{atom\.timestamp\}/);
   assert.match(overlay, /className="atomic-log__summary"/);
   // Execution duration: the closed-pair badge the LOG row prints, with heat.
+  // No native `title` tooltips: the row itself carries the data (the old
+  // "Turn N · #NNN / event / TYPE / STATUS" hover title is gone).
   assert.match(overlay, /atomic-log__duration heat-\$\{atom\.durationHeat\}/);
-  assert.match(overlay, /成对耗时/);
+  assert.doesNotMatch(overlay, /title=\{details\}/);
+  assert.match(agentTranscript, /agent-transcript__stat-card/);
   // Pair cross-reference marker, shared with the LOG and trajectory.
   assert.match(overlay, /<PairLinkMarker/);
   assert.match(stylesForOverlay, /\.payload-overlay__rail \.atomic-log__row \{/);

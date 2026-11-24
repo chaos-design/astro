@@ -36,6 +36,7 @@ import {
 } from "@/components/question-content";
 import { RelatedFields } from "@/components/related-fields";
 import type { AgentView } from "@/lib/agent-view";
+import type { PlatformId } from "@/types/trace";
 import { renderMarkdownPreview } from "@/lib/markdown-preview";
 import {
   contentToMarkdown,
@@ -192,6 +193,8 @@ export function PayloadOverlay({
   selectedEventId,
   variant = "default",
   variantForAtom,
+  platform = "chatgpt",
+  agentVersion = null,
 }: {
   atoms: PayloadOverlayAtom[];
   /** Derived Agent view of the same event sequence as the rail. */
@@ -245,6 +248,10 @@ export function PayloadOverlay({
   variant?: "default" | "question";
   /** Per-row variant so a question row keeps its QuestionPreview after a switch. */
   variantForAtom?: (atomId: string, eventId: string) => "default" | "question";
+  /** The agent that produced the run, for the Agent view header's brand mark. */
+  platform?: PlatformId;
+  /** The source's captured client version, e.g. `5.11.3`. */
+  agentVersion?: string | null;
 }) {
   const [viewMode, setViewMode] = useState<PayloadViewMode>("agent");
   // Only an explicit rail / step / pair pick locates the Agent transcript.
@@ -658,14 +665,6 @@ export function PayloadOverlay({
                   const running = atom.id === runningEventId;
                   const partnerSelected =
                     atom.pairLink?.partnerId === selectedEventId;
-                  const details = [
-                    `Turn ${atom.turn} · ${atom.sequence}`,
-                    atom.eventName,
-                    atom.type ? `TYPE ${atom.type}` : "",
-                    `STATUS ${atom.status}`,
-                  ]
-                    .filter(Boolean)
-                    .join("\n");
                   const rowPosition = item.row;
                   return (
                     <li key={atom.id}>
@@ -692,23 +691,19 @@ export function PayloadOverlay({
                           }
                           atomRefs.current[rowPosition] = node;
                         }}
-                        title={details}
                         type="button"
                       >
                         <span className="log-sequence">{atom.sequence}</span>
                         <i aria-hidden="true" className="phase-dot" />
                         <strong className="atomic-log__name">
                           {atom.type?.trim() ? (
-                            <span
-                              className="atomic-log__type payload-overlay__atom-type"
-                              title={`原子类型 ${atom.type} · ${atom.key}`}
-                            >
+                            <span className="atomic-log__type payload-overlay__atom-type">
                               {atom.type}
                             </span>
                           ) : null}
                           <span className="atomic-log__key">{atom.key}</span>
                         </strong>
-                        <time dateTime={atom.timestamp} title={atom.timestamp}>
+                        <time dateTime={atom.timestamp}>
                           <span>{atom.dateLabel}</span>
                           {atom.clockLabel}
                         </time>
@@ -720,7 +715,6 @@ export function PayloadOverlay({
                           {atom.durationLabel !== null ? (
                             <span
                               className={`atomic-log__duration heat-${atom.durationHeat}`}
-                              title={`成对耗时 ${atom.durationLabel}`}
                             >
                               {atom.durationLabel}
                             </span>
@@ -750,6 +744,8 @@ export function PayloadOverlay({
                 live={agentRunExecuting}
                 locateRequest={agentLocateRequest}
                 runDurationMs={agentRunDurationMs}
+                platform={platform}
+                agentVersion={agentVersion}
               />
             ) : viewMode === "preview" ? (
               <div className="payload-overlay__preview-grid">

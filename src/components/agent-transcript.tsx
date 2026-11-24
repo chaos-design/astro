@@ -21,6 +21,7 @@ import {
 import { MarkdownView } from "@/components/markdown-view";
 import { AnswerRows } from "@/components/answer-rows";
 import { PairLinkMarker } from "@/components/pair-link-marker";
+import { PlatformIcon } from "@/components/platform-icon";
 import { QuestionContent, QuestionPreview, type QuestionAnswerBinding } from "@/components/question-content";
 import { RelatedFields } from "@/components/related-fields";
 import {
@@ -46,6 +47,110 @@ import {
 import { payloadToMarkdown } from "@/lib/payload-markdown";
 import { formatDurationMs } from "@/lib/duration-label";
 import { formatDuration } from "@/lib/trace-model";
+import { getAtomPlatformConfig } from "@/config/atom-platforms";
+import type { PlatformId } from "@/types/trace";
+
+function platformLabel(platform: PlatformId): string {
+  return getAtomPlatformConfig(platform).label;
+}
+
+/**
+ * A captured execution line in a mac-terminal frame: a title bar with the
+ * three window dots, a `$` prompt for real shell commands, and the command
+ * itself. The command is rendered by the shared MarkdownView so shell tokens
+ * keep their colouring; the frame only wraps it. Long commands wrap at word
+ * boundaries (CSS `overflow-wrap`) instead of scrolling off — a reader sees
+ * the whole command, broken at a space, not an arbitrary mid-word cut.
+ */
+function CommandBlock({
+  command,
+  isShell,
+}: {
+  command: string;
+  isShell?: boolean;
+}) {
+  return (
+    <div className="agent-step__command">
+      <div className="agent-step__command-bar" aria-hidden="true">
+        <span className="agent-step__command-dots">
+          <i />
+          <i />
+          <i />
+        </span>
+        <span className="agent-step__command-label">COMMAND</span>
+      </div>
+      <div className="agent-step__command-line">
+        {isShell ? <span className="agent-step__command-prompt">$</span> : null}
+        <MarkdownView source={contentToMarkdown(command)} />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A header count that reads as both a summary and a jump target. Hover opens
+ * a card naming the steps behind the count (no native `title` — those cannot
+ * be read by keyboard or carry a jump); clicking lands on the first step.
+ * The whole list lives in one popup per chip, scoped to this header.
+ */
+function StatChip({
+  name,
+  label,
+  steps,
+  open,
+  onOpenChange,
+  onJump,
+}: {
+  name: string;
+  label: string;
+  steps: readonly AgentStep[];
+  open: boolean;
+  onOpenChange: (name: string | null) => void;
+  onJump: (eventId: string) => void;
+}) {
+  const preview = steps.slice(0, 12);
+  return (
+    <span
+      className={cn("agent-transcript__stat-wrap", open && "is-open")}
+      onMouseEnter={() => onOpenChange(name)}
+      onMouseLeave={() => onOpenChange(null)}
+    >
+      <button
+        className="agent-transcript__stat agent-transcript__stat-button"
+        onClick={() => {
+          if (steps[0]) {
+            onJump(steps[0].eventId);
+          }
+        }}
+        type="button"
+      >
+        {label}
+      </button>
+      {open && steps.length ? (
+        <span className="agent-transcript__stat-card" role="tooltip">
+          <span className="agent-transcript__stat-card-title">{label}</span>
+          {preview.map((step) => (
+            <button
+              className="agent-transcript__stat-card-row"
+              key={step.id}
+              onClick={() => onJump(step.eventId)}
+              type="button"
+            >
+              <span>{step.sequence}</span>
+              <span>{step.kind === "reply" ? "REPLY" : step.kind === "thinking" ? "THINKING" : step.kind === "question" ? "QUESTION" : step.kind === "tool-result" ? (step.toolName || step.eventName) : step.eventName}</span>
+              <span>T{step.turn}</span>
+            </button>
+          ))}
+          {steps.length > preview.length ? (
+            <span className="agent-transcript__stat-card-more">
+              还有 {steps.length - preview.length} 步
+            </span>
+          ) : null}
+        </span>
+      ) : null}
+    </span>
+  );
+}
 
 /**
  * The Agent view of one run: the captured sequence rendered as the artifacts
@@ -62,6 +167,8 @@ export function AgentTranscript({
   live,
   locateRequest,
   runDurationMs,
+  platform = "chatgpt",
+  agentVersion = null,
 }: {
   view: AgentView;
   selectedEventId: string | null;
@@ -76,6 +183,10 @@ export function AgentTranscript({
    * executes, the recorded total once it ended; `null` when the message has
    * no clock of its own. */
   runDurationMs: number | null;
+  /** The agent that produced this run — shown with its brand icon in the head. */
+  platform?: PlatformId;
+  /** The source's captured client version, e.g. `5.11.3`. */
+  agentVersion?: string | null;
 }) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const stepRefs = useRef(new Map<string, HTMLElement>());
@@ -85,6 +196,12 @@ export function AgentTranscript({
   const initializedChainRef = useRef<string | null>(null);
   const lastLocateRef = useRef(locateRequest);
   const scrollFrameRef = useRef<number | null>(null);
+  // The centered pill follows an *upward gesture*, not merely "newest step
+  // out of view": the reader speaks with the wheel, so only a real scroll-up
+  // offers the jump. Programmatic pin / locate still update the baseline
+  // through the scroll event, but never arm the pill on their own.
+  const lastScrollTopRef = useRef(0);
+  const scrolledUpRef = useRef(false);
   const [showJump, setShowJump] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
 
@@ -104,10 +221,9 @@ export function AgentTranscript({
     if (!container) {
       return;
     }
-    // "At the newest" is not the same as "at the bottom": a tall last reply
-    // can still be on screen well above the bottom edge. Keep following and
-    // hide the pill whenever that newest step is visible, so a reader looking
-    // at the latest message is never offered a button to jump to it.
+    const absoluteBottom = isAgentTranscriptAtBottom(container);
+    // Live pinning keeps following while the newest step is visible, even if
+    // the scroll position sits above the bottom edge (a tall last reply).
     const lastStep = view.steps.at(-1);
     const lastElement = lastStep ? stepRefs.current.get(lastStep.id) : null;
     const latestVisible = lastElement
@@ -116,25 +232,36 @@ export function AgentTranscript({
           lastElement.getBoundingClientRect(),
         )
       : true;
-    const atBottom =
-      isAgentTranscriptAtBottom(container) || latestVisible;
-    atBottomRef.current = atBottom;
-    if (atBottom) {
-      // At the newest step: disarm the pill and resume live pinning. The
-      // bottom loading row owns the "still executing" read on its own.
+    atBottomRef.current = absoluteBottom || latestVisible;
+    if (absoluteBottom) {
+      // Back at the very bottom: disarm the pill and resume live pinning.
       setShowJump(false);
       setPendingCount(0);
+      scrolledUpRef.current = false;
       return;
     }
-    // The newest step has scrolled out of view. A live run keeps its loading
-    // state in the centered pill (with the pending-step count); a finished
-    // run has nothing to follow, so the same spot becomes a plain
-    // quick-scroll button — and only when the chain actually overflows.
+    // Between the bottom and the newest step being visible, an upward gesture
+    // is the only thing that arms the jump — a programmatic scroll to an older
+    // step must not offer it, matching the "scroll up" ask. A live run keeps
+    // its loading state in the pill with the pending-step count; a finished
+    // run becomes a plain quick-scroll button when the chain overflows.
     const scrollable = container.scrollHeight > container.clientHeight + 40;
-    setShowJump(live || scrollable);
+    if (scrolledUpRef.current) {
+      setShowJump(live || scrollable);
+    } else if (!latestVisible) {
+      // Scrolled down but the newest step is still off screen (e.g. located
+      // to an older step): keep a live loading read, but arming is on scroll-up.
+      setShowJump(false);
+    }
   }, [live, view.steps]);
 
   const handleScroll = useCallback(() => {
+    const container = scrollRef.current;
+    if (container) {
+      const top = container.scrollTop;
+      scrolledUpRef.current = top < lastScrollTopRef.current - 1;
+      lastScrollTopRef.current = top;
+    }
     if (scrollFrameRef.current !== null) {
       return;
     }
@@ -182,6 +309,8 @@ export function AgentTranscript({
     }
     atBottomRef.current = true;
     stepCountRef.current = view.steps.length;
+    scrolledUpRef.current = false;
+    lastScrollTopRef.current = container?.scrollTop ?? 0;
     setShowJump(false);
     setPendingCount(0);
   }, [chainId, scrollToTop]);
@@ -267,11 +396,35 @@ export function AgentTranscript({
     setPendingCount(0);
   }, [scrollToTop]);
 
+  // Header stat chips double as jump affordances: hovering names the steps
+  // behind the count, clicking lands on the first of them. Derived from the
+  // one projection — no second classification of the step kinds.
+  const statGroups = useMemo(() => {
+    const groups: Record<
+      "thinking" | "reply" | "question" | "event",
+      readonly AgentStep[]
+    > = {
+      thinking: view.steps.filter((step) => step.kind === "thinking"),
+      reply: view.steps.filter((step) => step.kind === "reply"),
+      question: view.steps.filter((step) => step.kind === "question"),
+      event: view.steps.filter((step) => step.kind === "event"),
+    };
+    const turnSteps = [...view.steps].sort(
+      (left, right) => left.turn - right.turn,
+    );
+    return { ...groups, turn: turnSteps };
+  }, [view.steps]);
+  const [openStat, setOpenStat] = useState<string | null>(null);
+
   return (
     <div className="agent-transcript">
       <div className="agent-transcript__head">
-        <Bot aria-hidden="true" />
-        <span>AGENT VIEW</span>
+        <PlatformIcon platform={platform} width={14} height={14} />
+        <span className="agent-transcript__brand">{platformLabel(platform)}</span>
+        {agentVersion ? (
+          <span className="agent-transcript__version">{agentVersion}</span>
+        ) : null}
+        <span className="agent-transcript__view-label">AGENT VIEW</span>
         {runDurationMs !== null ? (
           <span
             className={cn(
@@ -279,26 +432,50 @@ export function AgentTranscript({
               "agent-transcript__duration",
               live && "is-live",
             )}
-            title="当前消息执行时间（s / m / h 复合单位，高单位有值才显示）"
           >
             执行 {formatDuration(runDurationMs)}
           </span>
         ) : null}
-        <span className="agent-transcript__stat">{view.stats.thinking} 思考</span>
-        <span className="agent-transcript__stat">{view.stats.replies} 回复</span>
-        <span className="agent-transcript__stat">{view.stats.questions} 提问</span>
-        <span
-          className="agent-transcript__stat"
-          title="运行跨越的轮次"
-        >
-          {view.stats.turns} 轮
-        </span>
-        <span
-          className="agent-transcript__stat"
-          title="折叠进该视图的捕获事件数"
-        >
-          {view.stats.events} 事件
-        </span>
+        <StatChip
+          name="thinking"
+          label={`${view.stats.thinking} 思考`}
+          steps={statGroups.thinking}
+          open={openStat === "thinking"}
+          onOpenChange={setOpenStat}
+          onJump={onSelectEvent}
+        />
+        <StatChip
+          name="reply"
+          label={`${view.stats.replies} 回复`}
+          steps={statGroups.reply}
+          open={openStat === "reply"}
+          onOpenChange={setOpenStat}
+          onJump={onSelectEvent}
+        />
+        <StatChip
+          name="question"
+          label={`${view.stats.questions} 提问`}
+          steps={statGroups.question}
+          open={openStat === "question"}
+          onOpenChange={setOpenStat}
+          onJump={onSelectEvent}
+        />
+        <StatChip
+          name="turn"
+          label={`${view.stats.turns} 轮`}
+          steps={statGroups.turn}
+          open={openStat === "turn"}
+          onOpenChange={setOpenStat}
+          onJump={onSelectEvent}
+        />
+        <StatChip
+          name="event"
+          label={`${view.stats.events} 事件`}
+          steps={statGroups.event}
+          open={openStat === "event"}
+          onOpenChange={setOpenStat}
+          onJump={onSelectEvent}
+        />
         {view.stats.snapshotsMerged > 0 ? (
           <span className="agent-transcript__stat is-merged">
             {view.stats.snapshotsMerged} 个流式快照已合并
@@ -434,25 +611,37 @@ function StepCard({
       data-event-id={step.eventId}
       ref={register}
     >
-      <button
-        className="agent-step__head"
-        onClick={onSelect}
-        title={`定位到 LOG ${step.sequence}`}
-        type="button"
-      >
-        {header.icon}
-        <span className="agent-step__label">{header.label}</span>
-        <span className="agent-step__meta">{header.meta}</span>
-        <span className="agent-step__code">{step.sequence}</span>
-        <span className="agent-step__turn">T{step.turn}</span>
-      </button>
+      <div className="agent-step__head-row">
+        <button
+          className="agent-step__head"
+          onClick={onSelect}
+          aria-label={`定位到 LOG ${step.sequence}`}
+          type="button"
+        >
+          {header.icon}
+          <span className="agent-step__label">{header.label}</span>
+          <span className="agent-step__meta">{header.meta}</span>
+          <span className="agent-step__code">{step.sequence}</span>
+          <span className="agent-step__turn">T{step.turn}</span>
+        </button>
+        {step.kind === "tool-result" ? (
+          <span className="agent-step__head-badges">
+            {step.durationMs !== null ? (
+              <span className="atomic-log__duration">{formatDurationMs(step.durationMs)}</span>
+            ) : null}
+            {step.pairLink ? (
+              <PairLinkMarker link={step.pairLink} onLocate={onLocate} />
+            ) : null}
+          </span>
+        ) : null}
+      </div>
       <div className="agent-step__body">
         {step.kind === "thinking" ? (
           <ThinkingBody step={step} />
         ) : step.kind === "reply" ? (
           <ReplyBody step={step} />
         ) : step.kind === "tool-result" ? (
-          <ToolResultBody step={step} onLocate={onLocate} />
+          <ToolResultBody step={step} />
         ) : step.kind === "question" ? (
           <QuestionBody
             step={step}
@@ -503,13 +692,7 @@ function ReplyBody({ step }: { step: ReplyStep }) {
   );
 }
 
-function ToolResultBody({
-  step,
-  onLocate,
-}: {
-  step: ToolResultStep;
-  onLocate: (eventId: string) => void;
-}) {
+function ToolResultBody({ step }: { step: ToolResultStep }) {
   // A result that closes a user-question tool shows its recorded answers in
   // the shared answer-rows rendering (highlighted option chips, Markdown
   // free text) instead of the generic JSON body.
@@ -534,28 +717,7 @@ function ToolResultBody({
   const isShell = Boolean(step.command);
   return (
     <>
-      <div className="agent-step__toolbar">
-        {step.durationMs !== null ? (
-          <span className="atomic-log__duration">{formatDurationMs(step.durationMs)}</span>
-        ) : null}
-        {step.pairLink ? (
-          <PairLinkMarker link={step.pairLink} onLocate={onLocate} />
-        ) : null}
-      </div>
-      {commandLine ? (
-        <div className="agent-step__command">
-          <span className="agent-step__command-label">COMMAND</span>
-          {isShell ? (
-            <span
-              aria-hidden="true"
-              className="agent-step__command-prompt"
-            >
-              $
-            </span>
-          ) : null}
-          <MarkdownView source={contentToMarkdown(commandLine)} />
-        </div>
-      ) : null}
+      {commandLine ? <CommandBlock command={commandLine} isShell={isShell} /> : null}
       {hasAnswers ? (
         <div className="agent-step__answers">
           <span className="agent-step__answers-label">ANSWERS</span>
@@ -593,12 +755,7 @@ function GenericBody({ step }: { step: GenericStep }) {
   const commandLine = step.command;
   return (
     <>
-      {commandLine ? (
-        <div className="agent-step__command">
-          <span className="agent-step__command-label">COMMAND</span>
-          <MarkdownView source={contentToMarkdown(commandLine)} />
-        </div>
-      ) : null}
+      {commandLine ? <CommandBlock command={commandLine} /> : null}
       <MarkdownView source={source} />
       <StepRelated payload={step.payload} resetToken={step.id} />
     </>
