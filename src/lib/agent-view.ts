@@ -172,6 +172,10 @@ function replyText(event: TraceEvent): string {
     stringValue(payload.text) ||
     stringValue(payload.content) ||
     stringValue(payload.payload?.message) ||
+    // A `Stop`-ended run (WorkBuddy's ChatGPT-style capture) delivers the
+    // assistant's final reply on `last_assistant_message`; reading it here is
+    // what lets that Stop project as a reply instead of a bare tool-result.
+    stringValue(payload.last_assistant_message) ||
     ""
   );
 }
@@ -250,6 +254,15 @@ export function buildAgentView(
   const diagnostics: AgentViewDiagnostic[] = [];
   const consumed = new Set<string>();
   let snapshotsMerged = 0;
+  // A run whose host publishes its reply as an `AgentMessage` is handled by
+  // the reply-group pass above. Some hosts (WorkBuddy's ChatGPT-style capture)
+  // publish no `AgentMessage` at all and instead carry the assistant's final
+  // text on the `Stop` event — so only when there is no `AgentMessage`, the
+  // Stop's `last_assistant_message` projects as a reply and the 回复 counter
+  // stops reading 0. A run that has both keeps the dedicated AgentMessage path.
+  const hasAgentMessage = events.some(
+    (event) => event.eventName === "AgentMessage",
+  );
 
   const base = (event: TraceEvent): AgentStepBase => ({
     id: `event:${event.id}`,
@@ -432,6 +445,20 @@ export function buildAgentView(
         : undefined;
       const startEvent =
         partnerIndex === undefined ? null : events[partnerIndex];
+      // A `Stop` that ends a run publishes no `AgentMessage`; when the run
+      // emitted none, its `last_assistant_message` is the assistant's final
+      // reply, so project it as a `reply` step (not a tool-result) and the
+      // 回复 counter reflects it. A run that did emit AgentMessages keeps the
+      // dedicated reply-group path above, and a bare Stop with no final text
+      // stays a tool-result.
+      if (
+        event.eventName === "Stop" &&
+        !hasAgentMessage &&
+        replyText(event).trim()
+      ) {
+        placement.push({ index, step: singleReply(event, null) });
+        return;
+      }
       // A result that closes a user-question tool carries the recorded
       // answers; the option sets that build its answer chips sit on the
       // paired start event. Only question tools get the projection — the

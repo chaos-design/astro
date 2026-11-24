@@ -911,9 +911,7 @@ function ToolResultBody({ step }: { step: ToolResultStep }) {
         </div>
       ) : source.trim() ? (
         <MarkdownView source={source} />
-      ) : (
-        <p className="agent-step__teaser">这条结果没有正文。</p>
-      )}
+      ) : null}
       <StepRelated payload={step.payload} resetToken={step.id} />
     </>
   );
@@ -936,11 +934,16 @@ function QuestionBody({
 function GenericBody({ step }: { step: GenericStep }) {
   const source = useMemo(() => contentToMarkdown(step.summary), [step.summary]);
   // A tool-call event opens with its structured invocation so the reader sees
-  // what ran before the summary and the related-fields dump.
+  // what ran before the related-fields dump. The CallBlock frame already shows
+  // the tool name in its bar and the command / fields in its body, so the
+  // bare summary ("Bash") underneath it is pure duplication — drop it whenever
+  // a call frame is present and keep the summary line only for the plain
+  // (non-tool) events where it is the whole body.
+  const inputs = step.inputs;
   return (
     <>
-      {step.inputs ? <CallBlock inputs={step.inputs} /> : null}
-      <MarkdownView source={source} />
+      {inputs ? <CallBlock inputs={inputs} /> : null}
+      {inputs ? null : <MarkdownView source={source} />}
       <StepRelated payload={step.payload} resetToken={step.id} />
     </>
   );

@@ -6219,6 +6219,75 @@ pre,
   background: var(--line-bright);
 }
 
+/* The Preview content pane reads like the Agent view's own frames: a Mac
+   window frame (three traffic-light dots + a mono label bar) wraps the same
+   Markdown / question renderer the Agent transcript uses, so a captured atom
+   previews as the artifact it is instead of a bare text block. */
+.preview-mac-frame {
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--violet) 30%, var(--line-bright));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--panel) 84%, var(--violet) 12%);
+}
+
+.preview-mac-frame__bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 11px;
+  border-bottom: 1px solid color-mix(in srgb, var(--violet) 22%, var(--line));
+  background: color-mix(in srgb, var(--panel) 72%, var(--violet) 18%);
+}
+
+.preview-mac-frame__dots {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.preview-mac-frame__dots i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--amber) 55%, var(--muted));
+}
+
+.preview-mac-frame__dots i:first-child {
+  background: color-mix(in srgb, var(--red) 65%, var(--muted));
+}
+
+.preview-mac-frame__dots i:nth-child(2) {
+  background: color-mix(in srgb, var(--amber) 80%, var(--muted));
+}
+
+.preview-mac-frame__dots i:nth-child(3) {
+  background: color-mix(in srgb, var(--teal) 60%, var(--muted));
+}
+
+.preview-mac-frame__label {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-strong);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.7rem;
+  font-weight: var(--weight-medium, 600);
+  letter-spacing: 0.04em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preview-mac-frame .markdown-preview {
+  margin: 10px 12px 12px;
+}
+
+.preview-mac-frame .markdown-preview > :first-child {
+  margin-top: 0;
+}
+
+.preview-mac-frame .payload-overlay__empty {
+  margin: 10px 12px 12px;
+}
+
+
 /* Related data reads as a compact definition list: one label/value pair per
    row, with long paths wrapping instead of being clipped. Annotations carry
    the violet accent so an explanation is distinguishable from a timestamp. */
@@ -10385,8 +10454,29 @@ pre,
   display: flex;
   flex-direction: column;
   gap: 2px;
-  max-height: min(58vh, 520px);
-  overflow: auto;
+  /* A hard cap so the dropdown never swallows the whole header; the list
+     scrolls inside instead. */
+  max-height: min(40vh, 340px);
+  overflow-y: auto;
+  /* Reserve a right gutter so the (macOS overlay) scrollbar and its thumb
+     never sit over the turn column; a visible thin scrollbar keeps the
+     affordance readable on any platform. */
+  padding-right: 10px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-bright) transparent;
+}
+
+.agent-transcript__stat-card-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.agent-transcript__stat-card-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.agent-transcript__stat-card-list::-webkit-scrollbar-thumb {
+  background: var(--line-bright);
+  border-radius: 4px;
 }
 
 /* The displayed message's execution time, read from the same display state

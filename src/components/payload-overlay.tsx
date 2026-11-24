@@ -947,7 +947,19 @@ export function PayloadOverlay({
                       onScroll={handleContentScroll}
                       ref={contentBodyRef}
                     >
-                      <QuestionPreview payload={activePayload as TracePayload} />
+                      <div className="preview-mac-frame">
+                        <div className="preview-mac-frame__bar" aria-hidden="true">
+                          <span className="preview-mac-frame__dots">
+                            <i />
+                            <i />
+                            <i />
+                          </span>
+                          <span className="preview-mac-frame__label">
+                            {activeRow?.eventName || activeRow?.key || "Preview"}
+                          </span>
+                        </div>
+                        <QuestionPreview payload={activePayload as TracePayload} />
+                      </div>
                     </div>
                   </section>
                 ) : (
@@ -958,16 +970,28 @@ export function PayloadOverlay({
                       onScroll={handleContentScroll}
                       ref={contentBodyRef}
                     >
-                      {preview.hasContent ? (
-                        <div
-                          className="markdown-preview"
-                          dangerouslySetInnerHTML={previewHtml}
-                        />
-                      ) : (
-                        <p className="payload-overlay__empty">
-                          没有可预览的文本。切到 Code 查看原始载荷。
-                        </p>
-                      )}
+                      <div className="preview-mac-frame">
+                        <div className="preview-mac-frame__bar" aria-hidden="true">
+                          <span className="preview-mac-frame__dots">
+                            <i />
+                            <i />
+                            <i />
+                          </span>
+                          <span className="preview-mac-frame__label">
+                            {activeRow?.eventName || activeRow?.key || "Preview"}
+                          </span>
+                        </div>
+                        {preview.hasContent ? (
+                          <div
+                            className="markdown-preview"
+                            dangerouslySetInnerHTML={previewHtml}
+                          />
+                        ) : (
+                          <p className="payload-overlay__empty">
+                            没有可预览的文本。切到 Code 查看原始载荷。
+                          </p>
+                        )}
+                      </div>
                     </div>
                   </section>
                 )}

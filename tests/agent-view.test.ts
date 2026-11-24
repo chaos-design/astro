@@ -54,6 +54,27 @@ test("keeps every Reasoning event as its own thinking block", () => {
   assert.ok(thinking.every((step) => step.kind === "thinking" && step.collapsedByDefault));
 });
 
+test("a run with no AgentMessage projects its Stop final message as a reply", () => {
+  // A host that publishes no AgentMessage (WorkBuddy's ChatGPT capture)
+  // carries the assistant's reply on the Stop event's last_assistant_message.
+  // Without this projection the 回复 counter reads 0 for such a run.
+  const events = createDemoEvents(NOW).filter((event) =>
+    !["AgentMessage", "Reasoning"].includes(event.eventName),
+  );
+  assert.ok(
+    events.some((event) => event.eventName === "Stop"),
+    "the demo run carries a Stop event",
+  );
+  const view = buildAgentView(events, "workbuddy");
+  const stop = events.find((event) => event.eventName === "Stop")!;
+  const reply = view.steps.find(
+    (step) => step.kind === "reply" && step.eventId === stop.id,
+  );
+  assert.ok(reply, "the Stop projects as a reply step");
+  if (reply?.kind !== "reply") return;
+  assert.match(reply.text, /Implementation complete/);
+});
+
 test("parses the question once and binds it to the blocking start event", () => {
   const view = buildAgentView(createDemoEvents(NOW));
   const question = view.steps.find((step) => step.kind === "question");
