@@ -188,7 +188,9 @@ test("the Agent view keeps a reader's scroll and offers a jump to the newest ste
   assert.match(agentTranscript, /initializedChainRef\.current === chainId/);
   assert.match(agentTranscript, /chainId = view\.steps\[0\]\?\.id/);
   assert.doesNotMatch(agentTranscript, /firstStepIdRef/);
-  assert.doesNotMatch(agentTranscript, /behavior: "smooth"/);
+  // Explicit atom picks animate; live follow / streamed appends stay instant.
+  assert.match(agentTranscript, /behavior: "smooth"/);
+  assert.match(agentTranscript, /scrollToTop\(container, container\.scrollHeight, explicit\)/);
   assert.match(stylesForOverlay, /\.agent-transcript__jump \{[\s\S]*?position: absolute/);
   assert.match(stylesForOverlay, /:not\(\.agent-transcript__jump\):not\(\.agent-transcript__stat-button\):not\(\.agent-transcript__stat-card-row\) \{/);
   assert.match(stylesForOverlay, /:not\(\.agent-transcript__jump\):not\(\.agent-transcript__stat-button\):not\(\.agent-transcript__stat-card-row\):focus-visible/);
@@ -835,13 +837,13 @@ test("a shrinking step chain clears the pending new-message count", () => {
  * Agent head no longer carries a brand or a version chip.
  */
 test("the agent identity lives in the header as an icon and a name only", () => {
-  assert.match(overlay, /payload-overlay__agent/);
-  assert.match(overlay, /<PlatformIcon platform=\{platform\}/);
+  assert.match(overlay, /payload-overlay__eyebrow-sep/);
+  assert.match(overlay, /<PlatformIcon platform=\{platform\} width=\{11\}/);
   assert.match(overlay, /getAtomPlatformConfig\(platform\)\.label/);
   assert.doesNotMatch(overlay, /agentVersion/);
   assert.doesNotMatch(agentTranscript, /agentVersion|agent-transcript__version|agent-transcript__brand/);
   assert.doesNotMatch(app, /overlayAgentVersion/);
-  assert.match(stylesForOverlay, /\.payload-overlay__agent \{/);
+  assert.match(stylesForOverlay, /\.payload-overlay__copy \.eyebrow \{/);
 });
 
 /**
@@ -888,4 +890,21 @@ test("Pre and Post tool frames follow the phase tone", () => {
   assert.match(stylesForOverlay, /\.agent-step\.hook-pre \.agent-step__call--shell \{[\s\S]*?var\(--cyan\)/);
   assert.match(stylesForOverlay, /\.agent-step\.hook-post \.agent-step__call--shell \{[\s\S]*?var\(--teal\)/);
   assert.match(stylesForOverlay, /\.agent-step\.hook-post\.agent-step--tool-result \{[\s\S]*?var\(--teal\)/);
+});
+
+/** Hook badges and the compact eyebrow identity keep their new contracts. */
+test("the header identity is one compact eyebrow and hook badges are phase-coloured", () => {
+  assert.match(stylesForOverlay, /\.payload-overlay__copy \.eyebrow \{\s*\n\s*display: inline-flex/);
+  assert.match(agentTranscript, /agent-step__meta--hook is-\$\{hookPhase\}/);
+  assert.match(stylesForOverlay, /\.agent-step__meta--hook \{[\s\S]*?var\(--log-tone\)/);
+});
+
+/** Preview and Code mark the inspected atom, and embedded images render as images. */
+test("Preview and Code locate the inspected atom and embedded images are previews", () => {
+  assert.match(overlay, /if \(viewMode === "agent"\) \{\s*return;/);
+  assert.match(overlay, /setContentActiveEventId\(selectedEventId \|\| null\)/);
+  assert.match(overlay, /findDataImages\(JSON\.stringify\(payload \?\? \{\}\)\)/);
+  assert.match(overlay, /!\[内嵌图片 \$\{index \+ 1\}\]\(\$\{src\}\)/);
+  assert.match(stylesForOverlay, /\.payload-overlay__field-image \{/);
+  assert.match(stylesForOverlay, /\.preview-mac-frame \.markdown-preview img \{/);
 });

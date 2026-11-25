@@ -7,6 +7,7 @@ import {
   RELATED_VALUE_MAX_CHARS,
   type RelatedField,
 } from "@/lib/payload-preview";
+import { findDataImages, replaceDataImages } from "@/lib/embedded-image";
 
 /**
  * One related-data value. Long values fold behind their own control so a
@@ -19,6 +20,39 @@ import {
 export function RelatedValue({ value }: { value: string }) {
   const foldable = isFoldableRelatedValue(value);
   const [expanded, setExpanded] = useState(false);
+  // A base64 image is resource content, not text: show the image itself and
+  // keep the surrounding JSON readable instead of printing thousands of
+  // characters of encoded data.
+  const images = findDataImages(value);
+  if (images.length) {
+    return (
+      <span className="payload-overlay__field-images">
+        {images.map((src, index) => (
+          <img
+            alt={`内嵌图片 ${index + 1}`}
+            className="payload-overlay__field-image"
+            key={src}
+            loading="lazy"
+            src={src}
+          />
+        ))}
+        <span className="payload-overlay__field-image-note">
+          {images.length} 张内嵌图片
+        </span>
+        <button
+          aria-expanded={expanded}
+          className="payload-overlay__field-more"
+          onClick={() => setExpanded((current) => !current)}
+          title={expanded ? "收起原始字段" : "查看原始字段"}
+          type="button"
+        >
+          {expanded ? "收起" : "原文"}
+          {expanded ? <ChevronUp aria-hidden="true" /> : <ChevronDown aria-hidden="true" />}
+        </button>
+        {expanded ? replaceDataImages(value) : null}
+      </span>
+    );
+  }
   if (!foldable) {
     return <>{value}</>;
   }

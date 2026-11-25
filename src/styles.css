@@ -6123,33 +6123,27 @@ pre,
   gap: 4px;
 }
 
-/* The producing agent's identity lives in this one header, visible in every
- * view (Agent / Preview / Code). It is an icon plus a name only — the
- * recorder's client version is envelope data and is never printed here. */
-.payload-overlay__agent {
+/* Agent identity shares the eyebrow line with the surface name: one compact
+ * row instead of a brand row of its own. Icon + name only — the recorder's
+ * client version is envelope data and is never printed here. */
+.payload-overlay__copy .eyebrow {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  margin-bottom: 2px;
-}
-
-.payload-overlay__agent .platform-icon {
-  width: 14px;
-  height: 14px;
-  flex: 0 0 14px;
-  object-fit: contain;
-}
-
-.payload-overlay__agent-name {
-  color: var(--text-strong);
-  font-weight: var(--weight-medium, 600);
-  letter-spacing: 0.02em;
-}
-
-.payload-overlay__copy .eyebrow {
+  gap: 5px;
   color: var(--muted);
   font-size: 8px;
   letter-spacing: 0.16em;
+}
+
+.payload-overlay__copy .eyebrow .platform-icon {
+  width: 11px;
+  height: 11px;
+  flex: 0 0 11px;
+  object-fit: contain;
+}
+
+.payload-overlay__eyebrow-sep {
+  color: var(--edge);
 }
 
 .payload-overlay [data-slot="dialog-title"] {
@@ -6333,6 +6327,54 @@ pre,
   letter-spacing: 0.04em;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Preview content follows the Agent cards' wrapping rule: a long captured
+   command or result breaks at word boundaries inside the pane instead of
+   adding a horizontal scrollbar to the whole preview surface. */
+.preview-mac-frame .markdown-preview pre,
+.preview-mac-frame .markdown-preview .md-code pre {
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: normal;
+  overflow-x: hidden;
+}
+
+/* Numbered file dumps keep their two aligned columns. */
+.preview-mac-frame .markdown-preview .md-code--numbered .md-code__code {
+  overflow-x: auto;
+}
+
+.preview-mac-frame .markdown-preview img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 6px 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.payload-overlay__field-images {
+  display: flex;
+  min-width: 0;
+  flex-flow: row wrap;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.payload-overlay__field-image {
+  display: block;
+  width: 96px;
+  height: 72px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--panel-raised);
+  object-fit: cover;
+}
+
+.payload-overlay__field-image-note {
+  color: var(--muted);
+  font-size: var(--text-caption);
 }
 
 .preview-mac-frame .markdown-preview {
@@ -6818,9 +6860,27 @@ pre,
    clearly below the selection treatment so it never competes with the atom
    the reader actually picked. It moves with scroll, not with selection. */
 .payload-overlay__rail .atomic-log__row.is-content-active {
-  border-color: color-mix(in srgb, var(--log-tone) 50%, var(--line-bright));
-  background: color-mix(in srgb, var(--log-tone) 10%, var(--panel-hover));
-  box-shadow: inset 2px 0 color-mix(in srgb, var(--log-tone) 80%, transparent);
+  border-color: color-mix(in srgb, var(--log-tone) 78%, var(--line-bright));
+  background: color-mix(in srgb, var(--log-tone) 22%, var(--panel-hover));
+  box-shadow: inset 3px 0 var(--log-tone);
+}
+
+.payload-overlay__rail .atomic-log__row.is-content-active strong.atomic-log__name,
+.payload-overlay__rail .atomic-log__row.is-content-active .log-sequence {
+  color: var(--text-strong);
+}
+
+.payload-overlay__rail .atomic-log__row.is-content-active::after {
+  position: absolute;
+  top: 50%;
+  right: 5px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--log-tone);
+  box-shadow: 0 0 6px var(--log-tone);
+  content: "";
+  transform: translateY(-50%);
 }
 
 /* Same tone map as the LOG row, so a tool atom and a question atom keep their
@@ -7336,6 +7396,7 @@ pre,
   display: grid;
   width: 100%;
   min-width: 0;
+  position: relative;
   min-height: 46px;
   grid-template-columns: 27px 6px minmax(42px, 1fr) 68px;
   align-items: center;
@@ -10877,6 +10938,23 @@ pre,
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* A hook's native event name is the only thing that tells a PreToolUse call
+   from a PostToolUse result once both have been folded into tool cards. Give
+   that badge its phase colour so the two read apart at a glance. */
+.agent-step__meta--hook {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  padding: 1px 7px;
+  border: 1px solid color-mix(in srgb, var(--log-tone) 48%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--log-tone) 14%, transparent);
+  color: var(--log-tone);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.625rem;
+  letter-spacing: 0.02em;
 }
 
 .agent-step__code,

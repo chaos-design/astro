@@ -52,6 +52,7 @@ import {
   splitPayloadPreview,
 } from "@/lib/payload-preview";
 import { findPayloadFilePath } from "@/lib/numbered-code";
+import { findDataImages, replaceDataImages } from "@/lib/embedded-image";
 import { payloadToMarkdown } from "@/lib/payload-markdown";
 import { parseUserQuestionContent } from "@/lib/user-question-content";
 import type { TracePairLink } from "@/lib/trace-model";
@@ -273,9 +274,18 @@ function preparePreview(
   const split = splitPayloadPreview(payload);
   // A Read result's numbered body is rendered with a line-number gutter; the
   // captured file path selects its highlight language when one is available.
-  const source = split.content.trim()
+  const textSource = split.content.trim()
     ? contentToMarkdown(split.content, findPayloadFilePath(payload))
     : payloadToMarkdown(payload) || fallbackPayloadMarkdown(payload);
+  // Inline image resources belong in the preview as images. Swap the raw
+  // base64 blobs for a short label and append them as Markdown images — the
+  // renderer's sanitizer already allows data:image sources only.
+  const embedded = findDataImages(JSON.stringify(payload ?? {}));
+  const source = embedded.length
+    ? `${replaceDataImages(textSource)}\n\n${embedded
+        .map((src, index) => `![内嵌图片 ${index + 1}](${src})`)
+        .join("\n\n")}`
+    : textSource;
   const rendered = renderMarkdownPreview(source);
   // Parsed for every row: a payload carrying a structured `questions` list is
   // the question list itself, whether or not the classifier named the event a
@@ -410,6 +420,9 @@ export function PayloadOverlay({
   // produced the card they are on — the two panes stay in step while reading.
   const [contentActiveEventId, setContentActiveEventId] = useState<string | null>(null);
   const contentActiveRowRef = useRef<HTMLButtonElement | null>(null);
+  // Bumped when the reader clicks an Agent step so the rail reveal runs even
+  // if the selected id did not change (clicking the already-selected card).
+  const [railRevealRequest, setRailRevealRequest] = useState(0);
   // Only an explicit rail / step / pair pick locates the Agent transcript.
   // Live follow changes the selected event without bumping this, so a reader
   // who scrolled back through the chain is not yanked to the newest step.
@@ -599,7 +612,7 @@ export function PayloadOverlay({
   // may move here.
   const selectedRowRef = useRef<HTMLButtonElement | null>(null);
   useEffect(() => {
-    if (!open || !following) {
+    if (!open) {
       return;
     }
     const row = selectedRowRef.current;
@@ -614,13 +627,13 @@ export function PayloadOverlay({
     } else if (rowBottom > list.scrollTop + list.clientHeight) {
       list.scrollTop = rowBottom - list.clientHeight;
     }
-  }, [atoms.length, following, open, selectedEventId]);
+  }, [atoms.length, following, open, railRevealRequest, selectedEventId]);
   // The Agent pane's reading line moves through the chain as the reader
-  // scrolls. Reveal the matching rail row when it drifts out of view, but
-  // never fight Live follow (which owns the rail while armed) and never move
-  // the rail for a row already visible.
+  // scrolls; Preview / Code mark the single payload they show. Reveal the
+  // matching rail row when it drifts out of view, but never fight Live follow
+  // (which owns the rail while armed) and never move it for a visible row.
   useEffect(() => {
-    if (!open || following || viewMode !== "agent" || !contentActiveEventId) {
+    if (!open || following || !contentActiveEventId) {
       return;
     }
     const row = contentActiveRowRef.current;
@@ -635,7 +648,7 @@ export function PayloadOverlay({
     } else if (rowBottom > list.scrollTop + list.clientHeight - 8) {
       list.scrollTop = rowBottom - list.clientHeight + 8;
     }
-  }, [contentActiveEventId, following, open, viewMode]);
+  }, [contentActiveEventId, following, open]);
   const atomRefs = useRef<Array<HTMLButtonElement | null>>([]);
   // The reader's scroll position in the two preview panes, written by their
   // onScroll handlers (ref writes only — a streamed batch must not re-render).
@@ -743,20 +756,28 @@ export function PayloadOverlay({
   // only knows an event id and resolves its atom here, never a second store.
   const handleAgentSelectEvent = (eventId: string) => {
     handleLocatePartner(eventId);
+    setRailRevealRequest((current) => current + 1);
   };
+
+  // Preview and Code show one payload at a time, so the atom being inspected
+  // is simply the selected event. Mark it in the rail too — otherwise those
+  // views lose the source-atom link the Agent pane maintains while scrolling.
+  useEffect(() => {
+    if (viewMode === "agent") {
+      return;
+    }
+    setContentActiveEventId(selectedEventId || null);
+  }, [selectedEventId, viewMode]);
 
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogContent className="payload-overlay">
         <header className="payload-overlay__head">
           <div className="payload-overlay__copy">
-            <span className="payload-overlay__agent">
-              <PlatformIcon platform={platform} width={14} height={14} />
-              <span className="payload-overlay__agent-name">
-                {getAtomPlatformConfig(platform).label}
-              </span>
-            </span>
             <span className="eyebrow">
+              <PlatformIcon platform={platform} width={11} height={11} />
+              {getAtomPlatformConfig(platform).label}
+              <span className="payload-overlay__eyebrow-sep">·</span>
               {variant === "question" ? "USER QUESTION" : "CAPTURED PAYLOAD"}
             </span>
             <DialogTitle>{label}</DialogTitle>

@@ -505,9 +505,19 @@ export function AgentTranscript({
   // the newest step is still on screen, so a programmatic scroll (pin, locate,
   // jump) can never masquerade as a manual one — there is no gesture state to
   // get wrong.
-  const scrollToTop = useCallback((element: HTMLElement, top: number) => {
-    element.scrollTop = top;
-  }, []);
+  const scrollToTop = useCallback(
+    (element: HTMLElement, top: number, smooth = false) => {
+      if (smooth) {
+        // An explicit pick animates so the reader keeps their place in the
+        // chain. Live pinning and streamed appends stay instant — a smooth
+        // animation there would fight the re-renders of a running message.
+        element.scrollTo({ top, behavior: "smooth" });
+      } else {
+        element.scrollTop = top;
+      }
+    },
+    [],
+  );
 
   // The scroll handler reads layout at most once per frame: a live stream can
   // append several events a second, but a wheel gesture must not turn every
@@ -517,23 +527,31 @@ export function AgentTranscript({
     if (!container) {
       return;
     }
-    // Which atom produced the text at the reading line? The last card whose
-    // top has passed a line just below the viewport top is the one being
-    // read; walking DOM order lets us stop at the first card still below it.
+    // Which atom produced the text at the reading line? Steps are in DOM
+    // order, so a binary search over their tops finds the last card above the
+    // line in O(log n) layout reads instead of one read per step on every
+    // scroll frame of a long run.
     const readingLine = container.getBoundingClientRect().top + 28;
-    let active: AgentStep | null = null;
-    for (const step of view.steps) {
-      const element = stepRefs.current.get(step.id);
+    const steps = view.steps;
+    let low = 0;
+    let high = steps.length - 1;
+    let activeIndex = -1;
+    while (low <= high) {
+      const middle = (low + high) >> 1;
+      const element = stepRefs.current.get(steps[middle].id);
       if (!element) {
+        high = middle - 1;
         continue;
       }
       if (element.getBoundingClientRect().top <= readingLine) {
-        active = step;
+        activeIndex = middle;
+        low = middle + 1;
       } else {
-        break;
+        high = middle - 1;
       }
     }
-    const activeEventId = active?.eventId ?? view.steps[0]?.eventId ?? null;
+    const activeEventId =
+      steps[activeIndex >= 0 ? activeIndex : 0]?.eventId ?? null;
     if (activeEventId !== reportedActiveRef.current) {
       reportedActiveRef.current = activeEventId;
       onActiveEventChange?.(activeEventId);
@@ -696,20 +714,25 @@ export function AgentTranscript({
     const isLastStep =
       view.steps.length > 0 && view.steps.at(-1)?.id === targetStep.id;
     if (isLastStep || !element) {
-      scrollToTop(container, container.scrollHeight);
+      scrollToTop(container, container.scrollHeight, explicit);
       atBottomRef.current = true;
-      syncScrollState();
+      if (!explicit) {
+        syncScrollState();
+      }
       return;
     }
     // An older step: align its top near the container top so the reader sees
-    // it in context. Instant positioning: smooth scrolling is interrupted by
-    // the re-renders that keep arriving while a live run appends events.
+    // it in context. An explicit pick animates; a live follow stays instant so
+    // a running message's re-renders cannot interrupt the scroll.
     const top =
       element.getBoundingClientRect().top -
       container.getBoundingClientRect().top +
       container.scrollTop;
-    scrollToTop(container, Math.max(0, top - 12));
-    syncScrollState();
+    scrollToTop(container, Math.max(0, top - 12), explicit);
+    atBottomRef.current = false;
+    if (!explicit) {
+      syncScrollState();
+    }
   }, [
     selectedEventId,
     targetStep?.id,
@@ -983,7 +1006,14 @@ function StepCard({
           {header.tool ? (
             <span className="agent-step__tool">{header.tool}</span>
           ) : null}
-          <span className="agent-step__meta">{header.meta}</span>
+          <span
+            className={cn(
+              "agent-step__meta",
+              hookPhase && `agent-step__meta--hook is-${hookPhase}`,
+            )}
+          >
+            {header.meta}
+          </span>
           <span className="agent-step__code">{step.sequence}</span>
           <span className="agent-step__turn">T{step.turn}</span>
         </button>
