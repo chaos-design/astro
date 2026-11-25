@@ -68,17 +68,41 @@ test("a closed panel renders only the result and marks the device that answered"
   assert.match(panel, /isInteractionPanelReadOnly\(status, lockedBy, deviceId\)/);
   assert.match(panel, /data-status=\{status\}/);
   assert.match(panel, /answered on \{lockedBy\}/);
-  // The result block is shared with the docked surface.
-  assert.match(resultList, /result\?\.answers \?\? \{\}/);
-  assert.match(resultList, /Object\.entries\(answers\)\.map/);
+  // The result block is shared with the docked surface and renders through
+  // one answer-row component, in the request's order.
+  assert.match(resultList, /resultAnswerRows\(\{ questions \}, result\)/);
+  assert.match(resultList, /<AnswerRows/);
+  const rows = readFileSync(
+    new URL("../src/components/answer-rows.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(rows, /matchAnswerOptions\(row\.answer, options\)/);
+  assert.match(rows, /answer-rows__chip/);
+  assert.match(rows, /<MarkdownView source=\{text\} \/>/);
+});
+
+test("the floating card uses the same batch hint and Submit / Cancel order", () => {
+  assert.match(panel, /question-surface__summary/);
+  assert.match(panel, /className="question-options"/);
+  assert.match(panel, /className="question-options__option"/);
+  assert.match(panel, /个问题 · 一次提交/);
+  assert.doesNotMatch(panel, /一次性提交/);
+  const footer = panel.slice(
+    panel.indexOf("<footer"),
+    panel.indexOf("</footer>"),
+  );
+  assert.ok(footer.indexOf("Submit") < footer.indexOf("Cancel"));
 });
 
 test("the panel styles cover the pressed option and the pending state", () => {
   assert.match(styles, /\.interaction-panel \{/);
-  assert.match(styles, /\.interaction-panel__option\[aria-pressed="true"\] \{/);
-  assert.match(styles, /\.interaction-panel__option:hover:not\(:disabled\) \{/);
+  // The floating card and the docked surface share one compact option chip.
+  assert.match(styles, /\.question-options__option\[aria-pressed="true"\]/);
+  assert.match(styles, /\.question-options__option\.is-selected/);
+  assert.doesNotMatch(styles, /\.interaction-panel__option \{/);
   assert.match(styles, /\.interaction-panel__pending \{/);
-  assert.match(styles, /\.question-result li \{/);
+  assert.match(styles, /\.answer-rows__row \{/);
+  assert.match(styles, /\.answer-rows__chip \{/);
   assert.match(
     styles,
     /\.interaction-panel\[data-status="timeout"\] \.interaction-panel__status/,
@@ -125,7 +149,10 @@ test("keyboard flow stays on the card and cannot bypass the button guards", () =
   assert.match(panel, /optionsRef\.current \|\| panelRef\.current/);
   assert.match(panel, /interaction-panel__keys/);
   assert.match(panel, /target\.isContentEditable/);
-  assert.match(panel, /\["TEXTAREA", "SELECT"\]/);
+  // Editable targets are excluded by capability, not by a tag-name list: a
+  // text input must own its digits and its Enter.
+  assert.match(panel, /target\.closest\("input, textarea, select, \[contenteditable\]"\)/);
+  assert.match(panel, /placeholder="选择选项，或直接输入答案…"/);
 });
 
 test("the countdown is a CSS animation driven by the host's timestamps", () => {

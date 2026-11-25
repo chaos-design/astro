@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { projectTraceEvents } from "../src/lib/atomic-projection.ts";
+import { projectTraceEvents, toAtomicDefinition } from "../src/lib/atomic-projection.ts";
 import { buildHarnessFlow, normalizeTraceEvent } from "../src/lib/trace-model.ts";
 import { buildTrajectoryModel } from "../src/lib/trajectory-model.ts";
 
@@ -33,4 +33,18 @@ test("keeps successive model calls distinct inside the same explicit turn", () =
   assert.equal(models[0].instance.id, models[1].instance.id);
   assert.equal(models[2].instance.id, models[3].instance.id);
   assert.notEqual(models[0].instance.id, models[2].instance.id);
+});
+
+test("atomic definitions are cached per source atom and resolve aliases correctly", () => {
+  // Platform config hands the same atom object to every projected event. The
+  // definition is pure, so caching it once per atom removes tens of thousands
+  // of redundant allocations per streaming batch.
+  const atom = { key: "tool-call", kind: "gate", label: "Tool call" };
+  const first = toAtomicDefinition(atom);
+  const second = toAtomicDefinition(atom);
+  assert.equal(first, second, "same atom object returns the cached definition");
+  assert.equal(first.kind, "action", "gate alias resolves once and persists");
+  const other = toAtomicDefinition({ key: "tool-call", kind: "gate", label: "Tool call" });
+  assert.notEqual(first, other, "a different object is a different cache entry");
+  assert.equal(toAtomicDefinition({ key: "x", kind: "brand-new-kind", label: "X" }).kind, "trace");
 });

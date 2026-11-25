@@ -51,8 +51,13 @@ the first Pi process ends.
 
 ## Scope notes
 
-- Message deltas (`message_start` / `message_update`), turn markers, and tool
-  execution progress are intentionally unmapped: `tool_call` / `tool_result`
-  already cover the tool lifecycle.
+- `message_start` / `message_update` drive throttled in-flight
+  `AgentMessage{streamed:true}` snapshots (one per 800ms per message) so the
+  console shows the text while the step is still running; `message_end` then
+  writes the single complete message. The update's accumulated text is read
+  first, so every snapshot is a prefix of that final text. These updates stay
+  unmapped in `mapping.ts`; the accumulation lives in `index.ts`.
+- Turn markers and tool execution progress are intentionally unmapped:
+  `tool_call` / `tool_result` already cover the tool lifecycle.
 - Event payloads are read defensively, so Pi updates that add fields keep
   working; capture fails open and never blocks the agent loop.

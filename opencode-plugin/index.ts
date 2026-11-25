@@ -3,12 +3,13 @@ import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { claimSession } from "./claim";
+import { claimSession } from "./claim.ts";
 import {
   isTerminalEventName,
   mapOpenCodeEvent,
+  opencodeEventDirectory,
   type AstroPayload,
-} from "./mapping";
+} from "./mapping.ts";
 
 type AstroRecorder = {
   resolveAstroHome?: (environment?: NodeJS.ProcessEnv) => string;
@@ -33,6 +34,19 @@ const recorderCandidates = [
 
 const source = "opencode";
 const flushIntervalMs = 150;
+
+// The installed adapter's own manifest is the single source of truth for which
+// capture code wrote an event. Stamping it lets the console see a stale process
+// still emitting an old version after a reinstall (the restart gap that made
+// an outdated plugin look like "messages not syncing").
+const pluginRequire = createRequire(import.meta.url);
+const captureVersion = (() => {
+  try {
+    return String(pluginRequire("./package.json").version || "");
+  } catch {
+    return "";
+  }
+})();
 
 /**
  * A session is recorded by exactly one plugin instance. OpenCode can keep an
@@ -125,8 +139,31 @@ export default {
     };
 
     const enqueue = (payload: AstroPayload) => {
-      queue.push(payload);
+      queue.push(captureVersion ? { ...payload, captureVersion } : payload);
       timer ??= setTimeout(flush, flushIntervalMs);
+    };
+
+    // `session.text.delta` is the only live carrier of assistant text; the
+    // complete value arrives later in `session.text.ended`. Accumulate the
+    // deltas per message so the console can show content while the main agent
+    // is still executing instead of waiting for the final part boundary.
+    const liveText = new Map<string, { text: string; lastAt: number }>();
+    const liveTextIntervalMs = 800;
+
+    const claimIfNeeded = (sessionId: string): boolean => {
+      if (ownedSessions.has(sessionId)) {
+        return true;
+      }
+      if (foreignSessions.has(sessionId)) {
+        return false;
+      }
+      if (claimSession(sessionId, { home: resolveAstroHome(), source })) {
+        ownedSessions.add(sessionId);
+        return true;
+      }
+      // Another live instance owns this session.
+      foreignSessions.add(sessionId);
+      return false;
     };
 
     const emit = (event: any) => {
@@ -134,11 +171,10 @@ export default {
       if (!sessionId) {
         return;
       }
-      const eventDirectory =
-        event?.location?.directory ||
-        event?.data?.location?.directory ||
-        sessionDirs.get(sessionId) ||
-        "";
+      const eventDirectory = opencodeEventDirectory(
+        event,
+        sessionDirs.get(sessionId),
+      );
       if (eventDirectory) {
         sessionDirs.set(sessionId, eventDirectory);
       }
@@ -147,17 +183,35 @@ export default {
       if (!eventDirectory || eventDirectory !== location) {
         return;
       }
-      if (foreignSessions.has(sessionId)) {
+
+      const textKey = `${sessionId}:${
+        event?.data?.messageID || event?.data?.partID || "default"
+      }`;
+      if (event?.type === "session.text.delta") {
+        const delta = event?.data?.delta;
+        if (typeof delta === "string" && delta) {
+          const state = liveText.get(textKey) ?? { text: "", lastAt: 0 };
+          state.text += delta;
+          const now = Date.now();
+          if (
+            now - state.lastAt >= liveTextIntervalMs &&
+            claimIfNeeded(sessionId)
+          ) {
+            state.lastAt = now;
+            enqueue({
+              eventName: "AgentMessage",
+              sessionId,
+              cwd: eventDirectory,
+              message: state.text,
+              streamed: true,
+            });
+          }
+          liveText.set(textKey, state);
+        }
         return;
       }
-      if (!ownedSessions.has(sessionId)) {
-        if (claimSession(sessionId, { home: resolveAstroHome(), source })) {
-          ownedSessions.add(sessionId);
-        } else {
-          // Another live instance owns this session.
-          foreignSessions.add(sessionId);
-          return;
-        }
+      if (event?.type === "session.text.ended") {
+        liveText.delete(textKey);
       }
 
       const callId = event?.data?.id;
@@ -169,6 +223,11 @@ export default {
         toolName: toolKey ? toolNames.get(toolKey) : undefined,
       });
       if (!payloads.length) {
+        return;
+      }
+      // Claim only once there is something to record. An unmapped event must
+      // not hand a session to an instance that will never write any trace.
+      if (!claimIfNeeded(sessionId)) {
         return;
       }
       if (!startedSessions.has(sessionId)) {

@@ -51,12 +51,136 @@
 - 单一职责的单一定义：
   - 异常与错误判定只在 `src/lib/exception-events.ts`；
   - RUN HISTORY 的 live 判定只在 `src/lib/run-history-state.ts`（`isLiveRunStatus`
-    + `isFreshLiveRun` + `collectLiveRunKeys`）；
+    + `isFreshLiveRun` + `collectLiveRunKeys`）；等待用户提问的展示口径也只在
+    同文件的 `isUserQuestionWaitingRun`：底层 `status` 仍是 `waiting`（保留
+    长新鲜度窗口与 IDLE 文案），但 RUN HISTORY 以 RUNNING 呈现，限流等待仍显示
+    WAITING；
   - 时间窗口计算只在 `src/lib/run-history-window.ts`；
   - 预览页「是否打开过」的状态只在 `plugin/trace-recorder.cjs`
     （`readPreviewState` / `markPreviewOpened`，持久化为 `ASTRO_HOME` 下的
     `preview-state.json`）：服务端在控制台页面接入 `/api/stream` 时打点，
     Hook 启动流程据此决定是否还需要为用户打开浏览器；
+  - 把载荷变成 Markdown 预览文档只在 `src/lib/payload-markdown.ts`
+    （`payloadToMarkdown`：在任意深度优先找真正的捕获结果——`captured`、
+    `tool_response`、`output`、`result` 及其嵌套 `content` 数组——直接作为文本返回，
+    让工具返回值的 Markdown 被真正渲染，而不是展示字段名和 JSON 块；`tool_input`
+    等容器里的 `plan` 同样会被读出；JSON 结果用代码块包住以启用高亮；`answers`
+    渲染成问题→Markdown 答案行，`questions` 渲染成带选项的列表，没有单一文本的
+    捕获结果按可读字段行展示而不是 JSON 结构——检查器/浮层的 `{ contract,
+    captured }` 包装只预览 `captured`，`contract` 拓扑元数据留给 Raw 标签）；
+    Markdown 的解析、代码语法高亮与 HTML 清理
+    只在 `src/lib/markdown-preview.ts`（`renderMarkdownPreview`，highlight.js 只
+    注册捕获载荷常见语言）。带语言的围栏块包一层 `.md-code`：语言徽标画在
+    滚动的 `<pre>` **外面**（横向滚动的宽代码不会带走徽标），`.md-code__lang`
+    右对齐、等宽小字；`styles.css` 的 token 映射覆盖已注册语法会产出的全部
+    token 类——关键字紫、字符串青、常量琥珀，函数/类型/标签名/json·yaml 键
+    读专属的 `--code-accent`（它们曾落在近白上，与正文代码几乎不可分），
+    diff 行带 addition/deletion 底色，注释灰斜体。shell 围栏走专用转义 tokenizer，
+    给命令、选项、变量与赋值分别上色，行内注释与 heredoc 正文不算命令；
+    Code 视图 `JsonViewer` 的键沿用同一 `--code-accent`，切标签不再换配色。
+    `.markdown-preview` 显式
+    恢复列表的 `list-style` 与块级布局：Tailwind preflight 全局重置
+    `list-style`，而 flex 列布局会把 `li` 块化掉 `list-item`——任一都会让
+    圆点/编号静默消失；GFM 任务清单用复选框替换 marker，标题按 em 缩放
+    （h2 带下划线），行内代码 0.92em 不撑行高，表格塌陷边框 + 表头底色 +
+    偶数行斑马纹，引用块紫边 + 底色。检查器的 Input/Output/Raw 与全局浮层共用这两个
+    单一来源，浮层组件 `src/components/payload-overlay.tsx` 只负责展示，并用同一个
+    切换提供 `Preview`（渲染后的 Markdown：标题、GFM 任务列表、高亮代码、问题/选项/答案）
+    与 `Code`（未加工的原始 JSON）两种形态，不再另写一份转换或消毒逻辑；
+    `Preview` 分两块区域：「原子内容」（真实文本，代码/JSON 高亮、Markdown 渲染）
+    与「相关数据」（**全部**字段：含 content 键、空值、null/false/0 与嵌套路径，
+    注释优先；对象数组保留形状——每个元素自带一行带下标的**分组行**
+    （`questions[0]`、`questions[0].options[1]`，即遍历产出的 `groupHeader`），
+    成员缩进排在它下面，重复的裸键（`label`、`label`、`label`）因此各归其位；
+    只有**不在数组元素内**的注释浮到窗格顶部，元素内的注释不得脱离分组），
+    正文提取口径唯一定义在 `src/lib/payload-preview.ts`
+    （`splitPayloadPreview` / `contentToMarkdown`），字段清单则由 `collectPayloadFields`
+    一次遍历给出——两者职责分离，不在组件里另写字段过滤；
+    每个原子的预览在浮层内按事件 ID 缓存一次，并**按检查器标签页分域**
+    （`cacheScope`；`payloadForAtom(atomId, eventId)` / `variantForAtom` 解析
+    任意行的载荷与类型，选中的行**以它自己的事件为准**——工具调用行读自己的
+    `tool_input`、结果行读 `tool_response`、提示词行读自己的 payload；记录器
+    归一化会在只有 camel 拼写时写入**空 `{}` 占位**（`tool_input: {}`），
+    `payloadField`（app.tsx）把空对象当作占位而非内容、跳到下一个拼写，
+    空占位绝不能遮住真实的 `toolInput.command`（那曾让每次工具调用的 Input
+    预览变成空白）；拆分后
+    没有正文的载荷走共享的核心内容抽取 `payload-markdown.ts` 的
+    `payloadToMarkdown`（读 camel `toolResponse`、把 `structuredPatch` 渲染成
+    高亮 diff——预览的是载荷的**核心信息**：tool result 的结果、prompt input、
+    message content，而不是原始信封）；通用视图是**纯内容的**——metadata 键
+    不进正文（`isPayloadMetaKey`，容器键 `tool_input`/`toolResponse` 除外，
+    它们递归展开），字段名标签不打印，字符串值按推断语言围栏高亮
+    （`inferCodeLanguage` / `fenceCode`：json / diff / xml / typescript /
+    python / bash；弱信号必须另有代码标点或多行才围栏，单行 shell 命令靠
+    选项 / 管道 / 变量 / `VAR=value` 前缀或 shebang 判定；结果提取器解包出的
+    文本统一走这一处围栏决策，不再退化成无高亮段落；关键词匹配只是
+    **逐行**证据——带块级 Markdown 结构（标题、列表、强调、
+    链接、围栏、表格）的文本是文档，整体按文档渲染（文档内部自带的围栏代码
+    仍高亮、宽代码块与宽表格在块内横向滚动），绝不因其中一行像代码
+    （计划里勾勒的 `export type …`）而把整篇变成横向滚动的等宽墙；
+    json / diff / xml 自识别、无条件围栏，shell / Python 里 `#` 是注释、
+    不算文档证据）；
+    仍无内容才回退为高亮 JSON（`payload-preview.ts` 的
+    `fallbackPayloadMarkdown`，倾倒前同样剥掉 metadata 键，`captured` 包装只
+    倾倒 captured 半边）——切换行必须改变内容，面板不得停留在同一个空态），
+    切换左侧列表是查表而非重新解析 Markdown；浮层左侧的「运行消息链路」由 app.tsx
+    用 LOG 同源的 `buildLogEntries(activeEvents, …)` 结果映射出的 `overlayAtoms`
+    提供——**每行一个事件**（附它提交到的 harness 原子 id），并按
+    `buildTraceTurnIndex` 的轮次分隔符分组；旧的流水线原子列表（每个平台原子
+    一行、只绑定其最新事件）无法复现消息链路，不得回退；
+    栏头是**一行**：自带搜索框 + 常驻预留宽度的上/下跳转按钮（到头置灰）
+    + Live 开关；搜索框（栏内局部状态，LOG
+    的 deferred-needle 模式）匹配行的展示字段**与事件载荷内容**
+    （`searchEvent` → `matchesEventQuery`，共享 LOG 已预热的逐事件 haystack），
+    自带清空按钮；某轮全部未命中时该轮分隔符随行一起消失；
+    点选走 `handleOverlaySelectEvent`，写入与 LOG 行点选同一份状态
+    （选中事件 + `getAtomIdForEvent` 映射的原子），与画布 / LOG / 检查器共用
+    同一个选中态；弹窗不持有第二份选中态，只接收 `atoms` / `selectedEventId` /
+    `onSelectAtom`，内容随主控制台选中态响应式更新；左栏**倒序渲染**
+    （弹窗内 `[...source].reverse()`），先执行的事件在下方，轮次分隔符按位置
+    取 key、绝不按轮次值；行直接复用 LOG 行组件（`.atomic-log__row`）——
+    同一 `formatLogSequence` 序号、`atomTypeLabel` TYPE 徽标、事件元 tone 色、
+    时间、动作/摘要、成对耗时徽标（与 LOG 列表**同一阶梯单位**
+    `formatDurationMs`（`src/lib/duration-label.ts`）：<10s `ms`、<1m `s`，
+    随后 `m` / `h` / `d`，每档只取一个主单位；同一对事件在列表与浮层显示一致）
+    与成对跳转标记
+    （`PairLinkMarker`，与 LOG、轨迹共用 `src/components/pair-link-marker.tsx`
+    里的同一个组件）；浮层独有的 CSS 覆盖只做「可读性」：更宽的栏、大一档
+    字号、事件键换行、摘要两行截断、选中行再大一号并加亮、**行无 hover 态**
+    （selected / running / 配对行保持自身状态，否则基础 `:hover` 会按源顺序
+    压过它们）——名称不得再被省略号截断，且覆盖选择器必须带上
+    `.atomic-log__row` 作用域，否则会被文件后方的基础行规则压回；方向键与
+    Home/End 可导航，弹窗不得另写一份行实现、类型表或 tone 映射；
+    栏头有**跟随开关（Live）**，镜像控制台的实时跟随：可用性键在 RUN HISTORY
+    卡片仍打印的**记录状态**上（`getRunHistoryDisplayStatus`，含 STALE 标记），
+    不是被新鲜度终止的展示状态——静默中的运行保持可点，直到终止事件落地；
+    完成的运行（记录态终止）不可用；启用时骑到会话最新的 prompt run 并清空
+    原子选中（同页脚 Live 跳转），armed 即跟随位姿：真正执行中的消息持续
+    跟随最新原子，仅记录态运行的落在最新事件上并在再次产出事件时恢复跟随；
+    之后新事件到达只做**滚动跟随**（把选中行滚进视口），绝不代替读者改选中态；
+    点任意行即解除跟随；armed 呼吸灯；
+    跟随推进（或任何非本弹窗发起的选中变化）替换预览内容时，两个窗格保留
+    读者当前滚动位置（onScroll 写入的 ref 备忘 + 提交后恢复，流式消息每
+    ~800ms 一个新事件快照，正文在读者下方增长而阅读位置不动）；只有**读者
+    在链路里点选的行**才回到顶部重开；切到 Code 视图卸载两窗格、备忘清零，
+    切回 Preview 从头开始；传给 `dangerouslySetInnerHTML` 的 `{ __html }`
+    包装对象按 html 字符串 memo（`previewHtml` / `MarkdownView` 的 `html`）：
+    React 按对象**引用**比较，内联字面量让应用每秒的 tick 重写相同的标记、
+    每次重写重建子节点，宽代码块里的横向滚动约一秒就被打回 0——memo 之后
+    相同标记直接跳过；
+    预览正文与相关数据字号各大一档，两个窗格的标题（原子内容 / 相关数据）
+    钉住不动、正文在标题下滚动；「相关数据」**按值折叠**——单个值超过
+    `RELATED_VALUE_MAX_CHARS`（200）才在**该行**带「展开 / 收起」，短字段不受影响，
+    绝不对整块区域做展开折叠；
+    只读问题预览（`QuestionPreview` → `StaticQuestionContent`）先给问题数与
+    捕获顺序提示，再给编号题目、作答状态与单独的已选答案行，静态选中 chip
+    比实时选项更醒目；
+  - 捕获答案的展示只在 `src/components/answer-rows.tsx`：悬浮卡结果、停靠检查器
+    与历史 Answers 三处共用；选中选项由 `src/lib/question-panel-model.ts` 的
+    `matchAnswerOptions` 从答案原文还原（只认与声明标签完全相同的逗号 token，
+    自由文本不会被误点亮），以高亮 chip 呈现，余下文本按 Markdown 渲染。
+    `QuestionResultList` 通过 `resultAnswerRows` 保持请求的题目顺序；结果到达后
+    草稿会被清空，所以历史选中态必须从答案还原，不能从草稿推断；
   - 运行所用模型的读取只在 `src/lib/trace-model.ts`（`extractRunModel` +
     `buildSessionPromptRuns` 的 SessionStart 回退）：各客户端的 payload 形态
     （pi 的 `model`/`provider`、deepseek 的模型对象、opencode 的 step 通知、
@@ -104,6 +228,10 @@
     `Pre/PostToolUse` 之外，宿主没有 `PermissionRequest` Hook 时那条
     `notification_type=permission_prompt` 且正文点名提问工具的 `Notification`
     也算提问开始（WorkBuddy 弹题时只有它，`PreToolUse` 要等作答后才落盘）；
+    提问工具名按**归一化后的精确值**匹配（`AskUserQuestion`、
+    `request_user_input`、…、OpenCode 就叫 `question`）；
+    正文匹配是**在句子里找工具名**，只保留无歧义的名字——"question" 单独一个词
+    是任何句子的名词，不进正文匹配；
     `idle_prompt`、`auth_success` 与其他工具的权限提示不算，仍只是运行信号；
     是否**阻塞**另由 `isBlockingUserQuestionStartEvent` 判定：权限请求与权限提示
     通知必须带非空 `questions` / `plan` 才进入等待态与 Flow 作答，没有参数的
@@ -137,12 +265,23 @@
     live/open 请求为 `float`、已关闭或历史问题为 `dock-full`；显式选择写入
     `ASTROX_QUESTION_PANEL_MODE` 并覆盖默认。停靠区与 Input 页的问答面各自保持挂载、
     只用 `hidden` 切换可见性，Tab 列表恒定的分隔线替代了只在停靠时出现的新边框，因此
-    切换落位不 reflow、不重挂载、不跳动。卡片的问题本身不可折叠，滚动条贴卡片右边缘（卡片不留外层
+    切换落位不 reflow、不重挂载、不跳动。浮层卡片与检查器作答控件都是「实时作答」能力，
+    只在当前任务仍在执行中才可用：判定键在左侧 RUN HISTORY 卡片显示的那个**会话**状态上
+    （对当前会话走 `getRunHistoryDisplayState`），而非被选中的单条 prompt run
+    （`isQuestionActionable`，`src/lib/question-interaction.ts`，委托 `isPromptExecuting`，
+    因此 `active`/running 与 `waiting` 都算）——这样在仍等待答复的会话里翻到更早的消息或原子，
+    提问也不会被误冻结。会话一旦进入终态，或读者在回放历史快照，就不浮出卡片、检查器提问也只读——
+    事件只作预览，绝不假装可作答；区域布局下历史提问仍可展开阅读，但控件禁用。卡片的问题本身不可折叠，滚动条贴卡片右边缘（卡片不留外层
     内边距，留白由问题行承载），键盘快捷键提示放在卡片头部摘要与状态之间（底部只留
-    提交 / Cancel 两个按钮）。检查器的批量作答
+    Submit / Cancel 两个按钮）。检查器的批量作答
     只在 `src/lib/interaction-client.ts` 的 `answerInteractionQuestions` 一处构建
     seq 链：每个问题一条 `text`，再一条带完整答案映射的 `submit`；单问题入口
-    `answerInteractionQuestion` 只是它的单元素包装。同一个模块里的
+    `answerInteractionQuestion` 只是它的单元素包装。交互帧不随快照重放，刷新页面后
+    app.tsx 用 `interactionIdentityFromEvent`（会话 ID + 工具调用 ID + 工具名）调用
+    同模块的 `fetchOpenInteractions`，从服务 `GET /api/interactions?...` 取回原始请求
+    （服务 `interaction-store.findOpen` 按身份查未关闭记录），再以 open/update/close
+    重新注入 reducer；绝不新建请求——宿主 hook 轮询的是原 requestId 的结果文件，
+    新请求写出的答案无人读取。已关闭或已过期的请求不恢复。同一个模块里的
     `shouldLocateInteractionRequest` 决定 `interaction.open` 是否闪一下提问原子：
     只认正在跟随运行的同会话同来源请求，且只加定位脉冲、不改选中，避免把 Live
     跟随关掉。浮层问题卡片同样绑定当前消息与原子，并跟随请求生命周期：请求打开时
@@ -181,7 +320,9 @@
 - 平台相关的映射放到 `src/config/atom-platforms.ts` 或对应适配器，领域工具函数
   保持平台无关。
 - 界面动作优先使用 Lucide 图标；品牌图标（如 GitHub）以内联 SVG 组件提供，不额外
-  引入依赖。
+  引入依赖。智能体品牌图标由 `src/components/agent-icons.tsx` 的本地 `createBrandIcon`
+  构建，每个路径节点都带 key；不要用 lucide 的 `createLucideIcon` 回退——它在 1.42
+  版本里不给路径节点加 key，多路径图标每次渲染都会警告。
 
 ## 5. 时间窗口（本次约定）
 
@@ -326,13 +467,15 @@
   必须写清主体：**控制台**是当前页面构建（`appVersion`），**服务**读 `/api/health`
   的 `build`；两者不一致给出提示，`build` 为 `unknown` 时显示「未上报」并说明原因
   （服务从源码目录或缺少清单的旧安装启动），而不是甩一个 `unknown` 让用户猜。
+- 采集插件版本可观测：长驻采集器（opencode / pi）把各自 `package.json` 版本作为 `payload.captureVersion` 盖在事件上，服务按 source 汇总到 `/api/health.captureVersions`。漂移判定必须把「无版本」事件单独计桶——旧代码进程根本不写版本，只数带版本事件会永远看不到它仍在写入；`stale`＝两个带版本版本并存，或无版本事件不早于最新带版本事件，按事件时间而非墙上时钟推导。卡片显示 `v旧(未标记)` 桶，`stale` 时给出可一键复制的宿主相关重启指令（`captureRestartCommand`，opencode 为 `opencode service restart`，Pi 为会话提示），不假装浏览器能重启进程。单一来源就是适配器自己的清单，不在别处硬编码期望版本。
 - 每个图标按钮都保留 `aria-label`，但 **tooltip 是可选装饰**：只有图标本身说不清动作
   （收起/展开哪一侧面板的箭头、操作菜单、拓扑/轨迹切换）或者能补充状态与后果
   （`N LIVE` 的判定口径、重新加载进行中的状态）时才加。只是把图形翻译一遍的提示
   （GitHub、齿轮、日/月、复制）属于噪声：它会跟着光标在顶栏图标行上一路弹出，挡住下面
   的面板。
-- 列表内的滚动控件放在面板头部，不做浮层：浮动箭头会压住第一条可见原子，读者刚滚到
-  的那一行反而看不全。只在对应方向还有内容时才渲染该方向的控件。
+- 列表内的滚动控件放在面板头部、紧贴列表搜索框（LOG、全局历史搜索），不做浮层：浮动
+  箭头会压住第一条可见行，读者刚滚到的那一行反而看不全。两个方向的按钮都常驻并预留
+  宽度；到头的方向用 `disabled` 而非卸载表示，滚动时旁边的搜索输入框不来回伸缩。
 
 ## 9. 首屏、渲染与反馈
 
@@ -347,6 +490,11 @@
 - **首屏不按"0"报数**：数据没到之前，RUN HISTORY 头部写 `loading…` 并画骨架行，
   顶栏连接标记写 `connecting`。`0 runs` 与 `offline` 都是关于"已经确认的事实"的陈述，
   在快照还没到时不成立。
+- **虚拟化列表的测量不依赖自己写入的状态**：`AtomicLog` 从 ref 读取行高/分隔高，
+  布局 effect 只跟随 entries 变化；若把 `metrics` 放进依赖，`setMetrics` 会让新切出来的
+  第一行换成另一个高度，反复触发直到 React 报 #185（Maximum update depth exceeded，
+  部署版上真实出现过）。估算取当前挂载的同类行中最高的一行，窗口滑动时既不会裁掉
+  换行行，也不会因为换了一行就翻转高度。
 - **按需功能走独立 chunk**：只在明确动作后才出现的界面（历史搜索）不进入首屏包，
   由 `lazy()` + 空闲预取（`requestIdleCallback`，退化到定时器）加载；首次打开前
   已完成预取的机器上，行为与同步导入一致。Suspense 兜底复用真实面板的类名，避免

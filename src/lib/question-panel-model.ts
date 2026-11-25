@@ -10,7 +10,10 @@ import {
   type QuestionPanelMode,
   type QuestionPanelState,
 } from "../config/app-config.ts";
-import type { QuestionDescriptor } from "./interaction-contract.ts";
+import type {
+  QuestionDescriptor,
+  QuestionOption,
+} from "./interaction-contract.ts";
 
 export { type QuestionPanelMode, type QuestionPanelState };
 
@@ -92,6 +95,17 @@ export function isDockedQuestionPanelMode(mode: QuestionPanelMode): boolean {
 }
 
 /**
+ * The default placement while the reader has not picked one: a question that
+ * can be answered right now floats over the canvas so it stays visible next to
+ * the executing run; a finished or captured question docks full in the
+ * inspector so its whole text and every option fit on screen. The stored mode
+ * still wins once the reader switches layouts by hand.
+ */
+export function autoQuestionPanelMode(actionable: boolean): QuestionPanelMode {
+  return actionable ? "float" : "dock-full";
+}
+
+/**
  * Answer drafts are keyed by the verbatim question text, like the host's answer
  * map. A free-text draft wins over clicked option labels; multi-select labels
  * are emitted in the descriptor's declared order, never in click order.
@@ -129,6 +143,28 @@ export function buildQuestionAnswers(input: {
     }
   }
   return answers;
+}
+
+/**
+ * Split a captured answer back into the option labels it selected and any
+ * free text. Only whole comma tokens that exactly match a declared label count
+ * as a selection, so a free-text answer like "Paris, France" never lights up a
+ * "France" option, and a selected chip never reappears as prose.
+ */
+export function matchAnswerOptions(
+  answer: string,
+  options: readonly (QuestionOption | string)[] | undefined,
+): { labels: string[]; text: string } {
+  const labels = (options ?? []).map((option) =>
+    typeof option === "string" ? option : option.label,
+  );
+  const tokens = (answer ?? "")
+    .split(",")
+    .map((token) => token.trim())
+    .filter(Boolean);
+  const matched = labels.filter((label) => tokens.includes(label));
+  const text = tokens.filter((token) => !labels.includes(token)).join(", ");
+  return { labels: matched, text };
 }
 
 export function questionPanelSubmittable(

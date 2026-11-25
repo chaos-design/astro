@@ -25,6 +25,51 @@ function joinBlocks(content: unknown, blockType: string, field: string): string 
     .join("\n");
 }
 
+/** The assistant text carried by a live `message_update`, plus its identity. */
+export type PiLiveText = {
+  messageId: string;
+  /** Authoritative accumulated text, when Pi carries the full message. */
+  text: string | null;
+  /** Incremental fragment, used only when no accumulated text is available. */
+  delta: string;
+};
+
+/**
+ * Read the text a `message_update` / `message_start` / `message_end` carries.
+ *
+ * Pi's update event reports either the full accumulated assistant message or
+ * an incremental delta, depending on the event subtype and build. Reading the
+ * accumulated text first is what keeps every throttled snapshot a prefix of
+ * the final `message_end` text: a re-fired, reordered or missed delta can then
+ * never drift the two apart. The message id scopes the accumulator so two
+ * messages of a resumed session cannot share one text buffer.
+ */
+export function readPiLiveText(event: AnyEvent): PiLiveText {
+  const message = event?.message;
+  const messageId = String(
+    message?.id ??
+      event?.assistantMessageEvent?.messageId ??
+      event?.messageId ??
+      event?.id ??
+      "",
+  );
+  if (message?.role === "assistant") {
+    const accumulated = joinBlocks(message.content, "text", "text");
+    if (accumulated) {
+      return { messageId, text: accumulated, delta: "" };
+    }
+  }
+  const candidate =
+    event?.assistantMessageEvent?.delta ??
+    event?.messageEvent?.delta ??
+    event?.delta;
+  return {
+    messageId,
+    text: null,
+    delta: typeof candidate === "string" ? candidate : "",
+  };
+}
+
 /** Image blocks carry base64 payloads that would bloat trace events. */
 function textOnlyContent(content: unknown): unknown {
   if (!Array.isArray(content)) {

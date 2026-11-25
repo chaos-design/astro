@@ -365,8 +365,13 @@ HTTP service.
   and the Live filter.
 - Theme: light, dark, or system; stored in `ASTROX_THEME`.
 - Service chip (the local service's uptime): opens the service card with the
-  console/service versions, process details, session counts, the data directory
-  and "restart local service". While the service answers, that button posts
+  console/service versions, per-client capture-plugin versions, process details,
+  session counts, the data directory and "restart local service". When one client
+  shows two versions or a `v旧(未标记)` entry beside a newer one, the card highlights
+  it and offers a "copy restart command" button (opencode copies
+  `opencode service restart`; Pi prompts a session restart) — the button only
+  copies, it never restarts the process for you. While the service answers, the
+  restart button posts
   `/api/restart`; when it is unreachable the button becomes "copy start command"
   and copies `pnpm service:up --port=<current port>` — a browser cannot spawn a
   local process, so the CLI is the out-of-band start path. The uptime follows a
@@ -403,7 +408,10 @@ Filters combine across groups. Text matching is case-insensitive and supports
 exact substrings and ordered fuzzy matches. The result list loads more entries
 automatically as it scrolls — appends render only the new rows and are
 scheduled at lower priority, so scrolling a long list never re-renders the
-rows already on screen.
+rows already on screen. The up/down arrows to the right of the search box jump
+to the top or bottom of the results; the arrow for a direction that is already
+at its edge is greyed out and updates automatically as the list scrolls or the
+results change.
 
 ![Global history search dialog](assets/history-search.png)
 
@@ -623,7 +631,110 @@ The inspector provides:
   and topology counts stay unchanged. `Code` shows the raw payload;
 - `Output`: tool result or response;
 - `Raw`: full normalized event;
-- copy control for structured JSON.
+- copy control for structured JSON;
+- an expand control in the inspector header, available on `Input` / `Output` /
+  `Raw`, opens a **global overlay** that shows the same payload in a much larger
+  area. The overlay has a `Preview` / `Code` switch: `Preview` splits into two
+  panes — "Atom content" (the text the atom actually carried; a payload that
+  carries a structured `questions` list shows the question / option / answer
+  list the reader saw whatever the row's display key, other payloads render as
+  Markdown, and code / JSON is highlighted)
+  and "Related data" (timestamps, paths, ids and annotations / explanations,
+  annotations first; arrays of objects keep their shape — each element opens
+  with an indexed group row such as `questions[0]` / `options[1]` and its
+  members indent beneath it, so repeated same-named keys stay attributable;
+  only annotations outside any array float to the top). Markdown and code stay separate readings: a text with
+  Markdown block structure (headings, lists, emphasis, links, fences, tables)
+  is a document and renders as one — prose wraps, its own fenced code stays
+  highlighted and scrolls inside the block, wide tables likewise — while only
+  predominantly-code content (JSON, diff, XML, scripts, command lines) is
+  fenced whole; one code-like line inside a plan never turns the document
+  into a horizontally scrolling monospace wall. Each row's preview is prepared once and cached by event
+  id (scoped by the tab the layer was opened from), so switching rows in the
+  rail is a lookup rather than a repeated
+  Markdown parse. Rendering uses highlight.js
+  syntax highlighting, after the same HTML sanitizer
+  strips acting markup. A fence that names its language prints the language
+  as a small right-aligned badge **above** the block — outside the scrolling
+  `<pre>`, so wide code pans under it (an unnamed fence gets no badge). The
+  token colours cover every class the registered grammars emit: keywords
+  violet, strings teal, constants amber, and the name family — functions,
+  types, XML tag names, json/yaml keys — reads on a dedicated sky accent
+  instead of the near-white it used to inherit; diff lines carry red/green
+  tints and comments stay muted italics. Lists restore their bullets and
+  numbers explicitly (the global reset and the old flex layout silently
+  dropped them; nested levels use hollow circles), task lists swap the
+  marker for a violet-accented checkbox, headings scale in em with an
+  underlined h2, inline code is 0.92em and half a step brighter than the
+  prose, tables collapse borders with a tinted header row and zebra rows,
+  blockquotes carry the violet border and tint, and struck-through text
+  fades to muted. A tool result is unwrapped at any depth (`captured`,
+  `tool_response`, `output`, `result`, a `plan` nested in `tool_input`, and their
+  nested content) and rendered as the text it really is, so a Markdown result
+  becomes headings, task lists and highlighted code rather than field labels and a
+  JSON string; JSON results are fenced for the highlighter. A lone text field
+  (message, output, plan text) is the document itself; a captured result with no
+  single text shows as readable field lines rather than field labels plus fenced
+  JSON. The inspector's `{ contract, captured }` wrapper previews only
+  `captured`, keeping topology metadata out of the layer. `Code` is the raw,
+  token-coloured JSON of the same payload, so both readings stay in one dialog;
+  with nothing previewable the overlay says so and `Code` still shows it.
+  Escape or the scrim closes the layer. A left rail shows the current run's
+  **message chain in the LOG's own data standard**: every event of the run,
+  newest first, split by the same turn separators the LOG prints, with the row
+  number the LOG prints for that event. Picking a row jumps to that step's
+  payload and moves the whole console with it. The rail shares the single
+  console selection
+  with the canvas, LOG and inspector — selecting a row in the overlay also moves
+  the main console to that event, so the overlay can never highlight A while the
+  canvas stays on B. The selected row is highlighted (a larger type and a
+  brighter selection treatment) and marked `aria-current`.
+  Each row is the same LOG row: sequence number, TYPE badge, display key,
+  timestamp (date + clock), the action / summary line, the closed tool call's
+  duration badge (a ladder of smallest honest units: exact milliseconds
+  below 10s, e.g. `12500ms`, then seconds like `12.5s`, minute+second
+  composites like `2M30s` up to an hour, and `1H25M30s` hour composites
+  beyond, zero components dropping) and the pair marker that
+  names the other half's row — so the
+  chain of what happened when, and how long it took, is reproducible without
+  leaving the dialog. Arrow /
+  Home / End move focus between rows. The head is one row: a search box with a
+  clear button, two jump-to-edge buttons (both mounted with reserved width, the
+  unreachable edge greyed out), and the Live toggle. The title is a formal
+  "Event Payload Inspection · Input / Output / Raw" rather than a raw atom
+  label. The
+  rail carries its
+  own search box (rail-local state): a keyword filters the chain over the
+  rows' display fields AND the payload content, and a turn whose rows all miss
+  disappears with its separator.
+  While the run's status still reads RUNNING (the STALE marker included), the
+  header's **Live** toggle stays clickable: clicking lands on the message's
+  newest event and enters the follow posture — a genuinely executing message
+  keeps following its newest atom (new events appear and the selected row
+  stays in view, the toggle breathing). A follow advance replaces the
+  preview content while keeping your reading position — a streamed message
+  lands a new snapshot roughly every 800ms and grows beneath the reader
+  without moving the line they were on; only a row picked in the rail
+  re-opens from the top. Picking any row pins the payload
+  where it is. On a finished run (or the Demo sample) the toggle reads
+  disabled.
+  The layer is global (portaled to the document body), but the rail is scoped to
+  the current run and its content always follows that one selection. After
+  picking a row, the content pane shows the **core information of that row's
+  own event**: a tool-call row its arguments (the recorder's empty
+  `tool_input: {}` placeholder counts as nothing and never shadows the real
+  parameters), a result row the real result (an
+  Edit-style change renders as a highlighted diff), a prompt row its text;
+  Markdown lists, code and option lists render and highlight by data type,
+  code strings are fenced with their inferred language (json / diff / xml /
+  typescript / python / bash), and field-name labels stay out of the body; a
+  payload with no readable prose falls back to its highlighted JSON with the
+  metadata keys stripped —
+  switching rows always changes the content. The related-data pane folds by
+  default (its body capped at ~200px, with an 展开 / 收起 toggle in the pane
+  head that expands it downward and collapses it again), and the two pane
+  titles (atom content / related data) stay pinned at the top of their panes
+  while the bodies scroll beneath them.
 
 Selecting a topology atom additionally exposes the atom contract, input/output ports, gate state, and bound event.
 The right panel state is stored in `ASTROX_CONSOLE_OPEN`.
@@ -731,7 +842,9 @@ Answers are never replayed outside the window.
 Panel behavior: an option click only highlights the choice; multi-select joins
 labels in the declared option order with commas; the input field is the answer
 submitted at the end of the batch, so there is no Set step. Submit requires
-every required question and sends all answers once; Esc/cancel ends the request
+every required question and sends all answers once; the "N questions · one submit"
+hint sits above the question list, not in the action bar, and both placements use
+the same Submit / Cancel order. Esc/cancel ends the request
 and falls back; another device answering first turns the panel read-only. The
 floating card also supports keyboard answering: it focuses the first option on
 open, digits `1`–`9` highlight that option of the first question, `Enter`
@@ -768,6 +881,19 @@ such a request opens, the canvas flashes its question atom. CodeBuddy / WorkBudd
 `PreToolUse.modifiedInput` carries only the decision and answers — no notification
 extras that a strict host schema could reject.
 
+Only an executing task is answerable: the floating card and the inspector's
+answer controls follow the *session* status the RUN HISTORY card on the left
+shows — `active` (running) or `waiting` (paused on the question). A run blocked
+on a user question keeps its recorded `waiting` status (and the long freshness
+window) but the card reads RUNNING; a rate-limit wait still reads WAITING. As
+long as that card still reads RUNNING or WAITING, drilling into an older message or
+atom never freezes the question, so you can still submit. Once the session
+finishes (complete / failed / terminated), or you replay a captured snapshot,
+no card floats and the inspector question goes read-only: you can still read
+the question and its answer, but the options, input and Submit / Cancel are
+disabled, so you can never answer for a task that already ended. The region
+layout still expands a historical question for reading, read-only as well.
+
 Answering from a Flow atom: selecting the `User Question` atom binds the
 inspector to that question's start event (not to its answer); Overview shows
 the question text and the event details. The question surface exists exactly
@@ -785,8 +911,11 @@ same Preview / Code view:
 - **Code** shows the raw payload only — no options, no answer box, no submit bar.
 - **A closed or historical question** keeps the same chips as static, unclickable
   spans: you can still read what was asked and which options existed, but
-  nothing pretends to be answerable. Switching to a region layout expands the
-  full Q&A inside the inspector.
+  nothing pretends to be answerable. The read-only preview leads with a question
+  count and capture-order hint, numbers each question, marks answered ones and
+  prints the selected labels on their own line with a stronger selected-chip
+  highlight. Switching to a region layout expands the full Q&A inside the
+  inspector.
 
 Long question text wraps inside the inspector width and the body scrolls instead
 of widening the log column. `Region full` and `Floating` are the two shared
@@ -892,7 +1021,11 @@ the active section's fields on the right. Every entry applies immediately, and
 the footer's **Done** button only closes the dialog — there is no Apply step.
 **Layout** is one entry for everything about how the console is viewed; inside it,
 **Canvas** and **Panels** stay two labelled groups, so the two halves of one
-question never live in two menus:
+question never live in two menus. Every choice group (theme, time range, canvas,
+panels, chime style, chime preview) divides its row equally: three options take
+three equal thirds, four take four equal quarters, and the chime previews use the
+same rule for three. The footer's **Restore defaults** and **Done** keep equal
+width inside the action bar.
 
 **Appearance**
 
@@ -1053,7 +1186,7 @@ The summary displays:
 - completed count;
 - failed count.
 
-The lane map uses Input, Model, and Tools. The detailed list groups steps by turn and shows event type, summary, timestamp, duration, and status. Hovering a block — a list row or a lane slot — opens one shared card that reports the block's **type** (its category, e.g. `SYSTEM` / `MODEL` / `TOOL`), event name, tool (when present), closed-pair span (`PAIR`), own wall-time span (`DURATION`, an atom), or the total of its closed-pair spans (`PAIRS` for a turn), and its status. The `TYPE` badge in front of a LOG event key comes from the same `atomTypeLabel` source and uses the same violet.
+The lane map uses Input, Model, and Tools; `waiting` (a blocked User Question, for example) counts as executing just like `running`, so its slot keeps the running pulse instead of going idle. The detailed list groups steps by turn and shows event type, summary, timestamp, duration, and status. Hovering a block — a list row or a lane slot — opens one shared card that reports the block's **type** (its category, e.g. `SYSTEM` / `MODEL` / `TOOL`), event name, tool (when present), closed-pair span (`PAIR`), own wall-time span (`DURATION`, an atom), or the total of its closed-pair spans (`PAIRS` for a turn), and its status. The `TYPE` badge in front of a LOG event key comes from the same `atomTypeLabel` source and uses the same violet.
 
 The card uses one three-step type scale (title / field value / field label) and separates fields by **colour**, not font size: `TYPE` violet, `EVENT` blue, tool name amber, the `PAIR` label violet (matching the row marker), duration by its heat tier, status by its own semantic colour. When the title already names the tool (a lane slot titled `Read`), the `EVENT` line does not repeat it.
 

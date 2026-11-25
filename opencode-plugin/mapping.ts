@@ -1,5 +1,26 @@
 export type AstroPayload = Record<string, unknown> & { eventName: string };
 
+/**
+ * Resolve which OpenCode location an event belongs to. Durable events
+ * (`session.text.*`, `session.step.*`, `session.tool.*`) carry no location
+ * envelope, so the old form factors that only read `event.location.directory`
+ * silently dropped them for a main session created before the plugin loaded.
+ * Keep every spelling the host uses, then fall back to the directory learned
+ * from an earlier event of the same session.
+ */
+export function opencodeEventDirectory(
+  event: any,
+  remembered?: string,
+): string {
+  return (
+    event?.location?.directory ||
+    event?.data?.location?.directory ||
+    event?.data?.info?.location?.directory ||
+    remembered ||
+    ""
+  );
+}
+
 type AnyEvent = {
   type?: string;
   data?: Record<string, any>;

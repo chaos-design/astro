@@ -4,9 +4,11 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { claimSession } from "./claim.ts";
+import { readSubagentIdentity, resolvePiSessionId } from "./session.ts";
 import {
   isTerminalEventName,
   mapPiEvent,
+  readPiLiveText,
   type AstroPayload,
 } from "./mapping.ts";
 
@@ -54,6 +56,18 @@ const recorderCandidates = [
 
 const source = "pi";
 const flushIntervalMs = 150;
+
+// The installed extension's own manifest is the single source of truth for
+// which capture code wrote an event, so a stale process is observable in the
+// console after a reinstall without a restart.
+const extensionRequire = createRequire(import.meta.url);
+const captureVersion = (() => {
+  try {
+    return String(extensionRequire("./package.json").version || "");
+  } catch {
+    return "";
+  }
+})();
 
 function resolveAstroHome(): string {
   const fromRecorder = loaded?.module.resolveAstroHome?.(process.env);
@@ -108,6 +122,17 @@ export default function (pi: PiExtensionApi) {
   const sessionCwds = new Map<string, string>();
   // A closed turn reports one terminal event; an identical re-fire is noise.
   const lastTerminal = new Map<string, string>();
+  // Pi emits no start→delta stream to the console: only `message_end` used to
+  // write the whole text, so the reader saw nothing until the step finished.
+  // Accumulate the live text per message and enqueue throttled snapshots, the
+  // same way opencode turns `session.text.delta` into AgentMessage snapshots.
+  // Reading the accumulated text from each update (not blind delta append)
+  // keeps every snapshot a prefix of the final message_end text.
+  const liveText = new Map<string, { text: string; lastAt: number }>();
+  const liveTextIntervalMs = 800;
+  // Subagent identity is read once per child session: the launch payload is
+  // cheap, the persisted delegation entry is read only on a continuation.
+  const subagentIdentities = new Map<string, ReturnType<typeof readSubagentIdentity>>();
   const mappingContext: { pendingPrompt?: string } = {};
   let queue: AstroPayload[] = [];
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -136,17 +161,16 @@ export default function (pi: PiExtensionApi) {
   };
 
   const enqueue = (payload: AstroPayload) => {
-    queue.push(payload);
+    queue.push(captureVersion ? { ...payload, captureVersion } : payload);
     timer ??= setTimeout(flush, flushIntervalMs);
   };
 
   const emit = (type: string, event: any, ctx: PiContext) => {
     try {
-      const sessionId =
-        ctx?.sessionManager?.getSessionId?.() ?? event?.sessionId ?? "";
-      if (!sessionId) {
-        return;
-      }
+      // The claim and the live-text buffers key on the *origin* session: two
+      // parallel children of the same parent must not fight over one claim or
+      // share an assistant text accumulator.
+      const sessionId = resolvePiSessionId(event, ctx);
       const cwd =
         ctx?.cwd ?? ctx?.sessionManager?.getCwd?.() ?? sessionCwds.get(sessionId) ?? "";
       if (cwd) {
@@ -167,6 +191,80 @@ export default function (pi: PiExtensionApi) {
         }
       }
 
+      // A subagent child records into its *parent's* session so its messages
+      // are associated with the main Agent instead of orphaned under a
+      // `subagent.*` session. `agent` is deliberately not used as a field name
+      // here: the recorder reads it as a source client override.
+      if (!subagentIdentities.has(sessionId)) {
+        subagentIdentities.set(
+          sessionId,
+          readSubagentIdentity({ sessionId, cwd, env: process.env }),
+        );
+      }
+      const identity = subagentIdentities.get(sessionId);
+      const displaySessionId = identity?.parentSessionId || sessionId;
+      const attribution = identity
+        ? {
+            ...(identity.parentSessionId
+              ? { parentSessionId: identity.parentSessionId }
+              : {}),
+            ...(identity.agent ? { subagentAgent: identity.agent } : {}),
+            ...(identity.handle ? { subagentHandle: identity.handle } : {}),
+            ...(identity.childSessionId && identity.childSessionId !== displaySessionId
+              ? { subagentSessionId: identity.childSessionId }
+              : {}),
+          }
+        : {};
+
+      // Live assistant text. `message_start` opens a new buffer, each update
+      // advances it and emits a throttled snapshot, and `message_end` clears
+      // it before the final complete AgentMessage is written below. Snapshots
+      // are non-terminal, so they never touch the terminal dedupe set. Pi
+      // fires these for user / tool-result messages too; those must never
+      // clear an assistant buffer that is still filling.
+      if (
+        type === "message_start" ||
+        type === "message_update" ||
+        type === "message_end"
+      ) {
+        const role = String(event?.message?.role ?? "");
+        if (role && role !== "assistant") {
+          return;
+        }
+        const live = readPiLiveText(event);
+        const key = `${sessionId}:${live.messageId || "default"}`;
+        if (type === "message_start") {
+          liveText.delete(key);
+          return;
+        }
+        if (type === "message_end") {
+          liveText.delete(key);
+        } else {
+          const state = liveText.get(key) ?? { text: "", lastAt: 0 };
+          if (live.text !== null) {
+            state.text = live.text;
+          } else if (live.delta) {
+            state.text += live.delta;
+          } else {
+            return;
+          }
+          const now = Date.now();
+          if (now - state.lastAt >= liveTextIntervalMs) {
+            state.lastAt = now;
+            enqueue({
+              eventName: "AgentMessage",
+              sessionId: displaySessionId,
+              cwd,
+              message: state.text,
+              streamed: true,
+              ...attribution,
+            });
+          }
+          liveText.set(key, state);
+          return;
+        }
+      }
+
       const payloads = mapPiEvent(type, event, mappingContext);
       for (const payload of payloads) {
         if (isTerminalEventName(payload.eventName)) {
@@ -178,7 +276,12 @@ export default function (pi: PiExtensionApi) {
           // A new model step means the previous terminal no longer dedupes.
           lastTerminal.delete(sessionId);
         }
-        enqueue({ sessionId, cwd, ...payload });
+        enqueue({
+          sessionId: displaySessionId,
+          cwd,
+          ...payload,
+          ...attribution,
+        });
       }
     } catch {
       // A broken trace path must never block the agent loop.
@@ -189,6 +292,8 @@ export default function (pi: PiExtensionApi) {
     "session_start",
     "input",
     "before_agent_start",
+    "message_start",
+    "message_update",
     "message_end",
     "tool_call",
     "tool_result",

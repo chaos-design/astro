@@ -158,6 +158,31 @@ test("B3: a hit returns allow plus answers, a miss and a timeout stay silent", a
   assert.ok(clock >= 500, `waited past the 500 ms window, saw ${clock}`);
 });
 
+test("B3: a cancelled question stays silent so the host's native prompt resumes the agent", async () => {
+  const env = { ASTRO_INTERACTION_TIMEOUT_MS: "1000" };
+  const settings = optionsFromEnvironment(env);
+  const built = buildRequest(questionPayload(), settings);
+  const cancelled = {
+    requestId: built.request.requestId,
+    status: "cancelled",
+    answers: {},
+    answeredBy: "console",
+    answeredAt: new Date().toISOString(),
+    elapsedMs: 10,
+  };
+  // No decision is emitted: the recorder's PermissionRequest row stays the
+  // only trace of the question and the host falls back to its native prompt,
+  // which is what lets the agent continue instead of hanging on a dead answer.
+  assert.equal(buildHookOutput(built.host, built.request, cancelled), null);
+  const out = await runInteractionHook(JSON.stringify(questionPayload()), {
+    env,
+    fetchImpl: async () => ({ ok: true, status: 201 }),
+    readResult: () => cancelled,
+  });
+  assert.equal(out.stdout, "");
+  assert.match(out.reason, /no answer within the hook window/);
+});
+
 test("B4: PreToolUse and PermissionRequest use their own stdout shapes", () => {
   const settings = { ...optionsFromEnvironment({}), events: ["PreToolUse", "PermissionRequest"] };
   const preBuilt = buildRequest(questionPayload("PreToolUse"), settings);

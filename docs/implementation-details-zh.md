@@ -266,8 +266,20 @@ Guide 的观测列表保留语义化 `ul` / `li`，使用原生 `disc` 标记。
 `appVersion`；服务 = `/api/health` 的 `build`，来自 `package.json` 或安装目录的
 `plugin.json`）、**进程**（启动时间、启动耗时、重启次数、SSE 客户端数）、**数据**
 （事件数、轨迹文件数、数据根目录）、**会话**（`active` / `waiting` / `complete` /
-`failed` / `terminated` 五个计数）。两侧版本不一致会提示刷新或重启；`build` 读不到
-清单时为 `unknown`，卡片显示「未上报」并说明原因，而不是把 `unknown` 丢给用户。
+`failed` / `terminated` 五个计数）、**采集插件版本**（`/api/health` 的
+`captureVersions`：按 `source` 列出实际写入事件的长驻采集器版本）。两侧版本不一致会
+提示刷新或重启；`build` 读不到清单时为 `unknown`，卡片显示「未上报」并说明原因，而不是
+把 `unknown` 丢给用户。
+
+opencode / pi 这类长驻采集器在 `enqueue` 时把自己的 `package.json` 版本盖到每条事件的
+`payload.captureVersion`（单一来源就是各自的清单）；服务在 `indexEvent` 与 `append`
+里按 source 汇总版本及最近时间，并单独统计「无版本」事件的最近时间（旧代码进程根本
+不写版本，只数带版本事件会永远看不到漂移）。`/api/health.captureVersions` 对每个
+source 返回 `versions` / `unversionedAt` / `stale`：两个带版本版本并存，或无版本事件
+不早于最新带版本事件，都判为 `stale`（按事件时间推导，不依赖墙上时钟）。卡片显示
+`v旧(未标记)` 桶，`stale` 时给出可一键复制的宿主相关重启指令（`opencode service restart`
+或 Pi 会话提示），绝不假装浏览器能替你重启进程。这让「装没装上、生效没生效」变成
+可观测状态，而不是靠间接症状猜。
 
 ### 指南与日志控件
 

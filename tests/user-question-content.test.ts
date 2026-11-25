@@ -27,7 +27,10 @@ test("structured AskUserQuestion payloads render per question with options", () 
   assert.equal(content.prompts.length, 1);
   assert.equal(content.prompts[0].title, "Deploy");
   assert.equal(content.prompts[0].question, "Deploy **tonight**?");
-  assert.deepEqual(content.prompts[0].options, ["Yes", "No"]);
+  assert.deepEqual(content.prompts[0].options, [
+    { label: "Yes", description: "ship it" },
+    { label: "No", description: "wait for CI" },
+  ]);
   // The structured shape replaces the free-form message, not stacks with it.
   assert.equal(content.message, "");
 });
@@ -46,7 +49,10 @@ test("questions sitting directly on the payload resolve the same way", () => {
   assert.equal(content.prompts.length, 1);
   // No header: the component titles the section "Question 1".
   assert.equal(content.prompts[0].title, "");
-  assert.deepEqual(content.prompts[0].options, ["Allow", "Deny"]);
+  assert.deepEqual(content.prompts[0].options, [
+    { label: "Allow" },
+    { label: "Deny" },
+  ]);
 });
 
 test("free-form payloads fall back to the message field", () => {
@@ -85,7 +91,10 @@ test("string options and unrecognized option shapes keep the labels they have", 
   } as unknown as TracePayload);
   // Plain strings and value-shaped objects become labels; everything else
   // drops instead of rendering "[object Object]".
-  assert.deepEqual(content.prompts[0].options, ["alpha", "beta"]);
+  assert.deepEqual(content.prompts[0].options, [
+    { label: "alpha" },
+    { label: "beta" },
+  ]);
 });
 
 // ZCode (and Claude Code) report plan approval as PermissionRequest with

@@ -1,6 +1,6 @@
 # Host integration equivalence acceptance (plan F3)
 
-Generated: 2026-11-19T08:07:40.245Z
+Generated: 2026-11-22T06:39:32.229Z
 
 This record covers protocol-level acceptance using captured payloads and real
 hook processes. It does **not** replace launching Claude Code or ZCode:
@@ -10,8 +10,8 @@ what this machine can and cannot verify; the runbook lists the remaining steps.
 
 | Check | Result | Detail |
 | --- | --- | --- |
-| captured payload source | pass | /Users/xcz/.astrox/zcode/2026/11-19/11_34_14-sess_a0c25db4-1565-4fea-8aaf-e9da8ba75cc1/events.jsonl (2 questions) |
-| auto-approve hook emits a real-host PermissionRequest decision | pass | 2 answers, keys match question text |
+| captured payload source | pass | /Users/xcz/.astrox/zcode/2026/11-19/23_39_24-sess_4db98348-a34b-4f04-bcd4-775963ab9029/events.jsonl (1 questions) |
+| auto-approve hook emits a real-host PermissionRequest decision | pass | 1 answers, keys match question text |
 | interaction hook fails open with no host service | pass | empty stdout, exit 0 (host prompt remains) |
 | interaction decision matches Claude PreToolUse schema | pass | permissionDecision + updatedInput.answers |
 | interaction decision matches ZCode strict PermissionRequest schema | pass | hookSpecificOutput.decision.behavior, strict key set |
@@ -31,7 +31,7 @@ Machine-generated on every run; this is the evidence behind the F3 blocker.
 
 ## Live ZCode host session (machine-scanned)
 
-Scanned /Users/xcz/.zcode/cli/log/zcode-2026-11-19.jsonl (2026-11-19): **848** hook.run.allowed, **0** hook.run.failed, 848 ASTRO-sourced, last ASTRO call Bash at 2026-11-19T04:44:54.909Z.
+Scanned /Users/xcz/.zcode/cli/log/zcode-2026-11-22.jsonl (2026-11-22): **111** hook.run.allowed, **0** hook.run.failed, 111 ASTRO-sourced, last ASTRO call Bash at 2026-11-22T06:19:01.350Z.
 
 A real ZCode host session ran ASTRO hooks on this day with **no `hook.run.failed`** — the F3 ZCode criterion of a clean fresh-session log holds on this machine.
 
@@ -64,9 +64,10 @@ implementation-breakdown.md` and archive the plan.
 
 ## 2026-11-19 re-verification (F3 still blocked)
 
-- Machine scan refreshed above: 848 `hook.run.allowed` and **0** `hook.run.failed`
-  in the 2026-11-19 ZCode log, all recorder-plugin sourced. The day's session is
-  clean; this is still not the interaction-hook closed loop.
+- Machine scan recorded on 2026-11-19: 848 `hook.run.allowed` and **0**
+  `hook.run.failed` in that day's ZCode log, all recorder-plugin sourced. That
+  session was clean; this is still not the interaction-hook closed loop. The
+  current scan above has since been refreshed to 2026-11-22.
 - Equivalence checks 6/6 pass against a fresh captured payload (2026-11-19,
   2 questions).
 - Plan 04 added a real-process end-to-end check: `node --test

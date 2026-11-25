@@ -177,11 +177,18 @@ test("matches the header icon controls to the theme switcher", () => {
   assert.match(glyph, /height:\s*15px/);
 });
 
-test("lays the range choices out four per row", () => {
-  const grid = cssRule(".settings-options");
+test("divides each Settings choice row equally among its options", () => {
+  // One width rule for the whole type: N options take N equal columns, so
+  // three fill three thirds and four fill four quarters. The chime previews
+  // reuse it by setting the same column token.
   assert.match(
-    grid,
-    /grid-template-columns:\s*repeat\(var\(--settings-columns, 4\), minmax\(0, 1fr\)\)/,
+    styles,
+    /\.settings-options,\s*\.settings-chime-preview \{[\s\S]*?grid-template-columns:\s*repeat\(var\(--settings-columns, 4\), minmax\(0, 1fr\)\)/,
+  );
+  assert.doesNotMatch(cssRule(".settings-dialog"), /--settings-option-width/);
+  assert.match(
+    styles,
+    /\.settings-chime-preview \{\s*--settings-columns:\s*3/,
   );
 
   // The tick reserves its slot instead of being added on selection: a layout

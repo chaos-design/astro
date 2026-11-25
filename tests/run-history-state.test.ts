@@ -12,6 +12,7 @@ import {
   getRunHistoryTerminalInfo,
   isLiveRunStatus,
   isSparseRunHistoryList,
+  isUserQuestionWaitingRun,
   quantizeTimestamp,
   RUN_HISTORY_COARSE_REFRESH_MS,
   RUN_HISTORY_LIVE_WINDOW_MS,
@@ -529,4 +530,48 @@ test("reports why a run ended, including the display-timeout case", () => {
     getRunHistoryTerminalInfo(live, livePrompt, live.start + 10, timeout),
     { detail: null, reason: null },
   );
+});
+
+test("a run waiting on a user question is presented as running", () => {
+  const event = (eventName: string) => ({
+    schemaVersion: 1,
+    id: `event-${eventName}`,
+    capturedAt: "2026-11-21T03:00:00.000Z",
+    source: "workbuddy",
+    sourceVersion: null,
+    workspaceId: "workspace",
+    sessionId: "session",
+    turnId: null,
+    parentId: null,
+    eventName,
+    nativeEventName: eventName,
+    toolUseId: null,
+    toolName: null,
+    cwd: null,
+    status: null,
+    sequence: 1,
+    payload: {},
+    locator: "",
+  });
+
+  assert.equal(
+    isUserQuestionWaitingRun("waiting", [event("UserQuestion")]),
+    true,
+  );
+  // A rate-limit / permission-signal wait is not a user question and keeps
+  // its distinct WAITING capsule.
+  assert.equal(
+    isUserQuestionWaitingRun("waiting", [event("Notification")]),
+    false,
+  );
+  // An answered question leaves the run active; an earlier question must not
+  // make that run look like it is still waiting.
+  assert.equal(
+    isUserQuestionWaitingRun("active", [
+      event("UserQuestion"),
+      event("PostToolUse"),
+    ]),
+    false,
+  );
+  assert.equal(isUserQuestionWaitingRun("waiting", []), false);
 });

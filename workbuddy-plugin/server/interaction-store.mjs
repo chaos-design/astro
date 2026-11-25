@@ -309,6 +309,44 @@ export function createInteractionStore(options = {}) {
     },
 
     /**
+     * Find live requests by the identity a captured user.question event still
+     * carries after a console refresh. The browser no longer holds the SSE
+     * `open` frame, but the host hook is still polling the deterministic
+     * requestId file. Matching on sessionId + toolUseId (+ toolName) lets a
+     * reloaded page recover the *original* request so its answer lands in the
+     * file the host is watching — minting a new request would write elsewhere.
+     * Only open requests are returned: a closed one is a history record, not
+     * something the reader can answer again.
+     */
+    findOpen({ sessionId, toolUseId, toolName } = {}) {
+      const found = [];
+      for (const record of records.values()) {
+        if (record.result) {
+          continue;
+        }
+        const request = record.request;
+        if (sessionId && request.sessionId !== sessionId) {
+          continue;
+        }
+        if (toolUseId && request.toolUseId !== toolUseId) {
+          continue;
+        }
+        if (toolName && request.toolName !== toolName) {
+          continue;
+        }
+        if (!sessionId && !toolUseId && !toolName) {
+          continue;
+        }
+        found.push({
+          request: { ...request },
+          events: record.events.map((event) => ({ ...event })),
+          result: record.result,
+        });
+      }
+      return found;
+    },
+
+    /**
      * No console page can answer a request once the last stream closes:
      * interaction frames are never replayed on reconnect. Cancel every open
      * request through the same `finish()` path so the host's synchronous hook

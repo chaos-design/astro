@@ -68,6 +68,54 @@ function closeUrl(transport: InteractionTransport, requestId: string): string {
   );
 }
 
+/** Identity of the request a captured question belongs to. */
+export interface InteractionIdentity {
+  sessionId?: string;
+  toolUseId?: string;
+  toolName?: string;
+}
+
+/**
+ * Recover the original open interaction request(s) after a console refresh.
+ * The service indexes by the deterministic requestId the host hook computed;
+ * it has no toolUseId→requestId map, so the browser must ask by the identity a
+ * captured question event still carries. A newly created request would write
+ * its answer to a file the waiting host never polls.
+ */
+export interface RecoveredInteraction {
+  request: InteractionDraft["request"];
+  events: InteractionDraft["events"];
+  result: InteractionDraft["result"];
+}
+
+export async function fetchOpenInteractions(
+  identity: InteractionIdentity,
+  transport: InteractionTransport,
+): Promise<RecoveredInteraction[]> {
+  if (!identity.sessionId && !identity.toolUseId && !identity.toolName) {
+    return [];
+  }
+  const params = new URLSearchParams();
+  if (identity.sessionId) {
+    params.set("sessionId", identity.sessionId);
+  }
+  if (identity.toolUseId) {
+    params.set("toolUseId", identity.toolUseId);
+  }
+  if (identity.toolName) {
+    params.set("toolName", identity.toolName);
+  }
+  const fetchImpl = transport.fetchImpl ?? fetch;
+  const response = await fetchImpl(
+    joinApi(transport.apiBase, `/api/interactions?${params.toString()}`),
+  );
+  if (!response.ok) {
+    return [];
+  }
+  const body = (await response.json()) as { records?: RecoveredInteraction[] };
+  return Array.isArray(body.records) ? body.records : [];
+}
+
 export function buildInteractionEvent(
   draft: InteractionDraft,
   action: InteractionAction,
@@ -127,12 +175,16 @@ function resultOf(payload: unknown): InteractionResult | null {
     return null;
   }
   // The real service answers POST /api/interactions/:id/events with
-  // `{ requestId, event, result, duplicate }`; the close route and older
-  // transports put the result at the top level. Accept both so the client
-  // reports the answered result the service actually sent.
-  const root = payload as { result?: unknown };
+  // `{ requestId, event, result, duplicate }` and the close route with
+  // `{ requestId, result, duplicate }`; older transports put the result at the
+  // top level. Accept all three so a successful 200 is applied locally instead
+  // of depending on the SSE frame, and the client reports the result the
+  // service actually sent.
+  const wrapper = payload as { result?: unknown };
   const candidate = (
-    root.result && typeof root.result === "object" ? root.result : payload
+    wrapper.result && typeof wrapper.result === "object"
+      ? wrapper.result
+      : payload
   ) as Partial<InteractionResult>;
   return typeof candidate.status === "string" && candidate.requestId
     ? (candidate as InteractionResult)
@@ -340,9 +392,17 @@ export async function answerInteractionQuestion(
   );
 }
 
-/** Cancel is closed through the service, which broadcasts the one close frame. */
+/**
+ * Cancel is closed through the service, which broadcasts one close frame. The
+ * console applies that result locally as soon as the POST succeeds: the frame is
+ * never replayed and can be lost to a reconnect or a slow stream, so waiting
+ * for it alone left a 200-cancelled card still showing as answerable. The SSE
+ * frame remains authoritative for other devices; the reducer ignores a second
+ * close for the same request.
+ */
 export async function cancelInteraction(
   draft: InteractionDraft,
+  dispatch: (action: InteractionStateAction) => void,
   transport: InteractionTransport,
 ): Promise<InteractionSendResult> {
   const response = await postJson(
@@ -359,5 +419,9 @@ export async function cancelInteraction(
       error: errorText(response.payload, `cancel rejected (${response.status})`),
     };
   }
-  return { ok: true, result: resultOf(response.payload) };
+  const result = resultOf(response.payload);
+  if (result) {
+    dispatch({ type: "close", result });
+  }
+  return { ok: true, result };
 }

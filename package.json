@@ -1,6 +1,6 @@
 {
   "name": "astro",
-  "version": "0.0.7-alpha.4",
+  "version": "0.0.7",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@11.21.0",
@@ -53,6 +53,7 @@
     "clsx": "^2.1.1",
     "date-fns": "^4.4.0",
     "dotenv": "^17.4.2",
+    "highlight.js": "^11.11.1",
     "lucide-react": "^1.42.0",
     "marked": "^18.1.0",
     "radix-ui": "^1.6.7",
@@ -70,7 +71,6 @@
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
     "@vitejs/plugin-react": "^6.1.1",
-    "highlight.js": "^11.11.1",
     "linkedom": "^0.18.15",
     "mermaid": "^11.11.0",
     "tailwindcss": "^4.3.3",

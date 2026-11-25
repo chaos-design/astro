@@ -31,3 +31,25 @@ test("agent marks are inline, not lazily fetched", () => {
   assert.doesNotMatch(platformIcon, /loading="lazy"/);
   assert.doesNotMatch(platformIcon, /icons\/workbuddy-logo\.png/);
 });
+
+/**
+ * lucide-react 1.42's `createLucideIcon` maps its path nodes into `<path>`
+ * elements without keys, so every multi-path brand mark warned on every render
+ * ("Each child in a list should have a unique key prop"). The marks are built
+ * by a local factory that keys each node instead.
+ */
+test("brand glyphs are built locally with keyed path nodes", () => {
+  assert.doesNotMatch(agentIcons, /from "lucide-react"/);
+  assert.doesNotMatch(agentIcons, /=\s*createLucideIcon\(/);
+  assert.match(agentIcons, /function createBrandIcon\(/);
+  const factory = agentIcons.match(
+    /function createBrandIcon\([\s\S]*?\n\}/,
+  );
+  assert.ok(factory, "the local SVG factory must exist");
+  assert.match(factory[0], /forwardRef<SVGSVGElement, SVGProps<SVGSVGElement>>/);
+  assert.match(factory[0], /nodes\.map\(\(\[tag, attrs\], index\)/);
+  assert.match(factory[0], /createElement\(tag, \{ key: index, \.\.\.attrs \}\)/);
+  assert.match(factory[0], /viewBox: "0 0 24 24"/);
+  assert.match(agentIcons, /PiAgentIcon = createBrandIcon\(/);
+  assert.match(agentIcons, /OthersAgentIcon = createBrandIcon\(/);
+});

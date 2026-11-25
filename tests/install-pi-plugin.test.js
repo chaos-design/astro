@@ -32,6 +32,7 @@ test("installs a self-contained extension into the global extension directory", 
       "index.ts",
       "mapping.ts",
       "claim.ts",
+      "session.ts",
       "package.json",
       "README.md",
     ]) {

@@ -86,7 +86,9 @@ test("both surfaces use the same Submit / Cancel wording and order", () => {
     surface,
     /<X aria-hidden="true" data-icon="inline-start" \/>\s*Cancel/,
   );
-  assert.doesNotMatch(surface, /一次性提交|提交发送|一次提交/);
+  // The batch hint legitimately says "N 个问题 · 一次提交"; only the old
+  // misleading "one-shot send" wording is gone.
+  assert.doesNotMatch(surface, /一次性提交|提交发送/);
   const footer = surface.slice(
     surface.indexOf('<footer className="question-surface__footer">'),
   );
@@ -127,10 +129,75 @@ test("the pinned answer bar stays reachable on a narrow viewport", () => {
 });
 
 test("a closed question keeps the same chips without controls", () => {
-  assert.match(surface, /question-options__option is-static/);
+  // Static chips keep the same look but are spans, and a captured answer now
+  // highlights its selected options via `is-selected` instead of losing them.
+  assert.match(surface, /"is-static"/);
+  assert.match(surface, /chosen && "is-selected"/);
+  assert.match(surface, /matchAnswerOptions\(answer \?\? "", prompt\.options\)/);
   assert.match(surface, /disabled=\{disabled\}/);
   assert.match(styles, /\.question-options__option\.is-static \{/);
   assert.match(styles, /\.question-options__option:disabled \{/);
+});
+
+test("the batch hint sits above the list and the footer is a Submit / Cancel pair", () => {
+  assert.ok(
+    surface.indexOf("question-surface__summary") <
+      surface.indexOf('<div className="question-surface">'),
+    "the summary row must precede the scrolling question list",
+  );
+  assert.ok(
+    surface.indexOf('className="question-surface__summary"') <
+      surface.indexOf("question-surface__body"),
+  );
+  assert.doesNotMatch(surface, /question-surface__meta/);
+  assert.doesNotMatch(surface, /一次性提交|提交发送/);
+  const footer = surface.slice(surface.indexOf("<footer"), surface.indexOf("</footer>"));
+  assert.ok(footer.indexOf("Submit") < footer.indexOf("Cancel"));
+  assert.match(footer, /disabled=\{disabled \|\| !submittable\}/);
+});
+
+test("the shared question preview is exported for the global overlay", () => {
+  assert.match(surface, /export function QuestionPreview\(/);
+  assert.match(surface, /<QuestionPreview payload=\{payload\} \/>/);
+});
+
+test("the read-only preview leads with a count and numbers each question", () => {
+  assert.match(surface, /question-preview__head/);
+  assert.match(surface, /question-preview__count/);
+  assert.match(surface, /question-preview__list/);
+  assert.match(surface, /question-preview__heading/);
+  assert.match(surface, /question-preview__index/);
+  assert.match(surface, /question-preview__state/);
+  assert.match(surface, /question-preview__answers/);
+  assert.match(surface, /selected\.length && "is-answered"/);
+  assert.match(styles, /\.question-preview__head \{/);
+  assert.match(styles, /\.question-preview__answers \{/);
+  assert.match(styles, /\.question-surface__item\.is-answered \{/);
+});
+
+test("floating and docked question headings group title and badges on the left", () => {
+  const floating = styles.match(
+    /\.interaction-panel__question-heading \{([^}]*)\}/,
+  )?.[1] ?? "";
+  const docked = styles.match(/\.question-surface__heading \{([^}]*)\}/)?.[1] ?? "";
+  assert.match(floating, /justify-content:\s*flex-start/);
+  assert.doesNotMatch(floating, /space-between/);
+  // Both placements state it explicitly so they cannot drift apart again.
+  assert.match(docked, /justify-content:\s*flex-start/);
+  assert.doesNotMatch(docked, /space-between/);
+});
+
+test("a captured answer gets a stronger selected chip in the preview", () => {
+  assert.match(styles, /\.question-options__option\.is-static\.is-selected \{/);
+  const matches = [
+    ...styles.matchAll(
+      /\.question-options__option\.is-static\.is-selected \{([^}]*)\}/g,
+    ),
+  ];
+  const selected = matches.at(-1)?.[1] ?? "";
+  assert.match(selected, /border-style:\s*solid/);
+  assert.match(selected, /box-shadow:/);
+  assert.match(selected, /var\(--teal\) 24%/);
 });
 
 test("the submit bar is a sibling of the scroll area, not part of it", () => {
@@ -146,4 +213,28 @@ test("the dock hands its whole height to the merged surface", () => {
   assert.match(dock, /flex:\s*1 1 auto/);
   assert.doesNotMatch(dock, /max-height:\s*45%/);
   assert.doesNotMatch(styles, /\.question-answer \{/);
+});
+
+/**
+ * The floating card is a live answer affordance, not a history preview. Both
+ * the floating render paths and the inspector binding must go through the
+ * single `questionActionable` gate, so a finished or replayed run never floats
+ * a card and its answer controls stay read-only.
+ */
+test("floating card and inspector answers are gated by the executing task", () => {
+  assert.match(app, /questionActionable && activeInteraction && !questionDocked/);
+  assert.match(app, /questionActionable &&\s+settlingInteraction &&\s+settlingMatchesView/);
+  const binding = app.slice(
+    app.indexOf("const questionBinding"),
+    app.indexOf("const dockedQuestion"),
+  );
+  assert.match(binding, /readOnly:\s*!questionActionable \|\|/);
+  // The gate must delegate to the one live-state definition rather than grow
+  // a second list of executing statuses.
+  const interaction = readFileSync(
+    new URL("../src/lib/question-interaction.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(interaction, /isQuestionActionable/);
+  assert.match(interaction, /isPromptExecuting\(input\.status, input\.isDemo\)/);
 });

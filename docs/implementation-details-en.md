@@ -321,7 +321,16 @@ from `package.json` or the installed runtime's `plugin.json`), **process**
 trace files, data root) and **sessions** (`active` / `waiting` / `complete` /
 `failed` / `terminated`). A console/service version mismatch is called out; an
 unreadable manifest reports "not reported" with the reason instead of a bare
-`unknown`.
+`unknown`, and a **capture plugins** group (`/api/health.captureVersions`: the
+long-lived capture-adapter version that actually wrote each source's events).
+opencode / pi stamp their own `package.json` version on every event as
+`payload.captureVersion`. The service also buckets events with no stamp at all
+(a process running pre-stamp code writes none) and reports `stale` when two
+stamped versions coexist or an unstamped event is at least as recent as the
+newest stamped one — derived from event timestamps, not wall-clock freshness.
+The card shows a `v旧(未标记)` bucket and, when stale, a one-click copyable
+host-specific restart command (`opencode service restart` for opencode, a Pi
+session hint for pi); it never claims to have applied the restart itself.
 
 ### Guide and log controls
 

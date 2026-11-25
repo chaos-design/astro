@@ -357,3 +357,47 @@ test("E3: a close yields one notification with counts and the device, never answ
   });
   assert.equal(expired.kind, "fallback_prompt");
 });
+
+test("findOpen recovers an open request by session and tool identity after a refresh", () => {
+  const { home, store } = makeStore();
+  try {
+    const first = makeRequest({ toolUseId: "call_refresh", sessionId: "session-refresh" });
+    const other = makeRequest({ toolUseId: "call_other", sessionId: "session-refresh" });
+    store.create(first);
+    store.create(other);
+
+    const byTool = store.findOpen({ sessionId: "session-refresh", toolUseId: "call_refresh" });
+    assert.equal(byTool.length, 1);
+    assert.equal(byTool[0].request.requestId, first.requestId);
+    assert.equal(byTool[0].request.questions[0].question, first.questions[0].question);
+
+    const bySession = store.findOpen({ sessionId: "session-refresh" });
+    assert.equal(bySession.length, 2);
+
+    const noMatch = store.findOpen({ sessionId: "session-refresh", toolUseId: "call_missing" });
+    assert.equal(noMatch.length, 0);
+
+    const noIdentity = store.findOpen({});
+    assert.equal(noIdentity.length, 0);
+  } finally {
+    store.stop();
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("findOpen never returns a closed request", () => {
+  const { home, store } = makeStore();
+  try {
+    const request = makeRequest({ toolUseId: "call_closed", sessionId: "session-closed" });
+    store.create(request);
+    store.close(request.requestId, {
+      answers: { "Which framework?": "React" },
+      answeredBy: "console",
+    });
+    const found = store.findOpen({ sessionId: "session-closed", toolUseId: "call_closed" });
+    assert.equal(found.length, 0);
+  } finally {
+    store.stop();
+    rmSync(home, { recursive: true, force: true });
+  }
+});

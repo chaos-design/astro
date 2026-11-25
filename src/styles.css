@@ -69,6 +69,10 @@
   --line: #202636;
   --line-bright: #343d52;
   --chrome-line: #151a25;
+  /* Row gap shared by the LOG and the overlay rail, which reuse the same
+     `.atomic-log__row` markup. The rail widens it locally so two highlighted
+     rows never read as one continuous block. */
+  --log-row-gap: 6px;
   --muted: #69758a;
   --muted-soft: #8996aa;
   --text: #dbe5f2;
@@ -105,6 +109,11 @@
   --selection-text: #ecfeff;
   --selection-muted: #a5f3fc;
   --selection-bg: #0a2933;
+  /* Highlighted-code names — functions, types, tag names, json/yaml keys.
+     The prose palette (violet/teal/amber/red) has no cool accent for the
+     tokens a reader scans a block for, and the near-white these tokens fell
+     back to was indistinguishable from plain code text. */
+  --code-accent: #7dd3fc;
   --selection-glow: rgb(34 211 238 / 42%);
   --atom-selected-bg: #0d4c5f;
   --atom-selected-glow: rgb(34 211 238 / 68%);
@@ -200,6 +209,9 @@
   --selection-text: #172554;
   --selection-muted: #1d4ed8;
   --selection-bg: #dbeafe;
+  /* Highlighted-code names — see the dark-theme note above. A deep sky that
+     keeps the name/keys family legible on the light panel. */
+  --code-accent: #0369a1;
   --selection-glow: rgb(37 99 235 / 32%);
   --atom-selected-bg: #b9ddff;
   --atom-selected-glow: rgb(0 87 255 / 46%);
@@ -1106,6 +1118,68 @@ pre,
   line-height: 1.55;
 }
 
+.service-card__capture-versions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+}
+
+.service-card__capture-versions > div {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: var(--text-meta);
+}
+
+.service-card__capture-versions dt {
+  color: var(--muted);
+  font-family: var(--font-mono);
+}
+
+.service-card__capture-versions dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-family: var(--font-mono);
+}
+
+.service-card__capture-versions > div[data-stale="true"] dd {
+  color: var(--status-waiting);
+}
+
+.service-card__empty {
+  margin: 0;
+  color: var(--muted-soft);
+  font-size: 9px;
+}
+
+.service-card__capture-restarts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 5px;
+}
+
+.service-card__capture-restart {
+  padding: 3px 8px;
+  border: 1px solid color-mix(in srgb, var(--status-waiting) 48%, var(--line));
+  border-radius: 5px;
+  color: var(--status-waiting);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: var(--text-overline);
+  background: transparent;
+}
+
+.service-card__capture-restart:hover {
+  border-color: var(--status-waiting);
+  color: var(--text-strong);
+  background: color-mix(in srgb, var(--status-waiting) 12%, transparent);
+}
+
 .service-card__counts {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -1505,18 +1579,6 @@ pre,
   line-height: 1.6;
 }
 
-/* Preview buttons for the task-completion chime (Settings → 通知): one per
-   terminal status, each playing the currently selected style. They reuse the
-   `.settings-option` card above them — same grid, height, border and hover —
-   so a row of previews reads as part of the same control set, not as generic
-   buttons. Status colour is the only extra signal: it matches the run status
-   the sound stands for. */
-.settings-chime-preview {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
-}
-
 .settings-chime-option > svg:first-child {
   width: 13px;
   height: 13px;
@@ -1678,6 +1740,7 @@ pre,
  * border — both hard to read on the dark panel. Disabled stays legible in
  * muted tones instead of fading to 50% opacity and disappearing. */
 .settings-footer__actions button {
+  min-width: 92px;
   border-radius: 6px;
   font-family: var(--font-mono);
   font-size: 10px;
@@ -1748,16 +1811,21 @@ pre,
   }
 }
 
-/* Four per row by default (eight ranges read as two tidy rows: hours above,
- * days below); a pick-one group sets `--settings-columns` when it has fewer
- * choices. */
-.settings-options {
+/* One width rule for every pick-one / preview button group in Settings: the
+   declared column count divides the row equally, so three options take three
+   equal thirds and four take four equal quarters. The chime previews set the
+   same `--settings-columns` token instead of growing their own column rule. */
+.settings-options,
+.settings-chime-preview {
   display: grid;
-  /* A two-option row on a 900px pane would otherwise stretch its buttons into
-     full-width bars; the cap keeps every group the same readable width. */
-  max-width: 560px;
   grid-template-columns: repeat(var(--settings-columns, 4), minmax(0, 1fr));
   gap: 6px;
+}
+
+/* Preview buttons for the task-completion chime (Settings → 通知): three
+   equal columns of the same `.settings-option` card as every other choice. */
+.settings-chime-preview {
+  --settings-columns: 3;
 }
 
 .settings-option {
@@ -1990,6 +2058,9 @@ pre,
 }
 
 .history-search__query-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   padding: 12px;
   border-bottom: 1px solid var(--chrome-line);
 }
@@ -2026,6 +2097,8 @@ pre,
 }
 
 .history-search__query {
+  flex: 1 1 auto;
+  min-width: 0;
   height: 42px;
   border-color: color-mix(in srgb, var(--selection-border) 46%, var(--line-bright));
   border-radius: 6px;
@@ -2056,6 +2129,63 @@ pre,
   font-family: var(--font-mono);
   font-size: 7px;
   text-align: center;
+}
+
+/* The two edge buttons live beside the search box, not over the result list,
+   so no row is ever covered. The container reserves the two-button width and
+   both chevrons stay mounted: an unreachable edge is a disabled button, never
+   an unmount, so the sibling input never resizes as the list scrolls. */
+.history-search__scroll-controls {
+  display: flex;
+  flex: 0 0 48px;
+  width: 48px;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.history-search__scroll-button {
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--line-bright);
+  border-radius: 5px;
+  color: var(--muted-soft);
+  background: transparent;
+  cursor: pointer;
+  transition:
+    color 120ms ease,
+    border-color 120ms ease,
+    background 120ms ease;
+}
+
+.history-search__scroll-button:disabled {
+  color: var(--muted);
+  border-color: var(--line);
+  cursor: default;
+}
+
+.history-search__scroll-button > svg {
+  width: 12px;
+  height: 12px;
+}
+
+.history-search__scroll-button:not(:disabled):hover {
+  border-color: var(--selection-border);
+  color: var(--selection-text);
+  background: var(--selection-bg);
+}
+
+.history-search__scroll-button--top:not(:disabled):hover svg {
+  animation: scroll-cue-up 720ms ease-in-out infinite;
+}
+
+.history-search__scroll-button--bottom:not(:disabled):hover svg {
+  animation: scroll-cue-down 720ms ease-in-out infinite;
 }
 
 .history-search__filters {
@@ -5405,15 +5535,23 @@ pre,
 }
 
 .prompt-input {
-  display: grid;
+  display: flex;
   width: 100%;
   height: 100%;
   min-height: 0;
-  grid-template-rows: 36px minmax(0, 1fr);
+  flex-direction: column;
+}
+
+.prompt-input > .prompt-content,
+.prompt-input > .prompt-input__code,
+.prompt-input > .question-surface {
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .prompt-input__toolbar {
   display: flex;
+  flex: none;
   min-width: 0;
   align-items: center;
   justify-content: flex-end;
@@ -5503,8 +5641,10 @@ pre,
 
 /* The question preview renders captured markdown as the rich text the
    reader's client showed. The type scale stays panel-sized: the inspector
-   pane is narrow, so headings cap at h3 and every block uses the same body
-   and meta metrics the neighboring preview sections use. */
+   pane is narrow, so every block uses the same body and meta metrics the
+   neighboring preview sections use. Sizes that vary (headings, inline code)
+   are em-based, so the overlay's larger reading surface scales them with
+   the prose instead of needing a second scale. */
 .markdown-preview {
   min-width: 0;
   color: var(--text);
@@ -5521,15 +5661,40 @@ pre,
   margin-bottom: 0;
 }
 
+/* One rhythm, a real scale: h2 carries the document's sections with a
+   hairline underline; h1/h3 step around it; h4-h6 settle back to the body
+   size. All em so the overlay reads them proportionally larger. */
 .markdown-preview h1,
 .markdown-preview h2,
 .markdown-preview h3,
-.markdown-preview h4 {
-  margin: 12px 0 6px;
+.markdown-preview h4,
+.markdown-preview h5,
+.markdown-preview h6 {
+  margin: 14px 0 6px;
   color: var(--text-strong);
-  font-size: var(--text-label);
-  font-weight: var(--weight-medium);
+  font-weight: var(--weight-strong);
   line-height: 1.4;
+}
+
+.markdown-preview h1 {
+  font-size: 1.3em;
+  letter-spacing: 0.01em;
+}
+
+.markdown-preview h2 {
+  padding-bottom: 3px;
+  border-bottom: 1px solid var(--line);
+  font-size: 1.18em;
+}
+
+.markdown-preview h3 {
+  font-size: 1.06em;
+}
+
+.markdown-preview h4,
+.markdown-preview h5,
+.markdown-preview h6 {
+  font-size: 1em;
 }
 
 .markdown-preview p,
@@ -5537,29 +5702,94 @@ pre,
 .markdown-preview ol,
 .markdown-preview blockquote,
 .markdown-preview pre,
+.markdown-preview .md-code,
 .markdown-preview table {
   margin: 0 0 8px;
 }
 
+/* Block layout, not a flex column: a flex container blockifies its `li`
+   children away from `display: list-item`, and Tailwind's preflight resets
+   `list-style` globally — both together silently dropped every bullet and
+   ordered number from the preview. Restore the marker explicitly; items
+   carry the same rhythm through margins instead. */
 .markdown-preview ul,
 .markdown-preview ol {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
   padding-left: 18px;
+}
+
+.markdown-preview ul {
+  list-style: disc outside;
+}
+
+.markdown-preview ul ul {
+  list-style: circle outside;
+}
+
+.markdown-preview ol {
+  list-style: decimal outside;
+}
+
+.markdown-preview li {
+  margin: 0 0 3px;
+}
+
+.markdown-preview li:last-child {
+  margin-bottom: 0;
 }
 
 .markdown-preview li::marker {
   color: var(--muted-soft);
 }
 
+/* A nested list tightens under its item instead of opening the parent gap;
+   the item owns the rhythm, a loose list's paragraphs only separate
+   siblings. */
+.markdown-preview li > ul,
+.markdown-preview li > ol {
+  margin: 3px 0 0;
+}
+
+.markdown-preview li > p {
+  margin: 0 0 4px;
+}
+
+.markdown-preview li > :last-child {
+  margin-bottom: 0;
+}
+
+/* GFM task lists: the checkbox replaces the marker instead of doubling it,
+   and carries the violet accent the rest of the console's interactive
+   controls use. */
+.markdown-preview li:has(> input[type="checkbox"]) {
+  list-style: none;
+}
+
+.markdown-preview input[type="checkbox"] {
+  margin: 0 6px 0 0;
+  accent-color: var(--violet);
+  vertical-align: -1px;
+}
+
+.markdown-preview strong {
+  color: var(--text-strong);
+  font-weight: var(--weight-medium);
+}
+
+.markdown-preview del {
+  color: var(--muted-soft);
+}
+
+/* Inline code reads a half-step brighter than the prose around it; the
+   0.92em size keeps the chip from inflating the line height in either
+   reading surface. */
 .markdown-preview code {
   padding: 1px 5px;
   border: 1px solid var(--line);
   border-radius: 4px;
   background: color-mix(in srgb, var(--panel-raised) 78%, var(--panel));
+  color: var(--text-strong);
   font-family: var(--font-mono);
-  font-size: var(--text-meta);
+  font-size: 0.92em;
 }
 
 .markdown-preview pre {
@@ -5568,25 +5798,63 @@ pre,
   border-radius: 6px;
   background: color-mix(in srgb, var(--panel) 92%, var(--bg));
   overflow-x: auto;
+  line-height: 1.55;
+  tab-size: 2;
+  scrollbar-width: thin;
 }
 
 .markdown-preview pre code {
   padding: 0;
   border: 0;
   background: transparent;
-  font-size: var(--text-meta);
+  color: var(--text);
+  font-size: 0.92em;
+}
+
+/* A fenced block with a language prints its name above the code —
+   right-aligned so it never argues with the first line, and outside the
+   scrolling <pre> so it stays put while wide code pans. */
+.markdown-preview .md-code pre {
+  margin: 0;
+}
+
+.markdown-preview .md-code__lang {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-overline);
+  letter-spacing: 0.08em;
+  text-align: right;
+  text-transform: uppercase;
+  user-select: none;
 }
 
 .markdown-preview blockquote {
-  padding: 2px 10px;
-  border-left: 2px solid var(--line-bright);
+  padding: 5px 10px;
+  border-left: 2px solid color-mix(in srgb, var(--violet) 45%, var(--line));
+  border-radius: 0 4px 4px 0;
+  background: color-mix(in srgb, var(--violet) 6%, transparent);
   color: var(--muted-soft);
+}
+
+.markdown-preview blockquote > :last-child {
+  margin-bottom: 0;
 }
 
 .markdown-preview a {
   color: var(--violet);
   text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--violet) 45%, transparent);
   text-underline-offset: 2px;
+}
+
+.markdown-preview a:hover {
+  text-decoration-color: currentcolor;
+}
+
+.markdown-preview table {
+  border-collapse: collapse;
 }
 
 .markdown-preview th,
@@ -5594,11 +5862,18 @@ pre,
   padding: 4px 8px;
   border: 1px solid var(--line);
   text-align: left;
+  vertical-align: top;
 }
 
 .markdown-preview th {
+  border-bottom-color: var(--line-bright);
+  background: color-mix(in srgb, var(--panel-raised) 62%, transparent);
   color: var(--muted-soft);
   font-weight: var(--weight-medium);
+}
+
+.markdown-preview tbody tr:nth-child(even) {
+  background: color-mix(in srgb, var(--panel-raised) 48%, transparent);
 }
 
 .markdown-preview hr {
@@ -5609,8 +5884,762 @@ pre,
 
 .markdown-preview img {
   max-width: 100%;
+  height: auto;
   border-radius: 6px;
 }
+
+/* Fenced code is highlighted by highlight.js in the markdown pipeline. Only
+   token colours are set here — the code surface keeps the panel's own
+   background in both themes, and the overlay reuses `.markdown-preview`.
+   The map covers every token class the registered grammars (bash / diff /
+   json / markdown / python / ts / xml / yaml) emit: control keywords violet,
+   captured strings teal, constants amber, names and keys — functions, tag
+   names, json/yaml keys, variables — the dedicated `--code-accent`, and
+   comments muted. */
+.markdown-preview pre code.hljs {
+  color: var(--text);
+  background: transparent;
+}
+
+.markdown-preview pre code .hljs-comment,
+.markdown-preview pre code .hljs-quote {
+  color: var(--muted-soft);
+  font-style: italic;
+}
+
+.markdown-preview pre code .hljs-doctag,
+.markdown-preview pre code .hljs-keyword,
+.markdown-preview pre code .hljs-selector-tag,
+.markdown-preview pre code .hljs-template-tag,
+.markdown-preview pre code .hljs-literal {
+  color: var(--violet);
+}
+
+/* `this` / `self` are language keywords wearing the variable class. */
+.markdown-preview pre code .hljs-variable.language_ {
+  color: var(--violet);
+  font-style: italic;
+}
+
+.markdown-preview pre code .hljs-string,
+.markdown-preview pre code .hljs-regexp {
+  color: var(--teal);
+}
+
+/* A diff line arrives whole inside one addition/deletion span, so the tint
+   carries the line and the hue stays subtle enough to read embedded code. */
+.markdown-preview pre code .hljs-addition {
+  color: var(--teal);
+  background: color-mix(in srgb, var(--teal) 12%, transparent);
+}
+
+.markdown-preview pre code .hljs-deletion {
+  color: var(--red);
+  background: color-mix(in srgb, var(--red) 12%, transparent);
+}
+
+.markdown-preview pre code .hljs-number,
+.markdown-preview pre code .hljs-symbol,
+.markdown-preview pre code .hljs-built_in,
+.markdown-preview pre code .hljs-title.class_ {
+  color: var(--amber);
+}
+
+/* The names a reader scans a block for. The near-white these tokens used to
+   inherit sat one step above the base text and read as unstyled code. */
+.markdown-preview pre code .hljs-title,
+.markdown-preview pre code .hljs-function,
+.markdown-preview pre code .hljs-name,
+.markdown-preview pre code .hljs-type,
+.markdown-preview pre code .hljs-section,
+.markdown-preview pre code .hljs-attr,
+.markdown-preview pre code .hljs-attribute,
+.markdown-preview pre code .hljs-property,
+.markdown-preview pre code .hljs-variable,
+.markdown-preview pre code .hljs-params,
+.markdown-preview pre code .hljs-selector-id,
+.markdown-preview pre code .hljs-selector-class,
+.markdown-preview pre code .hljs-selector-attr,
+.markdown-preview pre code .hljs-selector-pseudo,
+.markdown-preview pre code .hljs-meta {
+  color: var(--code-accent);
+}
+
+/* Punctuation only frames the code: xml angle brackets, yaml markers and
+   markdown list bullets stay quiet so the tokens above carry the block. */
+.markdown-preview pre code .hljs-tag,
+.markdown-preview pre code .hljs-punctuation {
+  color: var(--muted-soft);
+}
+
+.markdown-preview pre code .hljs-bullet {
+  color: var(--muted-soft);
+}
+
+/* Inline code and template substitutions inside a fenced block carry the
+   string tone; without a rule they inherit the near-white base text and read
+   as unstyled plain text between coloured tokens. */
+.markdown-preview pre code .hljs-code,
+.markdown-preview pre code .hljs-template-variable {
+  color: var(--teal);
+}
+
+/* A diff's file / hunk headers wear the comment class, but they are the
+   structure the reader scans for. Keep them legible instead of dim italic. */
+.markdown-preview pre code.language-diff .hljs-comment {
+  color: var(--muted);
+  font-style: normal;
+}
+
+/* md-in-md: the fenced markdown block keeps its own inline marks. */
+.markdown-preview pre code .hljs-strong {
+  color: var(--text-strong);
+  font-weight: var(--weight-medium);
+}
+
+.markdown-preview pre code .hljs-emphasis {
+  font-style: italic;
+}
+
+.markdown-preview pre code .hljs-link {
+  color: var(--violet);
+  text-decoration: underline;
+}
+
+/* Template substitutions reset to the prose colour inside a string token. */
+.markdown-preview pre code .hljs-subst {
+  color: var(--text);
+}
+
+/* Global payload layer: the same data as the inspector tab, but large enough
+   to read a whole tool result. Header and mode switch stay put; only the body
+   scrolls, so toggling Preview / Code never reflows the controls. */
+.payload-overlay {
+  display: flex;
+  width: min(1440px, calc(100vw - 64px));
+  height: min(920px, calc(100dvh - 48px));
+  max-width: none;
+  max-height: calc(100dvh - 48px);
+  flex-direction: column;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--line-bright);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--panel) 97%, transparent);
+  box-shadow:
+    0 32px 90px rgb(0 0 0 / 58%),
+    0 0 0 1px color-mix(in srgb, var(--selection-border) 12%, transparent);
+}
+
+.payload-overlay__head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  /* Reserve the dialog's own close button slot at the right edge. */
+  padding: 14px 56px 14px 18px;
+  border-bottom: 1px solid var(--chrome-line);
+}
+
+.payload-overlay__copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.payload-overlay__copy .eyebrow {
+  color: var(--muted);
+  font-size: 8px;
+  letter-spacing: 0.16em;
+}
+
+.payload-overlay [data-slot="dialog-title"] {
+  overflow: hidden;
+  color: var(--text-strong);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.payload-overlay [data-slot="dialog-description"] {
+  color: var(--muted-soft);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.payload-overlay__body {
+  flex: 1;
+  min-height: 0;
+  padding: 16px 18px 20px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-bright) transparent;
+}
+
+.payload-overlay__body--code {
+  display: flex;
+  padding: 0;
+  overflow: hidden;
+}
+
+/* Preview is two panes: the atom's real content leads (it is the reason the
+   reader opened the layer), and the related data — time, path, annotations —
+   sits beside it. Both scroll on their own so a long message never buries the
+   metadata, and neither pane fights the fixed header above. */
+.payload-overlay__preview-grid {
+  display: grid;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
+}
+
+/* The pane's title stays pinned while its body scrolls: the section header
+   (「原子内容」 / 「相关数据」) must not drift away with the content. */
+.payload-overlay__pane {
+  display: flex;
+  min-height: 0;
+  min-width: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Padding lives on each pane's scroll body, not the pane: the scroll bar sits
+   flush at the pane edge while the content it scrolls keeps its own inset on
+   every side. Folding padding into the pane (with a 0-padding body) made text
+   scroll right up against the divider and the outer edge. */
+.payload-overlay__pane--content {
+  min-width: 0;
+  border-right: 1px solid var(--chrome-line);
+}
+
+.payload-overlay__pane--related {
+  min-width: 0;
+  background: color-mix(in srgb, var(--panel) 46%, transparent);
+}
+
+.payload-overlay__pane-title {
+  flex: none;
+  margin: 0;
+  padding: 14px 18px 0;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: var(--weight-strong);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+/* The related pane's head row carries the title and its fold toggle; the
+   title keeps its spacing through the wrapper instead. */
+.payload-overlay__pane-head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 14px 16px 10px;
+}
+
+.payload-overlay__pane-head .payload-overlay__pane-title {
+  margin: 0;
+  padding: 0;
+}
+
+/* Each pane scrolls on its own, and its scroll bar sits flush at the pane's
+   outer edge — left of 原子内容, right of 相关数据 — rather than drifting
+   inside the content. The thumb is made clearly visible: a `thin` width on the
+   dark panel read as "nothing scrolls here", so the reader could not tell the
+   相关数据 pane was the scroll region. */
+/* Each scroll region carries its own padding so its content keeps an inset on
+   all four sides while the scroll bar hugs the pane's outer edge. */
+.payload-overlay__pane .payload-overlay__body {
+  flex: 1;
+  min-height: 0;
+  padding: 10px 18px 20px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-bright) transparent;
+}
+
+.payload-overlay__pane--related .payload-overlay__body {
+  padding: 0 16px 20px;
+}
+
+.payload-overlay__pane .payload-overlay__body::-webkit-scrollbar {
+  width: 8px;
+}
+
+.payload-overlay__pane .payload-overlay__body::-webkit-scrollbar-thumb {
+  border-radius: 99px;
+  background: var(--line-bright);
+}
+
+/* Related data reads as a compact definition list: one label/value pair per
+   row, with long paths wrapping instead of being clipped. Annotations carry
+   the violet accent so an explanation is distinguishable from a timestamp. */
+.payload-overlay__fields {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 0;
+}
+
+.payload-overlay__field {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(96px, 0.9fr) minmax(0, 1.4fr);
+  gap: 10px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: var(--text-meta);
+}
+
+.payload-overlay__field dt {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.payload-overlay__field dd {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--text);
+}
+
+/* A long value folds to its first 200 characters with its own 展开 control;
+   the short fields around it are never hidden by a pane-wide fold. */
+.payload-overlay__field-text.is-folded {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+}
+
+.payload-overlay__field-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.payload-overlay__field-more {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+  padding: 0;
+  border: 0;
+  color: var(--violet);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: var(--text-overline);
+  background: transparent;
+}
+
+.payload-overlay__field-more svg {
+  width: 9px;
+  height: 9px;
+}
+
+.payload-overlay__field-more:hover {
+  color: var(--text-strong);
+}
+
+.payload-overlay__field.is-annotation {
+  border-bottom-color: color-mix(in srgb, var(--violet) 38%, var(--line));
+}
+
+.payload-overlay__field.is-annotation dt {
+  color: var(--violet);
+}
+
+/* An array element opens with its own indexed row (`questions[0]`,
+   `options[1]`) and its members indent beneath it — a repeated bare key
+   (`description`, `label`) only reads once its element is visible. The
+   indent itself is per-row inline padding set by the renderer. */
+.payload-overlay__field--group {
+  grid-template-columns: minmax(0, 1fr);
+  padding-bottom: 1px;
+  padding-top: 10px;
+  border-bottom: 0;
+}
+
+.payload-overlay__field--group dt {
+  overflow-wrap: anywhere;
+  color: var(--text-strong);
+  font-size: var(--text-overline);
+  letter-spacing: 0.08em;
+  white-space: normal;
+}
+
+@media (max-width: 860px) {
+  .payload-overlay__preview-grid {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1.4fr) minmax(0, 1fr);
+  }
+
+  .payload-overlay__pane--content {
+    border-right: 0;
+    border-bottom: 1px solid var(--chrome-line);
+  }
+}
+
+.payload-overlay__empty {
+  margin: 0;
+  color: var(--muted-soft);
+  font-size: 11px;
+}
+
+/* The global layer is the reading surface: one step larger than the
+   inspector's preview, so a long tool result, a Markdown list or highlighted
+   code stays readable in the wide pane. Code sizes are em-based inside
+   `.markdown-preview`, so inline chips and fenced blocks scale with this
+   step on their own — no per-context bump needed here. */
+.payload-overlay .markdown-preview {
+  font-size: var(--text-label);
+}
+
+/* Prose wraps and fenced code scrolls inside its own block; a wide Markdown
+   table gets the same treatment so the pane itself never needs to widen for
+   one wide element — horizontal scrolling stays local to what is wide. */
+.payload-overlay .markdown-preview table {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+/* The rail is the run's message chain in the LOG's own data standard: every
+   event, newest first, split by the LOG's turn separators. It is a view of the
+   single console selection: picking a row commits through the LOG's own select
+   state, and the payload on the right follows reactively. The rail and the
+   content scroll independently so a long run never moves the controls or vice
+   versa. The width carries a full event key and a two-line summary without
+   truncating the names the reader needs to identify a step. */
+.payload-overlay__main {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+
+.payload-overlay__rail {
+  display: flex;
+  flex: none;
+  width: clamp(236px, 26%, 384px);
+  min-height: 0;
+  flex-direction: column;
+  border-right: 1px solid var(--chrome-line);
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+}
+
+/* The head is one row: the search box (which grows), the two jump-to-edge
+   buttons and the Live toggle — the chain's controls never stack into two
+   rows that resize as the query changes. */
+.payload-overlay__rail-head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px 10px;
+}
+
+/* The rail's own search box (rail-local state, like the LOG's): a keystroke
+   filters the chain without re-rendering the studio. It sits before the jump
+   buttons and the Live toggle and carries its own clear button. */
+.payload-overlay__rail-search {
+  flex: 1;
+  min-width: 0;
+  inline-size: auto;
+}
+
+/* The search box is the quiet middle control of the rail head: its text sits
+   one step below the enlarged counter and Live pill so those anchors read as
+   the controls and the search stays a background affordance. */
+.payload-overlay__rail-search input {
+  font-size: var(--text-overline);
+}
+
+/* Quick jump to either end of the chain, beside the rail's search box. The
+   container reserves the two-button width, both chevrons stay mounted and an
+   unreachable edge is disabled — never an unmount — so the search box beside
+   them never shifts while the list scrolls or a live event lands. A solid
+   selection fill and ink make them unmistakable controls at a glance; the
+   disabled edge keeps a dimmer surface and the plain arrow. */
+.payload-overlay__rail-scroll-controls {
+  display: flex;
+  flex: 0 0 48px;
+  width: 48px;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.payload-overlay__rail-scroll-button {
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--selection-border);
+  border-radius: 5px;
+  color: var(--selection-text);
+  background: var(--selection-bg);
+  cursor: pointer;
+  transition:
+    color 120ms ease,
+    border-color 120ms ease,
+    background 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.payload-overlay__rail-scroll-button:disabled {
+  color: var(--muted);
+  border-color: var(--line);
+  background: color-mix(in srgb, var(--panel-raised) 72%, transparent);
+  cursor: default;
+}
+
+.payload-overlay__rail-scroll-button > svg {
+  width: 12px;
+  height: 12px;
+}
+
+.payload-overlay__rail-scroll-button:not(:disabled):hover {
+  border-color: var(--selection-border);
+  color: var(--selection-text);
+  background: color-mix(in srgb, var(--selection-border) 22%, var(--selection-bg));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--selection-border) 18%, transparent);
+}
+
+.payload-overlay__rail-empty {
+  margin: 4px 6px;
+  color: var(--muted-soft);
+  font-size: var(--text-meta);
+  text-align: center;
+}
+
+/* The 跟随 toggle mirrors the console's live following from inside the
+   overlay: armed it reads as the live pill (running tint over the panel) with
+   a breathing halo, disarmed it stays a quiet outlined control. Disabled only
+   when the open run is not executing at all — a finished run has nothing to
+   follow. The label is the console's own Live mark. */
+.payload-overlay__follow {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 11px;
+  border: 1px solid color-mix(in srgb, var(--line-bright) 80%, transparent);
+  border-radius: 999px;
+  color: var(--muted);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-variant: all-small-caps;
+  letter-spacing: 0.06em;
+  background: color-mix(in srgb, var(--panel-raised) 70%, transparent);
+}
+
+.payload-overlay__follow svg {
+  width: 13px;
+  height: 13px;
+}
+
+.payload-overlay__follow:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--status-running) 80%, var(--line));
+  color: var(--text-strong);
+  background: color-mix(in srgb, var(--status-running) 22%, var(--panel-raised));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--status-running) 12%, transparent);
+  transform: translateY(-1px);
+}
+
+.payload-overlay__follow.is-armed {
+  border-color: color-mix(in srgb, var(--status-running) 52%, transparent);
+  color: color-mix(in srgb, var(--status-running) 78%, var(--text-strong));
+  background: color-mix(in srgb, var(--status-running) 20%, var(--bg));
+  animation: payload-follow-breathe 1.8s ease-in-out infinite;
+}
+
+@keyframes payload-follow-breathe {
+  0%,
+  100% {
+    box-shadow: 0 0 4px color-mix(in srgb, var(--status-running) 26%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 11px color-mix(in srgb, var(--status-running) 58%, transparent);
+  }
+}
+
+.payload-overlay__follow:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.payload-overlay__atom-list {
+  --log-row-gap: 10px;
+
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  gap: var(--log-row-gap);
+  margin: 0;
+  padding: 0 8px 10px;
+  list-style: none;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-bright) transparent;
+}
+
+/* The rail reuses the LOG row itself (`.atomic-log__row`) instead of growing
+   a second row imitation: sequence, tone dot, TYPE badge, event key, timestamp
+   and the action / summary line all come from the LOG markup. The rail-only
+   overrides give the chain room to be read: a wider grid, one step larger
+   type than the LOG panel, and a wrapping key/summary so a name is never cut
+   into `trajectory.pr…`. */
+.payload-overlay__rail .atomic-log__row {
+  grid-template-columns: 34px 6px minmax(0, 1fr) 72px;
+  gap: 4px;
+  padding: 7px 6px;
+}
+
+.payload-overlay__rail .log-sequence {
+  font-size: var(--text-meta);
+}
+
+.payload-overlay__rail .atomic-log__row strong.atomic-log__name {
+  flex-wrap: wrap;
+  font-size: var(--text-body);
+  line-height: 1.4;
+  white-space: normal;
+}
+
+.payload-overlay__rail .atomic-log__row .atomic-log__key {
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.payload-overlay__rail .atomic-log__type {
+  padding: 0 3px;
+}
+
+.payload-overlay__rail .atomic-log__row time {
+  font-size: var(--text-meta);
+  line-height: 1.4;
+}
+
+.payload-overlay__rail .atomic-log__row time span {
+  font-size: var(--text-caption);
+}
+
+.payload-overlay__rail .atomic-log__row small {
+  flex-wrap: wrap;
+  font-size: var(--text-meta);
+  line-height: 1.45;
+  white-space: normal;
+}
+
+.payload-overlay__rail .atomic-log__row .atomic-log__summary {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+/* The turn separators are the LOG's own chips, one step larger here so the
+   split of the chain reads without squinting. */
+.payload-overlay__turn {
+  margin-top: 2px;
+  font-size: 9px;
+}
+
+.payload-overlay__turn:first-child {
+  margin-top: 4px;
+}
+
+/* Rail rows deliberately carry no hover styling: a list the reader scans for
+   one selected step reads calmer when sweeping the pointer changes nothing,
+   and the selection — not the pointer — is the state that matters here.
+   Selected / running / partner rows keep their state under the pointer
+   (the base :hover rule would otherwise out-rank their own class). */
+.payload-overlay__rail
+  .atomic-log__row:hover:not(.is-selected):not(.is-running):not(.is-pair-partner) {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+/* The selected row is the reason the reader opened the layer: one more step
+   of type than the neighbouring rows and a clearly brighter selection
+   treatment, so the step being inspected is unmistakable at a glance. */
+.payload-overlay__rail .atomic-log__row.is-selected {
+  border-color: var(--selection-border);
+  background: var(--selection-bg);
+  box-shadow:
+    inset 3px 0 var(--selection-border),
+    0 0 10px color-mix(in srgb, var(--selection-glow) 82%, transparent);
+}
+
+.payload-overlay__rail .atomic-log__row.is-selected strong.atomic-log__name {
+  color: var(--text-strong);
+  font-size: 12px;
+}
+
+/* Same tone map as the LOG row, so a tool atom and a question atom keep their
+   colours across the canvas, the LOG and this rail. */
+.payload-overlay__atom.tone-prompt {
+  --log-tone: var(--blue);
+}
+
+.payload-overlay__atom.tone-agent,
+.payload-overlay__atom.tone-complete,
+.payload-overlay__atom.tone-session {
+  --log-tone: var(--teal);
+}
+
+.payload-overlay__atom.tone-reasoning,
+.payload-overlay__atom.tone-signal,
+.payload-overlay__atom.tone-gate {
+  --log-tone: var(--violet);
+}
+
+.payload-overlay__atom.tone-tool {
+  --log-tone: var(--amber);
+}
+
+.payload-overlay__atom.tone-failed {
+  --log-tone: var(--red);
+}
+
+.payload-overlay__content {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+}
+
 
 /* AskUserQuestion choices read as the option buttons the client offered:
    one bordered chip per captured label under its question. */
@@ -5930,7 +6959,7 @@ pre,
 .atomic-log__list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--log-row-gap);
 }
 
 .atomic-log__turn {
@@ -6451,6 +7480,12 @@ pre,
   font-size: 9px;
 }
 
+/* Widen the current Input / Output / Raw payload into the global layer. It
+   sits after the focus badge at the far edge of the inspector header. */
+.inspector-header__expand {
+  flex: none;
+}
+
 .studio-header,
 .history-column,
 .log-column,
@@ -6671,8 +7706,11 @@ pre,
   white-space: pre-wrap;
 }
 
+/* The Code view and the fenced blocks in Preview are two readings of the same
+   payload: keys must carry the same cool accent as the hljs json/yaml key
+   tokens, or switching tabs silently recolours the reader's mental map. */
 .json-token--key {
-  color: var(--blue);
+  color: var(--code-accent);
 }
 
 .json-token--string {
@@ -6699,6 +7737,12 @@ pre,
 
 .json-token--punctuation {
   color: var(--muted);
+}
+
+/* The global layer is a reading surface, not the narrow inspector: the raw
+   payload gets the same step up as its Markdown sibling. */
+.payload-overlay .json-viewer pre {
+  font-size: var(--text-label);
 }
 
 .json-viewer__empty {
@@ -8367,10 +9411,26 @@ pre,
   padding: 0 14px;
 }
 
+/* The floating card is the quick-answer layout: one option per full-width row
+   so a narrow card never wraps a chip cloud into an unreadable grid. The docked
+   surface stays compact so more of the question fits on screen. */
+.interaction-panel--floating .question-options {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.interaction-panel--floating .question-options__option {
+  width: 100%;
+}
+
+/* Keep the title and its 必答 / 可多选 badges together on the left, the same
+   grouping as the docked `question-surface__heading`. `space-between` pushed
+   the badges to the far edge of a wide floating card and left a misleading
+   gap that read like the badges belonged to the next question. */
 .interaction-panel__question-heading {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 8px;
 }
 
@@ -8383,73 +9443,17 @@ pre,
 }
 
 .interaction-panel__prompt {
-  margin: 0 0 10px;
+  margin: 0 0 6px;
   color: var(--muted-soft, var(--muted));
   font-size: 0.8125rem;
   line-height: 1.5;
   white-space: pre-wrap;
 }
 
-.interaction-panel__options {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.interaction-panel__option {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 8px;
-  width: 100%;
-  padding: 8px 11px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--panel);
-  color: inherit;
-  font-size: 0.8125rem;
-  text-align: left;
-  cursor: pointer;
-  transition:
-    border-color 140ms ease,
-    background 140ms ease,
-    box-shadow 140ms ease;
-}
-
-.interaction-panel__option:hover:not(:disabled) {
-  border-color: var(--line-bright);
-  background: var(--panel-hover);
-}
-
-.interaction-panel__option:active:not(:disabled) {
-  transform: translateY(0.5px);
-}
-
-.interaction-panel__option[aria-pressed="true"] {
-  border-color: var(--teal);
-  background: color-mix(in srgb, var(--teal) 12%, var(--panel));
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--teal) 30%, transparent);
-}
-
-.interaction-panel__option[aria-pressed="true"] svg {
-  color: var(--teal);
-}
-
-.interaction-panel__option > span {
-  font-weight: var(--weight-medium, 600);
-}
-
-.interaction-panel__option small {
-  flex-basis: 100%;
-  color: var(--muted-soft, var(--muted));
-  font-size: 0.6875rem;
-  line-height: 1.45;
-}
-
 .interaction-panel__text {
   display: flex;
   gap: 6px;
-  margin-top: 8px;
+  margin-top: 6px;
 }
 
 .interaction-panel__text input {
@@ -8518,6 +9522,11 @@ pre,
   display: none;
 }
 
+/* The dock and the float surface both live under the same tab bar. The tab
+   row already draws the neutral `border-bottom` separator in every layout, so
+   the dock must not add a second, brighter top border — that line is the one
+   that appears in `dock-full` but not in `float`, making the border under the
+   tabs flicker as the layout arrow toggles. Keep the single shared divider. */
 .inspector-question-dock {
   display: flex;
   flex: 1 1 auto;
@@ -8540,11 +9549,17 @@ pre,
 }
 
 /* The dock owns everything below the tab bar: the surface fills it and its own
-   body does the scrolling under the pinned submit bar. */
+   body does the scrolling under the pinned submit bar. Rows are tighter here
+   than on the card so a long question and all its options fit without scrolling. */
 .inspector-question-dock > .prompt-input {
   flex: 1 1 auto;
   height: auto;
   min-height: 0;
+}
+
+.inspector-question-dock .question-surface__item {
+  gap: 8px;
+  padding: 9px 12px 11px;
 }
 
 /* The question surface itself. The body scrolls; the submit bar is a sibling
@@ -8555,6 +9570,30 @@ pre,
   flex-direction: column;
   min-width: 0;
   min-height: 0;
+}
+
+/* The batch rule sits directly under the view toolbar, above the question
+   list, instead of competing with the Cancel / 提交 actions in the footer. */
+.question-surface__summary {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted-soft, var(--muted));
+  font-size: 0.6875rem;
+  line-height: 1.4;
+}
+
+.question-surface__todo {
+  padding: 1px 6px;
+  border: 1px solid color-mix(in srgb, var(--amber) 42%, transparent);
+  border-radius: 4px;
+  color: var(--amber);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.625rem;
 }
 
 .question-surface__body {
@@ -8583,7 +9622,15 @@ pre,
 }
 
 .question-result {
-  padding: 12px 12px 0;
+  min-width: 0;
+  padding: 12px 12px 4px;
+}
+
+.question-surface__heading {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
 }
 
 .question-surface__item h3 {
@@ -8591,6 +9638,22 @@ pre,
   color: var(--text-strong, inherit);
   font-size: var(--text-label, 0.75rem);
   font-weight: var(--weight-medium, 600);
+}
+
+.question-surface__required,
+.question-surface__hint {
+  padding: 1px 5px;
+  border: 1px solid var(--line-bright);
+  border-radius: 4px;
+  color: var(--muted-soft, var(--muted));
+  font-family: var(--font-mono, monospace);
+  font-size: 0.625rem;
+  letter-spacing: 0.02em;
+}
+
+.question-surface__required {
+  border-color: color-mix(in srgb, var(--teal) 42%, transparent);
+  color: var(--teal);
 }
 
 .question-surface__prompt {
@@ -8682,25 +9745,169 @@ pre,
   }
 }
 
+/* Read-only preview hierarchy: one summary line, numbered question headings,
+   then the question body and its chips. The captured answer is a separate,
+   brighter line so a reader can find what was chosen without re-reading the
+   chips. */
+.question-preview__head {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  padding: 0 0 9px;
+  border-bottom: 1px solid var(--line);
+}
+
+.question-preview__count {
+  flex: 0 0 auto;
+  color: var(--text-strong);
+  font-size: var(--text-meta);
+  font-weight: var(--weight-medium, 600);
+}
+
+.question-preview__hint {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted-soft, var(--muted));
+  font-size: var(--text-caption);
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.question-preview__list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.question-preview__heading {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 6px;
+}
+
+.question-preview__index {
+  flex: 0 0 auto;
+  padding: 1px 4px;
+  border: 1px solid color-mix(in srgb, var(--violet) 45%, var(--line));
+  border-radius: 3px;
+  color: var(--violet);
+  background: color-mix(in srgb, var(--violet-deep) 12%, transparent);
+  font-family: var(--font-mono);
+  font-size: var(--text-overline);
+  font-variant-numeric: tabular-nums;
+}
+
+.question-preview__heading h3 {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.question-preview__state {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted-soft, var(--muted));
+  background: color-mix(in srgb, var(--muted) 8%, transparent);
+  font-size: var(--text-overline);
+  font-weight: var(--weight-medium, 600);
+}
+
+.question-preview__state.is-answered {
+  border-color: color-mix(in srgb, var(--teal) 52%, transparent);
+  color: var(--teal);
+  background: color-mix(in srgb, var(--teal) 16%, transparent);
+}
+
+.question-preview__answers {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 8px 0 0;
+  padding: 6px 8px;
+  border-left: 2px solid var(--teal);
+  border-radius: 0 5px 5px 0;
+  background: color-mix(in srgb, var(--teal) 9%, transparent);
+  color: var(--muted);
+  font-size: var(--text-caption);
+}
+
+.question-preview__answers strong {
+  color: var(--text-strong);
+  font-size: var(--text-meta);
+  font-weight: var(--weight-medium, 600);
+}
+
+.question-surface__item.is-answered {
+  border: 1px solid color-mix(in srgb, var(--teal) 30%, var(--border));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--teal) 4%, var(--panel));
+}
+
 /* One chip row for both states: an open request's options are buttons, a
    captured one keeps the same chips as static spans so nothing looks
    clickable when there is no request left to answer. */
 .question-options {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  align-items: flex-start;
+  gap: 5px;
 }
 
 .question-options__option {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: 5px;
+  row-gap: 2px;
   max-width: 100%;
-  padding: 6px 14px;
+  min-width: 0;
+  padding: 6px 10px;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: 8px;
   background: var(--panel);
   color: inherit;
   font-size: 0.8125rem;
+  text-align: left;
   overflow-wrap: anywhere;
   cursor: pointer;
+  transition:
+    border-color 140ms ease,
+    background 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.question-options__option > svg {
+  grid-column: 1;
+  grid-row: 1;
+  width: 12px;
+  height: 12px;
+  color: var(--teal);
+}
+
+.question-options__label {
+  grid-column: 2;
+  grid-row: 1;
+  font-weight: var(--weight-medium, 600);
+  overflow-wrap: anywhere;
+}
+
+.question-options__description {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  color: var(--muted-soft, var(--muted));
+  font-size: 0.6875rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .question-options__option:hover:not(:disabled):not(.is-static) {
@@ -8708,20 +9915,37 @@ pre,
   background: color-mix(in srgb, var(--teal) 12%, var(--panel));
 }
 
-.question-options__option[aria-pressed="true"] {
+.question-options__option[aria-pressed="true"],
+.question-options__option.is-selected {
   border-color: var(--teal);
   background: color-mix(in srgb, var(--teal) 20%, var(--panel));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--teal) 28%, transparent);
 }
 
 .question-options__option:disabled {
   cursor: default;
-  opacity: 0.55;
+  opacity: 0.72;
+}
+
+.question-options__option:disabled[aria-pressed="true"],
+.question-options__option.is-static.is-selected {
+  opacity: 1;
 }
 
 .question-options__option.is-static {
   border-style: dashed;
   color: var(--muted, inherit);
   cursor: default;
+}
+
+.question-options__option.is-static.is-selected {
+  border-style: solid;
+  border-color: var(--teal);
+  color: var(--text-strong);
+  background: color-mix(in srgb, var(--teal) 24%, var(--panel));
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--teal) 38%, transparent),
+    0 0 10px color-mix(in srgb, var(--teal) 22%, transparent);
 }
 
 .interaction-panel__footer {
@@ -8771,20 +9995,82 @@ pre,
   font-size: var(--text-caption);
 }
 
-.question-result ul {
+.answer-rows {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   margin: 0;
   padding: 0;
   list-style: none;
-  font-size: 0.8125rem;
 }
 
-.question-result li {
+.answer-rows__row {
+  min-width: 0;
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+}
+
+.answer-rows__row:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.answer-rows__question {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--muted-soft, var(--muted));
+  font-size: 0.6875rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.answer-rows__value {
+  min-width: 0;
+  color: var(--text);
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+
+.answer-rows__chips {
   display: flex;
-  justify-content: space-between;
-  gap: 12px;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.answer-rows__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 3px 9px;
+  border: 1px solid color-mix(in srgb, var(--teal) 46%, transparent);
+  border-radius: 999px;
+  color: var(--teal);
+  background: color-mix(in srgb, var(--teal) 14%, var(--panel));
+  font-size: 0.75rem;
+  font-weight: var(--weight-medium, 600);
+  overflow-wrap: anywhere;
+}
+
+.answer-rows__chip svg {
+  width: 11px;
+  height: 11px;
+  flex: 0 0 11px;
+}
+
+.answer-rows__value .markdown-preview {
+  margin-top: 4px;
+}
+
+.answer-rows__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: 8px 0 0;
+  color: var(--muted, inherit);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.625rem;
+  letter-spacing: 0.02em;
 }
 
 .question-result p {
