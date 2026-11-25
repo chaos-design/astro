@@ -257,12 +257,17 @@ export function buildAgentView(
   // A run whose host publishes its reply as an `AgentMessage` is handled by
   // the reply-group pass above. Some hosts (WorkBuddy's ChatGPT-style capture)
   // publish no `AgentMessage` at all and instead carry the assistant's final
-  // text on the `Stop` event — so only when there is no `AgentMessage`, the
-  // Stop's `last_assistant_message` projects as a reply and the 回复 counter
-  // stops reading 0. A run that has both keeps the dedicated AgentMessage path.
-  const hasAgentMessage = events.some(
-    (event) => event.eventName === "AgentMessage",
-  );
+  // text on the `Stop` event — so only when that origin published no reply,
+  // the Stop's `last_assistant_message` projects as a reply and the 回复
+  // counter stops reading 0. Scope the check by origin: Pi subagents share the
+  // parent session, so a child's AgentMessage must not suppress the main
+  // agent's own Stop reply.
+  const agentMessageOrigins = new Set<string>();
+  for (const event of events) {
+    if (event.eventName === "AgentMessage") {
+      agentMessageOrigins.add(replyScopeKey(event));
+    }
+  }
 
   const base = (event: TraceEvent): AgentStepBase => ({
     id: `event:${event.id}`,
@@ -346,7 +351,11 @@ export function buildAgentView(
         ...base(anchor),
         eventId: firstEvent.id,
         sequence: formatLogSequence(firstIndex + 1),
-        id: messageId ? `stream:${messageId}` : `event:${anchor.id}`,
+        // Two subagent origins can reuse one short message id. Their groups
+        // are separate steps, so the id must name the group's own anchor too —
+        // otherwise React sees duplicate keys and stepRefs overwrite each
+        // other, pointing locate/scroll at the wrong card.
+        id: messageId ? `stream:${messageId}:${anchor.id}` : `event:${anchor.id}`,
         kind: "reply",
         text: replyText(final ?? anchor),
         snapshotCount: streamed.length,
@@ -445,15 +454,15 @@ export function buildAgentView(
         : undefined;
       const startEvent =
         partnerIndex === undefined ? null : events[partnerIndex];
-      // A `Stop` that ends a run publishes no `AgentMessage`; when the run
+      // A `Stop` that ends a run publishes no `AgentMessage`; when this origin
       // emitted none, its `last_assistant_message` is the assistant's final
       // reply, so project it as a `reply` step (not a tool-result) and the
-      // 回复 counter reflects it. A run that did emit AgentMessages keeps the
-      // dedicated reply-group path above, and a bare Stop with no final text
-      // stays a tool-result.
+      // 回复 counter reflects it. An origin that did emit AgentMessages keeps
+      // the dedicated reply-group path above, and a bare Stop with no final
+      // text stays a tool-result.
       if (
         event.eventName === "Stop" &&
-        !hasAgentMessage &&
+        !agentMessageOrigins.has(replyScopeKey(event)) &&
         replyText(event).trim()
       ) {
         placement.push({ index, step: singleReply(event, null) });

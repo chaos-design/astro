@@ -818,3 +818,12 @@ test("the rail hover card clears when the dialog closes", () => {
     /if \(!open\) \{[\s\S]*?setHoveredAtom\(null\);[\s\S]*?\}, \[open\]\)/,
   );
 });
+
+test("a shrinking step chain clears the pending new-message count", () => {
+  // A replay back-step or a prefix break can shorten the chain. The jump pill
+  // must not keep offering a count of steps that no longer exist.
+  assert.match(
+    agentTranscript,
+    /if \(count < previous\) \{\s*\n\s*setPendingCount\(0\);/,
+  );
+});

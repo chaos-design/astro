@@ -301,3 +301,48 @@ test("a merged reply's sequence and rail anchor name the same first event", () =
   assert.equal(reply.sequence, formatLogSequence(anchorIndex + 1));
   assert.equal(events[anchorIndex].payload.streamed, true);
 });
+
+test("two subagent origins reusing one message id keep distinct step ids", () => {
+  const events = createDemoEvents(NOW);
+  const messages = events.filter((event) => event.eventName === "AgentMessage");
+  assert.equal(messages.length, 3, "the demo run carries one three-part reply");
+  // A named subagent shares the parent session and can reuse a short message
+  // id. Two reply groups must not collapse onto one React key / step ref.
+  const childCopies = messages.map((message) =>
+    Object.assign({}, message, {
+      id: `${message.id}-child`,
+      subagentSessionId: "child-session",
+      capturedAt: new Date(Date.parse(message.capturedAt) + 5).toISOString(),
+    }) as TraceEvent,
+  );
+  const view = buildAgentView([...events, ...childCopies], "chatgpt");
+  const replies = view.steps.filter((step) => step.kind === "reply");
+  assert.equal(replies.length, 2, "one reply per origin");
+  assert.equal(
+    new Set(replies.map((step) => step.id)).size,
+    2,
+    "merged reply ids must be unique even when message ids repeat",
+  );
+});
+
+test("a subagent reply does not suppress the main agent's Stop reply", () => {
+  const events = createDemoEvents(NOW).filter(
+    (event) => !["AgentMessage", "Reasoning"].includes(event.eventName),
+  );
+  const base = createDemoEvents(NOW).find(
+    (event) => event.eventName === "AgentMessage",
+  )!;
+  const childReply = Object.assign({}, base, {
+    id: "child-reply-1",
+    subagentSessionId: "child-session",
+    payload: { message: "child said hi", messageId: "child-m1" },
+  }) as TraceEvent;
+  const view = buildAgentView([...events, childReply], "workbuddy");
+  const stop = events.find((event) => event.eventName === "Stop")!;
+  assert.ok(
+    view.steps.some(
+      (step) => step.kind === "reply" && step.eventId === stop.id,
+    ),
+    "the main agent's final text still projects as a reply",
+  );
+});

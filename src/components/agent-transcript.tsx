@@ -1,13 +1,18 @@
 import {
+  Activity,
   AlertCircle,
   ArrowDown,
   Bot,
   ChevronDown,
   ChevronsDown,
   ChevronRight,
+  HelpCircle,
+  Layers,
   Lightbulb,
   LoaderCircle,
   MessageSquare,
+  Repeat,
+  Timer,
 } from "lucide-react";
 import {
   useCallback,
@@ -16,6 +21,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ReactNode,
 } from "react";
 
 import { MarkdownView } from "@/components/markdown-view";
@@ -377,6 +383,7 @@ function statCardRowHint(step: AgentStep): string {
 function StatChip({
   name,
   label,
+  icon,
   steps,
   open,
   onOpenChange,
@@ -384,6 +391,9 @@ function StatChip({
 }: {
   name: string;
   label: string;
+  /** A small leading glyph so the count reads as an icon-tagged stat, not a
+   * bare number. Rendered inside the button, before the label text. */
+  icon: React.ReactNode;
   steps: readonly AgentStep[];
   open: boolean;
   onOpenChange: (name: string | null) => void;
@@ -404,7 +414,8 @@ function StatChip({
         }}
         type="button"
       >
-        {label}
+        {icon}
+        <span className="agent-transcript__stat-text">{label}</span>
       </button>
       {open && steps.length ? (
         <span className="agent-transcript__stat-card" role="tooltip">
@@ -615,11 +626,18 @@ export function AgentTranscript({
 
   // New steps while reading history are counted, never inserted under the
   // reader's scroll position. At the bottom the view stays pinned to the end.
+  // A shorter chain (replay cursor back, a prefix break folding snapshots
+  // into fewer steps) invalidates the count: the pill must not keep offering
+  // "N new messages" that no longer exist.
   useEffect(() => {
     const count = view.steps.length;
     const previous = stepCountRef.current;
     stepCountRef.current = count;
-    if (count <= previous) {
+    if (count < previous) {
+      setPendingCount(0);
+      return;
+    }
+    if (count === previous) {
       return;
     }
     if (atBottomRef.current) {
@@ -818,17 +836,17 @@ export function AgentTranscript({
           ) : (
             <p className="payload-overlay__empty">这次运行还没有可呈现的事件。</p>
           )}
-          {live && !showJump ? (
-            <div
-              aria-live="polite"
-              className="agent-transcript__pending"
-              role="status"
-            >
-              <LoaderCircle aria-hidden="true" className="animate-spin" />
-              <span>正在等待新消息…</span>
-            </div>
-          ) : null}
         </div>
+        {live && !showJump ? (
+          <div
+            aria-live="polite"
+            className="agent-transcript__pending"
+            role="status"
+          >
+            <LoaderCircle aria-hidden="true" className="animate-spin" />
+            <span>正在等待新消息…</span>
+          </div>
+        ) : null}
         {showJump ? (
           <button
             className={cn("agent-transcript__jump", !live && "is-settled")}
