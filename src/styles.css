@@ -10351,6 +10351,9 @@ pre,
 }
 
 .agent-transcript__stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   padding: 2px 7px;
   border: 1px solid var(--line-bright);
   border-radius: 999px;
@@ -10363,6 +10366,23 @@ pre,
 
 .agent-transcript__stat.is-merged {
   color: var(--teal);
+}
+
+/* A small leading glyph on the count chips: quiet, sized to the label, and a
+   touch of spacing so the number still reads first. */
+.agent-transcript__stat-icon {
+  flex: 0 0 auto;
+  width: 0.875rem;
+  height: 0.875rem;
+  color: var(--muted-soft, var(--muted));
+}
+
+.agent-transcript__stat.is-merged .agent-transcript__stat-icon {
+  color: var(--teal);
+}
+
+.agent-transcript__stat-text {
+  min-width: 0;
 }
 
 /* A count is also a jump target: hover names the steps behind it, click lands
@@ -10399,7 +10419,10 @@ pre,
   max-width: 264px;
   flex-direction: column;
   gap: 2px;
-  padding: 6px;
+  /* No right padding: the scroll list reaches the card's inner right edge so
+     its scrollbar sits flush against the border, not a gap inside it. The
+     title and rows keep their own horizontal inset. */
+  padding: 6px 0;
   border: 1px solid var(--line-bright);
   border-radius: 7px;
   background: var(--panel);
@@ -10489,10 +10512,10 @@ pre,
      scrolls inside instead. */
   max-height: min(34vh, 288px);
   overflow-y: auto;
-  /* The thin scrollbar hugs the card's far-right edge: only a sliver of
-     padding separates it from the turn column, and the thumb is drawn
-     flush so the affordance reads as the edge of the card, not a gap. */
-  padding-right: 4px;
+  /* No right gutter: the thin scrollbar hugs the card's border directly. The
+     rows keep their own right inset, so the turn column never touches the
+     thumb. A visible thin scrollbar keeps the affordance readable on any
+     platform (macOS overlay scrollbars included). */
   scrollbar-width: thin;
   scrollbar-color: var(--line-bright) transparent;
 }
@@ -10508,6 +10531,12 @@ pre,
 .agent-transcript__stat-card-list::-webkit-scrollbar-thumb {
   background: var(--line-bright);
   border-radius: 4px;
+}
+
+/* The rows reach the list's inner right edge (no card gutter), so give them
+   their own right inset to keep the turn label clear of the scrollbar. */
+.agent-transcript__stat-card-row {
+  padding-right: 8px;
 }
 
 /* The displayed message's execution time, read from the same display state
@@ -10552,7 +10581,9 @@ pre,
   min-height: 0;
   flex-direction: column;
   gap: 10px;
-  padding: 14px 16px 24px;
+  /* The bottom padding reserves room for the pinned jump / waiting pill, so
+     the last step never scrolls under it. */
+  padding: 14px 16px 56px;
   overflow: auto;
   overscroll-behavior: contain;
 }
@@ -10602,16 +10633,28 @@ pre,
   color: var(--muted);
 }
 
+/* The live "waiting for new messages" read is pinned to the surface like the
+   jump pill, not dropped into the scroll flow: a clipped bottom row (a tall
+   last step) would otherwise slice the pill in half at the panel edge. */
 .agent-transcript__pending {
-  display: flex;
-  flex: 0 0 auto;
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  z-index: 2;
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
   gap: 7px;
-  padding: 8px 0 2px;
+  padding: 7px 13px;
+  border: 1px solid color-mix(in srgb, var(--teal) 40%, var(--line-bright));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--panel) 90%, var(--teal) 8%);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 28%);
   color: var(--muted);
   font-family: var(--font-mono, monospace);
   font-size: 0.6875rem;
+  letter-spacing: 0.03em;
+  transform: translateX(-50%);
+  backdrop-filter: blur(6px);
 }
 
 .agent-transcript__pending svg {
@@ -11144,7 +11187,7 @@ pre,
   }
 
   .agent-transcript__scroll {
-    padding: 10px 11px 20px;
+    padding: 10px 11px 48px;
   }
 
   .agent-transcript__jump {

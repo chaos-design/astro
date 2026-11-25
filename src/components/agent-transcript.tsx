@@ -393,7 +393,7 @@ function StatChip({
   label: string;
   /** A small leading glyph so the count reads as an icon-tagged stat, not a
    * bare number. Rendered inside the button, before the label text. */
-  icon: React.ReactNode;
+  icon: ReactNode;
   steps: readonly AgentStep[];
   open: boolean;
   onOpenChange: (name: string | null) => void;
@@ -749,10 +749,14 @@ export function AgentTranscript({
               live && "is-live",
             )}
           >
-            执行 {formatExecutionClock(runDurationMs)}
+            <Timer aria-hidden="true" className="agent-transcript__stat-icon" />
+            <span className="agent-transcript__stat-text">
+              执行 {formatExecutionClock(runDurationMs)}
+            </span>
           </span>
         ) : null}
         <StatChip
+          icon={<Lightbulb aria-hidden="true" className="agent-transcript__stat-icon" />}
           name="thinking"
           label={`${view.stats.thinking} 思考`}
           steps={statGroups.thinking}
@@ -761,6 +765,7 @@ export function AgentTranscript({
           onJump={onSelectEvent}
         />
         <StatChip
+          icon={<MessageSquare aria-hidden="true" className="agent-transcript__stat-icon" />}
           name="reply"
           label={`${view.stats.replies} 回复`}
           steps={statGroups.reply}
@@ -769,6 +774,7 @@ export function AgentTranscript({
           onJump={onSelectEvent}
         />
         <StatChip
+          icon={<HelpCircle aria-hidden="true" className="agent-transcript__stat-icon" />}
           name="question"
           label={`${view.stats.questions} 提问`}
           steps={statGroups.question}
@@ -777,6 +783,7 @@ export function AgentTranscript({
           onJump={onSelectEvent}
         />
         <StatChip
+          icon={<Repeat aria-hidden="true" className="agent-transcript__stat-icon" />}
           name="turn"
           label={`${view.stats.turns} 轮`}
           steps={statGroups.turn}
@@ -785,6 +792,7 @@ export function AgentTranscript({
           onJump={onSelectEvent}
         />
         <StatChip
+          icon={<Activity aria-hidden="true" className="agent-transcript__stat-icon" />}
           name="event"
           label={`${view.stats.events} 事件`}
           steps={statGroups.event}
@@ -794,7 +802,10 @@ export function AgentTranscript({
         />
         {view.stats.snapshotsMerged > 0 ? (
           <span className="agent-transcript__stat is-merged">
-            {view.stats.snapshotsMerged} 个流式快照已合并
+            <Layers aria-hidden="true" className="agent-transcript__stat-icon" />
+            <span className="agent-transcript__stat-text">
+              {view.stats.snapshotsMerged} 个流式快照已合并
+            </span>
           </span>
         ) : null}
       </div>
