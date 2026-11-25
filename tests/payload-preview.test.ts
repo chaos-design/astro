@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   collectPayloadFields,
   contentToMarkdown,
+  hasListPayload,
   inferCodeLanguage,
   isFoldableRelatedValue,
   orderRelated,
@@ -269,4 +270,26 @@ test("a numbered file dump is fenced in the language its path declares", () => {
     contentToMarkdown("a note 1→about steps\nand another line"),
     "a note 1→about steps\nand another line",
   );
+});
+
+test("a todos-style array is detected as a list payload", () => {
+  assert.equal(
+    hasListPayload({
+      tool_response: {
+        todos: [
+          { id: "1", content: "Do A", status: "completed", createdAt: 1 },
+          { id: "2", content: "Do B", status: "pending", createdAt: 2 },
+        ],
+      },
+    }),
+    true,
+  );
+  assert.equal(hasListPayload({ message: "plain text" }), false);
+});
+
+test("a captured source path fences code even when JSDoc looks like Markdown", () => {
+  const body = "/**\n * A note.\n */\nexport const x = 1;";
+  assert.match(contentToMarkdown(body, "/work/src/thing.ts"), /^```typescript\n/);
+  // Without a path the prose/document guard still applies.
+  assert.equal(contentToMarkdown(body), body);
 });

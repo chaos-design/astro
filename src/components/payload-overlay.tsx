@@ -48,6 +48,7 @@ import {
   contentToMarkdown,
   fallbackPayloadMarkdown,
   collectPayloadFields,
+  hasListPayload,
   orderRelated,
   splitPayloadPreview,
 } from "@/lib/payload-preview";
@@ -274,9 +275,14 @@ function preparePreview(
   const split = splitPayloadPreview(payload);
   // A Read result's numbered body is rendered with a line-number gutter; the
   // captured file path selects its highlight language when one is available.
-  const textSource = split.content.trim()
-    ? contentToMarkdown(split.content, findPayloadFilePath(payload))
-    : payloadToMarkdown(payload) || fallbackPayloadMarkdown(payload);
+  // A todos / checklist payload carries its meaning in the list structure.
+  // Let the list renderer build the rows (with status checkboxes) instead of
+  // flattening its `content` leaves into loose paragraphs.
+  const textSource = hasListPayload(payload)
+    ? payloadToMarkdown(payload)
+    : split.content.trim()
+      ? contentToMarkdown(split.content, findPayloadFilePath(payload))
+      : payloadToMarkdown(payload) || fallbackPayloadMarkdown(payload);
   // Inline image resources belong in the preview as images. Swap the raw
   // base64 blobs for a short label and append them as Markdown images — the
   // renderer's sanitizer already allows data:image sources only.
@@ -759,9 +765,28 @@ export function PayloadOverlay({
     setRailRevealRequest((current) => current + 1);
   };
 
-  // Preview and Code show one payload at a time, so the atom being inspected
-  // is simply the selected event. Mark it in the rail too — otherwise those
-  // views lose the source-atom link the Agent pane maintains while scrolling.
+  // Switching from the Agent pane into Preview / Code must carry the atom the
+  // reader was on: otherwise those panes keep showing an older selection and
+  // the rail cannot say which atom a preview belongs to. Commit the reading
+  // line as the selection, then the single shared selection drives all views.
+  const committedViewRef = useRef<PayloadViewMode>(viewMode);
+  useEffect(() => {
+    const previous = committedViewRef.current;
+    committedViewRef.current = viewMode;
+    if (previous !== "agent" || viewMode === "agent") {
+      return;
+    }
+    if (!contentActiveEventId || contentActiveEventId === selectedEventId) {
+      return;
+    }
+    const atom = atoms.find((item) => item.id === contentActiveEventId);
+    if (atom) {
+      onSelectAtom(atom.atomId, atom.id);
+    }
+  }, [atoms, contentActiveEventId, onSelectAtom, selectedEventId, viewMode]);
+
+  // Outside the Agent pane nothing reports a reading line, so the inspected
+  // event is the one the reader picked in the rail (or carried over above).
   useEffect(() => {
     if (viewMode === "agent") {
       return;
@@ -775,9 +800,6 @@ export function PayloadOverlay({
         <header className="payload-overlay__head">
           <div className="payload-overlay__copy">
             <span className="eyebrow">
-              <PlatformIcon platform={platform} width={11} height={11} />
-              {getAtomPlatformConfig(platform).label}
-              <span className="payload-overlay__eyebrow-sep">·</span>
               {variant === "question" ? "USER QUESTION" : "CAPTURED PAYLOAD"}
             </span>
             <DialogTitle>{label}</DialogTitle>
@@ -813,6 +835,12 @@ export function PayloadOverlay({
               Code
             </ToggleGroupItem>
           </ToggleGroup>
+          <span className="payload-overlay__agent">
+            <PlatformIcon platform={platform} width={20} height={20} />
+            <span className="payload-overlay__agent-name">
+              {getAtomPlatformConfig(platform).label}
+            </span>
+          </span>
         </header>
         <div className="payload-overlay__main">
           {atoms.length > 0 ? (

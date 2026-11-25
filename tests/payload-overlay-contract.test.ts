@@ -75,7 +75,7 @@ test("related data renders array elements as indexed group rows", () => {
   assert.match(previewLib, /groupHeader: true/);
   assert.match(relatedFields, /field\.groupHeader/);
   assert.match(relatedFields, /payload-overlay__field--group/);
-  assert.match(relatedFields, /paddingInlineStart/);
+  assert.match(relatedFields, /marginInlineStart/);
   assert.match(stylesForOverlay, /\.payload-overlay__field--group \{/);
 });
 
@@ -837,13 +837,13 @@ test("a shrinking step chain clears the pending new-message count", () => {
  * Agent head no longer carries a brand or a version chip.
  */
 test("the agent identity lives in the header as an icon and a name only", () => {
-  assert.match(overlay, /payload-overlay__eyebrow-sep/);
-  assert.match(overlay, /<PlatformIcon platform=\{platform\} width=\{11\}/);
+  assert.match(overlay, /payload-overlay__agent-name/);
+  assert.match(overlay, /<PlatformIcon platform=\{platform\} width=\{20\}/);
   assert.match(overlay, /getAtomPlatformConfig\(platform\)\.label/);
   assert.doesNotMatch(overlay, /agentVersion/);
   assert.doesNotMatch(agentTranscript, /agentVersion|agent-transcript__version|agent-transcript__brand/);
   assert.doesNotMatch(app, /overlayAgentVersion/);
-  assert.match(stylesForOverlay, /\.payload-overlay__copy \.eyebrow \{/);
+  assert.match(stylesForOverlay, /\.payload-overlay__agent \{/);
 });
 
 /**
@@ -893,8 +893,8 @@ test("Pre and Post tool frames follow the phase tone", () => {
 });
 
 /** Hook badges and the compact eyebrow identity keep their new contracts. */
-test("the header identity is one compact eyebrow and hook badges are phase-coloured", () => {
-  assert.match(stylesForOverlay, /\.payload-overlay__copy \.eyebrow \{\s*\n\s*display: inline-flex/);
+test("the header carries a prominent agent badge and hook badges are phase-coloured", () => {
+  assert.match(stylesForOverlay, /\.payload-overlay__agent \{\s*\n\s*display: inline-flex/);
   assert.match(agentTranscript, /agent-step__meta--hook is-\$\{hookPhase\}/);
   assert.match(stylesForOverlay, /\.agent-step__meta--hook \{[\s\S]*?var\(--log-tone\)/);
 });
@@ -907,4 +907,11 @@ test("Preview and Code locate the inspected atom and embedded images are preview
   assert.match(overlay, /!\[内嵌图片 \$\{index \+ 1\}\]\(\$\{src\}\)/);
   assert.match(stylesForOverlay, /\.payload-overlay__field-image \{/);
   assert.match(stylesForOverlay, /\.preview-mac-frame \.markdown-preview img \{/);
+});
+
+/** Switching into Preview/Code commits the Agent reading-line atom. */
+test("Preview/Code switch commits the reading-line atom as the inspected one", () => {
+  assert.match(overlay, /committedViewRef/);
+  assert.match(overlay, /previous !== "agent" \|\| viewMode === "agent"/);
+  assert.match(overlay, /onSelectAtom\(atom\.atomId, atom\.id\)/);
 });

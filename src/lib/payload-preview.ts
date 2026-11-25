@@ -319,6 +319,54 @@ export function splitPayloadPreview(value: unknown, depth = 0, seen = new WeakSe
 }
 
 /**
+ * Whether a payload's real content is an array of compact records (a `todos`
+ * list, a checklist, a set of results). Such a payload must be rendered by the
+ * list projection in `payload-markdown.ts`, not flattened into prose by
+ * `splitPayloadPreview` — otherwise `content` leaves lose their list shape.
+ * Detection lives here, beside the other preview heuristics, so both panes
+ * make the same call without importing each other.
+ */
+export function hasListPayload(value: unknown, depth = 0, seen = new WeakSet<object>()): boolean {
+  if (depth > 6 || value === null || typeof value !== "object" || seen.has(value)) {
+    return false;
+  }
+  seen.add(value);
+  if (Array.isArray(value)) {
+    if (!value.length) {
+      return false;
+    }
+    const records = value.filter(
+      (item) => item !== null && typeof item === "object" && !Array.isArray(item),
+    );
+    if (records.length === value.length && records.length > 0) {
+      // A list of records is a list when any item has a primary label and the
+      // records are compact (no nested objects) — the checklist renderer's
+      // own contract. Mixed scalar arrays are joined prose, not a list here.
+      const compact = records.every((record) =>
+        Object.values(record as Record<string, unknown>).every(
+          (item) =>
+            item === null ||
+            item === undefined ||
+            typeof item !== "object",
+        ),
+      );
+      const labelled = records.some((record) =>
+        ["content", "label", "title", "name", "text", "subject", "description"].some(
+          (key) => typeof (record as Record<string, unknown>)[key] === "string",
+        ),
+      );
+      if (compact && labelled) {
+        return true;
+      }
+    }
+    return value.some((item) => hasListPayload(item, depth + 1, seen));
+  }
+  return Object.values(value as Record<string, unknown>).some(
+    (item) => hasListPayload(item, depth + 1, seen),
+  );
+}
+
+/**
  * Every scalar leaf of a captured payload, with a dotted path so a nested
  * `tool_response.tool_use_id` stays distinguishable from a top-level one.
  *
@@ -665,13 +713,24 @@ export function contentToMarkdown(content: string, filePath?: string | null): st
   // when no path was captured. The renderer reads the same prefix pattern to
   // split the numbers back out into a gutter.
   const numbered = parseNumberedCode(text);
+  const pathLanguage = languageFromFilePath(filePath);
   const language =
-    (numbered ? languageFromFilePath(filePath) : null) ??
-    inferCodeLanguage(numbered ? numbered.lines.join("\n") : text);
+    pathLanguage ?? inferCodeLanguage(numbered ? numbered.lines.join("\n") : text);
   if (numbered) {
     return fenceCode(text.trimEnd(), language);
   }
   if (language) {
+    // A captured source file is code even when its JSDoc `* ` lines look like
+    // Markdown bullets: the file path is the host's own type statement, and a
+    // prose-shaped comment must not turn a .ts file into a bullet list. When
+    // no path was captured, keep the document-vs-code guard below.
+    if (
+      pathLanguage &&
+      pathLanguage !== "markdown" &&
+      pathLanguage !== "json"
+    ) {
+      return fenceCode(text.trimEnd(), language);
+    }
     const structural = language === "json" || language === "diff" || language === "xml";
     // `#` heads a Markdown heading everywhere; in shell / Python it is a
     // comment, so there it must not count as document evidence.

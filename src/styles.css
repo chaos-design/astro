@@ -6123,27 +6123,38 @@ pre,
   gap: 4px;
 }
 
-/* Agent identity shares the eyebrow line with the surface name: one compact
- * row instead of a brand row of its own. Icon + name only — the recorder's
- * client version is envelope data and is never printed here. */
 .payload-overlay__copy .eyebrow {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
   color: var(--muted);
   font-size: 8px;
   letter-spacing: 0.16em;
 }
 
-.payload-overlay__copy .eyebrow .platform-icon {
-  width: 11px;
-  height: 11px;
-  flex: 0 0 11px;
+/* The producing agent is a standalone badge on the far side of the header,
+   away from the copy column and the view switch. Icon + name, no version —
+   the recorder's client version is envelope data. */
+.payload-overlay__agent {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 11px;
+  border: 1px solid color-mix(in srgb, var(--teal) 36%, var(--line));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--teal) 10%, var(--panel-raised));
+}
+
+.payload-overlay__agent .platform-icon {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
   object-fit: contain;
 }
 
-.payload-overlay__eyebrow-sep {
-  color: var(--edge);
+.payload-overlay__agent-name {
+  color: var(--text-strong);
+  font-size: 0.8125rem;
+  font-weight: var(--weight-semibold, 650);
+  letter-spacing: 0.01em;
 }
 
 .payload-overlay [data-slot="dialog-title"] {
@@ -6525,17 +6536,27 @@ pre,
    indent itself is per-row inline padding set by the renderer. */
 .payload-overlay__field--group {
   grid-template-columns: minmax(0, 1fr);
-  padding-bottom: 1px;
-  padding-top: 10px;
+  margin-top: 6px;
+  padding: 5px 8px 5px 10px;
+  border: 1px solid color-mix(in srgb, var(--violet) 26%, var(--line));
   border-bottom: 0;
+  border-radius: 6px 6px 0 0;
+  background: color-mix(in srgb, var(--violet) 8%, var(--panel-raised));
 }
 
 .payload-overlay__field--group dt {
   overflow-wrap: anywhere;
   color: var(--text-strong);
+  font-family: var(--font-mono, monospace);
   font-size: var(--text-overline);
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
   white-space: normal;
+}
+
+.payload-overlay__field--group-index::before {
+  margin-inline-end: 6px;
+  color: var(--violet);
+  content: "▸";
 }
 
 @media (max-width: 860px) {

@@ -120,10 +120,20 @@ export function RelatedFields({
             )}
             key={`${resetToken}\u0000${field.key}`}
             style={
-              indent > 0 ? { paddingInlineStart: `${indent * 14}px` } : undefined
+              indent > 0
+                ? { marginInlineStart: `${indent * 12}px` }
+                : undefined
             }
           >
-            <dt title={field.key}>{field.label}</dt>
+            <dt title={field.key}>
+              {field.groupHeader ? (
+                <span className="payload-overlay__field--group-index">
+                  {field.label}
+                </span>
+              ) : (
+                field.label
+              )}
+            </dt>
             {field.groupHeader ? null : field.items ? (
               <dd className="payload-overlay__field-list">
                 <ul>

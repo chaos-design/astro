@@ -47,6 +47,7 @@ import type {
 import {
   collectPayloadFields,
   contentToMarkdown,
+  hasListPayload,
   inferCodeLanguage,
   orderRelated,
   splitPayloadPreview,
@@ -1108,14 +1109,24 @@ function ToolResultBody({ step }: { step: ToolResultStep }) {
       step.inputs?.command ? shellOutputOf(step.payload) : null,
     [step.inputs?.command, step.payload],
   );
+  const listPayload = hasListPayload(step.payload);
   const source = useMemo(
     () =>
       hasAnswers || shellOutput
         ? ""
-        : split.content.trim()
-          ? contentToMarkdown(split.content, findPayloadFilePath(step.payload))
-          : payloadToMarkdown(bodyPayload),
-    [hasAnswers, shellOutput, split.content, bodyPayload, step.payload],
+        : listPayload
+          ? payloadToMarkdown(step.payload)
+          : split.content.trim()
+            ? contentToMarkdown(split.content, findPayloadFilePath(step.payload))
+            : payloadToMarkdown(bodyPayload),
+    [
+      hasAnswers,
+      shellOutput,
+      listPayload,
+      split.content,
+      bodyPayload,
+      step.payload,
+    ],
   );
   // The one structured extractor drives the call block: a captured shell
   // command is a terminal line, every other tool is a list of named inputs —
