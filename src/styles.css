@@ -5866,6 +5866,43 @@ pre,
   user-select: none;
 }
 
+/* A `Read` result arrives as `   1→source`. The numbers live in their own
+   gutter and the source keeps its syntax colours; both columns share one
+   horizontal scroll so a long line cannot knock the numbers out of step. */
+.markdown-preview .md-code--numbered .md-code__numbered-body {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+}
+
+.markdown-preview .md-code__gutter {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 8px 8px 8px 10px;
+  border: 1px solid var(--line);
+  border-right: 0;
+  border-radius: 6px 0 0 6px;
+  background: color-mix(in srgb, var(--panel-raised) 70%, var(--panel));
+  color: var(--muted);
+  overflow: hidden;
+  text-align: right;
+  user-select: none;
+}
+
+.markdown-preview .md-code__gutter code {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.markdown-preview .md-code__code {
+  flex: 1 1 auto;
+  min-width: 0;
+  border-radius: 0 6px 6px 0;
+}
+
 .markdown-preview blockquote {
   padding: 5px 10px;
   border-left: 2px solid color-mix(in srgb, var(--violet) 45%, var(--line));
@@ -6084,6 +6121,29 @@ pre,
   min-width: 0;
   flex-direction: column;
   gap: 4px;
+}
+
+/* The producing agent's identity lives in this one header, visible in every
+ * view (Agent / Preview / Code). It is an icon plus a name only — the
+ * recorder's client version is envelope data and is never printed here. */
+.payload-overlay__agent {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 2px;
+}
+
+.payload-overlay__agent .platform-icon {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+  object-fit: contain;
+}
+
+.payload-overlay__agent-name {
+  color: var(--text-strong);
+  font-weight: var(--weight-medium, 600);
+  letter-spacing: 0.02em;
 }
 
 .payload-overlay__copy .eyebrow {
@@ -6772,6 +6832,17 @@ pre,
 
 .payload-overlay__atom.tone-tool {
   --log-tone: var(--amber);
+}
+
+/* PreToolUse is the call going out, PostToolUse the observation coming back.
+   They share the tool tone in the LOG but carry different phase colours in
+   the chain and the rail, so a call and its result read apart at a glance. */
+.payload-overlay__atom.hook-pre {
+  --log-tone: var(--cyan);
+}
+
+.payload-overlay__atom.hook-post {
+  --log-tone: var(--teal);
 }
 
 .payload-overlay__atom.tone-failed {
@@ -10322,29 +10393,6 @@ pre,
   letter-spacing: 0.08em;
 }
 
-.agent-transcript__head .platform-icon {
-  width: 14px;
-  height: 14px;
-  flex: 0 0 14px;
-  object-fit: contain;
-}
-
-.agent-transcript__brand {
-  color: var(--text-strong);
-  font-weight: var(--weight-medium, 600);
-  letter-spacing: 0.02em;
-}
-
-.agent-transcript__version {
-  padding: 1px 6px;
-  border: 1px solid color-mix(in srgb, var(--violet) 40%, var(--line));
-  border-radius: 999px;
-  color: var(--violet);
-  background: color-mix(in srgb, var(--violet) 10%, transparent);
-  font-size: var(--text-overline);
-  letter-spacing: 0;
-}
-
 .agent-transcript__view-label {
   margin-left: 2px;
   color: var(--muted);
@@ -10689,6 +10737,18 @@ pre,
 
 .agent-step.tone-tool {
   --log-tone: var(--amber);
+}
+
+/* The two hook phases split the amber tool tone: cyan for the call, teal for
+   the result. Failures keep their red tone — they never gain a phase class. */
+.agent-step.hook-pre {
+  --log-tone: var(--cyan);
+  --type-accent: var(--cyan);
+}
+
+.agent-step.hook-post {
+  --log-tone: var(--teal);
+  --type-accent: var(--teal);
 }
 
 .agent-step.tone-failed {

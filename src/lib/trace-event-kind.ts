@@ -280,6 +280,24 @@ export function isBlockingUserQuestionStartEvent(event: TraceEvent) {
   return true;
 }
 
+/**
+ * The tool-hook phase a canonical event belongs to. `PreToolUse` is the call
+ * dispatched before a tool runs; `PostToolUse` is the observation after it
+ * returns. They share the `tool` tone in the LOG, but the reader needs to tell
+ * the two apart at a glance in the message chain, so the rail and the Agent
+ * steps add a phase colour on top of that shared tone. Failures keep their
+ * own `failed` tone and are deliberately not reclassified here.
+ */
+export function hookPhaseOf(eventName?: string | null): "pre" | "post" | null {
+  if (eventName === "PreToolUse") {
+    return "pre";
+  }
+  if (eventName === "PostToolUse") {
+    return "post";
+  }
+  return null;
+}
+
 export function getTraceEventKey(event?: TraceEvent | null) {
   if (event && isSystemAuthorizationEvent(event) && !hasQuestionParameters(event)) {
     return "permission.request";

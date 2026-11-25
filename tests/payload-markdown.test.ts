@@ -264,3 +264,37 @@ test("circular payloads fall back instead of throwing", () => {
   const markdown = payloadToMarkdown(circular);
   assert.match(markdown, /unserializable|\[circular reference\]/);
 });
+
+test("the recorder identity stays out of the generic preview but a nested version is kept", () => {
+  const markdown = payloadToMarkdown({
+    tool_input: { command: "cd /work && echo hi" },
+    client: "WorkBuddy",
+    version: "5.11.3",
+    captured: { version: "1.0.0" },
+  });
+  // The agent name and client version belong in the dialog header, never as
+  // content lines in the preview body.
+  assert.doesNotMatch(markdown, /WorkBuddy/);
+  assert.doesNotMatch(markdown, /5\.11\.3/);
+  assert.match(markdown, /cd \/work && echo hi/);
+  // A genuine version field deeper in the payload is still captured data.
+  assert.match(markdown, /1\.0\.0/);
+});
+
+test("a numbered Read result keeps its captured file path when the split has no content", () => {
+  // A WorkBuddy Read result carries the dump on `tool_response`, which the
+  // generic split leaves empty — so the preview falls to payloadToMarkdown.
+  // The file extension must still select TypeScript, not bash (an `export`
+  // line inside a source file is not a shell assignment).
+  const markdown = payloadToMarkdown({
+    hook_event_name: "PostToolUse",
+    tool_name: "Read",
+    tool_input: { file_path: "/work/tests/index.test.ts", limit: 30, offset: 1 },
+    tool_response: "   1→export function go() {}\n   2→const x = 1;",
+    client: "WorkBuddy",
+    version: "5.11.3",
+  });
+  assert.match(markdown, /^```typescript\n/);
+  assert.doesNotMatch(markdown, /WorkBuddy/);
+  assert.doesNotMatch(markdown, /5\.11\.3/);
+});

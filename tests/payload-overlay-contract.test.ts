@@ -827,3 +827,35 @@ test("a shrinking step chain clears the pending new-message count", () => {
     /if \(count < previous\) \{\s*\n\s*setPendingCount\(0\);/,
   );
 });
+
+/**
+ * The producing agent is identified once, in the dialog header, as an icon
+ * plus its name. The recorder's client version is envelope data and is never
+ * printed: the preview body strips it in the markdown projection, and the
+ * Agent head no longer carries a brand or a version chip.
+ */
+test("the agent identity lives in the header as an icon and a name only", () => {
+  assert.match(overlay, /payload-overlay__agent/);
+  assert.match(overlay, /<PlatformIcon platform=\{platform\}/);
+  assert.match(overlay, /getAtomPlatformConfig\(platform\)\.label/);
+  assert.doesNotMatch(overlay, /agentVersion/);
+  assert.doesNotMatch(agentTranscript, /agentVersion|agent-transcript__version|agent-transcript__brand/);
+  assert.doesNotMatch(app, /overlayAgentVersion/);
+  assert.match(stylesForOverlay, /\.payload-overlay__agent \{/);
+});
+
+/**
+ * Pre / Post hooks share the `tool` tone but gain a phase class in both the
+ * rail and the Agent chain, with different colours for the outgoing call and
+ * the returning result.
+ */
+test("Pre and Post hooks carry distinct phase colours", () => {
+  assert.match(agentTranscript, /hookPhaseOf\(/);
+  assert.match(agentTranscript, /hookPhase && `hook-\$\{hookPhase\}`/);
+  assert.match(overlay, /hookPhaseOf\(atom\.eventName\)/);
+  assert.match(overlay, /hookPhase && `hook-\$\{hookPhase\}`/);
+  assert.match(stylesForOverlay, /\.agent-step\.hook-pre \{[\s\S]*?--log-tone: var\(--cyan\)/);
+  assert.match(stylesForOverlay, /\.agent-step\.hook-post \{[\s\S]*?--log-tone: var\(--teal\)/);
+  assert.match(stylesForOverlay, /\.payload-overlay__atom\.hook-pre \{[\s\S]*?--log-tone: var\(--cyan\)/);
+  assert.match(stylesForOverlay, /\.payload-overlay__atom\.hook-post \{[\s\S]*?--log-tone: var\(--teal\)/);
+});

@@ -15,6 +15,12 @@
  * with the right highlighting without a second renderer.
  */
 
+import {
+  findPayloadFilePath,
+  languageFromFilePath,
+  parseNumberedCode,
+} from "./numbered-code.ts";
+
 const CONTENT_KEYS = [
   "content",
   "message",
@@ -96,6 +102,17 @@ const CONTAINER_KEYS = [
  * a tool payload (a deeper path) is not caught.
  */
 const IDENTITY_KEYS = new Set(["client", "version"]);
+
+/**
+ * Whether a key is the recorder's own identity stamp. Exported so the
+ * Markdown projection strips the same root keys the related-field inventory
+ * drops — the agent name and version belong in the dialog header, not in a
+ * payload's preview body. Only the caller passes a *root* key here; a nested
+ * `version` field remains genuine captured data.
+ */
+export function isPayloadIdentityKey(key: string): boolean {
+  return IDENTITY_KEYS.has(normalized(key));
+}
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -380,12 +397,11 @@ export function collectPayloadFields(
     return mergeRelated(fields);
   }
   for (const [key, item] of Object.entries(value as UnknownRecord)) {
-    const name = normalized(key);
     // The top-level client identity (agent name + recorder version) is stamped
     // on every event by the source; a result's field inventory should stay on
     // the event, so only the root level drops it. A deeper payload that
     // genuinely records a version field keeps it.
-    if (prefix === "" && IDENTITY_KEYS.has(name)) {
+    if (prefix === "" && isPayloadIdentityKey(key)) {
       continue;
     }
     const path = prefix ? `${prefix}.${key}` : key;
@@ -639,12 +655,22 @@ function hasMarkdownBlockStructure(text: string, allowHashHeading: boolean): boo
  * block structure renders as the document it is, its own fenced code still
  * highlighted inside, instead of one horizontally scrolling code block.
  */
-export function contentToMarkdown(content: string): string {
+export function contentToMarkdown(content: string, filePath?: string | null): string {
   const text = content.trim();
   if (!text) {
     return "";
   }
-  const language = inferCodeLanguage(text);
+  // A Read result's numbered dump is a file, not a prose paragraph. The path
+  // is the host's own language statement; fall back to the stripped source
+  // when no path was captured. The renderer reads the same prefix pattern to
+  // split the numbers back out into a gutter.
+  const numbered = parseNumberedCode(text);
+  const language =
+    (numbered ? languageFromFilePath(filePath) : null) ??
+    inferCodeLanguage(numbered ? numbered.lines.join("\n") : text);
+  if (numbered) {
+    return fenceCode(text.trimEnd(), language);
+  }
   if (language) {
     const structural = language === "json" || language === "diff" || language === "xml";
     // `#` heads a Markdown heading everywhere; in shell / Python it is a
@@ -672,7 +698,9 @@ function stripMetaKeys(value: unknown, depth = 0): unknown {
   if (value && typeof value === "object") {
     const out: Record<string, unknown> = {};
     for (const [key, item] of Object.entries(value)) {
-      if (isPayloadMetaKey(key)) {
+      // The recorder's own identity stamp is never preview content: the agent
+      // name and client version are shown once, in the dialog header.
+      if (isPayloadMetaKey(key) || (depth === 0 && isPayloadIdentityKey(key))) {
         continue;
       }
       const stripped = stripMetaKeys(item, depth + 1);

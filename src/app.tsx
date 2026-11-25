@@ -3421,7 +3421,6 @@ function TraceInspector({
   overlayAgentRunDurationMs,
   overlayAgentRunExecuting,
   overlayAgentPlatform,
-  overlayAgentVersion,
   overlaySearchEvent,
   onOverlayFollowingChange,
   onOverlaySelectEvent,
@@ -3465,10 +3464,8 @@ function TraceInspector({
   overlayAgentRunDurationMs?: number | null;
   /** Whether the selected message is executing — drives the Agent view's loading / scroll control. */
   overlayAgentRunExecuting: boolean;
-  /** The agent that produced the run, for the Agent view header's brand mark. */
+  /** The agent that produced the run, for the dialog header's brand mark. */
   overlayAgentPlatform?: PlatformId;
-  /** The source's captured client version, e.g. `5.11.3`. */
-  overlayAgentVersion?: string | null;
   /** Deep payload match for the rail's search (shared per-event haystacks). */
   overlaySearchEvent: (eventId: string, needle: string) => boolean;
   onOverlayFollowingChange: (following: boolean) => void;
@@ -3741,7 +3738,6 @@ function TraceInspector({
         agentRunDurationMs={overlayAgentRunDurationMs}
         agentRunExecuting={overlayAgentRunExecuting}
         platform={overlayAgentPlatform}
-        agentVersion={overlayAgentVersion}
         cacheScope={activeTab}
         followAvailable={overlayFollowAvailable}
         following={overlayFollowing}
@@ -6825,19 +6821,10 @@ export default function App() {
   // secondly `now` tick advances it while the run is live; an ended message
   // keeps its recorded total.
   const overlayAgentRunDurationMs = activeDisplayState?.duration ?? null;
-  // The Agent view header shows the brand of the agent that produced the run
-  // and the client version its recorder stamped (if any). Both are display
-  // reads of the same active events — never a second source of identity.
+  // The dialog header carries the producing agent's brand; the recorder's
+  // client version is deliberately not shown — it belongs to the envelope,
+  // not to the captured event.
   const overlayAgentPlatform = platformId;
-  const overlayAgentVersion = useMemo(() => {
-    for (const event of activeEvents) {
-      const version = event.sourceVersion;
-      if (typeof version === "string" && version.trim()) {
-        return version.trim();
-      }
-    }
-    return null;
-  }, [activeEvents]);
   // Clicking any executing run opens Live: follow mode is allowed while the
   // ACTIVE run executes, not only for the newest session in the window.
   const promptExecuting = isPromptExecuting(
@@ -8749,7 +8736,6 @@ export default function App() {
                 overlayAgentRunDurationMs={overlayAgentRunDurationMs}
                 overlayAgentRunExecuting={executingLive}
                 overlayAgentPlatform={overlayAgentPlatform}
-                overlayAgentVersion={overlayAgentVersion}
                 overlaySearchEvent={overlaySearchEvent}
                 onOverlayFollowingChange={handleOverlayFollowingChange}
                 onOverlaySelectEvent={handleOverlaySelectEvent}

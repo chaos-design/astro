@@ -27,7 +27,6 @@ import {
 import { MarkdownView } from "@/components/markdown-view";
 import { AnswerRows } from "@/components/answer-rows";
 import { PairLinkMarker } from "@/components/pair-link-marker";
-import { PlatformIcon } from "@/components/platform-icon";
 import { QuestionContent, QuestionPreview, type QuestionAnswerBinding } from "@/components/question-content";
 import { RelatedFields } from "@/components/related-fields";
 import {
@@ -53,19 +52,14 @@ import {
   splitPayloadPreview,
 } from "@/lib/payload-preview";
 import { payloadToMarkdown } from "@/lib/payload-markdown";
+import { hookPhaseOf } from "@/lib/trace-event-kind";
+import { findPayloadFilePath } from "@/lib/numbered-code";
 import { formatDurationMs } from "@/lib/duration-label";
 import {
   formatExecutionClock,
   type ToolCallInputs,
   type ToolInputField,
 } from "@/lib/trace-model";
-import { getAtomPlatformConfig } from "@/config/atom-platforms";
-import type { PlatformId } from "@/types/trace";
-
-function platformLabel(platform: PlatformId): string {
-  return getAtomPlatformConfig(platform).label;
-}
-
 /**
  * What a tool result's *body* should not re-print. The call frame already
  * shows the shell command, and the related-fields pane already labels the
@@ -466,8 +460,6 @@ export function AgentTranscript({
   live,
   locateRequest,
   runDurationMs,
-  platform = "chatgpt",
-  agentVersion = null,
 }: {
   view: AgentView;
   selectedEventId: string | null;
@@ -482,10 +474,6 @@ export function AgentTranscript({
    * executes, the recorded total once it ended; `null` when the message has
    * no clock of its own. */
   runDurationMs: number | null;
-  /** The agent that produced this run — shown with its brand icon in the head. */
-  platform?: PlatformId;
-  /** The source's captured client version, e.g. `5.11.3`. */
-  agentVersion?: string | null;
 }) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const stepRefs = useRef(new Map<string, HTMLElement>());
@@ -735,11 +723,6 @@ export function AgentTranscript({
   return (
     <div className="agent-transcript">
       <div className="agent-transcript__head">
-        <PlatformIcon platform={platform} width={14} height={14} />
-        <span className="agent-transcript__brand">{platformLabel(platform)}</span>
-        {agentVersion ? (
-          <span className="agent-transcript__version">{agentVersion}</span>
-        ) : null}
         <span className="agent-transcript__view-label">AGENT VIEW</span>
         {runDurationMs !== null ? (
           <span
@@ -938,12 +921,20 @@ function StepCard({
     }
   })();
 
+  // Pre / Post tool hooks share the `tool` tone but are different moments of
+  // the same call. The step keeps its tone and gains a phase class so the
+  // rail and the chain colour a call and its result the same way.
+  const hookPhase = hookPhaseOf(
+    "eventName" in step ? step.eventName : null,
+  );
+
   return (
     <section
       className={cn(
         "agent-step",
         `agent-step--${step.kind}`,
         `tone-${step.tone}`,
+        hookPhase && `hook-${hookPhase}`,
         selected && "is-selected",
       )}
       data-step-id={step.id}
@@ -1062,9 +1053,9 @@ function ToolResultBody({ step }: { step: ToolResultStep }) {
       hasAnswers || shellOutput
         ? ""
         : split.content.trim()
-          ? contentToMarkdown(split.content)
+          ? contentToMarkdown(split.content, findPayloadFilePath(step.payload))
           : payloadToMarkdown(bodyPayload),
-    [hasAnswers, shellOutput, split.content, bodyPayload],
+    [hasAnswers, shellOutput, split.content, bodyPayload, step.payload],
   );
   // The one structured extractor drives the call block: a captured shell
   // command is a terminal line, every other tool is a list of named inputs —

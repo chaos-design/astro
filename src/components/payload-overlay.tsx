@@ -16,6 +16,8 @@ import {
 import { AgentTranscript } from "@/components/agent-transcript";
 import { JsonViewer } from "@/components/json-viewer";
 import { PairLinkMarker } from "@/components/pair-link-marker";
+import { PlatformIcon } from "@/components/platform-icon";
+import { hookPhaseOf } from "@/lib/trace-event-kind";
 import { cn } from "@/lib/utils";
 import {
   Dialog,
@@ -39,6 +41,7 @@ import {
 } from "@/components/question-content";
 import { RelatedFields } from "@/components/related-fields";
 import type { AgentView } from "@/lib/agent-view";
+import { getAtomPlatformConfig } from "@/config/atom-platforms";
 import type { PlatformId } from "@/types/trace";
 import { renderMarkdownPreview } from "@/lib/markdown-preview";
 import {
@@ -48,6 +51,7 @@ import {
   orderRelated,
   splitPayloadPreview,
 } from "@/lib/payload-preview";
+import { findPayloadFilePath } from "@/lib/numbered-code";
 import { payloadToMarkdown } from "@/lib/payload-markdown";
 import { parseUserQuestionContent } from "@/lib/user-question-content";
 import type { TracePairLink } from "@/lib/trace-model";
@@ -267,8 +271,10 @@ function preparePreview(
   variant: "default" | "question",
 ): PreparedPreview {
   const split = splitPayloadPreview(payload);
+  // A Read result's numbered body is rendered with a line-number gutter; the
+  // captured file path selects its highlight language when one is available.
   const source = split.content.trim()
-    ? contentToMarkdown(split.content)
+    ? contentToMarkdown(split.content, findPayloadFilePath(payload))
     : payloadToMarkdown(payload) || fallbackPayloadMarkdown(payload);
   const rendered = renderMarkdownPreview(source);
   // Parsed for every row: a payload carrying a structured `questions` list is
@@ -342,7 +348,6 @@ export function PayloadOverlay({
   variant = "default",
   variantForAtom,
   platform = "chatgpt",
-  agentVersion = null,
 }: {
   atoms: PayloadOverlayAtom[];
   /** Derived Agent view of the same event sequence as the rail. */
@@ -396,10 +401,8 @@ export function PayloadOverlay({
   variant?: "default" | "question";
   /** Per-row variant so a question row keeps its QuestionPreview after a switch. */
   variantForAtom?: (atomId: string, eventId: string) => "default" | "question";
-  /** The agent that produced the run, for the Agent view header's brand mark. */
+  /** The agent that produced the run — the dialog header's brand mark. */
   platform?: PlatformId;
-  /** The source's captured client version, e.g. `5.11.3`. */
-  agentVersion?: string | null;
 }) {
   const [viewMode, setViewMode] = useState<PayloadViewMode>("agent");
   // Only an explicit rail / step / pair pick locates the Agent transcript.
@@ -721,6 +724,12 @@ export function PayloadOverlay({
       <DialogContent className="payload-overlay">
         <header className="payload-overlay__head">
           <div className="payload-overlay__copy">
+            <span className="payload-overlay__agent">
+              <PlatformIcon platform={platform} width={14} height={14} />
+              <span className="payload-overlay__agent-name">
+                {getAtomPlatformConfig(platform).label}
+              </span>
+            </span>
             <span className="eyebrow">
               {variant === "question" ? "USER QUESTION" : "CAPTURED PAYLOAD"}
             </span>
@@ -860,6 +869,7 @@ export function PayloadOverlay({
                     );
                   }
                   const atom = item.atom;
+                  const hookPhase = hookPhaseOf(atom.eventName);
                   const selected = atom.id === selectedEventId;
                   const running = atom.id === runningEventId;
                   const partnerSelected =
@@ -873,6 +883,7 @@ export function PayloadOverlay({
                         className={cn(
                           "atomic-log__row payload-overlay__atom",
                           `tone-${atom.tone || "unknown"}`,
+                          hookPhase && `hook-${hookPhase}`,
                           running && "is-running",
                           selected && !running && "is-selected",
                           partnerSelected && !selected && "is-pair-partner",
@@ -947,8 +958,6 @@ export function PayloadOverlay({
                 live={agentRunExecuting}
                 locateRequest={agentLocateRequest}
                 runDurationMs={agentRunDurationMs}
-                platform={platform}
-                agentVersion={agentVersion}
               />
             ) : viewMode === "preview" ? (
               <div className="payload-overlay__preview-grid">

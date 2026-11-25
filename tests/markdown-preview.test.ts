@@ -159,3 +159,21 @@ test("an unknown fenced language is escaped, never trusted as a class or markup"
   assert.doesNotMatch(render.html, /data-lang="[^"]*pwned/i);
   assert.match(render.html, /&lt;script&gt;/);
 });
+
+test("a numbered Read dump renders its line numbers in a separate gutter", () => {
+  const render = renderMarkdownPreview(
+    "```typescript\n" +
+      '1→import assert from "node:assert/strict";\n' +
+      "2→const x = 1;\n" +
+      "10→\n" +
+      "11→function go() { return x; }\n" +
+      "```",
+  );
+  assert.equal(render.valid, true);
+  assert.match(render.html, /md-code--numbered/);
+  // The captured prefixes are gone from the highlighted source, the numbers
+  // (including the non-1 start offset and the blank line) live in the gutter.
+  assert.doesNotMatch(render.html, /1→import/);
+  assert.match(render.html, /md-code__gutter[^>]*><code>1\n2\n10\n11<\/code>/);
+  assert.match(render.html, /hljs-keyword">import<\/span>/);
+});

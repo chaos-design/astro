@@ -256,3 +256,17 @@ test("a tool result that echoes its inputs back is shown once", () => {
   );
   assert.equal(descriptions.length, 1, "the echoed value is not printed twice");
 });
+
+test("a numbered file dump is fenced in the language its path declares", () => {
+  const dump = "   1→const x: number = 1;\n   2→export default x;";
+  const markdown = contentToMarkdown(dump, "/work/tests/index.test.ts");
+  assert.match(markdown, /^```typescript\n/);
+  assert.match(markdown, /1→const x: number = 1;/);
+  // Without a path the stripped source still infers TypeScript.
+  assert.match(contentToMarkdown(dump), /^```typescript\n/);
+  // An ordinary multi-line string with one arrow note is not a numbered file.
+  assert.equal(
+    contentToMarkdown("a note 1→about steps\nand another line"),
+    "a note 1→about steps\nand another line",
+  );
+});

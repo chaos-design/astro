@@ -9,6 +9,7 @@ import typescript from "highlight.js/lib/languages/typescript";
 import xml from "highlight.js/lib/languages/xml";
 import yaml from "highlight.js/lib/languages/yaml";
 import { Marked } from "marked";
+import { parseNumberedCode } from "./numbered-code.ts";
 
 // Only the languages a captured payload realistically carries. The docs site
 // can afford `highlight.js/lib/common`; the console ships in the main bundle,
@@ -66,10 +67,16 @@ markdownParser.use({
   renderer: {
     code(token: unknown) {
       const fence = token as { text?: string; lang?: string };
-      const code = fence.text ?? "";
+      const raw = fence.text ?? "";
       // A language is a class name, never raw source: strip anything that is
       // not a language identifier before it reaches the HTML string.
       const language = (fence.lang ?? "").trim().split(/\s+/)[0].replace(/[^a-zA-Z0-9_+-]/g, "");
+      // A Read tool returns its file as `   1→line`. Render the numbers in
+      // their own gutter instead of leaving the prefixes glued to the source:
+      // the code keeps its syntax highlighting and the reader keeps the line
+      // numbers the tool captured (including a non-1 start offset).
+      const numbered = parseNumberedCode(raw);
+      const code = numbered ? numbered.lines.join("\n") : raw;
       const body =
         language && SHELL_LANGUAGES.has(language)
           ? highlightShell(code)
@@ -77,6 +84,19 @@ markdownParser.use({
             ? hljs.highlight(code, { language, ignoreIllegals: true }).value
             : escapeHtml(code);
       const classes = language ? `hljs language-${language}` : "hljs";
+      if (numbered) {
+        const gutter = numbered.numbers.map((number) => escapeHtml(number)).join("\n");
+        return (
+          `<div class="md-code md-code--numbered" data-lang="${language}">` +
+          (language
+            ? `<span class="md-code__lang" aria-hidden="true">${language}</span>`
+            : "") +
+          `<div class="md-code__numbered-body">` +
+          `<pre class="md-code__gutter" aria-hidden="true"><code>${gutter}</code></pre>` +
+          `<pre class="md-code__code"><code class="${classes}">${body}</code></pre>` +
+          `</div></div>`
+        );
+      }
       if (!language) {
         return `<pre><code class="${classes}">${body}</code></pre>`;
       }

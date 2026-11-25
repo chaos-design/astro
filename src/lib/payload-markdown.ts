@@ -19,8 +19,10 @@ import {
   contentToMarkdown,
   fenceCode,
   isPayloadContainerKey,
+  isPayloadIdentityKey,
   isPayloadMetaKey,
 } from "./payload-preview.ts";
+import { findPayloadFilePath } from "./numbered-code.ts";
 
 const TEXT_KEYS = [
   "message",
@@ -197,8 +199,8 @@ function findResultText(value: unknown, depth: number, seen: WeakSet<object>): s
  * command or a captured shell output as a paragraph, with its flags uncoloured
  * and its URLs auto-linked into prose.
  */
-function resultToMarkdown(text: string): string {
-  return contentToMarkdown(text);
+function resultToMarkdown(text: string, filePath?: string | null): string {
+  return contentToMarkdown(text, filePath);
 }
 
 function answersToMarkdown(answers: UnknownRecord): string {
@@ -555,6 +557,12 @@ function arrayToMarkdown(value: unknown[], depth: number, seen: WeakSet<object>)
 function objectToMarkdown(value: UnknownRecord, depth: number, seen: WeakSet<object>): string {
   const blocks: string[] = [];
   for (const [key, item] of Object.entries(value)) {
+    // The recorder's identity stamp (client name + version) belongs in the
+    // dialog header, never in the preview body. Drop it at the top level of
+    // the payload only: a deeper `version` field is genuine captured data.
+    if (depth === 0 && isPayloadIdentityKey(key)) {
+      continue;
+    }
     // A container key (tool_input / payload / …) hides the content one level
     // down and is never metadata; other metadata keys stay beside the preview.
     const container = item !== null && typeof item === "object" && isPayloadContainerKey(key);
@@ -600,6 +608,9 @@ function readableFields(value: unknown, depth: number, seen: WeakSet<object>): s
   seen.add(value);
   const lines: string[] = [];
   for (const [key, item] of Object.entries(value)) {
+    if (depth === 0 && isPayloadIdentityKey(key)) {
+      continue;
+    }
     const container = item !== null && typeof item === "object" && isPayloadContainerKey(key);
     if (!container && isPayloadMetaKey(key)) {
       continue;
@@ -644,7 +655,12 @@ function readableFields(value: unknown, depth: number, seen: WeakSet<object>): s
  * questions/answers and a readable result text win first; otherwise the
  * result is shown as readable fields rather than a JSON structure.
  */
-function capturedResultToMarkdown(value: unknown, depth: number, seen: WeakSet<object>): string {
+function capturedResultToMarkdown(
+  value: unknown,
+  depth: number,
+  seen: WeakSet<object>,
+  filePath?: string | null,
+): string {
   const structured = findStructured(value, depth, new WeakSet());
   if (structured) {
     return structured;
@@ -654,7 +670,7 @@ function capturedResultToMarkdown(value: unknown, depth: number, seen: WeakSet<o
   // `content` arrays a tool response hides its text in.
   const text = unwrapText(value, depth, new WeakSet());
   if (text.trim()) {
-    return resultToMarkdown(text);
+    return resultToMarkdown(text, findPayloadFilePath(value));
   }
   if (isRecord(value)) {
     return readableFields(value, depth, seen);
@@ -691,7 +707,7 @@ export function payloadToMarkdown(
   // preview shows the prompt / output content the reader asked for, leaving
   // the untouched wrapper to the Code view.
   if ("captured" in record && "contract" in record) {
-    return capturedResultToMarkdown(record.captured, depth, seen);
+    return capturedResultToMarkdown(record.captured, depth, seen, findPayloadFilePath(value));
   }
 
   const structured = findStructured(value, depth, new WeakSet());
@@ -712,7 +728,9 @@ export function payloadToMarkdown(
   // relies on: fenced code and Markdown are rendered, not shown as JSON text.
   const result = findResultText(value, depth, new WeakSet());
   if (result) {
-    return resultToMarkdown(result);
+    // The same payload carries the file path a Read result came from. Pass it
+    // so a TypeScript file with an `export` line is not mislabelled as bash.
+    return resultToMarkdown(result, findPayloadFilePath(value));
   }
 
   // Without a known result container, a lone text field is still the document.
@@ -727,7 +745,7 @@ export function payloadToMarkdown(
       // otherwise see itself as already visited.
       const unwrapped = unwrapText(value, depth, new WeakSet());
       if (unwrapped.trim()) {
-        return contentToMarkdown(unwrapped);
+        return contentToMarkdown(unwrapped, findPayloadFilePath(value));
       }
     }
   }
