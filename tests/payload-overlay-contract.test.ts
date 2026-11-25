@@ -192,8 +192,8 @@ test("the Agent view keeps a reader's scroll and offers a jump to the newest ste
   assert.match(agentTranscript, /behavior: "smooth"/);
   assert.match(agentTranscript, /scrollToTop\(container, container\.scrollHeight, explicit\)/);
   assert.match(stylesForOverlay, /\.agent-transcript__jump \{[\s\S]*?position: absolute/);
-  assert.match(stylesForOverlay, /:not\(\.agent-transcript__jump\):not\(\.agent-transcript__stat-button\):not\(\.agent-transcript__stat-card-row\) \{/);
-  assert.match(stylesForOverlay, /:not\(\.agent-transcript__jump\):not\(\.agent-transcript__stat-button\):not\(\.agent-transcript__stat-card-row\):focus-visible/);
+  assert.match(stylesForOverlay, /:not\(\.agent-transcript__jump\):not\(\.agent-transcript__stat-button\):not\(\.agent-transcript__stat-card-row\):not\(\.preview-mac-frame__locate\) \{/);
+  assert.match(stylesForOverlay, /:not\(\.agent-transcript__jump\):not\(\.agent-transcript__stat-button\):not\(\.agent-transcript__stat-card-row\):not\(\.preview-mac-frame__locate\):focus-visible/);
 });
 
 test("the Agent view's header reads its execution time from the root display state", () => {

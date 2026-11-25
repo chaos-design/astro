@@ -394,11 +394,28 @@ function StatChip({
   onOpenChange: (name: string | null) => void;
   onJump: (eventId: string) => void;
 }) {
+  // Closing on hover-out is delayed a beat so a pointer travelling down into
+  // the card across the gap still lands on a row — otherwise a one-item list
+  // (card title + a single row) is too small to reach before the card closes.
+  const closeTimer = useRef<number | null>(null);
+  const cancelClose = () => {
+    if (closeTimer.current !== null) {
+      window.clearTimeout(closeTimer.current);
+      closeTimer.current = null;
+    }
+  };
+  useEffect(() => () => cancelClose(), []);
   return (
     <span
       className={cn("agent-transcript__stat-wrap", open && "is-open")}
-      onMouseEnter={() => onOpenChange(name)}
-      onMouseLeave={() => onOpenChange(null)}
+      onPointerEnter={() => {
+        cancelClose();
+        onOpenChange(name);
+      }}
+      onPointerLeave={() => {
+        cancelClose();
+        closeTimer.current = window.setTimeout(() => onOpenChange(null), 140);
+      }}
     >
       <button
         className="agent-transcript__stat agent-transcript__stat-button"

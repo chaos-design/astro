@@ -315,7 +315,7 @@ button:not([data-variant="console"]):not([data-variant="playback"]):not([data-sl
     [data-slot="tabs-trigger"]
   ):not(.run-history__live-jump):not(.service-card__restart):not(.settings-footer__button):not(.pair-link-marker):not(
     .question-options__option
-  ):not(.agent-step__head):not(.agent-step__toggle):not(.agent-transcript__jump):not(.agent-transcript__stat-button):not(.agent-transcript__stat-card-row) {
+  ):not(.agent-step__head):not(.agent-step__toggle):not(.agent-transcript__jump):not(.agent-transcript__stat-button):not(.agent-transcript__stat-card-row):not(.preview-mac-frame__locate) {
   border: 0;
 }
 
@@ -323,7 +323,7 @@ button:not([data-variant="console"]):not([data-variant="playback"]):not([data-sl
     [data-slot="tabs-trigger"]
   ):not(.run-history__live-jump):not(.service-card__restart):not(.settings-footer__button):not(.pair-link-marker):not(
     .question-options__option
-  ):not(.agent-step__head):not(.agent-step__toggle):not(.agent-transcript__jump):not(.agent-transcript__stat-button):not(.agent-transcript__stat-card-row):focus-visible,
+  ):not(.agent-step__head):not(.agent-step__toggle):not(.agent-transcript__jump):not(.agent-transcript__stat-button):not(.agent-transcript__stat-card-row):not(.preview-mac-frame__locate):focus-visible,
 input:not([data-slot="input-group-control"]):focus-visible {
   outline: 1px solid var(--selection-border);
   outline-offset: 2px;
@@ -6106,14 +6106,27 @@ pre,
 }
 
 .payload-overlay__head {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   flex: none;
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
   /* Reserve the dialog's own close button slot at the right edge. */
   padding: 14px 56px 14px 18px;
   border-bottom: 1px solid var(--chrome-line);
+}
+
+.payload-overlay__copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* The view switch anchors dead-center between the title copy (left) and the
+   agent badge (right); the grid columns above give each side equal slack. */
+.payload-overlay__head > .prompt-input__mode {
+  justify-self: center;
 }
 
 .payload-overlay__copy {
@@ -6134,6 +6147,7 @@ pre,
    the recorder's client version is envelope data. */
 .payload-overlay__agent {
   display: inline-flex;
+  justify-self: end;
   flex: 0 0 auto;
   align-items: center;
   gap: 8px;
@@ -6398,6 +6412,62 @@ pre,
 
 .preview-mac-frame .payload-overlay__empty {
   margin: 10px 12px 12px;
+}
+
+/* The Code view wraps the raw payload in the same Mac window as Preview so
+   the two read as siblings. The bar carries a locate affordance (Preview and
+   Code alike): a one-tap way to reveal the atom the pane is showing in the
+   left rail. */
+.preview-mac-frame__bar {
+  position: relative;
+}
+
+.preview-mac-frame__locate {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  padding: 3px 9px;
+  border: 1px solid color-mix(in srgb, var(--selection-border) 45%, var(--line));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--selection-border) 12%, transparent);
+  color: var(--selection-border);
+  cursor: pointer;
+  font-family: var(--font-mono, monospace);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+}
+
+.preview-mac-frame__locate:hover {
+  background: color-mix(in srgb, var(--selection-border) 22%, transparent);
+}
+
+.preview-mac-frame__locate svg {
+  width: 11px;
+  height: 11px;
+}
+
+/* The raw JSON is the one pane that keeps its own scroll (the tree is wide);
+   the frame's bar stays pinned above it. */
+.preview-mac-frame--code {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.preview-mac-frame__code-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-bright) transparent;
+  padding: 8px 10px;
+}
+
+.preview-mac-frame--code .preview-mac-frame__label {
+  font-size: 0.72rem;
 }
 
 
@@ -6889,19 +6959,6 @@ pre,
 .payload-overlay__rail .atomic-log__row.is-content-active strong.atomic-log__name,
 .payload-overlay__rail .atomic-log__row.is-content-active .log-sequence {
   color: var(--text-strong);
-}
-
-.payload-overlay__rail .atomic-log__row.is-content-active::after {
-  position: absolute;
-  top: 50%;
-  right: 5px;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--log-tone);
-  box-shadow: 0 0 6px var(--log-tone);
-  content: "";
-  transform: translateY(-50%);
 }
 
 /* Same tone map as the LOG row, so a tool atom and a question atom keep their
@@ -10892,8 +10949,20 @@ pre,
   --type-accent: var(--muted);
 }
 
-.agent-step.is-selected {
+/* Selection must read apart from the step's own tone: every kind surface
+   above (thinking / reply / tool / …) blends the card with its log-tone, so a
+   plain `.is-selected` loses the specificity fight and a selected tool result
+   washes back to amber — the step's own colour. Double-classing the selected
+   state keeps the highlight (the shared selection cyan) winning over every
+   tone surface, so the chosen step never looks merely "the same". */
+.agent-step.is-selected,
+.agent-step--thinking.is-selected,
+.agent-step--reply.is-selected,
+.agent-step--tool-result.is-selected,
+.agent-step--question.is-selected,
+.agent-step--event.is-selected {
   border-color: var(--selection-border);
+  border-left-color: var(--selection-border);
   background: var(--selection-bg);
   box-shadow: 0 0 10px color-mix(in srgb, var(--selection-glow) 55%, transparent);
 }

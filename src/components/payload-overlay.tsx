@@ -1,4 +1,4 @@
-import { Bot, ChevronDown, ChevronUp, Code2, Eye, Radio, Search, X } from "lucide-react";
+import { Bot, ChevronDown, ChevronUp, Code2, Crosshair, Eye, Radio, Search, X } from "lucide-react";
 import {
   useCallback,
   useDeferredValue,
@@ -22,7 +22,6 @@ import { cn } from "@/lib/utils";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
@@ -433,6 +432,10 @@ export function PayloadOverlay({
   // Live follow changes the selected event without bumping this, so a reader
   // who scrolled back through the chain is not yanked to the newest step.
   const [agentLocateRequest, setAgentLocateRequest] = useState(0);
+  // Bumped by the Preview / Code "locate source" affordance: it reveals the
+  // atom the pane is showing in the rail and, like the step pick, wins over
+  // Live follow for one pass so the reader always sees the source land.
+  const [railLocateRequest, setRailLocateRequest] = useState(0);
   // The rail's search box is rail-local state (the LOG's own search pattern):
   // a keystroke re-renders only the rail, not the studio. The needle matches
   // the rows' display fields AND the row event's payload content (the caller
@@ -633,7 +636,7 @@ export function PayloadOverlay({
     } else if (rowBottom > list.scrollTop + list.clientHeight) {
       list.scrollTop = rowBottom - list.clientHeight;
     }
-  }, [atoms.length, following, open, railRevealRequest, selectedEventId]);
+  }, [atoms.length, following, open, railRevealRequest, selectedEventId, railLocateRequest]);
   // The Agent pane's reading line moves through the chain as the reader
   // scrolls; Preview / Code mark the single payload they show. Reveal the
   // matching rail row when it drifts out of view, but never fight Live follow
@@ -686,6 +689,16 @@ export function PayloadOverlay({
     const el = event.currentTarget;
     readerScrollRef.current.relatedTop = el.scrollTop;
     readerScrollRef.current.relatedLeft = el.scrollLeft;
+  };
+  // The Preview / Code panes show one atom at a time (the selected event). A
+  // reader who has scrolled the pane away from where it was opened can bring
+  // the source atom back into the rail with this: it marks the atom the pane
+  // is showing and forces the selected-row reveal to run over the rail.
+  const handleLocateAtom = () => {
+    if (selectedEventId) {
+      setContentActiveEventId(selectedEventId);
+    }
+    setRailLocateRequest((value) => value + 1);
   };
   // Runs after each preview change commits. An explicit rail pick anchors the
   // panes to the top; anything else restores the memo (the browser clamps
@@ -803,11 +816,6 @@ export function PayloadOverlay({
               {variant === "question" ? "USER QUESTION" : "CAPTURED PAYLOAD"}
             </span>
             <DialogTitle>{label}</DialogTitle>
-            <DialogDescription>
-              {variant === "question"
-                ? "Agent 按真实产出展示思考、回复、工具结果与提问；Preview 展示问题、选项与答案；Code 查看原始载荷。"
-                : "Agent 按真实产出展示思考、回复、工具结果与提问；Preview 分两块展示原子内容与相关数据；Code 查看原始载荷。"}
-            </DialogDescription>
           </div>
           <ToggleGroup
             aria-label="Payload view"
@@ -1051,8 +1059,8 @@ export function PayloadOverlay({
                       ref={contentBodyRef}
                     >
                       <div className="preview-mac-frame">
-                        <div className="preview-mac-frame__bar" aria-hidden="true">
-                          <span className="preview-mac-frame__dots">
+                        <div className="preview-mac-frame__bar">
+                          <span className="preview-mac-frame__dots" aria-hidden="true">
                             <i />
                             <i />
                             <i />
@@ -1060,6 +1068,14 @@ export function PayloadOverlay({
                           <span className="preview-mac-frame__label">
                             {activeRow?.eventName || activeRow?.key || "Preview"}
                           </span>
+                          <button
+                            className="preview-mac-frame__locate"
+                            onClick={handleLocateAtom}
+                            type="button"
+                          >
+                            <Crosshair data-icon="inline-start" />
+                            定位
+                          </button>
                         </div>
                         <QuestionPreview payload={activePayload as TracePayload} />
                       </div>
@@ -1074,8 +1090,8 @@ export function PayloadOverlay({
                       ref={contentBodyRef}
                     >
                       <div className="preview-mac-frame">
-                        <div className="preview-mac-frame__bar" aria-hidden="true">
-                          <span className="preview-mac-frame__dots">
+                        <div className="preview-mac-frame__bar">
+                          <span className="preview-mac-frame__dots" aria-hidden="true">
                             <i />
                             <i />
                             <i />
@@ -1083,6 +1099,14 @@ export function PayloadOverlay({
                           <span className="preview-mac-frame__label">
                             {activeRow?.eventName || activeRow?.key || "Preview"}
                           </span>
+                          <button
+                            className="preview-mac-frame__locate"
+                            onClick={handleLocateAtom}
+                            type="button"
+                          >
+                            <Crosshair data-icon="inline-start" />
+                            定位
+                          </button>
                         </div>
                         {preview.hasContent ? (
                           <div
@@ -1113,7 +1137,29 @@ export function PayloadOverlay({
               </div>
             ) : (
               <div className="payload-overlay__body payload-overlay__body--code">
-                <JsonViewer value={activePayload} />
+                <div className="preview-mac-frame preview-mac-frame--code">
+                  <div className="preview-mac-frame__bar">
+                    <span className="preview-mac-frame__dots" aria-hidden="true">
+                      <i />
+                      <i />
+                      <i />
+                    </span>
+                    <span className="preview-mac-frame__label">
+                      {activeRow?.eventName || activeRow?.key || "原始载荷"}
+                    </span>
+                    <button
+                      className="preview-mac-frame__locate"
+                      onClick={handleLocateAtom}
+                      type="button"
+                    >
+                      <Crosshair data-icon="inline-start" />
+                      定位
+                    </button>
+                  </div>
+                  <div className="preview-mac-frame__code-scroll">
+                    <JsonViewer value={activePayload} />
+                  </div>
+                </div>
               </div>
             )}
           </div>
