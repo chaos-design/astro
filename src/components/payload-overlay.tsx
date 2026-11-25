@@ -620,6 +620,47 @@ export function PayloadOverlay({
   // the reader was reading a long wrapped line. Only the rail's own scrollTop
   // may move here.
   const selectedRowRef = useRef<HTMLButtonElement | null>(null);
+  // The locate token's last observed value, so the reveal effect can tell an
+  // explicit 定位 (animate) apart from a live/stream follow (instant).
+  const lastLocateRequestRef = useRef(0);
+  // Bring a rail row into the visible band of the atom list. Returns the
+  // target scrollTop, or null when the row is already comfortably in view.
+  const revealTarget = (
+    list: HTMLElement,
+    rowTop: number,
+    rowBottom: number,
+    pad: number,
+  ): number | null => {
+    if (rowTop < list.scrollTop + pad) {
+      return Math.max(0, rowTop - pad);
+    }
+    if (rowBottom > list.scrollTop + list.clientHeight - pad) {
+      return rowBottom - list.clientHeight + pad;
+    }
+    return null;
+  };
+  // A short, eased tween over the list's own scrollTop. Only the rail list
+  // may move — revealing the row by hand keeps a content-paned horizontal
+  // scroll from being dragged along by a walk up the scrollable ancestors.
+  const animateRailTo = (list: HTMLElement, target: number) => {
+    const start = list.scrollTop;
+    const delta = target - start;
+    if (Math.abs(delta) < 1) {
+      list.scrollTop = target;
+      return;
+    }
+    const duration = 320;
+    const begin = performance.now();
+    const step = (now: number) => {
+      const t = Math.min(1, (now - begin) / duration);
+      const eased = 1 - (1 - t) * (1 - t) * (1 - t);
+      list.scrollTop = start + delta * eased;
+      if (t < 1) {
+        requestAnimationFrame(step);
+      }
+    };
+    requestAnimationFrame(step);
+  };
   useEffect(() => {
     if (!open) {
       return;
@@ -629,20 +670,28 @@ export function PayloadOverlay({
     if (!row || !list) {
       return;
     }
-    const rowTop = row.offsetTop;
-    const rowBottom = rowTop + row.offsetHeight;
-    if (rowTop < list.scrollTop) {
-      list.scrollTop = rowTop;
-    } else if (rowBottom > list.scrollTop + list.clientHeight) {
-      list.scrollTop = rowBottom - list.clientHeight;
+    const target = revealTarget(list, row.offsetTop, row.offsetTop + row.offsetHeight, 0);
+    if (target === null) {
+      return;
+    }
+    // A bump to the locate token is the only explicit "show me the source"
+    // signal — animate it. Live follow / stream batches jump instantly.
+    const animate = railLocateRequest !== lastLocateRequestRef.current;
+    lastLocateRequestRef.current = railLocateRequest;
+    if (animate) {
+      animateRailTo(list, target);
+    } else {
+      list.scrollTop = target;
     }
   }, [atoms.length, following, open, railRevealRequest, selectedEventId, railLocateRequest]);
   // The Agent pane's reading line moves through the chain as the reader
   // scrolls; Preview / Code mark the single payload they show. Reveal the
   // matching rail row when it drifts out of view, but never fight Live follow
   // (which owns the rail while armed) and never move it for a visible row.
+  // A locate has already set contentActive === selected, so that case is
+  // owned by the animated reveal above — skip it here to avoid a jump.
   useEffect(() => {
-    if (!open || following || !contentActiveEventId) {
+    if (!open || following || !contentActiveEventId || contentActiveEventId === selectedEventId) {
       return;
     }
     const row = contentActiveRowRef.current;
@@ -650,14 +699,12 @@ export function PayloadOverlay({
     if (!row || !list) {
       return;
     }
-    const rowTop = row.offsetTop;
-    const rowBottom = rowTop + row.offsetHeight;
-    if (rowTop < list.scrollTop + 8) {
-      list.scrollTop = Math.max(0, rowTop - 8);
-    } else if (rowBottom > list.scrollTop + list.clientHeight - 8) {
-      list.scrollTop = rowBottom - list.clientHeight + 8;
+    const target = revealTarget(list, row.offsetTop, row.offsetTop + row.offsetHeight, 8);
+    if (target === null) {
+      return;
     }
-  }, [contentActiveEventId, following, open]);
+    list.scrollTop = target;
+  }, [contentActiveEventId, following, open, selectedEventId]);
   const atomRefs = useRef<Array<HTMLButtonElement | null>>([]);
   // The reader's scroll position in the two preview panes, written by their
   // onScroll handlers (ref writes only — a streamed batch must not re-render).
@@ -815,7 +862,13 @@ export function PayloadOverlay({
             <span className="eyebrow">
               {variant === "question" ? "USER QUESTION" : "CAPTURED PAYLOAD"}
             </span>
-            <DialogTitle>{label}</DialogTitle>
+            <span className="payload-overlay__agent">
+              <PlatformIcon platform={platform} width={20} height={20} />
+              <span className="payload-overlay__agent-name">
+                {getAtomPlatformConfig(platform).label}
+              </span>
+            </span>
+            <DialogTitle className="sr-only">{label}</DialogTitle>
           </div>
           <ToggleGroup
             aria-label="Payload view"
@@ -843,12 +896,6 @@ export function PayloadOverlay({
               Code
             </ToggleGroupItem>
           </ToggleGroup>
-          <span className="payload-overlay__agent">
-            <PlatformIcon platform={platform} width={20} height={20} />
-            <span className="payload-overlay__agent-name">
-              {getAtomPlatformConfig(platform).label}
-            </span>
-          </span>
         </header>
         <div className="payload-overlay__main">
           {atoms.length > 0 ? (
@@ -1053,30 +1100,30 @@ export function PayloadOverlay({
                 {preview.showQuestion ? (
                   <section className="payload-overlay__pane payload-overlay__pane--content">
                     <h4 className="payload-overlay__pane-title">原子内容</h4>
-                    <div
-                      className="payload-overlay__body"
-                      onScroll={handleContentScroll}
-                      ref={contentBodyRef}
-                    >
-                      <div className="preview-mac-frame">
-                        <div className="preview-mac-frame__bar">
-                          <span className="preview-mac-frame__dots" aria-hidden="true">
-                            <i />
-                            <i />
-                            <i />
-                          </span>
-                          <span className="preview-mac-frame__label">
-                            {activeRow?.eventName || activeRow?.key || "Preview"}
-                          </span>
-                          <button
-                            className="preview-mac-frame__locate"
-                            onClick={handleLocateAtom}
-                            type="button"
-                          >
-                            <Crosshair data-icon="inline-start" />
-                            定位
-                          </button>
-                        </div>
+                    <div className="preview-mac-frame">
+                      <div className="preview-mac-frame__bar">
+                        <span className="preview-mac-frame__dots" aria-hidden="true">
+                          <i />
+                          <i />
+                          <i />
+                        </span>
+                        <span className="preview-mac-frame__label">
+                          {activeRow?.eventName || activeRow?.key || "Preview"}
+                        </span>
+                        <button
+                          className="preview-mac-frame__locate"
+                          onClick={handleLocateAtom}
+                          type="button"
+                        >
+                          <Crosshair data-icon="inline-start" />
+                          定位
+                        </button>
+                      </div>
+                      <div
+                        className="preview-mac-frame__scroll"
+                        onScroll={handleContentScroll}
+                        ref={contentBodyRef}
+                      >
                         <QuestionPreview payload={activePayload as TracePayload} />
                       </div>
                     </div>
@@ -1084,30 +1131,30 @@ export function PayloadOverlay({
                 ) : (
                   <section className="payload-overlay__pane payload-overlay__pane--content">
                     <h4 className="payload-overlay__pane-title">原子内容</h4>
-                    <div
-                      className="payload-overlay__body"
-                      onScroll={handleContentScroll}
-                      ref={contentBodyRef}
-                    >
-                      <div className="preview-mac-frame">
-                        <div className="preview-mac-frame__bar">
-                          <span className="preview-mac-frame__dots" aria-hidden="true">
-                            <i />
-                            <i />
-                            <i />
-                          </span>
-                          <span className="preview-mac-frame__label">
-                            {activeRow?.eventName || activeRow?.key || "Preview"}
-                          </span>
-                          <button
-                            className="preview-mac-frame__locate"
-                            onClick={handleLocateAtom}
-                            type="button"
-                          >
-                            <Crosshair data-icon="inline-start" />
-                            定位
-                          </button>
-                        </div>
+                    <div className="preview-mac-frame">
+                      <div className="preview-mac-frame__bar">
+                        <span className="preview-mac-frame__dots" aria-hidden="true">
+                          <i />
+                          <i />
+                          <i />
+                        </span>
+                        <span className="preview-mac-frame__label">
+                          {activeRow?.eventName || activeRow?.key || "Preview"}
+                        </span>
+                        <button
+                          className="preview-mac-frame__locate"
+                          onClick={handleLocateAtom}
+                          type="button"
+                        >
+                          <Crosshair data-icon="inline-start" />
+                          定位
+                        </button>
+                      </div>
+                      <div
+                        className="preview-mac-frame__scroll"
+                        onScroll={handleContentScroll}
+                        ref={contentBodyRef}
+                      >
                         {preview.hasContent ? (
                           <div
                             className="markdown-preview"
@@ -1156,7 +1203,7 @@ export function PayloadOverlay({
                       定位
                     </button>
                   </div>
-                  <div className="preview-mac-frame__code-scroll">
+                  <div className="preview-mac-frame__scroll">
                     <JsonViewer value={activePayload} />
                   </div>
                 </div>

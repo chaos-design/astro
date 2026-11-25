@@ -444,11 +444,16 @@ test("the rail's follow toggle mirrors the console's live following", () => {
   assert.match(overlay, /disabled=\{!followAvailable\}/);
   // Armed, the rail keeps the selected row in view as new events land —
   // scroll only the rail list's own scrollTop, never a selection change and
-  // never `scrollIntoView` (which walks every scrollable ancestor and would
-  // yank the content pane's horizontal scroll back to the start).
+  // never a walk up the scrollable ancestors (which would yank the content
+  // pane's horizontal scroll back to the start).
   assert.match(overlay, /const row = selectedRowRef\.current;/);
   assert.match(overlay, /closest<HTMLElement>\("\.payload-overlay__atom-list"\)/);
-  assert.match(overlay, /list\.scrollTop = rowBottom - list\.clientHeight/);
+  // The reveal is shared: a locate (定位) animates the rail into view, while
+  // live follow and Agent-panel scroll jump instantly so they never lag.
+  assert.match(overlay, /const revealTarget = \(/);
+  assert.match(overlay, /const animateRailTo = \(list: HTMLElement, target: number\)/);
+  assert.match(overlay, /lastLocateRequestRef\.current = railLocateRequest/);
+  assert.match(overlay, /if \(animate\) \{\s*\n\s*animateRailTo\(list, target\);/);
   assert.doesNotMatch(overlay, /scrollIntoView/);
   assert.match(
     app,
@@ -767,9 +772,12 @@ test("an empty tool_input placeholder never shadows the real spelling", () => {
  * legible at rest with a larger hover response.
  */
 test("scroll, padding and control polish keep the reading surface stable", () => {
-  // Scroll confined to the rail, never scrollIntoView on all ancestors.
+  // Scroll confined to the rail, never a walk up the scrollable ancestors.
   assert.doesNotMatch(overlay, /scrollIntoView/);
-  assert.match(overlay, /list\.scrollTop = rowTop/);
+  // The reveal target is computed from the row's own top/bottom against the
+  // list's viewport band; a locate animates into it, the rest assign directly.
+  assert.match(overlay, /const revealTarget = \(/);
+  assert.match(overlay, /list\.scrollTop = target/);
 
   // Padding moved off the pane onto head + body so the scroll region has an
   // inset on all sides while the bar still hugs the pane edge.
@@ -914,4 +922,39 @@ test("Preview/Code switch commits the reading-line atom as the inspected one", (
   assert.match(overlay, /committedViewRef/);
   assert.match(overlay, /previous !== "agent" \|\| viewMode === "agent"/);
   assert.match(overlay, /onSelectAtom\(atom\.atomId, atom\.id\)/);
+});
+
+/** The header's left block is the agent identity itself (icon + name) with an
+ * sr-only title; the duplicate right-side badge is gone. */
+test("the header leads with the agent identity and no longer repeats it on the right", () => {
+  assert.match(overlay, /<span className="payload-overlay__agent">/);
+  assert.match(overlay, /<DialogTitle className="sr-only">\{label\}<\/DialogTitle>/);
+  // Only one agent badge now, nested in the copy column.
+  const badgeCount = (overlay.match(/payload-overlay__agent">/g) ?? []).length;
+  assert.equal(badgeCount, 1);
+  assert.match(stylesForOverlay, /\.payload-overlay__agent \{\s*\n\s*display: inline-flex/);
+});
+
+/** The 定位 affordance animates the rail into view while the scroll-into-view
+ * for live follow stays instant. */
+test("a locate request smooth-scrolls the rail; the reveal target is shared", () => {
+  assert.match(overlay, /lastLocateRequestRef\.current = railLocateRequest/);
+  assert.match(overlay, /animateRailTo\(list, target\)/);
+  assert.match(overlay, /requestAnimationFrame\(step\)/);
+});
+
+/** Selected Agent cards breathe — a slow glow pulse, disabled under reduced
+ * motion. */
+test("a selected Agent step carries a breathing highlight", () => {
+  assert.match(stylesForOverlay, /agent-step-selected-breathe/);
+  assert.match(stylesForOverlay, /animation: agent-step-selected-breathe 2\.6s ease-in-out infinite/);
+  assert.match(stylesForOverlay, /@media \(prefers-reduced-motion: reduce\)[\s\S]*?animation: none/);
+});
+
+/** The Mac frame's border and title bar stay pinned; only the inner region
+ * scrolls, so its scrollbar hugs the frame's own edge. */
+test("the Mac frame keeps its border fixed and scrolls only its inner region", () => {
+  assert.match(overlay, /preview-mac-frame__scroll/);
+  assert.match(stylesForOverlay, /\.preview-mac-frame \{\s*\n\s*display: flex;/);
+  assert.match(stylesForOverlay, /\.preview-mac-frame__scroll \{[\s\S]*?overflow: auto;/);
 });

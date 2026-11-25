@@ -6142,12 +6142,11 @@ pre,
   letter-spacing: 0.16em;
 }
 
-/* The producing agent is a standalone badge on the far side of the header,
-   away from the copy column and the view switch. Icon + name, no version —
-   the recorder's client version is envelope data. */
+/* The producing agent replaces the former title block on the left: a small
+   surface caption plus the icon-and-name badge. Icon + name only — the
+   recorder's client version is envelope data and is never printed here. */
 .payload-overlay__agent {
   display: inline-flex;
-  justify-self: end;
   flex: 0 0 auto;
   align-items: center;
   gap: 8px;
@@ -6303,6 +6302,10 @@ pre,
    Markdown / question renderer the Agent transcript uses, so a captured atom
    previews as the artifact it is instead of a bare text block. */
 .preview-mac-frame {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--violet) 30%, var(--line-bright));
   border-radius: 8px;
@@ -6456,7 +6459,10 @@ pre,
   flex-direction: column;
 }
 
-.preview-mac-frame__code-scroll {
+/* The window's border and title bar stay pinned; only this inner region
+   scrolls. Its scrollbar hugs the frame's own edge (flush), so the frame
+   reads as a fixed window while the content inside moves. */
+.preview-mac-frame__scroll {
   flex: 1;
   min-height: 0;
   overflow: auto;
@@ -6464,6 +6470,15 @@ pre,
   scrollbar-width: thin;
   scrollbar-color: var(--line-bright) transparent;
   padding: 8px 10px;
+}
+
+/* Markdown content inside the scroll region keeps its own inset. */
+.preview-mac-frame__scroll .markdown-preview {
+  margin: 2px 4px 8px;
+}
+
+.preview-mac-frame__scroll .payload-overlay__empty {
+  margin: 8px 4px;
 }
 
 .preview-mac-frame--code .preview-mac-frame__label {
@@ -10954,7 +10969,10 @@ pre,
    plain `.is-selected` loses the specificity fight and a selected tool result
    washes back to amber — the step's own colour. Double-classing the selected
    state keeps the highlight (the shared selection cyan) winning over every
-   tone surface, so the chosen step never looks merely "the same". */
+   tone surface, so the chosen step never looks merely "the same". The glow
+   also breathes — a slow pulse makes the selected card read as "live /
+   followed" rather than a static highlight, without stealing focus from the
+   content. The animation is disabled under a reduced-motion preference. */
 .agent-step.is-selected,
 .agent-step--thinking.is-selected,
 .agent-step--reply.is-selected,
@@ -10965,6 +10983,28 @@ pre,
   border-left-color: var(--selection-border);
   background: var(--selection-bg);
   box-shadow: 0 0 10px color-mix(in srgb, var(--selection-glow) 55%, transparent);
+  animation: agent-step-selected-breathe 2.6s ease-in-out infinite;
+}
+
+@keyframes agent-step-selected-breathe {
+  0%,
+  100% {
+    box-shadow: 0 0 8px color-mix(in srgb, var(--selection-glow) 30%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 18px color-mix(in srgb, var(--selection-glow) 72%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-step.is-selected,
+  .agent-step--thinking.is-selected,
+  .agent-step--reply.is-selected,
+  .agent-step--tool-result.is-selected,
+  .agent-step--question.is-selected,
+  .agent-step--event.is-selected {
+    animation: none;
+  }
 }
 
 .agent-step__head {
