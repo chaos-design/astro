@@ -608,7 +608,7 @@ Hook 要在**新开一个 WorkBuddy 会话**后才生效。
 
 **面板行为**：选项点击只高亮当前选择，不单独发送；多选按选项原顺序逗号连接；
 输入框直接写答案，提交时以输入框内容为准，不再需要 `Set`；必答题全部有答案才能
-提交，底部的「提交」把整批答案一次送回；`Esc` 或取消结束请求并回退原生弹窗；
+提交，底部的 `Submit` 把整批答案一次送回；`Esc` 或取消结束请求并回退原生弹窗；
 「N 个问题 · 一次提交」的批量提示放在问题列表上方，浮层卡片与检查器停靠面一致；
 已由其他设备回答时面板转为只读。浮层卡片支持键盘作答：打开时焦点落在第一个选项，
 数字键 `1`–`9` 高亮第一个问题的对应选项，`Enter` 在必答题填完后提交整批，`Esc` 取消；
@@ -616,13 +616,14 @@ Hook 要在**新开一个 WorkBuddy 会话**后才生效。
 Hook 真实窗口推进的倒计时线，主机超时后不会回卷。卡片跟随问题生命周期：请求打开时带动画自动展开，头部右侧的箭头按钮
 可把卡片折叠成一行摘要（画布让出来，新问题到达会自动重新展开）；问题本身不再可折叠，
 列表按窗口高度限制最大滚动高度，滚动条贴在卡片右边缘（整卡不再留内边距，问题行自己带
-左右留白），提交/取消栏始终吸附在卡片底部，按钮顺序统一为「提交 / 取消」；键盘快捷键提示挪到卡片头部摘要与状态之间
-（长说明放在悬停 title 里），底部因此只留「提交 / 取消」两个按钮。卡片只是两种
-布局里的「悬浮」那一档：未手动切换时布局跟随运行状态——提问仍可作答（会话 RUNNING / WAITING）
-默认浮层，已结束或历史提问默认「区域全屏」；手动点过布局切换后以你的选择为准，且只有手动
-切换才记进偏好，不会把派生默认值固化到下次加载。浮层里每个选项独占一行方便快速点选；切到「区域全屏」后，
-同一份问答面移到检查器 Tab 以下的详情区并铺满高度、行距更紧以显示更多正文，画布上不再浮出卡片；
-EVENTS 列收起时区域布局无处落脚，会临时退回悬浮卡片，保证同步窗口内仍能作答。请求被回答、取消或超时后，卡片先显示结果
+左右留白），提交/取消栏始终吸附在卡片底部；键盘快捷键提示挪到卡片头部摘要与状态之间
+（长说明放在悬停 title 里），底部因此只留 `Submit` / `Cancel` 两个按钮。两个作答面
+共用同一套文案、图标与顺序（Submit 用发送图标、Cancel 用叉号图标）。卡片只是两种
+布局里的「悬浮」那一档：切到「区域全屏」后，同一份问答面
+移到检查器 Tab 以下的详情区，画布上不再浮出卡片；EVENTS 列收起时区域布局无处落脚，
+会临时退回悬浮卡片，保证同步窗口内仍能作答。没有显式偏好时落位随问题状态：正在提问
+默认悬浮，已回答或历史问题默认区域全屏；两档切换不新增分隔线、不重挂载问答面，
+窄视口下 Submit / Cancel 仍吸附在面板底部可达。请求被回答、取消或超时后，卡片先显示结果
 （ANSWERED / CANCELLED 等）约两秒，再自动滑出消失；区域布局则在同一位置把结果留在
 作答区里，提交是否送达一眼可见。
 `ExitPlanMode` 显示为「Approve this plan?」二选一，只有 Approve
@@ -648,12 +649,12 @@ RUN TRAJECTORY 中处于 `running` / `waiting` 的轮次在每次快照到达后
 **从 Flow 原子作答**：点击画布上的 `User Question` 原子，右侧检查器会绑定该提问
 的开始事件（不是回答事件），Overview 显示问题原文与事件详情。问答面只有一处：区域
 布局下是 Tab 以下的停靠面板，悬浮布局下是 Input 页，两者是同一个组件，顶部一行工具条
-只负责「Preview / Code」与两档落位（区域全屏 / 悬浮）；问题本身不可折叠，工具条上没有折叠按钮。
+只负责「Preview / Code」与两档落位（区域全屏 / 悬浮）；问题本身不可折叠，工具条上没有折叠按钮，切换落位时 Preview / Code 视图保持一致。
 
 - **Preview**：展示问题与选项。这条提问仍有未关闭的交互请求时，选项是可点的按钮
   （单选与 Plan 批准的 Approve/Reject 都是点一下即高亮，多选题逐个点选/取消，草稿按
-  声明顺序用逗号连接），输入框内容在提交时覆盖选项值，没有 `Set`；底部「提交 / 取消」
-  是滚动区之外的兄弟节点，始终吸附在面板底部，内容再多也点得到；「N 个问题 · 一次提交」
+  声明顺序用逗号连接），输入框内容在提交时覆盖选项值，没有 `Set`；底部 `Submit`
+  与 `Cancel` 是滚动区之外的兄弟节点，始终吸附在面板底部，内容再多也点得到；「N 个问题 · 一次提交」
   的批量提示位于选项列表上方，不占底部动作栏。
 - **Code**：只展示原始 payload，不出现选项、作答框和提交栏。
 - **已关闭 / 历史提问**：没有活跃请求时，同一排选项退化为不可点的静态 chip，仍然看得见
@@ -664,7 +665,7 @@ RUN TRAJECTORY 中处于 `running` / `waiting` 的轮次在每次快照到达后
 长问题文本在检查器宽度内换行，正文区域自己滚动，不会把右侧日志列撑宽。提交被拒绝
 （并发、已关闭、他处已答）时会保留草稿并给出提示，不会把输入静默清空。一条
 `AskUserQuestion` 带多个问题时，面板把所有问题逐条列出，每条各有选项/输入框，底部
-一个「提交」把整批答案一次性回传：宿主在第一次 submit 就关闭请求，逐条发送会把
+一个 `Submit` 把整批答案一次性回传：宿主在第一次 submit 就关闭请求，逐条发送会把
 剩下的问题留在已关闭的请求里。选中 `ExitPlanMode` 的工具行（预览同一个计划）也能绑
 到同一条请求，但同样要求当前消息、当前原子、会话与来源全部匹配。问答面与浮层面板
 共享同一份交互状态，已关闭或已被其他设备回答时自动转为只读。
@@ -783,9 +784,10 @@ console」。
 - **展开 RUN HISTORY**、**展开 EVENTS**：左右两列的展开状态
   （`ASTROX_HISTORY_OPEN` / `ASTROX_CONSOLE_OPEN`）；收起后各留一条竖排文字，点箭头随时展开。
 - **问题面板布局**（`ASTROX_QUESTION_PANEL_MODE`）：作答面板停在哪里——
-  `区域全屏`（铺满检查器 Tab 以下整个详情区）、`悬浮`（浮在画布上，只在高亮的
-  提问原子上出现）。默认跟随运行状态：可作答时悬浮、否则区域全屏；手动选择后即固定为该项
-  （只有手动选择才写入偏好）。与面板头部的两个图标是同一份偏好。
+  `跟随状态`（默认：正在提问时悬浮，已回答或历史问题时区域全屏）、`区域全屏`
+  （铺满检查器 Tab 以下整个详情区）、`悬浮`（浮在画布上，只在高亮的提问原子上出现）。
+  选择后两者会固定并持久化该布局，「恢复默认」回到「跟随状态」。与面板头部的两个
+  图标是同一份偏好。
 
 **性能**
 
@@ -993,7 +995,10 @@ node bin/astro.mjs import-chatgpt --chatgpt-home=/path/to/.chatgpt
 ```text
 pnpm service:up [--port N] [--home DIR]       # 服务在跑就原地重启，没跑就启动
 pnpm service:start|restart|status             # 单动作快捷方式
-astro-trace serve
+astro-trace serve [--port N] [--host H] [--astro-home DIR] [--open]   # 前台起服务
+astro-trace ax [--json]                       # 快速启动 + 服务/集成状态（透传给 astrox）
+astro-trace health [--json]                   # 探活 /api/health（未应答退出码 1）
+astro-trace status|stop|restart|up|info|open|logs|path   # 守护进程控制（透传给 astrox；stop/restart/up 支持 --json）
 astro-trace install [--target DIR] [--clients trae,claude,chatgpt,deepseek,workbuddy] [--scope user|project]
 astro-trace update [--no-deepseek]
 astro-trace doctor [--target DIR] [--scope user|project] [--deepseek-profile NAME]
@@ -1027,29 +1032,43 @@ printf '%s\n' \
 `astrox` 是 ASTRO 插件的轻量控制命令行，封装了仪表盘守护进程的启停、插件刷新以及状态与数据检视。诊断、安装与数据迁移等复杂任务会委托给底层 `astro-trace`（见上方命令表）。
 
 ```text
+ax [--json] [--open] [--port N]   一键启动并检查服务与集成状态（等价于 astrox ax）
+ax <command> [args…]              其余 astrox 命令原样透传（ax status、ax stop、ax open …）
+ax --version | ax --help          打印版本 / 用法
 astrox start [--port N] [--host H] [--open] [--no-global] [--bin-dir DIR]
-astrox stop
-astrox restart
-astrox up                     # 在跑就重启、没跑就启动，端口与 --port/ASTRO_PORT 一致
+astrox stop [--json]
+astrox restart [--json]
+astrox up [--json]               # 在跑就重启、没跑就启动，端口与 --port/ASTRO_PORT 一致
 astrox status [--json] [--deepseek-profile web]
+astrox health [--json]           # 探活 /api/health；未应答退出码 1
 astrox info [--json]
 astrox update [--no-deepseek]
-astrox doctor [options]        运行完整的 astro-trace 诊断
-astrox install [options]       安装或刷新 Hook 集成
-astrox migrate [FILE_OR_DIR]   迁移旧版 trace 数据
+astrox doctor [options]       运行完整的 astro-trace 诊断
+astrox install [options]      安装或刷新 Hook 集成
+astrox migrate [FILE_OR_DIR]  迁移旧版 trace 数据
 astrox open                   在浏览器中打开运行中的仪表盘
-astrox logs [--lines N]        查看仪表盘日志尾部
+astrox logs [--lines N] [--follow]  查看日志尾部；--follow 持续跟随（Ctrl-C 退出）
 astrox path                   打印 ASTRO home、插件目录与 CLI 入口
+astrox --version              打印 CLI 版本
 ```
 
+- `ax`（也可写作 `astrox ax`）是「一条命令就绪」的快捷入口：运行时未安装时先用 `installPluginRuntime` 自举到 `ASTRO_HOME`（不碰 hook 配置与 trace 数据，`--no-install` 改为显式提示），再按 `start` 的同一套逻辑把仪表盘拉起来，把全局 `astrox` 与 `ax` 命令都注册好，随后轮询 `/api/health` 确认服务真实可用，最后在一屏里给出启动结果、health 耗时、服务数据规模、服务/进程状态、插件版本与 Hook 集成状态。`--json` 输出机器可读报告（`start.healthy` / `start.elapsedMs` / `start.bootstrapped` / `start.service`）；`start.service` 携带存活服务的 `eventCount` / `build` / `uptimeMs`，文本输出另加一行 `events`。启动失败时报告仍会给出状态，并以非零状态退出。它不会重复实现启动或状态逻辑——`start`、`status` 与它共享同一组内部函数。`ax` 的其余子命令与 `astrox` 同名命令一一对应；裸 `ax` 永远是快速启动，未知子命令报用法错误。本仓库可用 `pnpm ax` 调用，全局安装后直接 `ax`，无全局安装时 `npx astro-plugin ax` 同效。
 - `start` 启动仪表盘守护进程（默认 `127.0.0.1:5678`）。它会同时把当前入口注册为全局 `astrox` 命令——在 Unix 下软链到 `/usr/local/bin`、`~/.local/bin` 或 `~/bin` 中第一个可写目录，在 Windows 下写入 `%USERPROFILE%\.astrox\bin\astrox.cmd`。已存在的同名软链若指向本入口则复用，指向其他文件则保留不动。`--no-global` 跳过注册，`--bin-dir DIR` 指定候选目录，`--open` 在启动后自动打开浏览器。
-- 守护进程启动后写入 `<ASTRO_HOME>/dashboard-<port>.pid`（含 `pid` 与 `url`），运行日志落在 `<ASTRO_HOME>/dashboard.log`。`logs [--lines N]` 默认查看末尾 40 行。
-- `stop` 向守护进程发送 `SIGTERM`（必要时 `SIGKILL`）并结束进程，不触发额外清理；`restart` 等价于先 `stop` 再 `start`。
+- 守护进程启动后写入 `<ASTRO_HOME>/dashboard-<port>.pid`（含 `pid` 与 `url`），运行日志落在 `<ASTRO_HOME>/dashboard.log`。`logs [--lines N]` 默认查看末尾 40 行；`logs --follow` 持续跟随新行，Ctrl-C 干净退出。
+- `stop` 向守护进程发送 `SIGTERM`（必要时 `SIGKILL`）并结束进程，不触发额外清理；`restart` 等价于先 `stop` 再 `start`。二者与 `up` 在 `--json` 下各输出一份机器可读 JSON（`stop` 为 `{action,pid,port,url}` 或 `{action:"not-running",port,others}`；`restart` 为 `{stop,start}`）。
 - `status` 汇总插件配置（config.yaml / .env 的 OK、WARN、MISSING）、global cli 状态、仪表盘运行状态，以及各客户端 Hook 集成（chatgpt、claude、workbuddy、trae、deepseek）。`--json` 输出机器可读报告。
+- `health` 直接向 `/api/health` 探活并报告服务事实（pid、uptime、eventCount、build、dataRoot、restartCount）；未应答时退出码 1，便于脚本与 CI 作为门禁。它读的是活服务自身，而非本 `ASTRO_HOME` 的 pid 记录——没有记录时会标注 "no pid record"，避免把别家安装应答的端口误报为本 home。
 - `info` 列出每个来源（claude、chatgpt、copilot、cursor、deepseek、gemini、iflow、llama、opencode、pi、qwen、trae、workbuddy、zcode 等）的 trace 文件数与字节数及合计，并展示 trace 根目录、插件目录与全局 CLI 路径。`--json` 同效。
 - `update` 原地刷新已安装的插件运行时（等价于 `astro-trace update`），`--no-deepseek` 跳过 DeepSeek 插件包。
 
-> 控制命令依赖已安装的插件运行时；首次使用请先执行 `astrox install`（或 `astro-trace install`）。
+> 控制命令依赖已安装的插件运行时；首次使用请先执行 `astrox install`（或
+> `astro-trace install`），或直接运行 `ax` / `npx astro-plugin ax` 由它自举。
+>
+> 发布与 npx：`pnpm publish:plugin` 构建、校验并以 dry-run 预演
+> `astro-plugin` 的 npm 发布（`--apply` 才真实发布，预发布版本自动带
+> `alpha` dist-tag）；发布后的包支持 `npm i -g astro-plugin` 与
+> `npx astro-plugin <command>`。详见 `docs/plugin-installation.md` 的
+> "Install from npm / run with npx" 与 "Publishing the npm package"。
 
 ## 13. HTTP API
 

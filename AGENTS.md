@@ -90,6 +90,64 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   `docs/conventions-*.md`, this file, `docs/index.md`, and `site/src/docs.ts`
   agree with it.
 
+## Quick Start CLI (ax)
+
+- `bin/ax.mjs` is a thin launcher for the aggregated `ax` command implemented
+  in `bin/astrox.mjs`; it is the only definition of that flow. `ax` starts the
+  dashboard through `ensureDashboardStarted` (the same helper `start`/`restart`
+  use), registers both global `astrox` and `ax` shorthands, and reports the
+  start result plus the shared status report (`collectStatusReport`, also used
+  by `status`). Do not grow a second start path or a second status collector —
+  a quick command that disagrees with `status` is worse than no shortcut.
+- Every other `ax` subcommand is a forward: `bin/ax.mjs` dispatches on
+  `commandNames` (the exported keys of `astrox`'s command map, also covering
+  `--version`/`--help`), and `astrox`'s own `run` resolves `ax <command>` the
+  same way for the direct and delegated (`astro-trace ax …` / `npx
+  astro-plugin ax …`) invocations. Bare `ax` is always the quick start; an
+  unknown positional is a usage error, never a silent quick start.
+- When the installed runtime is missing, bare `ax` bootstraps it through
+  `installPluginRuntime` — the one runtime installer `astro-trace install`
+  uses — before starting; it writes `ASTRO_HOME` only, never hook configs or
+  trace data. `--no-install` keeps the explicit install hint. After the pid
+  record appears, `ax` additionally polls `/api/health`
+  (`getDashboardHealth(base, timeoutMs)`, 3 s deadline) and reports
+  `start.healthy` / `start.elapsedMs` / `start.bootstrapped` /
+  `start.service` in the JSON result — a pid file alone is not a verified
+  startup. `start.service` carries the live `/api/health` facts
+  (`eventCount`, `build`, `uptimeMs`) so the quick screen shows how much data
+  the service just loaded.
+- `health` (`astrox health` / `ax health` / `astro-trace health`) is the
+  scriptable probe: one `/api/health` read (1 s deadline) via the same
+  `getDashboardHealth`. It exits `1` when nothing answers so CI can gate on
+  it. The pid record of the current `ASTRO_HOME` names the daemon it owns;
+  without one the probe still asks the configured port but reports
+  `recordedPid` / "no pid record" so a foreign answer is never hidden. `stop`,
+  `restart` and `up` print one machine-readable JSON document under `--json`
+  (`stop` = `{action,pid,port,url}` or `{action:"not-running",port,others}`;
+  `restart` = `{stop,start}` reusing `ensureDashboardStarted` — no second
+  start path). `logs --follow` tails `dashboard.log` and keeps streaming
+  (Ctrl-C exits cleanly).
+- `--json` keeps stdout to one document (registration chatter is suppressed).
+  A failed start still prints status and exits non-zero. `astrox`, `ax` and
+  `astro-trace` are bins of the packaged `astro-plugin` runtime
+  (`scripts/build-plugin.mjs`): a global install provides all three, and
+  `npx astro-plugin <command>` works because `bin/astro.mjs` forwards the
+  astrox daemon commands (`ax`, `health`, `status`, `stop`, `restart`, `up`,
+  `info`, `open`, `logs`, `path`) to `bin/astrox.mjs` — one delegation
+  surface, no second start path. `astro-trace serve [--port N] [--host H]
+  [--astro-home DIR] [--open]` maps its flags onto the `ASTRO_*` environment
+  the server reads (`applyServeOptions`); the serve path is gated by a main
+  guard (`isInvokedAsEntry`, same pattern as `astrox`) so the module can be
+  imported by tests without running the command dispatch.
+- Publishing is `pnpm publish:plugin` (`scripts/publish-plugin.mjs`):
+  build → validate the staging package (publishable license — npm refuses
+  `UNLICENSED` — every bin and declared file present, tarball for the current
+  version) → `npm publish --dry-run`. `--apply` performs the real publish;
+  prerelease versions default to their prerelease dist-tag (`alpha`), never
+  `latest`. The staging manifest's `license`/`repository`/`keywords` fields
+  are part of the publishable contract — do not regress them to
+  `UNLICENSED`.
+
 ## Demo Dataset
 
 - The sample run is a local resource file, `data/demo-events.json`, not a
@@ -1023,11 +1081,16 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   below the inspector tabs and the Input tab render that one component, and
   Overview no longer mounts a second answer box. One toolbar row owns only the
   view switch (Preview / Code) and the placement switch — the question itself is
-  never foldable, so there is no collapse button; Preview shows the question list
+  never foldable, so there is no collapse button; the view mode is controlled by
+  the inspector so the dock and Input tab instances cannot show different views.
+  Preview shows the question list
   with option chips, Code shows the raw payload only — no options and no answer
-  bar. While a request is open the options are buttons and the
+  bar. Both surfaces use one wording set — `Submit` with a Send icon, `Cancel`
+  with an X icon, same order (Submit first) — so a mode switch never changes the
+  button copy. While a request is open the options are buttons and the
   Submit / Cancel bar is a sibling of the scrolling body, pinned to the bottom
-  of whichever container holds the surface; once it closes (or for a captured
+  of whichever container holds the surface (it wraps on a narrow viewport so
+  both stay reachable); once it closes (or for a captured
   question with no request) the same chips render as static `spans`, so nothing
   looks answerable when there is nothing to answer. `src/lib/question-interaction.ts` owns
   the one match rule (tool id first, then session + verbatim question text,
@@ -1080,25 +1143,26 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   ~2.4s before it slides away. A stream reset that wiped the record dismisses
   it at once instead of showing a stale question. `dock-full` / `float`
   (`src/lib/question-panel-model.ts`, which also normalizes the retired
-  `dock-half` / `half` / `bottom` / `side` values) are the one shared placement
-  of both surfaces: `dock-full` renders that same question surface under the
-  inspector tabs and fills the detail area, and only `float` puts the card over
-  the canvas, so the card still requires the highlighted atom to be the
-  question. Until the reader switches layouts by hand, the mode follows the run
-  state (`autoQuestionPanelMode`: an answerable question floats so it stays next
-  to the run it blocks, a finished or captured one docks full); only an explicit
-  switch is persisted, so a derived default is not frozen across reloads. The
-  docked layout expands a historical question the reader selected, which is how
-  a closed request is re-opened for reading, and uses tighter rows so more of the
-  question fits; the floating card puts one option per full-width row for quick
-  answering. A collapsed EVENTS column has no region to dock into, so
-  `questionDocked` in `app.tsx` falls back to the card for the synchronous
-  window. Questions inside the card are never foldable (only the whole card
-  collapses from its header), its question list scrolls edge to edge — the card
-  carries no outer padding, the rows carry the gutters — so the scrollbar rides
-  the card border, and the keyboard shortcut legend sits in the card header
-  between the summary and the status so the footer keeps only the Submit / Cancel
-  buttons, in that order (the docked footer matches). The
+  `dock-half` / `half` / `bottom` / `side` values) are the one shared, persisted
+  placement of both surfaces: `dock-full` renders that same question surface
+  under the inspector tabs and fills the detail area, and only `float` puts the
+  card over the canvas, so the card still requires the highlighted atom to be
+  the question. With no explicit choice `resolveQuestionPanelMode` derives the
+  default from the question's state: a live/open request floats, a settled or
+  captured question docks; an explicit choice persists in
+  `ASTROX_QUESTION_PANEL_MODE` and wins. The dock and Input tab keep their
+  surface mounted and only toggle `hidden`; the tab list's constant
+  border-bottom replaces the dock-only border, so a placement switch adds no
+  border, reflow or remount. The docked layout also expands a historical question
+  the reader selected, which is how a closed request is re-opened for reading. A
+  collapsed EVENTS column has no region to dock into, so `questionDocked` in
+  `app.tsx` falls back to the card for the synchronous window. Questions inside the card
+  are never foldable (only the whole card collapses from its header), its
+  question list scrolls edge to edge — the card carries no outer padding, the
+  rows carry the gutters — so the scrollbar rides the card border, and the
+  keyboard shortcut legend sits in the card header between the summary and the
+  status so the footer keeps only the Submit / Cancel buttons, in that order on
+  both surfaces. The
   dock keeps the closed result (`QuestionResultList`) where the answer box was,
   mirroring the card's settle window.
   For faster answering the floating card focuses its first option and binds

@@ -119,8 +119,20 @@ Install and launch also bring up the dashboard; refresh afterwards with
 ### 2.6 Service management and upgrades
 
 ```bash
-astrox status|start|stop|restart|update|logs|doctor|path|open|info
+ax                       # quick start + service/integration status (short for astrox ax)
+astrox status|start|stop|restart|update|logs|doctor|path|open|info|ax
+astrox health [--json]   # probe /api/health (exit 1 when down); stop/restart/up accept --json
+astro-trace serve [--port N] [--host H] [--astro-home DIR] [--open]   # run the service in the foreground
+npx astro-plugin ax      # quick start without a global install (npx astro-plugin status|stop|… likewise)
 ```
+
+Every other `ax` subcommand passes straight through (`ax status`, `ax stop`,
+`ax open`, `ax logs` … behave exactly like their astrox equivalents; bare `ax`
+is always the quick start). When the runtime is missing, bare `ax` bootstraps
+it first (`installPluginRuntime` — it writes `ASTRO_HOME` only, never hook
+configs or trace data); `--no-install` keeps the explicit install hint. After
+starting, `ax` polls `/api/health`: text output reports `health OK … (Nms)`,
+and `--json` adds `start.healthy` / `start.elapsedMs` / `start.bootstrapped`.
 
 Two HTTP endpoints do the same jobs (the console's service card uses them):
 

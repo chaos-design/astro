@@ -332,7 +332,9 @@
     (`src/components/question-content.tsx`, reused by the dock and the Input
     tab; Overview mounts no second answer box). One toolbar row owns the
     Preview / Code switch and the placement switch only — the question itself is
-    never foldable, so the toolbar carries no collapse button: Preview shows the
+    never foldable, so the toolbar carries no collapse button; the view mode is
+    controlled by the inspector so the dock and Input tab cannot show different
+    views: Preview shows the
     questions and their option chips, Code shows the raw payload only — no
     options, no submit bar. While a request is open the chips are buttons and
     the Submit / Cancel bar is a sibling of the scrolling body, so it stays
@@ -342,20 +344,23 @@
     column. Both answer surfaces build maps only in
     `src/lib/question-panel-model.ts`: option clicks highlight and fill drafts,
     typed text overrides an option without a Set step, and one Submit sends
-    every question; the footer order is Submit / Cancel on both surfaces.
-    `dock-full` / `float` is one shared placement
+    every question. Both surfaces use identical button copy, icons, size,
+    variant and order (`Submit` with a Send icon, `Cancel` with an X icon; no
+    "one-shot send" wording), and the pinned bar stays reachable when it wraps
+    on a narrow viewport. `dock-full` / `float` is one shared persisted placement
     (`src/lib/question-panel-model.ts` normalizes the retired `dock-half` /
-    `half` / `bottom` / `side` values). Until the reader switches by hand,
-    `autoQuestionPanelMode` follows the run state: an answerable question floats
-    over the canvas, a finished or captured one docks full; only an explicit
-    switch is persisted, so a derived default is not frozen into the next load.
-    `dock-full` renders the same question surface under the inspector tabs
-    filling the detail area with tighter rows, and only `float` puts the card
-    over the canvas with one option per full-width row — so the card needs the
-    question atom highlighted, while the docked layout also expands a historical
-    question the reader selected. A collapsed EVENTS column has no region to
-    dock into, so the docked layout falls back to the card for the synchronous
-    window. The
+    `half` / `bottom` / `side` values): `dock-full` renders the same question
+    surface under the inspector tabs filling the detail area, and only `float`
+    puts the card over the canvas — so the card needs the question atom
+    highlighted, while the docked layout also expands a historical question the
+    reader selected. A collapsed EVENTS column has no region to dock into, so
+    the docked layout falls back to the card for the synchronous window. With
+    no explicit choice `resolveQuestionPanelMode` derives the default from the
+    question's state: live/open requests float, settled or captured questions
+    dock; an explicit choice persists in `ASTROX_QUESTION_PANEL_MODE` and wins.
+    The dock and Input tab keep their surface mounted and only toggle `hidden`;
+    the tab list's constant separator replaces the dock-only border, so a
+    placement switch causes no reflow, remount or teleport. The
     floating card and the inspector's answer controls are a live affordance:
     `isQuestionActionable` in `src/lib/question-interaction.ts` (delegating to
     `isPromptExecuting`, so both `active`/running and `waiting` count) gates
@@ -366,11 +371,11 @@
     terminal state, or the reader replays a captured snapshot, no card floats
     and the inspector question goes read-only — the event stays a preview,
     never an answerable request (the docked layout still expands a historical
-    question for reading, but its controls are disabled). The card's questions
-    never fold, its scrollbar rides the card edge (no outer padding; the rows
-    carry the gutters) and the keyboard shortcut legend sits in the header
-    between the summary and the status, so the footer keeps only the Submit /
-    Cancel buttons. The
+    question for reading, but its controls are disabled). The
+    card's questions never fold, its scrollbar rides the card edge (no outer
+    padding; the rows carry the gutters) and the keyboard shortcut legend sits in
+    the header between the summary and the status, so the footer keeps only the
+    Submit / Cancel buttons. The
     inspector's batch answer builds its seq chain only in
     `answerInteractionQuestions` (`src/lib/interaction-client.ts`): one `text`
     event per question then one `submit` with the full answer map, with the

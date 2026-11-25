@@ -1,13 +1,16 @@
 #!/usr/bin/env node
 
+import { spawnSync } from "node:child_process";
 import {
   existsSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   statSync,
 } from "node:fs";
 import { homedir } from "node:os";
 import { extname, join, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import chatgptAdapter from "../plugin/chatgpt-adapter.cjs";
 import recorder from "../plugin/trace-recorder.cjs";
 import runtimeConfigLoader from "../plugin/runtime-config.cjs";
@@ -32,6 +35,38 @@ import {
 } from "../scripts/migrate-data.mjs";
 
 const command = process.argv[2] || "help";
+
+/**
+ * Daemon-control commands the astrox CLI owns. `npx astro-plugin ax` runs this
+ * package's own bin (the bin named after the package), so these names are
+ * forwarded to bin/astrox.mjs unchanged — the same handlers `astrox` and `ax`
+ * use, never a second start path or a second status collector.
+ */
+const ASTROX_DELEGATED_COMMANDS = new Set([
+  "ax",
+  "health",
+  "info",
+  "logs",
+  "open",
+  "path",
+  "restart",
+  "status",
+  "stop",
+  "up",
+]);
+
+function delegateToAstrox() {
+  const result = spawnSync(
+    process.execPath,
+    [join(import.meta.dirname, "astrox.mjs"), ...process.argv.slice(2)],
+    { stdio: "inherit" },
+  );
+  if (result.error) {
+    throw result.error;
+  }
+  process.exitCode = result.status ?? 1;
+}
+
 const { expandHome, resolveAstroHome } = storagePaths;
 const {
   formatRuntimeConfigDiagnostic,
@@ -518,11 +553,20 @@ function printHelp() {
 Usage:
   astro-trace install [--clients trae,claude,chatgpt,deepseek,workbuddy] [--scope user|project]
   astro-trace update [--no-deepseek]
-  astro-trace serve
+  astro-trace serve [--port N] [--host H] [--astro-home DIR] [--open]
   astro-trace doctor [--scope user|project] [--deepseek-profile web]
   astro-trace migrate [FILE_OR_DIR]
   astro-trace import-chatgpt [FILE ...] [--chatgpt-home DIR]
   astro-trace ingest [FILE] [--source NAME]
+  astro-trace ax [--json]        Quick start + service/integration status
+  astro-trace health [--json]    Probe the running dashboard (/api/health)
+  astro-trace status|stop|restart|up|open|logs|info|path
+                                 Daemon control (delegates to astrox)
+  astro-trace --version          Print the CLI version
+
+Quick start without a global install:
+  npx astro-plugin ax            Same flow as the "ax" command
+  npx astro-plugin status        Any astrox command works the same way
 
 Configuration:
   <ASTRO_HOME>/plugins/astro/config.yaml  Structured plugin configuration
@@ -541,9 +585,44 @@ Environment:
   CODEBUDDY_COMMAND     WorkBuddy / CodeBuddy executable (default codebuddy)`);
 }
 
-if (command === "help" || command === "--help" || command === "-h") {
-  printHelp();
-} else if (command === "--version" || command === "-v") {
+/**
+ * Map serve/start flags onto the environment the server reads, then let the
+ * server resolve everything exactly as it does for a direct
+ * `node server/server.mjs` launch. Flags are applied after the inherited
+ * environment, so a flag wins over an explicit env value. Returns the applied
+ * values so tests can inspect the mapping without starting a process.
+ */
+export function applyServeOptions(argv = process.argv) {
+  const readOption = (name) => {
+    const inline = argv.find((argument) =>
+      argument.startsWith(`--${name}=`),
+    );
+    if (inline) {
+      return inline.slice(name.length + 3);
+    }
+    const index = argv.indexOf(`--${name}`);
+    return index >= 0 ? argv[index + 1] : null;
+  };
+  const applied = {};
+  const port = readOption("port");
+  if (port) {
+    applied.ASTRO_PORT = process.env.ASTRO_PORT = port;
+  }
+  const host = readOption("host");
+  if (host) {
+    applied.ASTRO_HOST = process.env.ASTRO_HOST = host;
+  }
+  const home = readOption("astro-home") || readOption("aot-home");
+  if (home) {
+    applied.ASTRO_HOME = process.env.ASTRO_HOME = resolve(expandHome(home));
+  }
+  if (argv.includes("--open")) {
+    applied.ASTRO_OPEN_BROWSER = process.env.ASTRO_OPEN_BROWSER = "1";
+  }
+  return applied;
+}
+
+function printVersion() {
   try {
     console.log(
       JSON.parse(
@@ -553,22 +632,63 @@ if (command === "help" || command === "--help" || command === "-h") {
   } catch {
     console.log("unknown");
   }
-} else if (command === "serve" || command === "start") {
-  await import("../server/server.mjs");
-} else if (command === "install") {
-  install();
-} else if (command === "update") {
-  update();
-} else if (command === "doctor") {
-  doctor();
-} else if (command === "migrate") {
-  migrate();
-} else if (command === "import-chatgpt") {
-  await importChatGPT();
-} else if (command === "ingest") {
-  await ingest();
-} else {
-  console.error(`Unknown astro-trace command: ${command}`);
-  printHelp();
-  process.exitCode = 1;
+}
+
+async function main() {
+  if (command === "help" || command === "--help" || command === "-h") {
+    printHelp();
+  } else if (command === "--version" || command === "-v") {
+    printVersion();
+  } else if (command === "serve" || command === "start") {
+    applyServeOptions();
+    await import("../server/server.mjs");
+  } else if (command === "install") {
+    install();
+  } else if (command === "update") {
+    update();
+  } else if (command === "doctor") {
+    doctor();
+  } else if (command === "migrate") {
+    migrate();
+  } else if (command === "import-chatgpt") {
+    await importChatGPT();
+  } else if (command === "ingest") {
+    await ingest();
+  } else if (ASTROX_DELEGATED_COMMANDS.has(command)) {
+    delegateToAstrox();
+  } else {
+    console.error(`Unknown astro-trace command: ${command}`);
+    printHelp();
+    process.exitCode = 1;
+  }
+}
+
+/**
+ * The bin may run as a real entry (node bin/astro.mjs, npm/npx shims, or the
+ * astrox delegator) or as an imported module (tests importing
+ * applyServeOptions). The main guard mirrors bin/astrox.mjs: compare realpaths
+ * so a symlinked global command still runs.
+ */
+function isInvokedAsEntry() {
+  const [mainFile] = process.argv.slice(1);
+  if (!mainFile) {
+    return false;
+  }
+  if (import.meta.url === pathToFileURL(mainFile).href) {
+    return true;
+  }
+  try {
+    return realpathSync(mainFile) === fileURLToPath(import.meta.url);
+  } catch {
+    return false;
+  }
+}
+
+if (isInvokedAsEntry()) {
+  try {
+    await main();
+  } catch (error) {
+    console.error(`astro-trace: ${error.message}`);
+    process.exitCode = 1;
+  }
 }

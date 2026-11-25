@@ -9531,9 +9531,21 @@ pre,
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
+  min-width: 0;
   min-height: 0;
   overflow: hidden;
+  /* No border here: the tab list above already carries a constant
+     border-bottom in both placements. A dock-only border appeared on every
+     switch to dock-full and shifted the whole surface by one pixel. */
   background: var(--panel);
+}
+
+/* Both placements stay mounted; only visibility toggles. Reserve the space
+   with `hidden` rather than unmounting so a mode switch does not remount the
+   surface or lose its scroll position. */
+.inspector-question-dock[hidden],
+.inspector-question-stack[hidden] {
+  display: none;
 }
 
 /* The dock owns everything below the tab bar: the surface fills it and its own
@@ -9556,6 +9568,7 @@ pre,
 .question-surface {
   display: flex;
   flex-direction: column;
+  min-width: 0;
   min-height: 0;
 }
 
@@ -9709,6 +9722,27 @@ pre,
   color: var(--muted-soft, var(--muted));
   font-family: var(--font-mono, monospace);
   font-size: var(--text-caption);
+}
+
+/* Narrow viewports: the pinned answer bar must stay inside the column. The
+   meta drops to its own line so Submit and Cancel keep one reachable row. */
+@media (max-width: 620px) {
+  .question-surface__footer {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+  .question-surface__meta {
+    flex: 1 1 100%;
+  }
+  .question-surface__actions {
+    flex: 1 1 auto;
+    justify-content: flex-end;
+    margin-left: 0;
+  }
+  .question-surface__item,
+  .question-result {
+    padding-inline: 10px;
+  }
 }
 
 /* Read-only preview hierarchy: one summary line, numbered question headings,

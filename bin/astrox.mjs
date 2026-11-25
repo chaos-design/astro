@@ -20,7 +20,9 @@ import {
   readdirSync,
   readFileSync,
   readlinkSync,
+  readSync,
   realpathSync,
+  statSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -55,6 +57,7 @@ async function loadDependencies() {
       getTraceStats: clientStatus.getTraceStats,
       hasDeepseekPlugin: clientStatus.hasDeepseekPlugin,
       hasInstalledHook: clientStatus.hasInstalledHook,
+      installPluginRuntime: installPlugins.installPluginRuntime,
       loadRuntimeConfig: runtimeConfigLoader.loadRuntimeConfig,
       resolveAstroHome: storagePathsModule.resolveAstroHome,
       updateInstalledPlugins: installPlugins.updateInstalledPlugins,
@@ -64,9 +67,11 @@ async function loadDependencies() {
 }
 
 const CLI_NAME = "astrox";
+const AX_CLI_NAME = "ax";
 const ENTRY_FILE = fileURLToPath(import.meta.url);
 const PACKAGE_DIR = resolve(dirname(ENTRY_FILE), "..");
 const ASTRO_CLI_FILE = join(PACKAGE_DIR, "bin", "astro.mjs");
+const AX_CLI_FILE = join(PACKAGE_DIR, "bin", "ax.mjs");
 const IS_WINDOWS = platform() === "win32";
 /** Sources inspected by `status` and `info`. */
 const TRACE_SOURCES = [
@@ -142,22 +147,24 @@ export function getGlobalBinDirs() {
   ];
 }
 
-function globalCliTarget(dir) {
-  return join(dir, IS_WINDOWS ? `${CLI_NAME}.cmd` : CLI_NAME);
+function globalCliTarget(dir, name = CLI_NAME) {
+  return join(dir, IS_WINDOWS ? `${name}.cmd` : name);
 }
 
 /**
- * Expose this entry file as a global `astrox` command. The first writable
- * candidate directory wins; a foreign file already holding the name is left
- * untouched. Registration is best effort and never fatal.
+ * Expose an entry file as a global command. `name` defaults to `astrox`, but the
+ * same mechanism registers the short `ax` alias. The first writable candidate
+ * directory wins; a foreign file already holding the name is left untouched.
+ * Registration is best effort and never fatal.
  */
 export function registerGlobalCli({
   binDirs = getGlobalBinDirs(),
   entryFile = ENTRY_FILE,
+  name = CLI_NAME,
 } = {}) {
   const failures = [];
   for (const dir of binDirs) {
-    const target = globalCliTarget(dir);
+    const target = globalCliTarget(dir, name);
     try {
       mkdirSync(dir, { recursive: true });
       if (existsSync(target) || isSymlink(target)) {
@@ -210,13 +217,14 @@ function resolveCliEntry(target) {
   }
 }
 
-/** Locate an already registered global `astrox` command. */
+/** Locate an already registered global command (`astrox` or `ax`). */
 export function findGlobalCli({
   binDirs = getGlobalBinDirs(),
   entryFile = ENTRY_FILE,
+  name = CLI_NAME,
 } = {}) {
   for (const dir of binDirs) {
-    const target = globalCliTarget(dir);
+    const target = globalCliTarget(dir, name);
     if (!existsSync(target) && !isSymlink(target)) {
       continue;
     }
@@ -328,6 +336,61 @@ function sleep(ms) {
   return new Promise((done) => setTimeout(done, ms));
 }
 
+const HEALTH_TIMEOUT_MS = 3_000;
+const HEALTH_INTERVAL_MS = 100;
+const HEALTH_PROBE_TIMEOUT_MS = 1_000;
+const LOG_FOLLOW_INTERVAL_MS = 500;
+
+/**
+ * Poll `/api/health` until the service answers or the deadline passes. A pid
+ * record only proves the daemon wrote a file; this proves it actually serves,
+ * so `ax` can report a verified startup instead of a hopeful one. The parsed
+ * payload rides along as `health` — the quick report folds its service facts
+ * in and the `health` command prints them.
+ */
+async function getDashboardHealth(base, timeoutMs = HEALTH_TIMEOUT_MS) {
+  const url = new URL(
+    "/api/health",
+    base.endsWith("/") ? base : `${base}/`,
+  ).toString();
+  const deadline = Date.now() + timeoutMs;
+  let error = "";
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(url, { signal: AbortSignal.timeout(1_000) });
+      if (response.ok) {
+        let health = null;
+        try {
+          health = await response.json();
+        } catch {
+          // A 200 with a non-JSON body still counts as answering.
+        }
+        return { health, ok: true, url };
+      }
+      error = `HTTP ${response.status}`;
+    } catch (cause) {
+      error = cause?.message || String(cause);
+    }
+    await sleep(HEALTH_INTERVAL_MS);
+  }
+  return { error, health: null, ok: false, url };
+}
+
+/**
+ * The service facts the quick report shows. Only fields /api/health actually
+ * guarantees are read; anything else stays out of the report.
+ */
+function pickHealthServiceFacts(health) {
+  if (!health) {
+    return null;
+  }
+  return {
+    build: typeof health.build === "string" ? health.build : "",
+    eventCount: Number.isFinite(health.eventCount) ? health.eventCount : 0,
+    uptimeMs: Number.isFinite(health.uptimeMs) ? health.uptimeMs : 0,
+  };
+}
+
 async function waitForDashboard(astroHome, timeoutMs = 15_000, port) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -382,16 +445,32 @@ function resolveDashboardPort(environment) {
   return Number.isFinite(port) && port > 0 ? port : 5_678;
 }
 
-async function startCommand() {
+/** One shot load of the config and paths every runtime command needs. */
+async function resolveRuntimeContext() {
   const deps = await loadDependencies();
-  const { environment } = await loadConfig();
+  const config = await loadConfig();
+  const environment = config.environment;
   const astroHome = deps.resolveAstroHome(environment);
   const runtime = deps.getInstalledRuntimePaths(astroHome);
+  return { astroHome, config, deps, environment, runtime };
+}
+
+/** The installed plugin must exist before any start path is attempted. */
+function assertDashboardInstalled(runtime) {
   if (!existsSync(runtime.dashboardFile)) {
     throw new Error(
       `No installed ASTRO plugin found under ${runtime.pluginDir}. Run "astrox install" first.`,
     );
   }
+}
+
+/**
+ * Bring the dashboard up on the configured port, refreshing a stale bundle on
+ * the way. Returns a result instead of printing so `start`, `restart` and the
+ * combined `ax` command all share the one start path.
+ */
+async function ensureDashboardStarted({ astroHome, deps, environment, runtime }) {
+  assertDashboardInstalled(runtime);
   const port = resolveDashboardPort(environment);
   // The installed runtime is a *copy* of this package made by `astrox install`
   // / `astrox update`. When the CLI moved on and the copy did not, the daemon
@@ -401,38 +480,24 @@ async function startCommand() {
   const cliVersion = getPackageVersion();
   const bundleVersion = readInstalledBundleVersion(runtime.pluginDir);
   const bundleStale = bundleVersion !== cliVersion;
-
-  if (!hasFlag("no-global")) {
-    const registered = registerGlobalCli({
-      binDirs: (await getBinDirOption()) ?? getGlobalBinDirs(),
-    });
-    printGlobalCli(registered);
-  }
-
   const existing = readDashboardState(astroHome, port);
   if (existing?.running) {
-    if (bundleStale) {
-      console.log(
-        `Installed bundle is ${bundleVersion ? `v${bundleVersion}` : "unstamped"} but this CLI is v${cliVersion}.`,
-      );
-      console.log('Run "astrox restart" to serve the current build.');
-    }
-    console.log(`Dashboard already running: ${existing.url || "unknown"}`);
-    if (hasFlag("open") && existing.url) {
-      openUrl(existing.url);
-    }
-    return;
+    return {
+      action: "already-running",
+      bundleStale,
+      bundleVersion,
+      cliVersion,
+      state: existing,
+    };
   }
-
+  let refreshed = false;
   if (bundleStale) {
-    console.log(
-      `Refreshing installed bundle ${bundleVersion ? `v${bundleVersion}` : "(unstamped)"} → v${cliVersion}…`,
-    );
     deps.updateInstalledPlugins({
       astroHome,
       environment,
       refreshDeepseek: false,
     });
+    refreshed = true;
   }
 
   const logFile = getOption("log-file") || join(astroHome, "dashboard.log");
@@ -453,10 +518,50 @@ async function startCommand() {
       `The dashboard did not report a PID within 15s. Check ${logFile}.`,
     );
   }
-  console.log(`Dashboard started: ${state.url || "unknown"} (pid ${state.pid})`);
-  console.log(`Log file: ${logFile}`);
-  if (hasFlag("open") && state.url) {
-    openUrl(state.url);
+  return {
+    action: "started",
+    bundleStale,
+    bundleVersion,
+    cliVersion,
+    logFile,
+    refreshed,
+    state,
+  };
+}
+
+async function startCommand() {
+  const ctx = await resolveRuntimeContext();
+  // Keep the early guard: a failed start must not touch the real global bin.
+  assertDashboardInstalled(ctx.runtime);
+  if (!hasFlag("no-global")) {
+    const registered = registerGlobalCli({
+      binDirs: (await getBinDirOption()) ?? getGlobalBinDirs(),
+    });
+    printGlobalCli(registered);
+  }
+  const result = await ensureDashboardStarted(ctx);
+  if (result.action === "already-running") {
+    if (result.bundleStale) {
+      console.log(
+        `Installed bundle is ${result.bundleVersion ? `v${result.bundleVersion}` : "unstamped"} but this CLI is v${result.cliVersion}.`,
+      );
+      console.log('Run "astrox restart" to serve the current build.');
+    }
+    console.log(`Dashboard already running: ${result.state.url || "unknown"}`);
+    if (hasFlag("open") && result.state.url) {
+      openUrl(result.state.url);
+    }
+    return;
+  }
+  if (result.refreshed) {
+    console.log(`Refreshed installed bundle → v${result.cliVersion}.`);
+  }
+  console.log(
+    `Dashboard started: ${result.state.url || "unknown"} (pid ${result.state.pid})`,
+  );
+  console.log(`Log file: ${result.logFile}`);
+  if (hasFlag("open") && result.state.url) {
+    openUrl(result.state.url);
   }
 }
 
@@ -469,20 +574,23 @@ async function getBinDirOption() {
   return [resolve(deps.expandHome(binDir))];
 }
 
-function printGlobalCli(registered) {
+function printGlobalCli(registered, name = CLI_NAME) {
   if (registered.path) {
-    console.log(
-      `Global ${CLI_NAME} CLI ${registered.action}: ${registered.path}`,
-    );
+    console.log(`Global ${name} CLI ${registered.action}: ${registered.path}`);
     return;
   }
-  console.log(`Global ${CLI_NAME} CLI: not registered`);
+  console.log(`Global ${name} CLI: not registered`);
   for (const failure of registered.failures) {
     console.log(`  ${failure}`);
   }
 }
 
-async function stopCommand() {
+/**
+ * Stop the dashboard scoped to the configured port. Returns the result so
+ * `stop --json` and `restart --json` can print one machine-readable document;
+ * `quiet` suppresses the text rendering (the JSON path owns stdout then).
+ */
+async function stopCommand({ quiet = false } = {}) {
   const deps = await loadDependencies();
   const { environment } = await loadConfig();
   const astroHome = deps.resolveAstroHome(environment);
@@ -494,17 +602,37 @@ async function stopCommand() {
     const others = readDashboardStates(astroHome).filter(
       (candidate) => candidate.running && candidate.port !== port,
     );
-    console.log("Dashboard is not running.");
-    for (const other of others) {
-      console.log(
-        `Another dashboard is running on port ${other.port}: ${other.url} (stop it with --port ${other.port}).`,
-      );
+    if (!quiet) {
+      console.log("Dashboard is not running.");
+      for (const other of others) {
+        console.log(
+          `Another dashboard is running on port ${other.port}: ${other.url} (stop it with --port ${other.port}).`,
+        );
+      }
     }
-    return;
+    return {
+      action: "not-running",
+      others: others.map(({ pid, port: otherPort, url }) => ({
+        pid,
+        port: otherPort,
+        url,
+      })),
+      pid: 0,
+      port,
+      url: "",
+    };
   }
   if (!state.running) {
-    console.log(`Dashboard is not running (stale pid file ${state.file}).`);
-    return;
+    if (!quiet) {
+      console.log(`Dashboard is not running (stale pid file ${state.file}).`);
+    }
+    return {
+      action: "not-running",
+      others: [],
+      pid: 0,
+      port,
+      url: "",
+    };
   }
   try {
     process.kill(state.pid, "SIGTERM");
@@ -524,22 +652,75 @@ async function stopCommand() {
       // The process exited between the check and the signal.
     }
   }
-  console.log(`Dashboard stopped (pid ${state.pid}).`);
+  if (!quiet) {
+    console.log(`Dashboard stopped (pid ${state.pid}).`);
+  }
+  return {
+    action: "stopped",
+    others: [],
+    pid: state.pid,
+    port,
+    url: state.url || "",
+  };
+}
+
+async function stopAction() {
+  const result = await stopCommand({ quiet: hasFlag("json") });
+  if (hasFlag("json")) {
+    console.log(JSON.stringify(result, null, 2));
+  }
 }
 
 async function restartCommand() {
-  await stopCommand();
+  const json = hasFlag("json");
+  const stop = await stopCommand({ quiet: json });
   // Give the previous listener a moment to release the port.
   await sleep(500);
-  await startCommand();
+  if (!json) {
+    await startCommand();
+    return;
+  }
+  const ctx = await resolveRuntimeContext();
+  try {
+    const start = await ensureDashboardStarted(ctx);
+    console.log(
+      JSON.stringify(
+        {
+          start: {
+            action: start.action,
+            message:
+              start.action === "already-running"
+                ? `Dashboard already running: ${start.state.url || "unknown"}`
+                : `Dashboard started: ${start.state.url || "unknown"} (pid ${start.state.pid})`,
+            pid: start.state.pid,
+            url: start.state.url || "",
+          },
+          stop,
+        },
+        null,
+        2,
+      ),
+    );
+  } catch (error) {
+    console.log(
+      JSON.stringify(
+        { start: { action: "failed", message: error.message }, stop },
+        null,
+        2,
+      ),
+    );
+    process.exitCode = 1;
+  }
 }
 
-async function statusCommand() {
-  const deps = await loadDependencies();
-  const config = await loadConfig();
-  const environment = config.environment;
-  const astroHome = deps.resolveAstroHome(environment);
-  const runtime = deps.getInstalledRuntimePaths(astroHome);
+/** Build the shared status report consumed by both `status` and `ax`. */
+async function collectStatusReport({
+  astroHome,
+  config,
+  deps,
+  environment,
+  runtime,
+}) {
   const globalCli = findGlobalCli({
     binDirs: (await getBinDirOption()) ?? getGlobalBinDirs(),
   });
@@ -642,7 +823,11 @@ async function statusCommand() {
     })),
     version: cliVersion,
   };
+  return report;
+}
 
+/** Render the shared status report as human text or machine JSON. */
+function printStatusReport(report, runtime) {
   if (hasFlag("json")) {
     console.log(JSON.stringify(report, null, 2));
     return;
@@ -690,6 +875,268 @@ async function statusCommand() {
       .map(({ id, state }) => `${id}=${state}`)
       .join(" ")}`,
   );
+}
+
+async function statusCommand() {
+  const ctx = await resolveRuntimeContext();
+  const report = await collectStatusReport(ctx);
+  printStatusReport(report, ctx.runtime);
+}
+
+/** Options whose next token is a value, never a positional argument. */
+const OPTIONS_WITH_VALUES = new Set([
+  "astro-home",
+  "aot-home",
+  "bin-dir",
+  "chatgpt-home",
+  "claude-home",
+  "deepseek-command",
+  "deepseek-profile",
+  "dsh-home",
+  "host",
+  "lines",
+  "log-file",
+  "port",
+  "tail",
+  "workbuddy-home",
+]);
+
+/**
+ * Positional arguments left after the `ax` command token and its options are
+ * removed. `ax` takes no positionals of its own: anything left here arrived
+ * through the launcher passthrough and is an unknown subcommand.
+ */
+export function getAxPositionalArgs(argv = process.argv) {
+  const values = [];
+  for (let index = 2; index < argv.length; index += 1) {
+    const argument = argv[index];
+    if (argument === "ax") {
+      continue;
+    }
+    if (argument.startsWith("--")) {
+      const name = argument.slice(2).split("=")[0];
+      if (!argument.includes("=") && OPTIONS_WITH_VALUES.has(name)) {
+        index += 1;
+      }
+      continue;
+    }
+    values.push(argument);
+  }
+  return values;
+}
+
+/**
+ * `health` is the scriptable probe: one `/api/health` read, reported as text
+ * or JSON. Unlike `status` (local install state from pid files and config),
+ * it asks the running service itself — exit code 1 means nothing is
+ * answering, so scripts and CI can gate on it.
+ */
+async function healthCommand() {
+  const ctx = await resolveRuntimeContext();
+  const port = resolveDashboardPort(ctx.environment);
+  // The pid record of this home names the daemon it owns; without one the
+  // probe still asks the configured port, but the answer may belong to
+  // another install — report that provenance instead of hiding it.
+  const recorded = readDashboardState(ctx.astroHome, port);
+  const base = recorded?.url || `http://127.0.0.1:${port}`;
+  const result = await getDashboardHealth(base, HEALTH_PROBE_TIMEOUT_MS);
+  const service = pickHealthServiceFacts(result.health);
+  if (hasFlag("json")) {
+    console.log(
+      JSON.stringify(
+        {
+          healthy: result.ok,
+          url: result.url,
+          recordedPid: recorded?.pid ?? 0,
+          ...(result.ok
+            ? {
+                ...service,
+                dataRoot:
+                  typeof result.health.dataRoot === "string"
+                    ? result.health.dataRoot
+                    : "",
+                pid: Number.isFinite(result.health.pid) ? result.health.pid : 0,
+                restartCount: Number.isFinite(result.health.restartCount)
+                  ? result.health.restartCount
+                  : 0,
+              }
+            : { error: result.error || "no response" }),
+        },
+        null,
+        2,
+      ),
+    );
+  } else if (result.ok) {
+    console.log(`ASTROX HEALTH · v${getPackageVersion()} — OK ${result.url}`);
+    console.log(
+      `  pid            ${result.health.pid ?? 0}${recorded ? ` (record ${recorded.pid})` : " (no pid record)"}`,
+    );
+    console.log(`  uptime         ${((service?.uptimeMs ?? 0) / 1000).toFixed(0)}s`);
+    console.log(`  events         ${service?.eventCount ?? 0}`);
+    console.log(`  build          ${service?.build || "unknown"}`);
+    console.log(
+      `  data root      ${typeof result.health.dataRoot === "string" ? result.health.dataRoot : "unknown"}`,
+    );
+    console.log(`  restarts       ${result.health.restartCount ?? 0}`);
+  } else {
+    const detail = recorded
+      ? recorded.running
+        ? ` (pid ${recorded.pid} is recorded but not answering)`
+        : ` (stale pid file ${recorded.file})`
+      : "";
+    console.error(
+      `Service did not answer /api/health on ${result.url}${detail}: ${result.error || "no response"}`,
+    );
+    process.exitCode = 1;
+  }
+  if (!result.ok && hasFlag("json")) {
+    process.exitCode = 1;
+  }
+}
+
+/**
+ * `ax` is the one-command quick start: bring the dashboard up (bootstrapping
+ * the runtime when nothing is installed yet), register both global shorthands,
+ * verify `/api/health`, then report service and integration readiness in one
+ * screen. The start and status steps reuse the very same helpers as `start`
+ * and `status`, so the two command surfaces can never disagree.
+ */
+async function axCommand() {
+  const ctx = await resolveRuntimeContext();
+  const binDirs = (await getBinDirOption()) ?? getGlobalBinDirs();
+  const positionals = getAxPositionalArgs();
+  if (positionals.length) {
+    console.error(
+      `Unknown ax command: ${positionals[0]}. Bare "ax" runs the quick start; other commands go through directly ("ax status", "ax stop"). See "ax help".`,
+    );
+    printHelp();
+    process.exitCode = 1;
+    return;
+  }
+
+  if (!hasFlag("no-global")) {
+    const registered = registerGlobalCli({ binDirs });
+    const axRegistered = registerGlobalCli({
+      binDirs,
+      entryFile: AX_CLI_FILE,
+      name: AX_CLI_NAME,
+    });
+    // Keep --json stdout to a single machine-readable document.
+    if (!hasFlag("json")) {
+      printGlobalCli(registered);
+      printGlobalCli(axRegistered, AX_CLI_NAME);
+    }
+  }
+
+  let start;
+  const startedAtMs = Date.now();
+  try {
+    let bootstrapped = false;
+    if (!existsSync(ctx.runtime.dashboardFile)) {
+      if (hasFlag("no-install")) {
+        throw new Error(
+          `No installed ASTRO plugin found under ${ctx.runtime.pluginDir}. Run "astrox install" first, or drop --no-install to bootstrap the runtime.`,
+        );
+      }
+      if (!hasFlag("json")) {
+        console.log(
+          `Installing ASTRO runtime → v${getPackageVersion()} (${ctx.runtime.pluginDir})…`,
+        );
+      }
+      // installPluginRuntime is the one runtime installer (the same call
+      // `astro-trace install` makes); it touches ASTRO_HOME only — hooks and
+      // trace data are never written here.
+      ctx.deps.installPluginRuntime(ctx.astroHome);
+      bootstrapped = true;
+      if (!existsSync(ctx.runtime.dashboardFile)) {
+        throw new Error(
+          `The runtime was installed but the dashboard bundle is missing under ${ctx.runtime.pluginDir}. Run "pnpm build" in the ASTRO checkout first.`,
+        );
+      }
+    }
+    const result = await ensureDashboardStarted(ctx);
+    start = {
+      action: result.action,
+      bootstrapped,
+      message:
+        result.action === "already-running"
+          ? `Dashboard already running: ${result.state.url || "unknown"}`
+          : `Dashboard started: ${result.state.url || "unknown"} (pid ${result.state.pid})`,
+      pid: result.state.pid,
+      url: result.state.url || "",
+    };
+    if (bootstrapped) {
+      start.note = `Installed runtime → v${result.cliVersion} in ${ctx.runtime.pluginDir}`;
+    } else if (result.bundleStale && result.action === "already-running") {
+      start.note = `Installed bundle is ${result.bundleVersion ? `v${result.bundleVersion}` : "unstamped"} but this CLI is v${result.cliVersion}; run "astrox restart".`;
+    }
+    const health = await getDashboardHealth(
+      result.state.url ||
+        `http://127.0.0.1:${resolveDashboardPort(ctx.environment)}`,
+    );
+    start.healthy = health.ok;
+    start.healthUrl = health.url;
+    start.elapsedMs = Date.now() - startedAtMs;
+    start.service = pickHealthServiceFacts(health.health);
+    if (!health.ok) {
+      const detail = `Service did not answer /api/health within ${HEALTH_TIMEOUT_MS}ms: ${health.error || "no response"}`;
+      start.note = start.note ? `${start.note}; ${detail}` : detail;
+    }
+    if (hasFlag("open") && result.state.url) {
+      openUrl(result.state.url);
+    }
+  } catch (error) {
+    start = {
+      action: "failed",
+      elapsedMs: Date.now() - startedAtMs,
+      healthy: false,
+      message: error.message,
+    };
+  }
+
+  const report = await collectStatusReport(ctx);
+  if (hasFlag("json")) {
+    console.log(JSON.stringify({ ...report, start }, null, 2));
+  } else {
+    console.log(`ASTROX QUICK · v${report.version}`);
+    console.log(`  start         ${start.message}`);
+    if (start.note) {
+      console.log(`                ${start.note}`);
+    }
+    console.log(
+      `  health        ${
+        start.healthy
+          ? `OK ${start.healthUrl} (${start.elapsedMs}ms)`
+          : `UNVERIFIED (${start.elapsedMs}ms)`
+      }`,
+    );
+    if (start.service) {
+      console.log(
+        `  events        ${start.service.eventCount} events (build ${start.service.build || "unknown"}, uptime ${(start.service.uptimeMs / 1000).toFixed(0)}s)`,
+      );
+    }
+    console.log(
+      `  service       ${
+        report.dashboard.running
+          ? `RUNNING ${report.dashboard.url || ""} (pid ${report.dashboard.pid}${report.dashboard.version ? `, v${report.dashboard.version}` : ""})`
+          : "STOPPED"
+      }`,
+    );
+    console.log(
+      `  plugin        ${report.plugin.installed ? `INSTALLED v${report.plugin.version}` : "MISSING"} ${report.plugin.pluginDir}`,
+    );
+    console.log(
+      `  recorder      ${report.plugin.recorder ? "OK" : "MISSING"} ${ctx.runtime.recorderFile}`,
+    );
+    console.log(
+      `  integrations  ${report.integrations
+        .map(({ id, state }) => `${id}=${state}`)
+        .join(" ")}`,
+    );
+  }
+  if (start.action === "failed") {
+    process.exitCode = 1;
+  }
 }
 
 async function infoCommand() {
@@ -842,6 +1289,46 @@ async function logsCommand() {
   for (const line of lines.slice(-Math.max(1, limit))) {
     console.log(line);
   }
+  if (!hasFlag("follow")) {
+    return;
+  }
+  // Tail -f: poll for appended bytes; a rewritten (truncated) log restarts
+  // from the beginning. SIGINT (Ctrl-C) exits cleanly instead of a stack.
+  let offset = statSync(logFile).size;
+  let remainder = "";
+  process.on("SIGINT", () => process.exit(0));
+  while (true) {
+    await sleep(LOG_FOLLOW_INTERVAL_MS);
+    let stats;
+    try {
+      stats = statSync(logFile);
+    } catch {
+      continue;
+    }
+    if (stats.size < offset) {
+      offset = 0;
+      remainder = "";
+    }
+    if (stats.size === offset) {
+      continue;
+    }
+    const chunk = Buffer.alloc(stats.size - offset);
+    const fd = openSync(logFile, "r");
+    try {
+      readSync(fd, chunk, 0, chunk.length, offset);
+    } finally {
+      closeSync(fd);
+    }
+    offset = stats.size;
+    remainder += chunk.toString("utf8");
+    const parts = remainder.split(/\r?\n/);
+    remainder = parts.pop() ?? "";
+    for (const line of parts) {
+      if (line) {
+        console.log(line);
+      }
+    }
+  }
 }
 
 async function pathCommand() {
@@ -863,16 +1350,25 @@ Usage:
   astrox restart
   astrox up                      Restart if running, start if down (same port)
   astrox status [--json] [--deepseek-profile web]
+  astrox health [--json]         Probe the live dashboard (/api/health); exit 1 when down
   astrox info [--json]
   astrox update [--no-deepseek]
   astrox doctor [options]        Run the full astro-trace diagnostics
   astrox install [options]       Install or refresh hook integrations
   astrox migrate [FILE_OR_DIR]   Migrate legacy trace data
   astrox open                    Open the running dashboard in a browser
-  astrox logs [--lines N]        Tail the dashboard log
+  astrox logs [--lines N] [--follow]  Tail the log; --follow keeps streaming (Ctrl-C exits)
   astrox path                    Print ASTRO home, plugin dir, and CLI entry
+  astrox ax [--json]             Quick start + service/integration status
+  astrox --version               Print the CLI version
 
 Notes:
+  "ax" is the short form of "astrox ax" and can be installed globally.
+  The ax launcher forwards every other astrox command directly, so
+  "ax status", "ax stop" and "ax open" behave exactly like their
+  astrox equivalents; bare "ax" is always the quick start.
+  stop, restart (and up) print one machine-readable JSON document
+  with --json instead of text.
   astrox start registers this entry as a global "astrox" command
   (${getGlobalBinDirs().join(", ")}).
   astrox stop terminates the dashboard process; no extra cleanup is performed.
@@ -884,7 +1380,9 @@ Environment:
 }
 
 const commands = {
+  ax: axCommand,
   doctor: () => delegateCommand("doctor"),
+  health: healthCommand,
   help: printHelp,
   info: infoCommand,
   install: () => delegateCommand("install"),
@@ -898,12 +1396,54 @@ const commands = {
   // dashboard is running, so the same path covers an offline service.
   up: restartCommand,
   status: statusCommand,
-  stop: stopCommand,
+  stop: stopAction,
   update: updateCommand,
+  "--version": () => console.log(getPackageVersion()),
+  "-v": () => console.log(getPackageVersion()),
+  "--help": printHelp,
+  "-h": printHelp,
 };
 
+/**
+ * Command names accepted by `run`, exported so the `ax` launcher (and the
+ * npx entry delegated from `astro-trace`) dispatch through the same set.
+ */
+export const commandNames = new Set(Object.keys(commands));
+
+/**
+ * The first non-flag token after the quick-start command decides where an
+ * `ax` invocation goes: `ax status`, the launcher's `ax stop` and the npx
+ * entry's `astro-plugin ax open` all forward to the same astrox command.
+ * Flags stay with the quick start; option values are never mistaken for a
+ * command token.
+ */
+function getForwardedAxCommand(rest) {
+  for (let index = 0; index < rest.length; index += 1) {
+    const argument = rest[index];
+    if (!argument.startsWith("--")) {
+      return argument === "ax" ? null : argument;
+    }
+    const name = argument.slice(2).split("=")[0];
+    if (!argument.includes("=") && OPTIONS_WITH_VALUES.has(name)) {
+      index += 1;
+    }
+  }
+  return null;
+}
+
 export async function run(argv = process.argv) {
-  const command = argv[2] || "help";
+  let command = argv[2] || "help";
+  if (command === "ax") {
+    const next = argv[3];
+    if (next === "--version" || next === "-v" || next === "--help" || next === "-h") {
+      command = next;
+    } else {
+      const forwarded = getForwardedAxCommand(argv.slice(3));
+      if (forwarded && commandNames.has(forwarded)) {
+        command = forwarded;
+      }
+    }
+  }
   const handler = commands[command];
   if (!handler) {
     console.error(`Unknown astrox command: ${command}`);

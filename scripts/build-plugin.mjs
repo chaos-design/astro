@@ -32,7 +32,10 @@ for (const directory of ["deepseek-plugin", "dist", "plugin", "server"]) {
 for (const file of [
   ".env.example",
   "bin/astro.mjs",
+  "bin/astrox.mjs",
+  "bin/ax.mjs",
   "config.example.yaml",
+  "LICENSE",
   "scripts/install-plugins.mjs",
   "scripts/migrate-data.mjs",
 ]) {
@@ -53,11 +56,33 @@ writeFileSync(
       version: packageMetadata.version,
       description:
         "ASTRO local-first trace integrations for Trae, Claude Code, ChatGPT, DeepSeek Harness, and WorkBuddy.",
-      license: "UNLICENSED",
+      license: "MIT",
+      // npm refuses to publish a package without these; `npx astro-plugin`
+      // resolves the bin named after the package (bin/astro.mjs), which then
+      // delegates the astrox daemon commands.
+      repository: {
+        type: "git",
+        url: "git+https://github.com/chaos-design/astro.git",
+      },
+      bugs: { url: "https://github.com/chaos-design/astro/issues" },
+      homepage: "https://github.com/chaos-design/astro#readme",
+      keywords: [
+        "astro",
+        "observability",
+        "coding-agent",
+        "trace",
+        "claude",
+        "chatgpt",
+        "opencode",
+        "zcode",
+        "codebuddy",
+      ],
       type: "module",
       bin: {
         "astro-trace": "bin/astro.mjs",
         "astro-plugin": "bin/astro.mjs",
+        astrox: "bin/astrox.mjs",
+        ax: "bin/ax.mjs",
       },
       files: [
         "bin",
@@ -65,6 +90,7 @@ writeFileSync(
         "deepseek-plugin",
         "dist",
         ".env.example",
+        "LICENSE",
         "plugin",
         "scripts",
         "server",

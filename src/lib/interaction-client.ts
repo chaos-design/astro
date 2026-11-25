@@ -174,10 +174,13 @@ function resultOf(payload: unknown): InteractionResult | null {
   if (!payload || typeof payload !== "object") {
     return null;
   }
+  // The real service answers POST /api/interactions/:id/events with
+  // `{ requestId, event, result, duplicate }` and the close route with
+  // `{ requestId, result, duplicate }`; older transports put the result at the
+  // top level. Accept all three so a successful 200 is applied locally instead
+  // of depending on the SSE frame, and the client reports the result the
+  // service actually sent.
   const wrapper = payload as { result?: unknown };
-  // The close route answers `{ requestId, result, duplicate }`, while other
-  // transports may put the result at the top level. Accept both so a successful
-  // 200 can always be applied locally instead of depending on the SSE frame.
   const candidate = (
     wrapper.result && typeof wrapper.result === "object"
       ? wrapper.result

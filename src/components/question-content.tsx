@@ -1,5 +1,5 @@
 import { Check, Code2, Eye, Send, X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import type { QuestionPanelMode } from "@/config/app-config";
 import { cn } from "@/lib/utils";
 import { AnswerRows } from "./answer-rows";
@@ -29,7 +29,7 @@ import {
 } from "../lib/user-question-content";
 import type { TracePayload } from "../types/trace";
 
-type QuestionViewMode = "preview" | "code";
+export type QuestionViewMode = "preview" | "code";
 
 /**
  * Everything the surface needs to answer the question that is still open (or
@@ -69,14 +69,17 @@ export function QuestionContent({
   panelMode,
   onPanelModeChange,
   answer = null,
+  viewMode,
+  onViewModeChange,
 }: {
   payload: TracePayload;
   panelMode?: QuestionPanelMode;
   onPanelModeChange?: (mode: QuestionPanelMode) => void;
   answer?: QuestionAnswerBinding | null;
+  /** Controlled by the inspector so the dock and Input tab share one view. */
+  viewMode: QuestionViewMode;
+  onViewModeChange: (mode: QuestionViewMode) => void;
 }) {
-  const [viewMode, setViewMode] = useState<QuestionViewMode>("preview");
-
   const answers = useMemo(() => {
     if (!answer) {
       return {};
@@ -152,7 +155,7 @@ export function QuestionContent({
           className="prompt-input__mode"
           onValueChange={(value) => {
             if (value) {
-              setViewMode(value as QuestionViewMode);
+              onViewModeChange(value as QuestionViewMode);
             }
           }}
           spacing={0}
@@ -179,7 +182,7 @@ export function QuestionContent({
       </div>
       {viewMode === "preview" && answer ? (
         // The batch rule belongs with the question list, not the action bar:
-        // the footer stays a pure 提交 / Cancel pair on every surface.
+        // the footer stays a pure Submit / Cancel pair on every surface.
         <div className="question-surface__summary">
           <span>{`${answer.questions.length} 个问题 · 一次提交`}</span>
           {unanswered ? (
@@ -263,7 +266,7 @@ export function QuestionContent({
               <div className="question-surface__actions">
                 {answer.pending ? (
                   <span className="question-surface__pending" role="status">
-                    发送中…
+                    Sending…
                   </span>
                 ) : null}
                 <Button
@@ -274,7 +277,7 @@ export function QuestionContent({
                   variant="default"
                 >
                   <Send aria-hidden="true" data-icon="inline-start" />
-                  提交
+                  Submit
                 </Button>
                 <Button
                   disabled={disabled}
@@ -284,7 +287,7 @@ export function QuestionContent({
                   variant="ghost"
                 >
                   <X aria-hidden="true" data-icon="inline-start" />
-                  取消
+                  Cancel
                 </Button>
               </div>
             </footer>

@@ -62,3 +62,27 @@ implementation-breakdown.md` and archive the plan.
    F3, `plan_flow.py --root plans move 03 planing`, complete the remaining
    DoD boxes (`code`, `func_test_result`) and archive.
 
+## 2026-11-19 re-verification (F3 still blocked)
+
+- Machine scan recorded on 2026-11-19: 848 `hook.run.allowed` and **0**
+  `hook.run.failed` in that day's ZCode log, all recorder-plugin sourced. That
+  session was clean; this is still not the interaction-hook closed loop. The
+  current scan above has since been refreshed to 2026-11-22.
+- Equivalence checks 6/6 pass against a fresh captured payload (2026-11-19,
+  2 questions).
+- Plan 04 added a real-process end-to-end check: `node --test
+  tests/interaction-integration.test.mjs` (11/11) runs a real
+  `scripts/interaction-hook.mjs` process against the real service, answers with
+  the real console client `answerInteractionQuestions`, and asserts one `text`
+  plus one `submit`, a result file with `status=answered` and the verbatim
+  answer map, and hook stdout `allow` with `updatedInput.answers`. This proves
+  the chain up to the hook's stdout — it does **not** prove a host consumed the
+  decision.
+- Still missing for F3: Claude `/hooks` visibility and the transcript wording
+  `Allowed by PermissionRequest hook` (no Claude binary or credentials here),
+  and an interaction-hook closed loop inside a real Claude/ZCode session (the
+  hosts are GUI-only in this sandbox, and the plans forbid writing the user's
+  real `~/.claude` / `~/.zcode` config without authorization).
+- F3 stays unchecked and plan 03 stays pending. Do not record "host acceptance
+  passed" until a real host session produces the two evidences in the runbook.
+

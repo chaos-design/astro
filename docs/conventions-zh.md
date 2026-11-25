@@ -248,28 +248,32 @@
     切换 Agent 或消息后不再显示旧提问。检查器与浮层面板共用同一份交互状态，
     不各自推断当前问题；检查器只有一个问答面（`src/components/question-content.tsx`，
     停靠区与 Input 页复用同一组件，Overview 不再另挂作答框），顶部一行工具条只负责
-    Preview / Code 与落位（问题本身不可折叠，没有折叠按钮）：Preview 展示问题与选项，
+    Preview / Code 与落位（问题本身不可折叠，没有折叠按钮）；视图由检查器统一控制，停靠区与 Input 页不会各自记住不同的 Preview/Code 状态。Preview 展示问题与选项，
     Code 只展示原始 payload、不出现选项和提交栏。实时请求下选项可点、提交/Cancel 是滚动区之外的兄弟节点因而
     始终吸底；请求关闭后同一排选项退化为不可点的静态 chip，历史提问永远不假装可作答。
     问答面在窄面板内换行、正文区域内滚动，不撑宽日志列。
     两种作答面都用 `src/lib/question-panel-model.ts` 构建答案：
     选项点击只高亮并填入草稿，输入框内容覆盖选项值，没有 Set；只有一个 Submit，
-    一次提交全部问题，底部按钮统一「提交 / 取消」顺序。`dock-full` / `float` 是两者共享的落位
+    一次提交全部问题。两个表面的按钮文案、图标、尺寸、variant 与顺序完全一致（Submit
+    用发送图标、Cancel 用叉号图标，不留「一次性提交 / 提交发送」旧文案），窄视口下提交栏
+    换行后仍吸附可达。`dock-full` / `float` 是两者共享并持久化的落位
     （`src/lib/question-panel-model.ts` 负责把升级前的 `dock-half` / `half` /
-    `bottom` / `side` 归一化过来）：未手动切换时由 `autoQuestionPanelMode` 按运行状态决定——
-    可作答的提问浮在画布上，已结束/历史提问铺满详情区；只有手动切换才写入偏好，避免把
-    派生默认值固化到下次加载。`dock-full` 把同一份问答面停到检查器 Tab 以下并
-    铺满详情区、行距更紧以显示更多正文，只有 `float` 才在画布上浮出卡片且每个选项独占一行，
-    因此卡片要求高亮原子正是提问，区域布局则连历史提问也能展开；EVENTS 列收起时没有可停靠的区域，区域布局临时退回卡片，
-    保证同步窗口内仍可作答。浮层卡片与检查器作答控件都是「实时作答」能力，只在当前任务
-    仍在执行中才可用：判定键在左侧 RUN HISTORY 卡片显示的那个**会话**状态上（对当前会话
-    走 `getRunHistoryDisplayState`），而非被选中的单条 prompt run（`isQuestionActionable`，
-    `src/lib/question-interaction.ts`，委托 `isPromptExecuting`，因此 `active`/running 与
-    `waiting` 都算）——这样在仍等待答复的会话里翻到更早的消息或原子，提问也不会被误冻结。
-    会话一旦进入终态，或读者在回放历史快照，就不浮出卡片、检查器提问也只读——事件只作预览，
-    绝不假装可作答。区域布局下历史提问仍可展开阅读，但控件禁用。卡片的问题本身不可折叠，滚动条贴卡片右边缘（卡片不留外层
+    `bottom` / `side` 归一化过来）：`dock-full` 把同一份问答面停到检查器 Tab 以下并
+    铺满详情区，只有 `float` 才在画布上浮出卡片，因此卡片要求高亮原子正是提问，区域
+    布局则连历史提问也能展开；EVENTS 列收起时没有可停靠的区域，区域布局临时退回卡片，
+    保证同步窗口内仍可作答。没有显式偏好时 `resolveQuestionPanelMode` 按问题状态取默认：
+    live/open 请求为 `float`、已关闭或历史问题为 `dock-full`；显式选择写入
+    `ASTROX_QUESTION_PANEL_MODE` 并覆盖默认。停靠区与 Input 页的问答面各自保持挂载、
+    只用 `hidden` 切换可见性，Tab 列表恒定的分隔线替代了只在停靠时出现的新边框，因此
+    切换落位不 reflow、不重挂载、不跳动。浮层卡片与检查器作答控件都是「实时作答」能力，
+    只在当前任务仍在执行中才可用：判定键在左侧 RUN HISTORY 卡片显示的那个**会话**状态上
+    （对当前会话走 `getRunHistoryDisplayState`），而非被选中的单条 prompt run
+    （`isQuestionActionable`，`src/lib/question-interaction.ts`，委托 `isPromptExecuting`，
+    因此 `active`/running 与 `waiting` 都算）——这样在仍等待答复的会话里翻到更早的消息或原子，
+    提问也不会被误冻结。会话一旦进入终态，或读者在回放历史快照，就不浮出卡片、检查器提问也只读——
+    事件只作预览，绝不假装可作答；区域布局下历史提问仍可展开阅读，但控件禁用。卡片的问题本身不可折叠，滚动条贴卡片右边缘（卡片不留外层
     内边距，留白由问题行承载），键盘快捷键提示放在卡片头部摘要与状态之间（底部只留
-    提交 / Cancel 两个按钮）。检查器的批量作答
+    Submit / Cancel 两个按钮）。检查器的批量作答
     只在 `src/lib/interaction-client.ts` 的 `answerInteractionQuestions` 一处构建
     seq 链：每个问题一条 `text`，再一条带完整答案映射的 `submit`；单问题入口
     `answerInteractionQuestion` 只是它的单元素包装。交互帧不随快照重放，刷新页面后

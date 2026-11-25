@@ -860,16 +860,15 @@ card's bottom edge. The list scrolls edge to edge — the card carries no outer
 padding, its rows carry the gutters — so the scrollbar rides the card's border
 instead of cutting into the question text; the shortcut legend moved up into the
 header, between the summary and the status (its long form lives in the title), so
-the footer keeps only the two buttons, Submit then Cancel. The card is only the
-`Floating` one of two placements: until you switch layouts by hand the choice
-follows the run state — an answerable question (session RUNNING / WAITING)
-floats, a finished or captured one docks full. Only a manual switch is saved, so
-a derived default is not frozen into the next load. In the floating card each
-option takes a full-width row for quick answering; switching to `Region full`
-moves the same question surface into the inspector's detail area with tighter
-rows so more of the question fits, and the card stops appearing over the canvas.
-A collapsed EVENTS column has no region to dock into, so the docked layout falls
-back to the card for the synchronous window.
+the footer keeps only the two buttons: `Submit` (Send icon) and `Cancel` (X
+icon), in that order on both surfaces. The card is only the `Floating`
+one of two placements: switching to `Region full` moves the same question
+surface into the inspector's detail area and the card stops appearing over the
+canvas. A collapsed EVENTS column has no region to dock into, so the docked
+layout falls back to the card for the synchronous window. With no explicit
+preference the placement follows the question: a live request floats, a settled
+or captured question docks; switching never adds a border or remounts the
+surface, and the pinned Submit / Cancel bar stays reachable on a narrow screen.
 Once the request is answered, cancelled or timed out the card shows the result
 (ANSWERED / CANCELLED / …) for about two seconds and then slides away; the
 docked surface keeps the same result in place instead.
@@ -900,7 +899,8 @@ inspector to that question's start event (not to its answer); Overview shows
 the question text and the event details. The question surface exists exactly
 once — the dock below the inspector tabs in a region layout, the Input tab in
 `Floating` — and one toolbar row owns the Preview / Code switch, the placement
-switch and the fold:
+switch only (the question itself never folds); switching placements keeps the
+same Preview / Code view:
 
 - **Preview** shows the questions and their option chips. While the request is
   open the chips are buttons (single-select and a plan approval's Approve/Reject
@@ -918,9 +918,9 @@ switch and the fold:
   inspector.
 
 Long question text wraps inside the inspector width and the body scrolls instead
-of widening the log column. The region-full / floating layouts are one shared
-placement with the floating card (only `Floating` puts a card on the canvas); it
-follows the run state until you switch it by hand.
+of widening the log column. `Region full` and `Floating` are the two shared
+placements (only `Floating` puts a card on the canvas); the dock and Input tab
+keep their surface mounted so switching placements does not remount it.
 If a submit is rejected (busy, closed, answered elsewhere)
 the draft is kept and a notice explains why — it is never silently cleared. When one `AskUserQuestion` carries
 several descriptors the
@@ -1075,11 +1075,12 @@ group writes anything back to captured events.
   (`ASTROX_HISTORY_OPEN` / `ASTROX_CONSOLE_OPEN`); a collapsed column keeps a
   vertical label, and its arrow reopens it.
 - **Question panel layout** (`ASTROX_QUESTION_PANEL_MODE`): where the answer
-  surface lands — `Region full` (the whole detail area below the tabs) or
-  `Floating` (the card over the canvas, shown only while the highlighted atom is
-  the question). It follows the run state by default (floating while answerable,
-  region full otherwise); a manual choice sticks and is the only value saved.
-  The two icons in the panel header share this one preference.
+  surface lands — `Follow state` (default: a live request floats, a settled or
+  captured question docks), `Region full` (the whole detail area below the tabs)
+  or `Floating` (the card over the canvas, shown only while the highlighted atom
+  is the question). Picking one of the latter two fixes and persists that
+  placement; "restore defaults" returns to `Follow state`. The two icons in the
+  panel header share this one preference.
 
 **Performance**
 
@@ -1308,7 +1309,10 @@ Deterministic IDs make unchanged imports idempotent.
 ```text
 pnpm service:up [--port N] [--home DIR]       # restart in place if running, start if down
 pnpm service:start|restart|status             # single-action shortcuts
-astro-trace serve
+astro-trace serve [--port N] [--host H] [--astro-home DIR] [--open]   # run the service in the foreground
+astro-trace ax [--json]                       # quick start + service status (forwards to astrox)
+astro-trace health [--json]                   # probe /api/health (exit 1 when down)
+astro-trace status|stop|restart|up|info|open|logs|path   # daemon control (forwards to astrox; stop/restart/up accept --json)
 astro-trace install [--target DIR] [--clients trae,claude,chatgpt,deepseek,workbuddy] [--scope user|project]
 astro-trace update [--no-deepseek] [--astro-home DIR]
 astro-trace doctor [--target DIR] [--scope user|project] [--deepseek-profile NAME]
@@ -1346,21 +1350,63 @@ status and trace data. Diagnostics, installation, and migration delegate to the
 underlying `astro-trace` shown above.
 
 ```text
+ax [--json] [--open] [--port N]   quick start + service/integration status (= astrox ax)
 astrox start [--port N] [--host H] [--open] [--no-global] [--bin-dir DIR]
-astrox stop
-astrox restart
+astrox stop [--json]
+astrox restart [--json]
 astrox up                     # restart if running, start if down, on the same port
 astrox status [--json] [--deepseek-profile web]
+astrox health [--json]        # probe /api/health; exit 1 when down
 astrox info [--json]
 astrox update [--no-deepseek]
 astrox doctor [options]        run the full astro-trace diagnostics
 astrox install [options]       install or refresh hook integrations
 astrox migrate [FILE_OR_DIR]   migrate legacy trace data
 astrox open                    open the running dashboard in a browser
-astrox logs [--lines N]        tail the dashboard log
+astrox logs [--lines N] [--follow]  tail the log; --follow keeps streaming
 astrox path                    print ASTRO home, plugin dir, and CLI entry
 ```
 
+```text
+ax [--json] [--open] [--port N]   quick start + service/integration status (= astrox ax)
+ax <command> [args…]              every other astrox command passes straight through
+                                  (ax status, ax stop, ax open …)
+ax --version | ax --help          print the version / usage
+astrox start [--port N] [--host H] [--open] [--no-global] [--bin-dir DIR]
+astrox stop [--json]
+astrox restart [--json]
+astrox up [--json]               # restart if running, start if down, on the same port
+astrox status [--json] [--deepseek-profile web]
+astrox health [--json]           # probe /api/health; exit 1 when down
+astrox info [--json]
+astrox update [--no-deepseek]
+astrox doctor [options]       run the full astro-trace diagnostics
+astrox install [options]      install or refresh hook integrations
+astrox migrate [FILE_OR_DIR]  migrate legacy trace data
+astrox open                   open the running dashboard in a browser
+astrox logs [--lines N] [--follow]  tail the log; --follow keeps streaming (Ctrl-C exits)
+astrox path                   print ASTRO home, plugin dir, and CLI entry
+astrox --version              print the CLI version
+```
+
+- `ax` (also available as `astrox ax`) is the one-command shortcut: when the
+  runtime is missing it first bootstraps `ASTRO_HOME` via
+  `installPluginRuntime` (hook configs and trace data are never touched;
+  `--no-install` keeps the explicit install hint), then brings the dashboard
+  up through the same path as `start`, registers both the global `astrox` and
+  `ax` shorthands, polls `/api/health` to confirm the service actually
+  answers, and reports the start result, health latency, live service facts,
+  service/process state, plugin version and Hook integration readiness on one
+  screen. `--json` emits a machine-readable report (`start.healthy` /
+  `start.elapsedMs` / `start.bootstrapped` / `start.service`); `start.service`
+  carries the live `/api/health` facts (`eventCount` / `build` / `uptimeMs`)
+  and the text view adds an `events` line. A failed start still prints status
+  and exits non-zero. Every other `ax` subcommand maps 1:1 onto its
+  astrox equivalent; bare `ax` is always the quick start and an unknown
+  subcommand is a usage error. It shares the same internal helpers as `start`
+  and `status` rather than duplicating them. Run it from a checkout with
+  `pnpm ax`, as `ax` after a global install, or as `npx astro-plugin ax`
+  without one.
 - `start` launches the dashboard daemon (default `127.0.0.1:5678`). It also
   registers this entry as the global `astrox` command: on Unix it symlinks into
   the first writable of `/usr/local/bin`, `~/.local/bin`, or `~/bin`; on Windows
@@ -1370,13 +1416,23 @@ astrox path                    print ASTRO home, plugin dir, and CLI entry
   directories; `--open` opens the browser after launch.
 - Once launched, the daemon writes `<ASTRO_HOME>/dashboard-<port>.pid` (with
   `pid` and `url`); the run log lands at `<ASTRO_HOME>/dashboard.log`.
-  `logs [--lines N]` tails the last 40 lines by default.
+  `logs [--lines N]` tails the last 40 lines by default; `logs --follow` keeps
+  streaming new lines and Ctrl-C exits cleanly.
 - `stop` sends `SIGTERM` (then `SIGKILL` if needed) to the daemon and clears the
   process; no extra cleanup runs. `restart` is `stop` followed by `start`.
+  `stop`, `restart`, and `up` each emit one machine-readable JSON document
+  under `--json` (`stop` = `{action,pid,port,url}` or
+  `{action:"not-running",port,others}`; `restart` = `{stop,start}`).
 - `status` summarizes the plugin config (config.yaml / .env as OK, WARN, or
   MISSING), the global CLI state, the dashboard run state, and per-client hook
   integrations (chatgpt, claude, workbuddy, trae, deepseek). `--json` emits a
   machine-readable report.
+- `health` probes the live service at `/api/health` and reports its facts
+  (pid, uptime, eventCount, build, dataRoot, restartCount); it exits `1` when
+  nothing answers so scripts and CI can gate on it. It asks the running service
+  rather than the pid record, and when this `ASTRO_HOME` has no record it
+  marks that ("no pid record") so a foreign answer on the shared port is never
+  reported as your own install.
 - `info` lists each source's trace file count and byte total (claude, chatgpt,
   copilot, cursor, deepseek, gemini, iflow, llama, opencode, pi, qwen, trae,
   workbuddy, zcode, …) plus the trace root, plugin directory, and global CLI
@@ -1385,7 +1441,15 @@ astrox path                    print ASTRO home, plugin dir, and CLI entry
   `astro-trace update`); `--no-deepseek` skips the DeepSeek plugin package.
 
 > The control commands require an installed plugin runtime; run `astrox install`
-> (or `astro-trace install`) first.
+> (or `astro-trace install`) first — or run `ax` / `npx astro-plugin ax` and
+> let it bootstrap.
+>
+> Publishing and npx: `pnpm publish:plugin` builds, validates and dry-runs the
+> npm publish of `astro-plugin` (`--apply` publishes for real; prerelease
+> versions carry an `alpha` dist-tag automatically). The published package
+> supports `npm i -g astro-plugin` and `npx astro-plugin <command>`. See
+> "Install from npm / run with npx" and "Publishing the npm package" in
+> `docs/plugin-installation.md`.
 
 ## 13. HTTP API
 
