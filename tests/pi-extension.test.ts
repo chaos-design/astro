@@ -463,6 +463,73 @@ test("streams accumulated text while the agent is still executing", async () => 
   }
 });
 
+test("a resumed session in a fresh extension instance gets new reply ids", async () => {
+  const previousHome = process.env.ASTRO_HOME;
+  const previousAutoOpen = process.env.ASTRO_AUTO_OPEN;
+  // Each call simulates a separate Pi process: a fresh extension instance with
+  // an empty per-session counter, writing into its own trace root.
+  const replyIdOfFreshInstance = async (): Promise<string | undefined> => {
+    const astroHome = mkdtempSync(join(tmpdir(), "astro-pi-resume-"));
+    process.env.ASTRO_HOME = astroHome;
+    process.env.ASTRO_AUTO_OPEN = "0";
+    try {
+      const handlers = loadExtension();
+      const ctx = createContext();
+      await handlers.get("session_start")!({}, ctx);
+      await handlers.get("input")!({ text: "hello" }, ctx);
+      await handlers.get("before_agent_start")!({ prompt: "hello" }, ctx);
+      await handlers.get("message_start")!(
+        { message: { role: "assistant" } },
+        ctx,
+      );
+      await handlers.get("message_end")!(
+        {
+          message: {
+            role: "assistant",
+            content: [{ type: "text", text: "hi" }],
+            stopReason: "stop",
+          },
+        },
+        ctx,
+      );
+      await handlers.get("session_shutdown")!({}, ctx);
+      const file = collectFiles(astroHome).find((entry) =>
+        entry.endsWith("events.jsonl"),
+      );
+      assert.ok(file, "events.jsonl under the pi trace root");
+      const events = readFileSync(file, "utf8")
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line));
+      return events.find((event) => event.eventName === "AgentMessage")?.payload
+        .messageId;
+    } finally {
+      rmSync(astroHome, { recursive: true, force: true });
+    }
+  };
+  try {
+    const first = await replyIdOfFreshInstance();
+    const second = await replyIdOfFreshInstance();
+    assert.match(first ?? "", /^pi-/);
+    assert.notEqual(
+      first,
+      second,
+      "a new process must not reuse a previous process's reply id",
+    );
+  } finally {
+    if (previousHome === undefined) {
+      delete process.env.ASTRO_HOME;
+    } else {
+      process.env.ASTRO_HOME = previousHome;
+    }
+    if (previousAutoOpen === undefined) {
+      delete process.env.ASTRO_AUTO_OPEN;
+    } else {
+      process.env.ASTRO_AUTO_OPEN = previousAutoOpen;
+    }
+  }
+});
+
 test("a live foreign owner keeps the session until it exits", async () => {
   const astroHome = mkdtempSync(join(tmpdir(), "astro-pi-smoke-claim-"));
   const previousHome = process.env.ASTRO_HOME;

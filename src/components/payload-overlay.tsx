@@ -489,6 +489,19 @@ export function PayloadOverlay({
     },
     [],
   );
+  // Escape (or any close that happens while the pointer is over a rail row)
+  // does not fire pointerleave, so the 120ms close timer never runs. Clear the
+  // hover on close: otherwise the fixed card stays over the console, still
+  // anchored to a row that has just unmounted.
+  useEffect(() => {
+    if (!open) {
+      if (atomHoverTimerRef.current !== null) {
+        window.clearTimeout(atomHoverTimerRef.current);
+        atomHoverTimerRef.current = null;
+      }
+      setHoveredAtom(null);
+    }
+  }, [open]);
   const syncRailEdges = useCallback(() => {
     const list = railListRef.current;
     if (!list) {
@@ -1018,7 +1031,7 @@ export function PayloadOverlay({
       </DialogContent>
       <AtomHoverCardLayer
         anchorRef={atomAnchorRef}
-        card={hoveredAtom}
+        card={open ? hoveredAtom : null}
         cardRef={atomCardRef}
         onCardPointerEnter={cancelAtomHoverClose}
         onCardPointerLeave={closeAtomHover}

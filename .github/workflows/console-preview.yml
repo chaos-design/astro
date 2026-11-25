@@ -193,7 +193,7 @@ jobs:
         run: |
           set -u
           seen_successive=0
-          # 24 attempts, 5s then 10s then capped at 20s backoff: ~4 minutes.
+          # 24 attempts, 5s then 10s then capped at 20s backoff: ~6 minutes.
           for attempt in $(seq 1 24); do
             ids="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" \
               --jq '.artifacts[] | select(.name == "github-pages") | .id' 2>/dev/null || true)"

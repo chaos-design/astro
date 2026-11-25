@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -136,6 +137,11 @@ export default function (pi: PiExtensionApi) {
   // of a resumed session distinct.
   const messageSeqBySession = new Map<string, number>();
   const liveMessageIdBySession = new Map<string, string>();
+  // One token per extension instance. A resumed session loads a fresh instance
+  // whose per-session counter starts at 1 again; without the token its new
+  // replies would reuse the previous process's ids and fold into the same
+  // reply in the Agent view (or raise a false prefix-break diagnostic).
+  const replyIdToken = randomUUID().slice(0, 8);
   // Subagent identity is read once per child session: the launch payload is
   // cheap, the persisted delegation entry is read only on a continuation.
   const subagentIdentities = new Map<string, ReturnType<typeof readSubagentIdentity>>();
@@ -243,7 +249,7 @@ export default function (pi: PiExtensionApi) {
         if (type === "message_start") {
           const seq = (messageSeqBySession.get(sessionId) ?? 0) + 1;
           messageSeqBySession.set(sessionId, seq);
-          const id = `pi-${sessionId}-${seq}`;
+          const id = `pi-${replyIdToken}-${sessionId}-${seq}`;
           liveMessageIdBySession.set(sessionId, id);
           mappingContext.messageId = id;
           liveText.delete(`${sessionId}:${id}`);

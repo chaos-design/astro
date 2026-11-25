@@ -806,3 +806,15 @@ test("scroll, padding and control polish keep the reading surface stable", () =>
     /\.payload-overlay__follow:hover:not\(:disabled\) \{[\s*\S]*?box-shadow: 0 0 0 3px/,
   );
 });
+
+test("the rail hover card clears when the dialog closes", () => {
+  // Escape (and any close while the pointer is over a rail row) does not fire
+  // pointerleave, so the debounced close never runs. The card must be gated on
+  // `open` and the hover state cleared, or a fixed card stays over the console
+  // anchored to a row that has just unmounted.
+  assert.match(overlay, /card=\{open \? hoveredAtom : null\}/);
+  assert.match(
+    overlay,
+    /if \(!open\) \{[\s\S]*?setHoveredAtom\(null\);[\s\S]*?\}, \[open\]\)/,
+  );
+});
