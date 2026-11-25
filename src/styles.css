@@ -6433,10 +6433,12 @@ pre,
 /* A long value folds to its first 200 characters with its own 展开 control;
    the short fields around it are never hidden by a pane-wide fold. */
 .payload-overlay__field-text.is-folded {
-  display: -webkit-box;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 4;
+  /* A folded value is already shortened to the first N characters. Clamping
+     it to four more lines cut that preview a second time, so a long hook
+     field read as three lines and an ellipsis with no way to tell what was
+     lost. Wrap the whole shortened value; 展开 still reveals the full text. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .payload-overlay__field-text {
@@ -6812,6 +6814,15 @@ pre,
   font-size: 12px;
 }
 
+/* The atom behind the Agent pane's current reading line: a quiet marker,
+   clearly below the selection treatment so it never competes with the atom
+   the reader actually picked. It moves with scroll, not with selection. */
+.payload-overlay__rail .atomic-log__row.is-content-active {
+  border-color: color-mix(in srgb, var(--log-tone) 50%, var(--line-bright));
+  background: color-mix(in srgb, var(--log-tone) 10%, var(--panel-hover));
+  box-shadow: inset 2px 0 color-mix(in srgb, var(--log-tone) 80%, transparent);
+}
+
 /* Same tone map as the LOG row, so a tool atom and a question atom keep their
    colours across the canvas, the LOG and this rail. */
 .payload-overlay__atom.tone-prompt {
@@ -6863,8 +6874,11 @@ pre,
 }
 
 .payload-overlay__atom-hover-card {
-  max-width: min(360px, calc(100vw - 24px));
-  max-height: min(340px, calc(100vh - 24px));
+  max-width: min(420px, calc(100vw - 24px));
+  /* Detail must be readable in full: the placement code already clamps the
+     card inside the viewport, so a fixed 340px cap only cut off long hook
+     summaries and extra field rows. */
+  max-height: calc(100vh - 24px);
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 10px 12px 9px;
@@ -10031,7 +10045,7 @@ pre,
   justify-content: space-between;
   gap: 10px;
   min-width: 0;
-  padding: 0 0 9px;
+  padding: 4px 10px;
   border-bottom: 1px solid var(--line);
 }
 
@@ -10772,6 +10786,21 @@ pre,
   background: color-mix(in srgb, var(--panel) 86%, var(--amber) 14%);
 }
 
+/* A Pre / Post step keeps its phase tone through the whole surface: the
+   generic tool-result surface above would otherwise wash a teal Post back to
+   amber, leaving a teal edge around an amber card. */
+.agent-step.hook-pre.agent-step--event {
+  background: color-mix(in srgb, var(--panel) 86%, var(--cyan) 14%);
+}
+
+.agent-step.hook-post.agent-step--tool-result {
+  background: color-mix(in srgb, var(--panel) 86%, var(--teal) 14%);
+}
+
+.agent-step.hook-post.agent-step--event {
+  background: color-mix(in srgb, var(--panel) 86%, var(--teal) 14%);
+}
+
 .agent-step--question {
   --type-accent: var(--blue);
   background: color-mix(in srgb, var(--panel) 86%, var(--blue) 14%);
@@ -11041,6 +11070,59 @@ pre,
   overflow-wrap: anywhere;
 }
 
+/* The terminal frame follows the hook phase: a PreToolUse call reads cyan,
+   a PostToolUse result teal. Without these the card carried a teal phase edge
+   around an amber command frame, which read as two unrelated events. The
+   window dots stay the classic red/amber/green set — they decorate a window,
+   not the event tone. */
+.agent-step.hook-pre .agent-step__call--shell {
+  border-color: color-mix(in srgb, var(--cyan) 30%, var(--line-bright));
+  background: color-mix(in srgb, var(--panel) 78%, var(--cyan) 16%);
+}
+
+.agent-step.hook-pre .agent-step__call-bar {
+  border-color: color-mix(in srgb, var(--cyan) 22%, var(--line));
+  background: color-mix(in srgb, var(--panel) 66%, var(--cyan) 20%);
+}
+
+.agent-step.hook-pre .agent-step__command-label,
+.agent-step.hook-pre .agent-step__call-lang {
+  color: var(--cyan);
+}
+
+.agent-step.hook-pre .agent-step__call-lang {
+  background: color-mix(in srgb, var(--cyan) 22%, transparent);
+}
+
+.agent-step.hook-post .agent-step__call--shell {
+  border-color: color-mix(in srgb, var(--teal) 30%, var(--line-bright));
+  background: color-mix(in srgb, var(--panel) 78%, var(--teal) 16%);
+}
+
+.agent-step.hook-post .agent-step__call-bar {
+  border-color: color-mix(in srgb, var(--teal) 22%, var(--line));
+  background: color-mix(in srgb, var(--panel) 66%, var(--teal) 20%);
+}
+
+.agent-step.hook-post .agent-step__command-label,
+.agent-step.hook-post .agent-step__call-lang {
+  color: var(--teal);
+}
+
+.agent-step.hook-post .agent-step__call-lang {
+  background: color-mix(in srgb, var(--teal) 22%, transparent);
+}
+
+.agent-step.hook-pre .agent-step__terminal,
+.agent-step.hook-post .agent-step__terminal {
+  border-top-color: color-mix(in srgb, var(--log-tone) 22%, var(--line));
+}
+
+.agent-step.hook-pre .agent-step__terminal-bar,
+.agent-step.hook-post .agent-step__terminal-bar {
+  background: color-mix(in srgb, var(--panel) 78%, var(--log-tone) 10%);
+}
+
 .agent-step__command-line {
   display: flex;
   align-items: flex-start;
@@ -11050,6 +11132,18 @@ pre,
 
 .agent-step__command .markdown-preview {
   min-width: 0;
+}
+
+/* The call bar already prints the captured language in its far-right badge.
+   The fenced-code renderer would print the same word a second time inside the
+   command line, so suppress its badge in this frame only. */
+.agent-step__call .md-code__lang,
+.agent-step__command-line .md-code__lang {
+  display: none;
+}
+
+.agent-step__call .md-code {
+  margin: 0;
 }
 
 .agent-step__command .markdown-preview pre,

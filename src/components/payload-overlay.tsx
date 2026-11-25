@@ -405,6 +405,11 @@ export function PayloadOverlay({
   platform?: PlatformId;
 }) {
   const [viewMode, setViewMode] = useState<PayloadViewMode>("agent");
+  // The Agent view reports the event at its reading line. The rail marks that
+  // atom (and scrolls it into view) so a reader can see which captured atom
+  // produced the card they are on — the two panes stay in step while reading.
+  const [contentActiveEventId, setContentActiveEventId] = useState<string | null>(null);
+  const contentActiveRowRef = useRef<HTMLButtonElement | null>(null);
   // Only an explicit rail / step / pair pick locates the Agent transcript.
   // Live follow changes the selected event without bumping this, so a reader
   // who scrolled back through the chain is not yanked to the newest step.
@@ -610,6 +615,27 @@ export function PayloadOverlay({
       list.scrollTop = rowBottom - list.clientHeight;
     }
   }, [atoms.length, following, open, selectedEventId]);
+  // The Agent pane's reading line moves through the chain as the reader
+  // scrolls. Reveal the matching rail row when it drifts out of view, but
+  // never fight Live follow (which owns the rail while armed) and never move
+  // the rail for a row already visible.
+  useEffect(() => {
+    if (!open || following || viewMode !== "agent" || !contentActiveEventId) {
+      return;
+    }
+    const row = contentActiveRowRef.current;
+    const list = row?.closest<HTMLElement>(".payload-overlay__atom-list");
+    if (!row || !list) {
+      return;
+    }
+    const rowTop = row.offsetTop;
+    const rowBottom = rowTop + row.offsetHeight;
+    if (rowTop < list.scrollTop + 8) {
+      list.scrollTop = Math.max(0, rowTop - 8);
+    } else if (rowBottom > list.scrollTop + list.clientHeight - 8) {
+      list.scrollTop = rowBottom - list.clientHeight + 8;
+    }
+  }, [contentActiveEventId, following, open, viewMode]);
   const atomRefs = useRef<Array<HTMLButtonElement | null>>([]);
   // The reader's scroll position in the two preview panes, written by their
   // onScroll handlers (ref writes only — a streamed batch must not re-render).
@@ -871,6 +897,7 @@ export function PayloadOverlay({
                   const atom = item.atom;
                   const hookPhase = hookPhaseOf(atom.eventName);
                   const selected = atom.id === selectedEventId;
+                  const contentActive = atom.id === contentActiveEventId;
                   const running = atom.id === runningEventId;
                   const partnerSelected =
                     atom.pairLink?.partnerId === selectedEventId;
@@ -886,6 +913,7 @@ export function PayloadOverlay({
                           hookPhase && `hook-${hookPhase}`,
                           running && "is-running",
                           selected && !running && "is-selected",
+                          !selected && contentActive && "is-content-active",
                           partnerSelected && !selected && "is-pair-partner",
                         )}
                         onClick={() => {
@@ -902,6 +930,9 @@ export function PayloadOverlay({
                         ref={(node) => {
                           if (selected) {
                             selectedRowRef.current = node;
+                          }
+                          if (contentActive) {
+                            contentActiveRowRef.current = node;
                           }
                           atomRefs.current[rowPosition] = node;
                         }}
@@ -958,6 +989,7 @@ export function PayloadOverlay({
                 live={agentRunExecuting}
                 locateRequest={agentLocateRequest}
                 runDurationMs={agentRunDurationMs}
+                onActiveEventChange={setContentActiveEventId}
               />
             ) : viewMode === "preview" ? (
               <div className="payload-overlay__preview-grid">

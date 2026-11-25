@@ -859,3 +859,33 @@ test("Pre and Post hooks carry distinct phase colours", () => {
   assert.match(stylesForOverlay, /\.payload-overlay__atom\.hook-pre \{[\s\S]*?--log-tone: var\(--cyan\)/);
   assert.match(stylesForOverlay, /\.payload-overlay__atom\.hook-post \{[\s\S]*?--log-tone: var\(--teal\)/);
 });
+
+/**
+ * The Agent pane reports the event at its reading line so the rail can mark
+ * the atom that produced it. The marker is distinct from selection and Live,
+ * and the rail only scrolls for a row that has drifted out of view.
+ */
+test("Agent content scroll marks its source atom in the rail", () => {
+  assert.match(agentTranscript, /onActiveEventChange\?:\s*\(eventId: string \| null\) => void/);
+  assert.match(agentTranscript, /readingLine = container\.getBoundingClientRect\(\)\.top \+ 28/);
+  assert.match(agentTranscript, /onActiveEventChange\?\.\(activeEventId\)/);
+  assert.match(overlay, /onActiveEventChange=\{setContentActiveEventId\}/);
+  assert.match(overlay, /!selected && contentActive && "is-content-active"/);
+  assert.match(stylesForOverlay, /\.payload-overlay__rail \.atomic-log__row\.is-content-active \{/);
+});
+
+/**
+ * The frame bar's language badge is the single one for a shell command; the
+ * fenced-code renderer's duplicate badge is suppressed inside the call frame.
+ */
+test("the shell call frame prints its language badge only once", () => {
+  assert.match(stylesForOverlay, /\.agent-step__call .md-code__lang,\s*\.agent-step__command-line \.md-code__lang \{\s*display: none/);
+  assert.match(agentTranscript, /agent-step__call-lang/);
+});
+
+/** Hook-driven steps keep their phase tone through the card and command frame. */
+test("Pre and Post tool frames follow the phase tone", () => {
+  assert.match(stylesForOverlay, /\.agent-step\.hook-pre \.agent-step__call--shell \{[\s\S]*?var\(--cyan\)/);
+  assert.match(stylesForOverlay, /\.agent-step\.hook-post \.agent-step__call--shell \{[\s\S]*?var\(--teal\)/);
+  assert.match(stylesForOverlay, /\.agent-step\.hook-post\.agent-step--tool-result \{[\s\S]*?var\(--teal\)/);
+});

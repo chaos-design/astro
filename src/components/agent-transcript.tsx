@@ -460,6 +460,7 @@ export function AgentTranscript({
   live,
   locateRequest,
   runDurationMs,
+  onActiveEventChange,
 }: {
   view: AgentView;
   selectedEventId: string | null;
@@ -474,6 +475,10 @@ export function AgentTranscript({
    * executes, the recorded total once it ended; `null` when the message has
    * no clock of its own. */
   runDurationMs: number | null;
+  /** The event whose card is currently at the reading line. The caller marks
+   * the matching rail atom so the reader can see which atom produced what
+   * they are reading. Reported only when it changes — never on every tick. */
+  onActiveEventChange?: (eventId: string | null) => void;
 }) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const stepRefs = useRef(new Map<string, HTMLElement>());
@@ -491,6 +496,10 @@ export function AgentTranscript({
   const scrolledUpRef = useRef(false);
   const [showJump, setShowJump] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
+  // The last event reported as the reading line. Comparing before calling
+  // keeps the parent's rail highlight stable across the app's one-second
+  // ticks and across every scroll frame within the same step.
+  const reportedActiveRef = useRef<string | null>(null);
 
   // Programmatic positioning: the centered affordance is derived from whether
   // the newest step is still on screen, so a programmatic scroll (pin, locate,
@@ -507,6 +516,27 @@ export function AgentTranscript({
     const container = scrollRef.current;
     if (!container) {
       return;
+    }
+    // Which atom produced the text at the reading line? The last card whose
+    // top has passed a line just below the viewport top is the one being
+    // read; walking DOM order lets us stop at the first card still below it.
+    const readingLine = container.getBoundingClientRect().top + 28;
+    let active: AgentStep | null = null;
+    for (const step of view.steps) {
+      const element = stepRefs.current.get(step.id);
+      if (!element) {
+        continue;
+      }
+      if (element.getBoundingClientRect().top <= readingLine) {
+        active = step;
+      } else {
+        break;
+      }
+    }
+    const activeEventId = active?.eventId ?? view.steps[0]?.eventId ?? null;
+    if (activeEventId !== reportedActiveRef.current) {
+      reportedActiveRef.current = activeEventId;
+      onActiveEventChange?.(activeEventId);
     }
     const absoluteBottom = isAgentTranscriptAtBottom(container);
     // Live pinning keeps following while the newest step is visible, even if
@@ -550,7 +580,7 @@ export function AgentTranscript({
       // to an older step): keep a live loading read, but arming is on scroll-up.
       setShowJump(false);
     }
-  }, [live, view.steps]);
+  }, [live, view.steps, onActiveEventChange]);
 
   const handleScroll = useCallback(() => {
     const container = scrollRef.current;
