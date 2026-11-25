@@ -106,7 +106,7 @@ test("session.text.delta emits a throttled streamed AgentMessage snapshot", asyn
   // Every event carries the installed adapter's own version, making a stale
   // (reinstalled but not restarted) process observable in /api/health.
   for (const event of events) {
-    assert.equal(event.payload.captureVersion, "0.0.7", event.eventName);
+    assert.equal(event.payload.captureVersion, "0.0.8", event.eventName);
   }
 });
 

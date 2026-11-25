@@ -271,11 +271,11 @@ Hook 命令使用 `${CODEBUDDY_PLUGIN_ROOT}`，并保留权限、Elicitation、�
 
 ### 6.7 OpenCode
 
-`opencode-plugin/` 是全局安装的零依赖插件：`mapping.ts` 把 OpenCode server 事件映射为规范事件名，`claim.ts` 保证同一会话只有一个 recorder。持久事件不带位置信封，`opencodeEventDirectory` 保留宿主的多种路径拼写并按会话记住目录，避免丢失正文；`session.text.delta` 累积为带 `messageId` 的 `AgentMessage` 流式快照，最终消息写同一 id（插件 0.0.7）。
+`opencode-plugin/` 是全局安装的零依赖插件：`mapping.ts` 把 OpenCode server 事件映射为规范事件名，`claim.ts` 保证同一会话只有一个 recorder。持久事件不带位置信封，`opencodeEventDirectory` 保留宿主的多种路径拼写并按会话记住目录，避免丢失正文；`session.text.delta` 累积为带 `messageId` 的 `AgentMessage` 流式快照，最终消息写同一 id（插件 0.0.8）。
 
 ### 6.8 Pi
 
-`pi-plugin/` 是零依赖扩展：`mapping.ts` 负责事件映射，`claim.ts` 持久化拥有者 pid，让可恢复会话在 Pi 重启后继续记录；`readPiLiveText().messageId` 同时写入流式快照与 `message_end` 最终消息（插件 0.0.7）。两处长驻适配器都把自身 `package.json` 版本写入 `payload.captureVersion`，漂移判定见 §7.1。
+`pi-plugin/` 是零依赖扩展：`mapping.ts` 负责事件映射，`claim.ts` 持久化拥有者 pid，让可恢复会话在 Pi 重启后继续记录；`readPiLiveText().messageId` 同时写入流式快照与 `message_end` 最终消息（插件 0.0.8）。两处长驻适配器都把自身 `package.json` 版本写入 `payload.captureVersion`，漂移判定见 §7.1。
 
 ## 7. 本地存储与实时服务
 

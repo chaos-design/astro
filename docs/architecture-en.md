@@ -305,14 +305,14 @@ keeps one recorder per session. Durable events carry no location envelope, so
 `opencodeEventDirectory` preserves every host spelling and remembers the
 directory per session to avoid losing text. `session.text.delta` accumulates
 into `AgentMessage` snapshots carrying a `messageId`, and the final message
-writes the same id (plugin 0.0.7).
+writes the same id (plugin 0.0.8).
 
 ### 6.8 Pi
 
 `pi-plugin/` is a zero-dependency extension: `mapping.ts` maps its events and
 `claim.ts` persists the owning pid so resumable sessions keep recording across
 Pi restarts. `readPiLiveText().messageId` is written to both throttled
-snapshots and the `message_end` final message (plugin 0.0.7). Both long-lived
+snapshots and the `message_end` final message (plugin 0.0.8). Both long-lived
 adapters stamp their own `package.json` version into `payload.captureVersion`;
 drift detection is described in §7.1.
 
