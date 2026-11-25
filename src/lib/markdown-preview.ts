@@ -1,38 +1,88 @@
 import hljs from "highlight.js/lib/core";
 import bash from "highlight.js/lib/languages/bash";
+import c from "highlight.js/lib/languages/c";
+import cpp from "highlight.js/lib/languages/cpp";
+import csharp from "highlight.js/lib/languages/csharp";
+import css from "highlight.js/lib/languages/css";
 import diff from "highlight.js/lib/languages/diff";
+import go from "highlight.js/lib/languages/go";
+import graphql from "highlight.js/lib/languages/graphql";
+import ini from "highlight.js/lib/languages/ini";
+import java from "highlight.js/lib/languages/java";
 import javascript from "highlight.js/lib/languages/javascript";
 import json from "highlight.js/lib/languages/json";
+import kotlin from "highlight.js/lib/languages/kotlin";
+import lua from "highlight.js/lib/languages/lua";
 import markdown from "highlight.js/lib/languages/markdown";
+import php from "highlight.js/lib/languages/php";
+import properties from "highlight.js/lib/languages/properties";
+import protobuf from "highlight.js/lib/languages/protobuf";
 import python from "highlight.js/lib/languages/python";
+import ruby from "highlight.js/lib/languages/ruby";
+import rust from "highlight.js/lib/languages/rust";
+import scala from "highlight.js/lib/languages/scala";
+import sql from "highlight.js/lib/languages/sql";
+import swift from "highlight.js/lib/languages/swift";
 import typescript from "highlight.js/lib/languages/typescript";
 import xml from "highlight.js/lib/languages/xml";
 import yaml from "highlight.js/lib/languages/yaml";
 import { Marked } from "marked";
 import { parseNumberedCode } from "./numbered-code.ts";
 
-// Only the languages a captured payload realistically carries. The docs site
-// can afford `highlight.js/lib/common`; the console ships in the main bundle,
-// so registering a focused set keeps its code out of the first paint.
+// The captured payloads the console realistically carries — the docs site can
+// afford `highlight.js/lib/common`, but this ships in the main bundle, so the
+// set is the focused-but-broad list a trace of code edits and shell work
+// produces. Every language below emits `hljs-*` tokens the shared theme
+// already colours, so registering more widens coverage with no CSS changes.
 const highlightedLanguages: Record<string, Parameters<typeof hljs.registerLanguage>[1]> = {
   bash,
+  shell: bash,
   diff,
+  c,
+  cpp,
+  "c++": cpp,
+  "cc": cpp,
+  csharp,
+  cs: csharp,
+  go,
+  golang: go,
+  graphql,
+  gql: graphql,
+  ini,
+  conf: ini,
+  cfg: ini,
+  java,
   javascript,
   js: javascript,
   jsx: javascript,
   json,
+  jsonc: json,
+  kotlin,
+  kt: kotlin,
+  lua,
   markdown,
   md: markdown,
+  php,
+  protobuf,
+  proto: protobuf,
   python,
   py: python,
+  ruby,
+  rb: ruby,
+  rust,
+  rs: rust,
+  scala,
+  sql,
+  swift,
   typescript,
   ts: typescript,
   tsx: typescript,
   xml,
   html: xml,
+  svg: xml,
+  css,
   yaml,
   yml: yaml,
-  shell: bash,
 };
 for (const [name, grammar] of Object.entries(highlightedLanguages)) {
   hljs.registerLanguage(name, grammar);

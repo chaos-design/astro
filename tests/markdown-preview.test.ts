@@ -103,6 +103,28 @@ test("a shell command fence colours commands, flags and assignments", () => {
   assert.match(hostile.html, /&lt;img/);
 });
 
+test("the registered language set covers the file types a trace carries", () => {
+  const cases: Array<[string, string]> = [
+    ["go", "func main() { println(1) }"],
+    ["rust", "fn add(a: u32) -> u32 { a + 1 }"],
+    ["java", "public class A { int x; }"],
+    ["sql", "SELECT id FROM t WHERE id = 1"],
+    ["css", ".a { color: red }"],
+    ["kotlin", "fun main() { }"],
+  ];
+  for (const [language, source] of cases) {
+    const render = renderMarkdownPreview(`\`\`\`${language}\n${source}\n\`\`\``);
+    assert.match(
+      render.html,
+      new RegExp(`<code class="hljs language-${language}"`),
+      `${language} fences with its own language class`,
+    );
+    // A real grammar ran: its output is at least one `hljs-*` token span,
+    // whereas the unregistered fallback would be a single bare text node.
+    assert.match(render.html, /<span class="hljs-/);
+  }
+});
+
 test("shell comments and heredoc bodies are not painted as commands", () => {
   const render = renderMarkdownPreview(
     "```bash\npnpm build # ship it\ncat <<EOF\nplain data\nEOF\n```",

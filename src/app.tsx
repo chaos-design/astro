@@ -3437,6 +3437,8 @@ function TraceInspector({
   onQuestionPanelModeChange,
   questionDocked,
   settledQuestion,
+  overlayOpen,
+  onOverlayOpenChange,
 }: {
   activeTab: string;
   /** Same events as the overlay rail, projected as the Agent artifacts. */
@@ -3494,12 +3496,10 @@ function TraceInspector({
   questionDocked: boolean;
   /** The request that just closed, kept for the settle window. */
   settledQuestion: InteractionDraft | null;
+  /** Whether the wide payload layer is open — hoisted so the footer can open it too. */
+  overlayOpen: boolean;
+  onOverlayOpenChange: (open: boolean) => void;
 }) {
-  // The wide payload layer is opened from the Input / Output / Raw tabs. The
-  // hook has to sit above the empty-state return so the component keeps a
-  // stable hook order when the selection changes.
-  const [overlayOpen, setOverlayOpen] = useState(false);
-
   if ((!node || !event) && !atom) {
     return (
       <section className="message-inspector message-inspector--empty flex min-h-0 flex-col items-center justify-center gap-[7px] p-[22px] text-center">
@@ -3649,7 +3649,7 @@ function TraceInspector({
           <Button
             aria-label="放大查看完整内容"
             className="inspector-header__expand"
-            onClick={() => setOverlayOpen(true)}
+            onClick={() => onOverlayOpenChange(true)}
             size="console-icon"
             type="button"
             variant="console"
@@ -3743,7 +3743,7 @@ function TraceInspector({
         following={overlayFollowing}
         label={`事件载荷检视 · ${activeTab === "input" ? "输入载荷" : activeTab === "output" ? "输出载荷" : "原始数据"}`}
         onFollowingChange={onOverlayFollowingChange}
-        onOpenChange={setOverlayOpen}
+        onOpenChange={onOverlayOpenChange}
         onSelectAtom={onOverlaySelectEvent}
         open={overlayOpen}
         payloadForAtom={overlayPayloadForAtom}
@@ -4824,6 +4824,8 @@ const ReplayFooter = memo(function ReplayFooter({
   onTogglePlay,
   onSpeedChange,
   onExit,
+  canOpenOverlay,
+  onOpenOverlay,
 }: {
   events: TraceEvent[];
   cursor: number;
@@ -4837,6 +4839,10 @@ const ReplayFooter = memo(function ReplayFooter({
   onTogglePlay: () => void;
   onSpeedChange: (speed: number) => void;
   onExit: () => void;
+  /** Whether a message is selected — the expand affordance is pointless without one. */
+  canOpenOverlay: boolean;
+  /** Open the wide payload layer for the selected message. */
+  onOpenOverlay: () => void;
 }) {
   const move = (nextCursor: number) => {
     onSeek(Math.max(0, Math.min(events.length - 1, nextCursor)));
@@ -4934,6 +4940,17 @@ const ReplayFooter = memo(function ReplayFooter({
           <Radio data-icon="inline-start" />
           Live
         </Button>
+        {canOpenOverlay ? (
+          <IconAction
+            label="展开全局弹窗查看选中消息"
+            variant="playback"
+            size="playback-icon"
+            side="top"
+            onClick={onOpenOverlay}
+          >
+            <Maximize2 />
+          </IconAction>
+        ) : null}
       </div>
       <label className="replay-timeline">
         <output>
@@ -5535,6 +5552,11 @@ export default function App() {
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [selectedAtomId, setSelectedAtomId] =
     useState<AtomSelection>(undefined);
+  // The wide payload layer's open state lives here (not in the inspector) so
+  // the replay footer can open it too — an affordance shown only when a
+  // message is selected, letting a reader jump from the transport bar to the
+  // full inspector without first clicking into the inspector header.
+  const [overlayOpen, setOverlayOpen] = useState(false);
   // The canvas view and the runtime-atom filter are user preferences, not
   // session state: both survive a reload through localStorage so the studio
   // reopens the way it was left.
@@ -8692,6 +8714,8 @@ export default function App() {
             onTogglePlay={handleReplayTogglePlay}
             onSpeedChange={setReplaySpeed}
             onExit={handleReplayExit}
+            canOpenOverlay={Boolean(selectedEvent)}
+            onOpenOverlay={() => setOverlayOpen(true)}
           />
         </section>
 
@@ -8759,6 +8783,8 @@ export default function App() {
                 settledQuestion={
                   settlingMatchesView ? settlingInteraction : null
                 }
+                overlayOpen={overlayOpen}
+                onOverlayOpenChange={setOverlayOpen}
               />
             </>
           ) : (

@@ -192,8 +192,8 @@ test("the Agent view keeps a reader's scroll and offers a jump to the newest ste
   assert.match(agentTranscript, /behavior: "smooth"/);
   assert.match(agentTranscript, /scrollToTop\(container, container\.scrollHeight, explicit\)/);
   assert.match(stylesForOverlay, /\.agent-transcript__jump \{[\s\S]*?position: absolute/);
-  assert.match(stylesForOverlay, /:not\(\.agent-transcript__jump\):not\(\.agent-transcript__stat-button\):not\(\.agent-transcript__stat-card-row\):not\(\.preview-mac-frame__locate\) \{/);
-  assert.match(stylesForOverlay, /:not\(\.agent-transcript__jump\):not\(\.agent-transcript__stat-button\):not\(\.agent-transcript__stat-card-row\):not\(\.preview-mac-frame__locate\):focus-visible/);
+  assert.match(stylesForOverlay, /:not\(\.agent-transcript__jump\):not\(\.agent-transcript__stat-button\):not\(\.agent-transcript__stat-card-row\):not\(\.preview-mac-frame__locate\):not\(\.json-line__toggle\) \{/);
+  assert.match(stylesForOverlay, /:not\(\.agent-transcript__jump\):not\(\.agent-transcript__stat-button\):not\(\.agent-transcript__stat-card-row\):not\(\.preview-mac-frame__locate\):not\(\.json-line__toggle\):focus-visible/);
 });
 
 test("the Agent view's header reads its execution time from the root display state", () => {
@@ -957,4 +957,25 @@ test("the Mac frame keeps its border fixed and scrolls only its inner region", (
   assert.match(overlay, /preview-mac-frame__scroll/);
   assert.match(stylesForOverlay, /\.preview-mac-frame \{\s*\n\s*display: flex;/);
   assert.match(stylesForOverlay, /\.preview-mac-frame__scroll \{[\s\S]*?overflow: auto;/);
+});
+
+/**
+ * The replay footer's transport bar carries a "expand the global dialog"
+ * affordance that only appears when a message is selected: it opens the wide
+ * payload layer for the selected message, mirroring the inspector header's
+ * own expand button. The open state is hoisted to App so both triggers share
+ * it.
+ */
+test("the replay footer opens the global payload dialog when a message is selected", () => {
+  // The open state lives in App, not the inspector, so the footer can reach it.
+  assert.match(app, /const \[overlayOpen, setOverlayOpen\] = useState\(false\)/);
+  assert.doesNotMatch(app, /function TraceInspector[\s\S]*?setOverlayOpen = useState/);
+  // TraceInspector consumes the hoisted state through props.
+  assert.match(app, /overlayOpen: boolean;/);
+  assert.match(app, /onOverlayOpenChange: \(open: boolean\) => void/);
+  // The footer only offers the affordance when a message is selected.
+  assert.match(app, /canOpenOverlay=\{Boolean\(selectedEvent\)\}/);
+  assert.match(app, /onOpenOverlay=\{.*setOverlayOpen\(true\)/);
+  // The button itself is the inspector's expand glyph.
+  assert.match(app, /label="展开全局弹窗查看选中消息"/);
 });

@@ -315,7 +315,7 @@ button:not([data-variant="console"]):not([data-variant="playback"]):not([data-sl
     [data-slot="tabs-trigger"]
   ):not(.run-history__live-jump):not(.service-card__restart):not(.settings-footer__button):not(.pair-link-marker):not(
     .question-options__option
-  ):not(.agent-step__head):not(.agent-step__toggle):not(.agent-transcript__jump):not(.agent-transcript__stat-button):not(.agent-transcript__stat-card-row):not(.preview-mac-frame__locate) {
+  ):not(.agent-step__head):not(.agent-step__toggle):not(.agent-transcript__jump):not(.agent-transcript__stat-button):not(.agent-transcript__stat-card-row):not(.preview-mac-frame__locate):not(.json-line__toggle) {
   border: 0;
 }
 
@@ -323,7 +323,7 @@ button:not([data-variant="console"]):not([data-variant="playback"]):not([data-sl
     [data-slot="tabs-trigger"]
   ):not(.run-history__live-jump):not(.service-card__restart):not(.settings-footer__button):not(.pair-link-marker):not(
     .question-options__option
-  ):not(.agent-step__head):not(.agent-step__toggle):not(.agent-transcript__jump):not(.agent-transcript__stat-button):not(.agent-transcript__stat-card-row):not(.preview-mac-frame__locate):focus-visible,
+  ):not(.agent-step__head):not(.agent-step__toggle):not(.agent-transcript__jump):not(.agent-transcript__stat-button):not(.agent-transcript__stat-card-row):not(.preview-mac-frame__locate):not(.json-line__toggle):focus-visible,
 input:not([data-slot="input-group-control"]):focus-visible {
   outline: 1px solid var(--selection-border);
   outline-offset: 2px;
@@ -6147,6 +6147,7 @@ pre,
    recorder's client version is envelope data and is never printed here. */
 .payload-overlay__agent {
   display: inline-flex;
+  align-self: flex-start;
   flex: 0 0 auto;
   align-items: center;
   gap: 8px;
@@ -6301,9 +6302,14 @@ pre,
    window frame (three traffic-light dots + a mono label bar) wraps the same
    Markdown / question renderer the Agent transcript uses, so a captured atom
    previews as the artifact it is instead of a bare text block. */
+/* The window hugs its content — it grows down to fit a short payload and only
+   scrolls once the payload is taller than the available band (max-height caps
+   it, the inner region takes over scrolling). A fixed full-height box left a
+   large empty bordered area under a few lines of content. */
 .preview-mac-frame {
   display: flex;
-  flex: 1;
+  flex: 0 1 auto;
+  max-height: 100%;
   min-height: 0;
   flex-direction: column;
   overflow: hidden;
@@ -6450,18 +6456,21 @@ pre,
   height: 11px;
 }
 
-/* The raw JSON is the one pane that keeps its own scroll (the tree is wide);
-   the frame's bar stays pinned above it. */
+/* The raw JSON fills the pane's full width (its border reaches the right
+   edge, so the inner scrollbar sits flush at the far right, not mid-pane)
+   but hugs its content vertically: a short payload leaves the window short
+   and only a long one takes the full band and scrolls inside the region. */
 .preview-mac-frame--code {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  flex-direction: column;
+  flex: 1 1 0;
+  align-self: flex-start;
 }
 
 /* The window's border and title bar stay pinned; only this inner region
-   scrolls. Its scrollbar hugs the frame's own edge (flush), so the frame
-   reads as a fixed window while the content inside moves. */
+   scrolls, and the window hugs its content — it grows down to fit and only
+   starts scrolling once the payload is taller than the available band. The
+   scrollbar hugs the frame's own right edge (the region has no horizontal
+   padding of its own; the tree carries its inset), so it reads as flush to the
+   far right. */
 .preview-mac-frame__scroll {
   flex: 1;
   min-height: 0;
@@ -6469,7 +6478,16 @@ pre,
   overscroll-behavior: contain;
   scrollbar-width: thin;
   scrollbar-color: var(--line-bright) transparent;
-  padding: 8px 10px;
+}
+
+.preview-mac-frame__scroll::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.preview-mac-frame__scroll::-webkit-scrollbar-thumb {
+  border-radius: 99px;
+  background: var(--line-bright);
 }
 
 /* Markdown content inside the scroll region keeps its own inset. */
@@ -8153,7 +8171,6 @@ pre,
 .json-viewer {
   position: relative;
   width: 100%;
-  height: 100%;
   min-height: 0;
 }
 
@@ -8168,24 +8185,78 @@ pre,
   background: color-mix(in srgb, var(--panel-raised) 92%, transparent);
 }
 
-.json-viewer pre {
-  width: 100%;
-  height: 100%;
+/* The tree is a set of flex rows: a right-aligned, non-selectable line-number
+   gutter, then the indented body (an optional collapse toggle + the token
+   runs). The parent scroll region owns the scrollbars, so the rows stay plain
+   blocks. */
+.json-viewer__rows {
+  display: block;
   min-height: 0;
-  margin: 0;
-  padding: 12px 14px 20px;
-  overflow: auto;
+  padding: 4px 14px 14px 10px;
   color: var(--muted-soft);
+  font-family: var(--font-mono, monospace);
   font-size: 10px;
-  line-height: 1.65;
-  overflow-wrap: anywhere;
-  tab-size: 2;
-  white-space: pre-wrap;
+}
+
+.json-line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  line-height: 1.7;
+}
+
+.json-line__no {
+  flex: 0 0 30px;
+  color: var(--muted-soft);
+  font-size: 0.6875rem;
+  text-align: right;
+  opacity: 0.75;
+  user-select: none;
+}
+
+.json-line__body {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.json-line__toggle {
+  display: inline-flex;
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  margin-top: 3px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.json-line__toggle:hover {
+  color: var(--text-strong);
+  background: color-mix(in srgb, var(--selection-bg) 55%, transparent);
+}
+
+.json-line__toggle svg {
+  width: 12px;
+  height: 12px;
 }
 
 /* The Code view and the fenced blocks in Preview are two readings of the same
    payload: keys must carry the same cool accent as the hljs json/yaml key
    tokens, or switching tabs silently recolours the reader's mental map. */
+.json-line__tokens {
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .json-token--key {
   color: var(--code-accent);
 }
@@ -8216,10 +8287,32 @@ pre,
   color: var(--muted);
 }
 
+.json-token--text {
+  color: var(--muted-soft);
+  font-style: italic;
+}
+
 /* The global layer is a reading surface, not the narrow inspector: the raw
    payload gets the same step up as its Markdown sibling. */
-.payload-overlay .json-viewer pre {
+.payload-overlay .json-viewer__rows {
   font-size: var(--text-label);
+}
+
+/* The narrow drawers (prompt / question) keep the tree's own scrollbar so a
+   long payload reads inside the panel; the global layer lets the window's
+   scroll region own the scrollbars instead. */
+.prompt-input__code .json-viewer,
+.question-surface .json-viewer {
+  height: 100%;
+}
+
+.prompt-input__code .json-viewer__rows,
+.question-surface .json-viewer__rows {
+  height: 100%;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-bright) transparent;
 }
 
 .json-viewer__empty {
