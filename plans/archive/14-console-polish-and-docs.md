@@ -80,3 +80,4 @@ updated: 2026-11-27 00:45:35
 - 2026-11-27 00:45:28 完成 #11 T11 全量校验并 push：tsc（root + site）、全量测试、`vite build`、`verify-console-build`；conventional commits 分组提交并推送，PR #30 描述同步。
 - 2026-11-27 00:45:28 tsc root+site exit 0; node --test 1023/1023 unsandboxed; vite build + verify-console-build ok; commits c796584 (capture), f98c096 (console), 4233ae3 (docs); pushed to origin/feat/agent-data-view
 - 2026-11-27 00:45:35 归档：任务与完成标准全部满足
+- 2026-11-27 07:25 遗漏收尾（归档后补充，提交 ab5bebb + 43b2246，已随 455d82b..43b2246 推送）：① T5 的最终形态——对照 Trae CN workbench bundle 确认其 hook 完全不发布转录（README/docs 曾错误地把 Trae 列为可补采客户端，已改口），新增 `ASTRO_TRANSCRIPT_PATH=<file>` 逃生舱（支持 `~/`），同一增量读取器可指向导出的会话文件；`tests/transcript-enrich.test.cjs` 补端到端用例；4 个插件镜像与安装版运行时同步（此前漂移）。② T2 的补充——rail 会把整个 `TraceEvent` 递给 Preview，`payloadBodyOf` 解包信封，`source`（agent 名）不再当正文、`cwd`/`toolName`/`sequence` 不再进相关数据；payload-preview 27/27、payload-overlay-contract 51/51。全量 1025/1025，tsc exit 0。
