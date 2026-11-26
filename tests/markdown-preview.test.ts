@@ -39,6 +39,11 @@ test("GFM task lists render as checkboxes so a plan reads as a task list", () =>
   assert.match(render.html, /checked/);
   assert.match(render.html, /inspect the trace/);
   assert.match(render.html, /answer the question/);
+  // Rows are plain divs, not a `<ul>` of `<li>` bullets doubling the marker.
+  assert.match(render.html, /md-tasklist/);
+  assert.match(render.html, /md-taskrow/);
+  assert.doesNotMatch(render.html, /<li/);
+  assert.doesNotMatch(render.html, /<ul>/);
 });
 
 test("an empty source is invalid so the caller falls back to raw text", () => {

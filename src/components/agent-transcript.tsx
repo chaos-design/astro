@@ -1069,11 +1069,25 @@ function StepCard({
   );
 }
 
-function ThinkingBody({ step }: { step: ThinkingStep }) {
-  // The captured thinking is the point of this block: show it as soon as the
-  // reader opens the view instead of hiding real content behind a disclosure.
+/**
+ * One expand/collapse affordance shared by every step body, so the reader can
+ * fold any step down to its one-line content description (the same reading the
+ * stat cards use) and unfold the full body. Mirrors the related-fields value
+ * fold: collapsed shows a truncated description plus a 展开/收起 toggle;
+ * expanded shows the body itself.
+ */
+function StepBodyCollapse({
+  label,
+  teaser,
+  children,
+}: {
+  /** Toggle verb: 收起{label} / 展开{label}. */
+  label: string;
+  /** One-line content description shown while collapsed. */
+  teaser: string;
+  children: ReactNode;
+}) {
   const [expanded, setExpanded] = useState(true);
-  const source = useMemo(() => contentToMarkdown(step.text), [step.text]);
   return (
     <>
       <button
@@ -1082,27 +1096,45 @@ function ThinkingBody({ step }: { step: ThinkingStep }) {
         onClick={() => setExpanded((current) => !current)}
         type="button"
       >
-        {expanded ? <ChevronDown aria-hidden="true" /> : <ChevronRight aria-hidden="true" />}
-        {expanded ? "收起推理" : "展开推理"}
+        {expanded ? (
+          <ChevronDown aria-hidden="true" />
+        ) : (
+          <ChevronRight aria-hidden="true" />
+        )}
+        {expanded ? `收起${label}` : `展开${label}`}
       </button>
       {expanded ? (
-        <MarkdownView source={source} />
+        children
       ) : (
-        <p className="agent-step__teaser">{step.text}</p>
+        <p className="agent-step__teaser">{teaser || label}</p>
       )}
     </>
+  );
+}
+
+function ThinkingBody({ step }: { step: ThinkingStep }) {
+  // The captured thinking is the point of this block: it opens expanded, but
+  // the shared toggle lets the reader fold it down to its one-line content
+  // description like any other step.
+  const source = useMemo(() => contentToMarkdown(step.text), [step.text]);
+  return (
+    <StepBodyCollapse label="推理" teaser={statCardRowHint(step)}>
+      <MarkdownView source={source} />
+    </StepBodyCollapse>
   );
 }
 
 function ReplyBody({ step }: { step: ReplyStep }) {
   const source = useMemo(() => contentToMarkdown(step.text), [step.text]);
   return (
-    <>
+    <StepBodyCollapse label="回复" teaser={statCardRowHint(step)}>
       {step.snapshotCount > 0 ? (
-        <p className="agent-step__badge">{step.snapshotCount} 个流式快照已合并</p>
+        <p className="agent-step__badge">
+          {step.snapshotCount} 个流式快照已合并
+        </p>
       ) : null}
       <MarkdownView source={source} fallback="这条消息没有正文。" />
-    </>
+    </StepBodyCollapse>
   );
 }
 
@@ -1152,7 +1184,7 @@ function ToolResultBody({ step }: { step: ToolResultStep }) {
   // command is a terminal line, every other tool is a list of named inputs —
   // never a flattened `field=value` string.
   return (
-    <>
+    <StepBodyCollapse label="结果" teaser={statCardRowHint(step)}>
       {step.inputs ? (
         <CallBlock inputs={step.inputs} output={shellOutput} />
       ) : null}
@@ -1165,7 +1197,7 @@ function ToolResultBody({ step }: { step: ToolResultStep }) {
         <MarkdownView source={source} />
       ) : null}
       <StepRelated payload={step.payload} resetToken={step.id} />
-    </>
+    </StepBodyCollapse>
   );
 }
 
@@ -1193,11 +1225,11 @@ function GenericBody({ step }: { step: GenericStep }) {
   // (non-tool) events where it is the whole body.
   const inputs = step.inputs;
   return (
-    <>
+    <StepBodyCollapse label="内容" teaser={statCardRowHint(step)}>
       {inputs ? <CallBlock inputs={inputs} /> : null}
       {inputs ? null : <MarkdownView source={source} />}
       <StepRelated payload={step.payload} resetToken={step.id} />
-    </>
+    </StepBodyCollapse>
   );
 }
 

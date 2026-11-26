@@ -95,8 +95,15 @@ test("the markdown reading surface carries its own code language and token map",
   assert.match(stylesForOverlay, /\.hljs-attr,\n\.markdown-preview pre code \.hljs-attribute/);
   assert.match(stylesForOverlay, /\.hljs-addition \{[^}]*--teal/);
   assert.match(stylesForOverlay, /\.hljs-deletion \{[^}]*--red/);
-  // GFM task lists swap the marker for the checkbox.
-  assert.match(stylesForOverlay, /li:has\(> input\[type="checkbox"\]\)/);
+  // GFM task lists render as plain checkbox rows (`.md-taskrow` inside a
+  // `.md-tasklist`), never a `<li>` bullet doubling the marker; the checkbox
+  // carries the primary accent.
+  assert.match(stylesForOverlay, /\.markdown-preview \.md-tasklist/);
+  assert.match(stylesForOverlay, /\.markdown-preview \.md-taskrow/);
+  assert.match(
+    stylesForOverlay,
+    /input\[type="checkbox"\][\s\S]*?accent-color: var\(--primary\)/,
+  );
 });
 
 test("prepared previews are cached per row and scoped by the inspector tab", () => {
@@ -256,7 +263,13 @@ test("agent steps show a captured command and real thinking on first render", ()
   assert.match(stylesForOverlay, /\.agent-step__answers \{[\s\S]*?border-left: 3px solid var\(--teal\)/);
   assert.match(stylesForOverlay, /\.agent-step__command \{/);
   assert.match(stylesForOverlay, /\.agent-step--tool-result \{/);
-  assert.match(agentTranscript, /function ThinkingBody[\s\S]{0,600}useState\(true\)/);
+  // Every step body shares one expand/collapse affordance (opens expanded,
+  // folds to a one-line content description) instead of each owning its own.
+  assert.match(agentTranscript, /function StepBodyCollapse[\s\S]{0,400}useState\(true\)/);
+  assert.match(agentTranscript, /<StepBodyCollapse label="推理"/);
+  assert.match(agentTranscript, /<StepBodyCollapse label="回复"/);
+  assert.match(agentTranscript, /<StepBodyCollapse label="结果"/);
+  assert.match(agentTranscript, /<StepBodyCollapse label="内容"/);
 });
 
 test("an answers-only question falls back to the markdown answer preview", () => {

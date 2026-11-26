@@ -157,6 +157,28 @@ markdownParser.use({
         `</div>`
       );
     },
+    list(token: unknown) {
+      // GFM task lists (a captured `todos` payload) read as a checklist, not a
+      // bulleted list: render the rows as plain divs so the checkbox is the
+      // only marker instead of a `<li>` bullet doubling it. Non-task lists
+      // return `false` and fall through to the default `<ul>` / `<ol>`.
+      const list = token as {
+        items?: { tokens?: unknown[]; task?: boolean }[];
+      };
+      const items = list.items ?? [];
+      if (!items.some((item) => item.task)) {
+        return false;
+      }
+      const rows = items
+        .map((item) => {
+          const tokens = (item.tokens ?? []) as Parameters<
+            typeof this.parser.parseInline
+          >[0];
+          return `<div class="md-taskrow">${this.parser.parseInline(tokens)}</div>`;
+        })
+        .join("");
+      return `<div class="md-tasklist">${rows}</div>`;
+    },
   },
 });
 

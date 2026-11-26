@@ -5758,16 +5758,16 @@ pre,
 }
 
 /* GFM task lists (a captured `todos` payload reads as a checklist, not a
-   JSON dump): the container reads as one track and each row as a compact
-   card. The checkbox replaces the list marker instead of doubling it. */
-.markdown-preview ul:has(> li > input[type="checkbox"]) {
+   JSON dump): the renderer emits plain rows (`.md-taskrow`) inside a
+   `.md-tasklist`, so the checkbox is the only marker instead of a `<li>`
+   bullet doubling it; the container still reads as one track. */
+.markdown-preview .md-tasklist {
   display: grid;
   gap: 6px;
-  padding-left: 0;
-  list-style: none;
+  margin: 0;
 }
 
-.markdown-preview li:has(> input[type="checkbox"]) {
+.markdown-preview .md-taskrow {
   position: relative;
   margin: 0;
   padding: 6px 10px;
@@ -5782,25 +5782,25 @@ pre,
   height: 13px;
   margin: 0 8px 0 0;
   flex: 0 0 13px;
-  border: 1.5px solid var(--border);
+  border: 1.5px solid var(--primary);
   border-radius: 4px;
   background: var(--panel);
-  accent-color: var(--teal);
+  accent-color: var(--primary);
   vertical-align: -2px;
   cursor: default;
 }
 
 /* A finished todo reads as settled: the row's text dims and strikes, and its
-   left edge carries the teal done marker. An open row keeps full emphasis so
-   the next step pops, and the open checkbox stays hollow. */
+   left edge carries the primary done marker. An open row keeps full emphasis
+   so the next step pops, and the open checkbox stays hollow. */
 .markdown-preview input[type="checkbox"]:checked {
-  border-color: var(--teal);
-  background: color-mix(in srgb, var(--teal) 18%, var(--panel));
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 18%, var(--panel));
 }
 
-.markdown-preview li:has(> input[type="checkbox"]:checked) {
-  border-left-color: color-mix(in srgb, var(--teal) 60%, var(--line));
-  background: color-mix(in srgb, var(--panel) 90%, var(--teal) 6%);
+.markdown-preview .md-taskrow:has(> input[type="checkbox"]:checked) {
+  border-left-color: color-mix(in srgb, var(--primary) 60%, var(--line));
+  background: color-mix(in srgb, var(--panel) 90%, var(--primary) 6%);
   color: var(--muted-soft, var(--muted));
   text-decoration: line-through;
   text-decoration-color: color-mix(in srgb, var(--muted) 55%, transparent);
