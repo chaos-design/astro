@@ -403,6 +403,51 @@ test("the recorder writes recovered steps before the hook event", () => {
   assert.deepEqual(after, ["Reasoning", "AgentMessage", "Stop", "Stop"]);
 });
 
+test("a host --event flag does not rename recovered steps", () => {
+  const { spawnSync } = require("node:child_process");
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "astro-event-flag-"));
+  const transcript = path.join(home, "host.jsonl");
+  writeLines(transcript, workbuddyEntries);
+  const recorder = path.join(__dirname, "..", "plugin", "trace-recorder.cjs");
+  // WorkBuddy always names the host event on the command line: the recovered
+  // steps must keep Reasoning / AgentMessage instead of inheriting "Stop".
+  const result = spawnSync(
+    process.execPath,
+    [recorder, "--source=workbuddy", "--event=Stop", "--quiet"],
+    {
+      encoding: "utf8",
+      env: { ...process.env, ASTRO_HOME: home, ASTRO_AUTO_OPEN: "0" },
+      input: JSON.stringify({
+        session_id: "event-flag-1",
+        cwd: "/tmp/astro-event-flag",
+        hook_event_name: "Stop",
+        transcript_path: transcript,
+      }),
+      timeout: 10_000,
+    },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  const files = [];
+  const walk = (directory) => {
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const target = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        walk(target);
+      } else if (entry.name === "events.jsonl") {
+        files.push(target);
+      }
+    }
+  };
+  walk(home);
+  const names = fs
+    .readFileSync(files[0], "utf8")
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line))
+    .map((event) => event.eventName);
+  assert.deepEqual(names, ["Reasoning", "AgentMessage", "Stop"]);
+});
+
 test("the recorder can be told to skip transcript reads", () => {
   const { spawnSync } = require("node:child_process");
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "astro-enrich-off-"));
@@ -452,4 +497,75 @@ test("the recorder can be told to skip transcript reads", () => {
     ["Stop"],
     "the kill switch must leave the host event untouched",
   );
+});
+
+test("a Trae-style conversation transcript yields thinking and replies", () => {
+  const directory = makeDir();
+  const transcript = path.join(directory, "conversation.jsonl");
+  writeLines(transcript, [
+    { role: "user", content: "把这个按钮改成主色" },
+    {
+      role: "assistant",
+      reasoning: "先找按钮的样式定义，再改 token。",
+      content: "已在 `button.css` 里改用主色。",
+    },
+    { role: "assistant", content: "另外补了 hover 态。" },
+  ]);
+  const result = readTranscriptEvents({
+    transcriptPath: transcript,
+    sessionId: "trae-1",
+    source: "trae",
+  });
+  assert.equal(result.payloads.length, 3);
+  assert.equal(result.payloads[0].eventName, "Reasoning");
+  assert.equal(result.payloads[0].payload.text, "先找按钮的样式定义，再改 token。");
+  assert.equal(result.payloads[1].eventName, "AgentMessage");
+  assert.equal(result.payloads[1].payload.message, "已在 `button.css` 里改用主色。");
+  assert.equal(result.payloads[2].payload.message, "另外补了 hover 态。");
+});
+
+test("the recorder finds a Trae transcript under its own key", () => {
+  const { spawnSync } = require("node:child_process");
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "astro-trae-enrich-"));
+  const transcript = path.join(home, "trae-conversation.jsonl");
+  writeLines(transcript, [
+    { role: "assistant", reasoning: "先读 hooks.json。", content: "已经接入 hook。" },
+  ]);
+  const recorder = path.join(__dirname, "..", "plugin", "trace-recorder.cjs");
+  const result = spawnSync(
+    process.execPath,
+    [recorder, "--source=trae", "--quiet"],
+    {
+      encoding: "utf8",
+      env: { ...process.env, ASTRO_HOME: home, ASTRO_AUTO_OPEN: "0" },
+      input: JSON.stringify({
+        session_id: "trae-e2e-1",
+        cwd: "/tmp/trae-project",
+        hook_event_name: "Stop",
+        // Trae's hook carries the transcript under a session-file spelling.
+        session_file: transcript,
+      }),
+      timeout: 10_000,
+    },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  const files = [];
+  const walk = (directory) => {
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const target = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        walk(target);
+      } else if (entry.name === "events.jsonl") {
+        files.push(target);
+      }
+    }
+  };
+  walk(home);
+  const names = fs
+    .readFileSync(files[0], "utf8")
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line))
+    .map((event) => event.eventName);
+  assert.deepEqual(names, ["Reasoning", "AgentMessage", "Stop"]);
 });

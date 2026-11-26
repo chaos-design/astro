@@ -986,15 +986,34 @@ function stdinIdleTimeout(environment = process.env) {
  * can put it inside a nested payload.
  */
 function transcriptPathOf(payload) {
-  const candidates = [
-    payload?.transcript_path,
-    payload?.transcriptPath,
-    payload?.payload?.transcript_path,
-    payload?.payload?.transcriptPath,
+  // Hosts name the same file differently: Claude / WorkBuddy / CodeBuddy /
+  // ZCode use `transcript_path`, some IDEs (Trae among them) spell it
+  // camelCase or call it a session / conversation / history file. Reading
+  // every common spelling keeps enrichment available without a per-client
+  // adapter, and a missing path simply yields no recovered events.
+  const keys = [
+    "transcript_path",
+    "transcriptPath",
+    "session_file",
+    "sessionFile",
+    "conversation_file",
+    "conversationFile",
+    "history_file",
+    "historyFile",
+    "messages_file",
+    "messagesFile",
+    "log_file",
+    "logFile",
   ];
-  for (const candidate of candidates) {
-    if (typeof candidate === "string" && candidate.trim()) {
-      return candidate;
+  for (const container of [payload, payload?.payload]) {
+    if (!container || typeof container !== "object") {
+      continue;
+    }
+    for (const key of keys) {
+      const candidate = container[key];
+      if (typeof candidate === "string" && candidate.trim()) {
+        return candidate;
+      }
     }
   }
   return "";
@@ -1155,12 +1174,17 @@ async function run() {
       runtimeConfig.environment,
       options,
     );
-    const written = appendTraceEvents(
-      [...recovered, payload],
-      runtimeConfig.environment,
-      options,
-    );
-    const event = written[written.length - 1];
+    // Recovered payloads carry their own `eventName` (Reasoning / AgentMessage)
+    // and must not inherit the host hook's `--event` flag: WorkBuddy always
+    // passes one, and a shared options object turned every recovered step into
+    // a second copy of the host event. Two batches keep the order — recovered
+    // steps first, then the host event — and give each its own naming rules.
+    if (recovered.length > 0) {
+      appendTraceEvents(recovered, runtimeConfig.environment, {
+        source: options.source,
+      });
+    }
+    const event = appendTraceEvent(payload, runtimeConfig.environment, options);
     recorded = true;
     for (const diagnostic of runtimeConfig.diagnostics) {
       process.stderr.write(`${formatRuntimeConfigDiagnostic(diagnostic)}\n`);

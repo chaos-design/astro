@@ -32,6 +32,14 @@ const scriptDir = dirname(fileURLToPath(import.meta.url));
 const packageDir = resolve(scriptDir, "..");
 const require = createRequire(import.meta.url);
 const recorderFile = join(packageDir, "plugin", "trace-recorder.cjs");
+// The recorder requires this module for transcript recovery; the installed
+// runtime is a file-by-file copy (not the whole plugin directory), so a new
+// runtime module must be added here or the copy loads without it.
+const transcriptEnrichFile = join(
+  packageDir,
+  "plugin",
+  "transcript-enrich.cjs",
+);
 const runtimeConfigFile = join(packageDir, "plugin", "runtime-config.cjs");
 const storagePathsFile = join(packageDir, "plugin", "storage-paths.cjs");
 const interactionContractFile = join(packageDir, "plugin", "interaction-contract.mjs");
@@ -332,6 +340,10 @@ export function installPluginRuntime(astroHome) {
     templateDir: packageDir,
   });
   copyFileSync(recorderFile, runtime.recorderFile);
+  copyFileSync(
+    transcriptEnrichFile,
+    join(runtimePluginDir, "transcript-enrich.cjs"),
+  );
   copyFileSync(runtimeConfigFile, join(runtimePluginDir, "runtime-config.cjs"));
   copyFileSync(storagePathsFile, join(runtimePluginDir, "storage-paths.cjs"));
   copyFileSync(interactionContractFile, join(runtimePluginDir, "interaction-contract.mjs"));
@@ -402,6 +414,10 @@ export function updateInstalledPlugins({
     templateDir: packageDir,
   });
   copyFileSync(recorderFile, runtime.recorderFile);
+  copyFileSync(
+    transcriptEnrichFile,
+    join(runtimePluginDir, "transcript-enrich.cjs"),
+  );
   copyFileSync(runtimeConfigFile, join(runtimePluginDir, "runtime-config.cjs"));
   copyFileSync(storagePathsFile, join(runtimePluginDir, "storage-paths.cjs"));
   copyFileSync(interactionContractFile, join(runtimePluginDir, "interaction-contract.mjs"));

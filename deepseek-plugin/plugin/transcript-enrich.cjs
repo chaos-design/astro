@@ -106,6 +106,12 @@ function reasoningText(entry) {
       push(payload.text);
     }
   }
+  // A plain conversation record (`{role: "assistant", reasoning: "..."}`) is
+  // what several IDE hooks write; the same text under `thinking` is read too.
+  if (stringValue(entry.role) === "assistant") {
+    push(entry.reasoning);
+    push(entry.thinking);
+  }
   // An assistant turn can carry its thinking as one content block among its
   // text blocks (Claude). Reading it here is what keeps a turn's reasoning
   // even though the same entry also produces the reply.
@@ -201,6 +207,11 @@ function entryKind(entry) {
     return stringValue(entry.role) === "assistant" ? "message" : "";
   }
   if (type === "assistant" || messageRole === "assistant") {
+    return "message";
+  }
+  // A bare conversation record with only a role (some IDE hook transcripts
+  // write `{role: "assistant", content: "..."}` and nothing else).
+  if (stringValue(entry.role) === "assistant") {
     return "message";
   }
   return "";
