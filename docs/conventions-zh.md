@@ -77,11 +77,18 @@
     读专属的 `--code-accent`（它们曾落在近白上，与正文代码几乎不可分），
     diff 行带 addition/deletion 底色，注释灰斜体。shell 围栏走专用转义 tokenizer，
     给命令、选项、变量与赋值分别上色，行内注释与 heredoc 正文不算命令；
-    Code 视图 `JsonViewer` 的键沿用同一 `--code-accent`，切标签不再换配色。
+    Code 视图 `JsonViewer` 的键沿用同一 `--code-accent`，切标签不再换配色；JSON 树每行都预留折叠箭头槽位（不可折叠行用隐藏占位对齐），嵌套行不会排到父容器左面；主检查器定高面板里树自带滚动条（`.inspector-tabs__content--json` 的 `json-viewer__rows`），不再被裁掉滚不动。
     `.markdown-preview` 显式
     恢复列表的 `list-style` 与块级布局：Tailwind preflight 全局重置
     `list-style`，而 flex 列布局会把 `li` 块化掉 `list-item`——任一都会让
-    圆点/编号静默消失；GFM 任务清单用复选框替换 marker，标题按 em 缩放
+    圆点/编号静默消失；GFM 任务清单用复选框替换 marker，并渲染为主题色任务
+    **行**（`.md-tasklist` / `.md-taskrow` 卡片，不用 `<li>` 包裹）：复选框是
+    primary 色描边方块，勾选项把 primary 混进卡片底色；载荷里的 data-URL 图片
+    （工具结果、相关字段）经唯一入口 `markdownWithEmbeddedImages`
+    （`src/lib/embedded-image.ts`）内联渲染：原始 blob 换成短标签，去重后的源
+    追加为 Markdown 图片行，进入每个 Agent 步骤正文与 Preview 内容窗格；
+    Code 窗格保留未改动的原始载荷，组件里不得再长第二个 data-URL 渲染器；
+    标题按 em 缩放
     （h2 带下划线），行内代码 0.92em 不撑行高，表格塌陷边框 + 表头底色 +
     偶数行斑马纹，引用块紫边 + 底色。检查器的 Input/Output/Raw 与全局浮层共用这两个
     单一来源，浮层组件 `src/components/payload-overlay.tsx` 只负责展示，并用同一个
@@ -106,7 +113,12 @@
     JSON 正文。呈现层 `src/components/agent-transcript.tsx`
     只读该结果，正文仍走 `MarkdownView`、`QuestionContent/Preview` 与共享的
     `RelatedFields`（`src/components/related-fields.tsx`，按值折叠），
-    步骤与左 rail 共用 `onSelectAtom` 选择态。
+    步骤与左 rail 共用 `onSelectAtom` 选择态。各步骤正文（思考 / 回复 / 工具
+    结果 / 通用内容）由同一共享控件 `StepBodyCollapse` 折叠（默认展开；
+    收起态显示一行摘要，切换钮读「收起/展开」+ chevron；问题列表是可折叠
+    正文中唯一例外——它从不折叠）；Agent 窗格上下滚动驱动左侧 rail：阅读
+    行的原子行被滚回 rail 可视区（content-active 跟随效果，显式定位的缓动
+    展示让出一帧），Live 跟随时 rail 仍归 Live 所有。
     `src/lib/agent-transcript-scroll.ts` 的 `isAgentTranscriptAtBottom`（24px 容差）
     单一判定是否仍在底部，`isLatestStepVisible` 判定最新步骤是否仍在视口内
     （高回复未到最底时也可能可见）。overlay 的

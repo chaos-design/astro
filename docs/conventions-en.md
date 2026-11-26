@@ -97,12 +97,21 @@
     comments stay muted italics. Shell fences use a dedicated escaped tokenizer
     that colours commands, flags, variables and assignments; inline comments
     and heredoc bodies are not commands. The Code view's `JsonViewer` keys use
-    the same `--code-accent`, so switching tabs never recolours the payload.
+    the same `--code-accent`, so switching tabs never recolours the payload. Every JSON tree row reserves the collapse-toggle gutter (a hidden spacer on rows without a toggle), so a nested line never sits left of its own container; in the inspector's fixed-height panel the tree's own rows scroll (`.inspector-tabs__content--json`), never clipped.
     `.markdown-preview` restores `list-style`
     and block layout for lists: Tailwind's preflight resets `list-style`
     globally and a flex column blockifies `li` away from `list-item` — either
     alone silently dropped every bullet and ordered number; GFM task lists
-    swap their marker for the checkbox, headings scale in em (h2 with an
+    swap their marker for the checkbox and render as themed task **rows**
+    (`.md-tasklist` / `.md-taskrow` cards, never a `<li>` wrap): the
+    checkbox is a primary-tinted bordered square and the checked row mixes
+    primary into the card. Data-URL images in a payload (tool responses,
+    related fields) render inline through the one helper
+    `markdownWithEmbeddedImages` (`src/lib/embedded-image.ts`): raw blobs
+    become a short label and the distinct sources append as Markdown image
+    lines in every Agent step body and the Preview content pane; the Code
+    pane keeps the untouched raw payload, and no second data-URL renderer
+    may grow in a component. Headings scale in em (h2 with an
     underline), inline code is 0.92em so the chip never inflates the line
     height, tables collapse borders with a tinted header row and zebra rows,
     and blockquotes carry the violet border and tint. The inspector's
@@ -138,7 +147,15 @@
     bodies still go through `MarkdownView`, `QuestionContent/Preview` and the
     shared per-value-folding `RelatedFields`
     (`src/components/related-fields.tsx`), and steps share the rail's
-    `onSelectAtom` selection state. The bottom test has one definition,
+    `onSelectAtom` selection state. Every step body (thinking / reply / tool
+    result / generic content) folds through the one shared control
+    `StepBodyCollapse` — expanded by default, a collapsed body shows its
+    one-line teaser and the toggle reads 收起/展开 + chevron; the question
+    list is the body that is never foldable. Scrolling the Agent pane drives
+    the rail too: the reading line's atom row scrolls back into the rail's
+    visible band through the content-active follow effect (an explicit
+    locate's eased reveal takes one pass of precedence), and an armed Live
+    follow keeps owning the rail. The bottom test has one definition,
     `isAgentTranscriptAtBottom` in `src/lib/agent-transcript-scroll.ts` (24px
     tolerance), and `isLatestStepVisible` decides whether the newest step is
     in the viewport (a tall last reply can be on screen well above the

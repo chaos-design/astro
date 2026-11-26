@@ -844,7 +844,13 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   `questions` list a numbered list with option bullets, and a captured result
   with no single text shows as readable field lines rather than a JSON dump —
   the inspector/overlay's `{ contract, captured }` wrapper previews only
-  `captured`, leaving the `contract` topology metadata to the Raw tab); Markdown parsing, syntax highlighting and HTML sanitizing
+  `captured`, leaving the `contract` topology metadata to the Raw tab); the
+  `Code` tab's collapsible JSON tree lives only in
+  `src/components/json-viewer.tsx` — every row reserves the collapse-toggle
+  gutter (a hidden spacer on rows without a toggle), so a nested line never
+  sits left of its own container, and in the inspector's fixed-height
+  Input/Output/Raw tabs the tree owns its own scrollbar rather than being
+  clipped; Markdown parsing, syntax highlighting and HTML sanitizing
   live only in `src/lib/markdown-preview.ts` (`renderMarkdownPreview`, with
   highlight.js registering only the languages captured payloads carry; shell
   fences go through a dedicated escaped tokenizer that colours commands,
@@ -860,7 +866,15 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   Tailwind's preflight resets `list-style` globally and a flex column
   blockifies `li` away from `list-item` — either one alone silently dropped
   every bullet and ordered number. GFM task lists swap their marker for the
-  checkbox. The
+  checkbox and render as themed task **rows** (`md-tasklist` / `md-taskrow`
+  cards), never a bare `<li>` wrap: the checkbox is a primary-tinted bordered
+  square and the checked row mixes primary into the card. Data-URL images in
+  a payload (tool responses, related fields) render inline through the one
+  helper `markdownWithEmbeddedImages` (`src/lib/embedded-image.ts`): raw
+  blobs become a short label and the distinct sources append as Markdown
+  image lines in every Agent step body and the Preview content pane; the
+  Code pane keeps the untouched raw payload. Do not grow a second data-URL
+  renderer in a component. The
   Input/Output/Raw tabs and the global expand layer share these two sources;
   `src/components/payload-overlay.tsx` only renders them — it must not grow a
   second conversion or sanitizer. The expand control opens a Dialog (portaled
@@ -927,7 +941,11 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   ~800ms and grows beneath the reader without moving the line they were on);
   only a row **the reader picked in the rail** re-anchors both panes to the
   top, and a switch to the Code view resets the memo so coming back opens
-  from the start. The `{ __html }` wrapper passed to `dangerouslySetInnerHTML`
+  from the start. Scrolling the Agent pane also drives the rail: the
+  reading line's atom row scrolls back into the rail's visible band through
+  the overlay's content-active follow effect (which yields to an explicit
+  locate's animated reveal for one pass), while an armed Live follow keeps
+  owning the rail. The `{ __html }` wrapper passed to `dangerouslySetInnerHTML`
   is **memoized on the html string** (`previewHtml` / `MarkdownView`'s
   `html`): React compares the wrapper by object identity, so an inline
   literal re-set identical markup on every app tick — the console re-renders
@@ -990,7 +1008,12 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   to keep it in context. Returning to the newest step resumes automatic
   appending, each content kind carries its own accent with bodies highlighted
   through one `contentToMarkdown`, and the trailing loading row is shown only
-  while the run is still executing. The displayed message's execution time
+  while the run is still executing. Every step body (thinking / reply / tool
+  result / generic content) folds through the one shared control
+  `StepBodyCollapse` in `agent-transcript.tsx` — expanded by default, a
+  collapsed body shows its one-line teaser and the toggle reads
+  收起/展开 + chevron; the question list is the body that is never foldable.
+  The displayed message's execution time
   sits next to the AGENT VIEW label: one clock for two surfaces — the chip
   reads the root display state the RUN HISTORY row reads (prompt-anchored,
   timeout-capped), the root's secondly `now` tick advances it while the
@@ -1425,9 +1448,12 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   `site/src/docs.ts` (`sectionBySlug` + `readingOrder`).
 - `plans/pending/03-ask-user-question-implementation-breakdown.md` is the
   executable backlog (32 tasks, A1–F5). 31 are ticked; F3 (real host acceptance)
-  is partially met: the ZCode clean-log item holds on this machine (2026-11-22
-  real host session, 111 allowed / 0 failed), but Claude `/hooks` visibility and
-  the interaction-hook closed loop still need a drivable host (claude config-only,
+  is partially met on the 2026-11-26 evidence: the interaction-hook closed loop
+  has four real `answeredBy: console` results written from ZCode sessions
+  (`~/.astrox/interactions/`, 11-17/19/23 ×2), but the ZCode clean-log item no
+  longer holds — 434 allowed / 3 failed (one `PreToolUse` timeout, two cancelled
+  `PermissionRequest`s) in the 11-26 log, the 11-22 111/0 snapshot now historical —
+  and Claude `/hooks` visibility still needs a drivable host (claude config-only,
   zcode / codebuddy GUI apps with no headless CLI), so F3 stays unchecked, the
   plan stays pending and is not archived. Do not write "host acceptance passed"
   anywhere before all three F3 items are done.
