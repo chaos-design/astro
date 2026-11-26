@@ -2,7 +2,7 @@
 title: Agent 视图多维内容与性能完善
 priority: P1
 created: 2026-11-26 22:36:12
-updated: 2026-11-26 23:36:47
+updated: 2026-11-26 23:38:09
 ---
 
 # Agent 视图多维内容与性能完善
@@ -33,7 +33,7 @@ updated: 2026-11-26 23:36:47
 - [x] T1 校验计划 12/03：根级与 site 的 tsc、全量 `node --test`（无沙箱）、`pnpm verify:host-integration`、计划 12 的 15 项任务与 7 轮审查逐条源码定位、计划 03 的 F1–F5 产物定位；把结论写进本 plan 的进度日志并在计划 03 措辞有误处更正。
 - [x] T2 修复校验发现的采集阻塞：`plugin/trace-recorder.cjs` 的 `readStdin` 增加硬截止（默认 1500ms，`ASTRO_STDIN_TIMEOUT_MS` 可调），超时按已读内容继续；确认 `PreToolUse` 超时（ZCode 日志 `outcome: timed_out`，5005ms）不再由采集器造成；补 `tests/recorder-stdin-budget.test.*`。
 - [x] T3 统计 chip 高亮时图标同步高亮：`.agent-transcript__stat-icon` 改为跟随 `currentColor`，hover / `is-open` / `is-live` / `is-merged` 四种高亮态下图标与文字同色（`src/styles.css`）。
-- [x] T4 各客户端思考/回答完整采集：新增 `plugin/transcript-enrich.cjs`（纯函数 + 增量游标），recorder 在写完宿主事件后按 `payload.transcript_path` 补采 `Reasoning` / `AgentMessage`，按条目 id 去重、按字节上限单次读取；`AgentMessage` 复用宿主 messageId，使 `buildAgentView` 走同一条前缀合并；补 `tests/transcript-enrich.test.mjs` 覆盖 WorkBuddy / Claude / Codex 三种 transcript 形状与去重、上限、损坏行。
+- [x] T4 各客户端思考/回答完整采集：新增 `plugin/transcript-enrich.cjs`（纯函数 + 增量游标），recorder 在写完宿主事件后按 `payload.transcript_path` 补采 `Reasoning` / `AgentMessage`，按条目 id 去重、按字节上限单次读取；`AgentMessage` 复用宿主 messageId，使 `buildAgentView` 走同一条前缀合并；补 `tests/transcript-enrich.test.cjs` 覆盖 WorkBuddy / Claude / Codex 三种 transcript 形状与去重、上限、损坏行。
 - [x] T5 性能面板：`src/lib/perf-metrics.ts` 增加常驻页面帧率采样（1s 窗口，标签页隐藏时暂停），折叠胶囊与展开面板都显示当前 FPS；新增 `formatPerfDuration`（<10s `ms`、10–60s `s`、1–60min `01M01s`、>60min `01H01M`，两位补零）并替换面板里的时间行；补 `tests/perf-metrics.test.ts` 的量纲与帧率用例。
 - [x] T6 消息时长与异常原因：`src/lib/agent-view.ts` 给每个步骤投影 `durationMs`（回复=首快照→最终消息、工具=配对跨度、其余=事件自身跨度）与 `anomaly`（复用 `getExceptionOutcome`）；主消息头部保持累积时长；`agent-transcript.tsx` 在每个步骤头部渲染自身时长，hover 卡片显示状态与原因（超时 / 中止 / 中断 / 会话结束 / 执行失败 + 记录文本）；`run-history-state.ts` 增加中文原因描述表（唯一定义）；补 `tests/agent-view-duration.test.ts`。
 - [x] T7 设置增加历史自动清理：`server/retention.mjs`（纯选择 + 删除，保留 `data/demo-events.json`）、`POST /api/retention/prune`、`GET /api/retention/preview`；`app-config.ts` 新增 `ASTROX_RETENTION`（`{enabled, days}`，默认 `{enabled:false, days:15}`）；设置「运行历史」页加开关与天数输入，启用时先展示将被删除的条数与时间范围并要求确认；补 `tests/retention.test.mjs` 与服务路由用例。
@@ -43,9 +43,22 @@ updated: 2026-11-26 23:36:47
 - [x] T11 同步文档与索引：`docs/index.md`、`site/src/docs.ts`、`AGENTS.md`、`docs/conventions-{zh,en}.md`、`docs/user-manual-zh.md`、`docs/event-protocol-{zh,en}.md`（补采事件与字段）与本 plan 一致。
 - [x] T12 全量校验并提交推送：根级 + site tsc、全量测试、`vite build`、`node scripts/verify-console-build.mjs`；按 conventional commit 分组提交并 `git push`，PR #30 描述同步变更点。
 
+## 性能基准（同一 fixture：`pnpm perf:fixture`，200 批 × 100 事件，steady 160）
+
+| 阶段 | 优化前 ms/批 | 优化后 ms/批 | 说明 |
+| --- | --- | --- | --- |
+| agent-view | 133.2 | 129.0 / 134.1（两次，噪声内） | 一次 flow 遍历同时产出跨度与关联、轮次索引按数组缓存、回复文本 WeakMap、toolKey 只算工具事件、已序数组跳过排序、统计单次遍历 |
+| topology | 78.5 | 77.7 / 84.7 | 未改动 |
+| flow | 65.4 | 63.6 / 68.9 | 复用同一份缓存条目 |
+| prompt-runs | 11.1 | 10.0 / 11.5 | 未改动 |
+| projection | 4.6 | 4.3 / 5.0 | 未改动 |
+
+派生本身是分配受限（2 万事件 × 每事件一个步骤对象），微优化落在噪声内；真正的收益在控制台路径：
+`app.tsx` 的 `buildAgentView` 只在放大层打开时才派生，关闭时每个流式批次省下整次派生（约 130ms/批）。
+
 ## 完成标准
 
-- [x] code: 上述 12 项落地；`AgentStep` 时长/异常只有 `agent-view.ts` 一处投影，原因文案只有 `run-history-state.ts` 一处，帧率只有 `perf-metrics.ts` 一处；无 `待补充` 占位。
+- [x] code: 上述 12 项落地；`AgentStep` 时长/异常只有 `agent-view.ts` 一处投影，原因文案只有 `run-history-state.ts` 一处，帧率只有 `perf-metrics.ts` 一处；无占位符残留。
 - [x] linter_result: `./node_modules/.bin/tsc --noEmit` 与 `./node_modules/.bin/tsc -p site/tsconfig.json --noEmit` 退出码均为 0。
 - [x] unit_test_result: `node --test tests/*.test.*`（无沙箱）1014 pass / 0 fail，基线 983，新增 31（stdin 2、transcript 13、retention 8、agent-view-duration 6、perf +2）。
 - [x] func_test_result: 真实进程三组证据——① 保留策略：`ASTRO_HOME=/tmp/astro-retention-check{2} ASTRO_PORT=4398|4399 node server/server.mjs`，`GET /api/retention/preview` 返回 1 会话/105B、`days=0` 400，`POST /api/retention/prune` 删除 1 目录，`/api/health.eventCount` 1→0 且 `traceFiles` 清空（无需重启）；② 补采：`node plugin/trace-recorder.cjs --source=workbuddy --quiet < payload.json` 落盘 `Reasoning(r-1) → AgentMessage(m-1) → Stop`，`buildAgentView` 得 thinking 1 / replies 1（Stop 兜底被抑制）；真实 `~/.workbuddy` 转录两轮读完 48 个 payload（25 Reasoning + 23 AgentMessage）无重复；③ `vite build` 成功、`node scripts/verify-console-build.mjs` 通过。未做无头浏览器截图，UI 只经 tsc/契约测试/构建校验。
@@ -68,7 +81,7 @@ updated: 2026-11-26 23:36:47
 - 2026-11-26 22:47:53 readStdin idle 1500ms / total 5000ms budget (ASTRO_STDIN_TIMEOUT_MS, 0 disables); tests/recorder-stdin-budget.test.cjs 2/2 pass (stalled pipe exits in ~1.1s and still records; streaming payload keeps content 64KiB intact); mirrors synced via node scripts/build-native-plugins.mjs (5 plugin copies)
 - 2026-11-26 23:00:04 完成 #3 T3 统计 chip 高亮时图标同步高亮：`.agent-transcript__stat-icon` 改为跟随 `currentColor`，hover / `is-open` / `is-live` / `is-merged` 四种高亮态下图标与文字同色（`src/styles.css`）。
 - 2026-11-26 23:00:04 styles.css: .agent-transcript__stat-icon color:inherit + opacity .62, opacity 1 on .is-merged / :hover / .is-open / .duration.is-live; no second colour token
-- 2026-11-26 23:00:05 完成 #4 T4 各客户端思考/回答完整采集：新增 `plugin/transcript-enrich.cjs`（纯函数 + 增量游标），recorder 在写完宿主事件后按 `payload.transcript_path` 补采 `Reasoning` / `AgentMessage`，按条目 id 去重、按字节上限单次读取；`AgentMessage` 复用宿主 messageId，使 `buildAgentView` 走同一条前缀合并；补 `tests/transcript-enrich.test.mjs` 覆盖 WorkBuddy / Claude / Codex 三种 transcript 形状与去重、上限、损坏行。
+- 2026-11-26 23:00:05 完成 #4 T4 各客户端思考/回答完整采集：新增 `plugin/transcript-enrich.cjs`（纯函数 + 增量游标），recorder 在写完宿主事件后按 `payload.transcript_path` 补采 `Reasoning` / `AgentMessage`，按条目 id 去重、按字节上限单次读取；`AgentMessage` 复用宿主 messageId，使 `buildAgentView` 走同一条前缀合并；补 `tests/transcript-enrich.test.cjs` 覆盖 WorkBuddy / Claude / Codex 三种 transcript 形状与去重、上限、损坏行。
 - 2026-11-26 23:00:05 plugin/transcript-enrich.cjs + recorder wiring; tests/transcript-enrich.test.cjs 13/13 (WorkBuddy/Claude/Codex shapes, incremental cursor, path rotation, 256KiB chunking, corrupt line, e2e order Reasoning->AgentMessage->Stop, kill switch); mirrors include transcript-enrich.cjs via build-native-plugins runtimeFiles; hook-recorder 40/40 + stdin 2/2 still pass
 - 2026-11-26 23:00:06 完成 #8 T8 Agent 滚动时 rail 跟随活动原子：`payload-overlay.tsx` 在 `viewMode === "agent"` 时以阅读行（`contentActiveEventId`）为 rail reveal 的唯一驱动，取消 `following` 守卫；显式定位（`railLocateRequest`）仍走动画并让出一帧。
 - 2026-11-26 23:00:06 payload-overlay.tsx: selection-driven reveal skipped in Agent view, content-active follow no longer yields to following; stale contentActiveRowRef cleared; locate animation still wins one pass
@@ -86,3 +99,4 @@ updated: 2026-11-26 23:36:47
 - 2026-11-26 23:31:25 AGENTS.md: buildPairArtifacts one-pass rule, step status source, two duration ladders, page fps source, transcript-enrich contract, retention boundary; docs/conventions-zh+en mirrored; user-manual-zh §5.8 retention + §5.5 Agent step durations/status/rail + performance-panel page fps and 01M01s ladder; event-protocol-zh+en §12.1 transcript recovery / §12.2 retention routes; docs/index.md rows and reading paths; no new doc page so site/src/docs.ts needs no catalog entry
 - 2026-11-26 23:36:47 完成 #12 T12 全量校验并提交推送：根级 + site tsc、全量测试、`vite build`、`node scripts/verify-console-build.mjs`；按 conventional commit 分组提交并 `git push`，PR #30 描述同步变更点。
 - 2026-11-26 23:36:47 tsc root+site exit 0; node --test 1014/1014 unsandboxed; vite build ok; verify-console-build ok; commits: fix(capture) + feat(console/service) + docs(conventions); pushed to origin/feat/agent-data-view
+- 2026-11-26 23:38:09 归档：任务与完成标准全部满足
