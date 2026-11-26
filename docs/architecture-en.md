@@ -311,8 +311,12 @@ writes the same id (plugin 0.0.8).
 
 `pi-plugin/` is a zero-dependency extension: `mapping.ts` maps its events and
 `claim.ts` persists the owning pid so resumable sessions keep recording across
-Pi restarts. `readPiLiveText().messageId` is written to both throttled
-snapshots and the `message_end` final message (plugin 0.0.8). Both long-lived
+Pi restarts — a claim naming this process is taken over as well, because
+`/reload` re-runs the extension in place. Terminal dedup is scoped to a prompt:
+a new `UserPromptSubmit` clears it so each turn emits its own `Stop`.
+`readPiLiveText().messageId` is written to both throttled snapshots and the
+`message_end` final message (plugin 0.0.8); only `text_delta` feeds a reply's
+live text, never a thinking or tool-call delta. Both long-lived
 adapters stamp their own `package.json` version into `payload.captureVersion`;
 drift detection is described in §7.1.
 

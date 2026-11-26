@@ -5,6 +5,7 @@ import {
 } from "./exception-events.ts";
 import { isWaitingTraceEvent } from "./trace-status.ts";
 import { isUserQuestionStartEvent } from "./trace-event-kind.ts";
+import { nonEmptyRecord } from "./payload-preview.ts";
 import { userQuestionSummary } from "./user-question-content.ts";
 import { getWaitingEventsForSource } from "../config/atom-platforms.ts";
 import type {
@@ -592,22 +593,6 @@ function getSummaryValue(event: TraceEvent): unknown {
  * and the inspector read the same fields, without inventing a command from a
  * tool name for a payload that never carried one.
  */
-/**
- * A recorder can write an empty `tool_input: {}` placeholder while the real
- * arguments stay under the camel `toolInput` spelling. `??` would treat that
- * empty object as present and hide the real command — the same trap the
- * inspector's `payloadField` already avoids. Only a non-empty record counts as
- * an input container; both spellings are read.
- */
-function nonEmptyRecord(value: unknown): Record<string, unknown> | null {
-  return value !== null &&
-    typeof value === "object" &&
-    !Array.isArray(value) &&
-    Object.keys(value as Record<string, unknown>).length > 0
-    ? (value as Record<string, unknown>)
-    : null;
-}
-
 export function getToolCallCommand(
   event: TraceEvent | null,
   startEvent?: TraceEvent | null,

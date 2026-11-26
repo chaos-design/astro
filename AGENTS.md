@@ -1315,7 +1315,12 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   `message_update` stays unmapped in `mapping.ts`; the accumulation lives in
   `index.ts`, not the pure mapping layer. Tool execution deltas stay unmapped.
 - Pi sessions are resumable, so claim files record the owning pid and a later
-  Pi process takes a session over only after the previous owner exits.
+  Pi process takes a session over only after the previous owner exits — except
+  when the recorded pid is this very process: `/reload` re-runs the extension
+  in place, and probing ourselves as "still alive" would silence every event
+  after the reload. A new terminal event also only closes its own prompt: an
+  executing run's Stop must not be deduped against a previous prompt's Stop in
+  the same session.
 - The extension reads event shapes defensively (Pi adds fields across
   releases) and must never block the agent loop; recording failures fail open.
 

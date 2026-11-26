@@ -36,6 +36,26 @@ test("structured AskUserQuestion payloads render per question with options", () 
   assert.equal(content.message, "");
 });
 
+test("an empty tool_input placeholder does not hide camelCase questions", () => {
+  // The recorder writes `tool_input: {}` when only `toolInput` carries the
+  // arguments. Reading that placeholder as "present" left the question card
+  // empty even though the capture contained a complete AskUserQuestion.
+  const content = parseUserQuestionContent({
+    tool_input: {},
+    toolInput: {
+      questions: [
+        {
+          question: "Which region?",
+          options: [{ label: "CN", description: "Beijing" }],
+        },
+      ],
+    },
+  } as TracePayload);
+  assert.equal(content.hasContent, true);
+  assert.equal(content.prompts.length, 1);
+  assert.equal(content.prompts[0].question, "Which region?");
+});
+
 test("questions sitting directly on the payload resolve the same way", () => {
   // The inspector's input tab hands the tool_input object to the preview for
   // question tools, so the extractor accepts both nestings.

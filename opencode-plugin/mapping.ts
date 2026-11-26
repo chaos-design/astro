@@ -169,7 +169,14 @@ export function mapOpenCodeEvent(
         toolUseId: data?.id,
         toolName: context.toolName ?? data?.name,
         tool_response: data?.content,
-        status: data?.metadata?.exit === 0 ? undefined : "failed",
+        // Only an explicit non-zero exit is a failure. Most tools (read,
+        // write, grep, …) never report an exit code at all; treating a
+        // missing field as failure painted every successful non-shell call
+        // red and briefly flipped the run to a failed state.
+        status:
+          typeof data?.metadata?.exit === "number" && data.metadata.exit !== 0
+            ? "failed"
+            : undefined,
       },
     ];
   }

@@ -275,7 +275,7 @@ Hook 命令使用 `${CODEBUDDY_PLUGIN_ROOT}`，并保留权限、Elicitation、�
 
 ### 6.8 Pi
 
-`pi-plugin/` 是零依赖扩展：`mapping.ts` 负责事件映射，`claim.ts` 持久化拥有者 pid，让可恢复会话在 Pi 重启后继续记录；`readPiLiveText().messageId` 同时写入流式快照与 `message_end` 最终消息（插件 0.0.8）。两处长驻适配器都把自身 `package.json` 版本写入 `payload.captureVersion`，漂移判定见 §7.1。
+`pi-plugin/` 是零依赖扩展：`mapping.ts` 负责事件映射，`claim.ts` 持久化拥有者 pid，让可恢复会话在 Pi 重启后继续记录；记录本进程 pid 的 claim 也会被接管，因为 `/reload` 会在同一进程内重新加载扩展。终态去重按轮次隔离：新的 `UserPromptSubmit` 会清除去重状态，使每一轮都写出自己的 `Stop`。`readPiLiveText().messageId` 同时写入流式快照与 `message_end` 最终消息（插件 0.0.8）；流式正文只接受 `text_delta`，思考与工具调用增量不会进入回复。两处长驻适配器都把自身 `package.json` 版本写入 `payload.captureVersion`，漂移判定见 §7.1。
 
 ## 7. 本地存储与实时服务
 

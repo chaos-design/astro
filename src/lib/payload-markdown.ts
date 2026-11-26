@@ -665,12 +665,20 @@ function capturedResultToMarkdown(
   if (structured) {
     return structured;
   }
+  // The generic path detects an Edit / patch result before walking the rest of
+  // the payload. The inspector always goes through this `{ contract, captured }`
+  // wrapper, so it must use the same detector — otherwise a captured change
+  // degrades into two JSON walls here while the global overlay shows a diff.
+  const patch = findPatchMarkdown(value, depth, new WeakSet());
+  if (patch) {
+    return patch;
+  }
   // `value` is the captured result itself, so read its display text directly:
   // unwrapText understands prompt / message / stdout / plan and the nested
   // `content` arrays a tool response hides its text in.
   const text = unwrapText(value, depth, new WeakSet());
   if (text.trim()) {
-    return resultToMarkdown(text, findPayloadFilePath(value));
+    return resultToMarkdown(text, filePath ?? findPayloadFilePath(value));
   }
   if (isRecord(value)) {
     return readableFields(value, depth, seen);

@@ -124,7 +124,12 @@ export function languageFromFilePath(filePath: string | null | undefined): strin
   return extension ? LANGUAGE_BY_EXTENSION[extension] ?? null : null;
 }
 
-const FILE_PATH_KEYS = new Set(["file_path", "filepath", "fileName", "filename"]);
+// `filePath` is the spelling ZCode and the Claude-family adapters write;
+// without it a Read result loses its highlight language and falls to a bare
+// fence even though the host named the file.
+const FILE_PATH_KEYS = new Set([
+  "file_path", "filepath", "filePath", "fileName", "filename",
+]);
 
 /**
  * Find the file a tool call addressed, anywhere in a captured payload. Used

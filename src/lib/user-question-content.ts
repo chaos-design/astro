@@ -1,4 +1,5 @@
 import type { TracePayload } from "../types/trace";
+import { nonEmptyRecord } from "./payload-preview.ts";
 
 /**
  * What the user.question preview shows.
@@ -238,13 +239,17 @@ export function parseUserQuestionContent(
   // Some clients nest the native payload one level down; ZCode delivers both
   // `tool_input` and its camelCase twin on the top level.
   const nested = asRecord(record.payload);
+  // An empty `tool_input: {}` placeholder must not shadow the real camelCase
+  // `toolInput` — the recorder writes that placeholder when only the camel
+  // spelling carries the questions. The same shared rule the tool-call
+  // extractor uses applies here.
   const toolInput =
-    asRecord(record.tool_input) ??
-    asRecord(record.toolInput) ??
-    asRecord(nested?.tool_input) ??
-    asRecord(nested?.toolInput);
+    nonEmptyRecord(record.tool_input) ??
+    nonEmptyRecord(record.toolInput) ??
+    nonEmptyRecord(nested?.tool_input) ??
+    nonEmptyRecord(nested?.toolInput);
   const toolResponse =
-    asRecord(record.tool_response) ?? asRecord(record.toolResponse);
+    nonEmptyRecord(record.tool_response) ?? nonEmptyRecord(record.toolResponse);
   // Structured questions may sit directly on the payload (the input tab
   // resolves to `tool_input` for question tools) or one level down (the full
   // start payload). The direct shape wins so a client that fills both is not

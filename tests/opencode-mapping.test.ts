@@ -125,6 +125,24 @@ test("a tool result with a non-zero exit code is marked failed", () => {
   assert.equal(ok[0]?.status, undefined);
 });
 
+test("a successful tool without an exit code is not marked failed", () => {
+  // read / write / grep and friends never carry metadata.exit. Their success
+  // event must stay a clean PostToolUse, not a red failed step.
+  for (const data of [
+    { sessionID: session, id: "read_1", name: "read" },
+    { sessionID: session, id: "grep_1", name: "grep", metadata: {} },
+  ]) {
+    const result = mapOpenCodeEvent({ type: "session.tool.success", data });
+    assert.equal(result[0]?.eventName, "PostToolUse");
+    assert.equal(result[0]?.status, undefined, JSON.stringify(data));
+  }
+  const exitZero = mapOpenCodeEvent({
+    type: "session.tool.success",
+    data: { sessionID: session, id: "shell_1", metadata: { exit: 0 } },
+  });
+  assert.equal(exitZero[0]?.status, undefined);
+});
+
 test("a finished step ends the run, a tool-call step does not", () => {
   assert.deepEqual(
     mapOpenCodeEvent({

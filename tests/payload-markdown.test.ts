@@ -223,6 +223,39 @@ test("the inspector wrapper previews the captured content, not the contract meta
   assert.doesNotMatch(markdown, /contract|captured|```json/);
 });
 
+test("the inspector's captured wrapper still renders an Edit change as a diff", () => {
+  // The inspector always supplies `{ contract, captured }`. Before the wrapper
+  // route used the patch detector, this exact payload degraded into field
+  // lines while the same payload without the wrapper showed a highlighted diff.
+  const markdown = payloadToMarkdown({
+    contract: { label: "tool.call", input: {} },
+    captured: {
+      tool_input: {
+        file_path: "/tmp/project/file.ts",
+        old_string: "const old = 1;",
+        new_string: "const next = 1;",
+      },
+    },
+  });
+  assert.match(markdown, /^```diff\n/);
+  assert.match(markdown, /-const old = 1;/);
+  assert.match(markdown, /\+const next = 1;/);
+});
+
+test("whole-word metadata does not swallow fields that carry prose", () => {
+  assert.equal(payloadToMarkdown({ userMessage: "请确认订单" }), "请确认订单");
+  assert.equal(payloadToMarkdown({ guidelines: "Use TypeScript" }), "Use TypeScript");
+});
+
+test("camelCase filePath selects the highlight language of a numbered dump", () => {
+  const markdown = payloadToMarkdown({
+    tool_name: "Read",
+    filePath: "/work/data/config.json",
+    tool_response: '   1→{"a": 1}\n   2→"hello"',
+  });
+  assert.match(markdown, /^```json\n/);
+});
+
 test("a structured captured result reads as its values instead of a JSON dump", () => {
   const markdown = payloadToMarkdown({
     contract: { label: "tool.result", output: {} },

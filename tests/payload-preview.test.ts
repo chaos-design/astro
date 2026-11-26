@@ -3,13 +3,48 @@ import test from "node:test";
 import {
   collectPayloadFields,
   contentToMarkdown,
+  fallbackPayloadMarkdown,
+  fenceCode,
   hasListPayload,
   inferCodeLanguage,
   isFoldableRelatedValue,
+  isPayloadMetaKey,
   orderRelated,
   RELATED_VALUE_MAX_CHARS,
   splitPayloadPreview,
 } from "../src/lib/payload-preview.ts";
+
+test("metadata key matching uses whole words, not substrings", () => {
+  // A substring test silently dropped real prose: "id" hid `guidelines`,
+  // "user" hid `userMessage`, "source" hid `sourceCode`. Genuine metadata
+  // still matches through an exact token.
+  for (const key of [
+    "width", "valid", "hidden", "identity", "guidelines", "userMessage", "sourceCode",
+  ]) {
+    assert.equal(isPayloadMetaKey(key), false, key);
+  }
+  for (const key of [
+    "createdAt", "tool_use_id", "tool_name", "status", "sessionId", "meta",
+  ]) {
+    assert.equal(isPayloadMetaKey(key), true, key);
+  }
+});
+
+test("a code fence grows past a backtick run in the captured body", () => {
+  // A diff of a Markdown file carries context lines that are themselves ```
+  // fences; a fixed three-backtick wrapper would be closed by that line.
+  const fenced = fenceCode("@@ -1 +1 @@\n ```\n-old\n+new", "diff");
+  assert.match(fenced, /^````diff\n/);
+  assert.match(fenced, /\n````$/);
+});
+
+test("the fallback JSON dump degrades on a cyclic value instead of throwing", () => {
+  const cyclic: Record<string, unknown> = { answer: "still readable" };
+  cyclic.self = cyclic;
+  const markdown = fallbackPayloadMarkdown({ captured: cyclic });
+  assert.match(markdown, /still readable/);
+  assert.match(markdown, /circular reference/);
+});
 
 test("splits message content from timestamps, paths and annotations", () => {
   const preview = splitPayloadPreview({

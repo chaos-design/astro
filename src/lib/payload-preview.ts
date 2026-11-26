@@ -38,39 +38,24 @@ const CONTENT_KEYS = [
   "last_assistant_message",
 ];
 
-/** Fields that describe *when* / *where* / *how* rather than what was said. */
-const META_KEY_HINTS = [
-  "time",
-  "date",
-  "timestamp",
-  "path",
-  "cwd",
-  "dir",
-  "url",
-  "uri",
-  "id",
-  "session",
-  "trace",
-  "turn",
-  "turnid",
-  "meta",
-  "model",
-  "provider",
-  "source",
-  "agent",
-  "hook",
-  "event",
-  "tool",
-  "user",
-  "permission",
-  "mode",
-  "revision",
-  "sequence",
-  "status",
-  "type",
-  "kind",
-  "duration",
-];
+/**
+ * Fields that describe *when* / *where* / *how* rather than what was said.
+ * Matched as whole words, never substrings: a substring test made "id" match
+ * `width` / `valid` / `guidelines`, "user" match `userMessage`, and "source"
+ * match `sourceCode`, silently dropping real prose from the preview.
+ *
+ * Ambiguous hints (`user`, `source`, `type`, `mode`) are omitted entirely —
+ * a compound that is genuinely metadata still matches through a stronger
+ * token (`userId` → `id`, `sourceVersion` → `version` is envelope data and
+ * labelled beside the preview). Dropping a line is worse than showing one.
+ */
+const META_KEY_TOKENS = new Set([
+  "time", "date", "timestamp", "path", "cwd", "dir", "url", "uri",
+  "id", "session", "trace", "turn", "turnid", "meta", "model", "provider",
+  "hook", "event", "tool", "agent", "permission", "revision", "sequence",
+  "status", "kind", "duration",
+]);
+const META_TAIL_TOKENS = new Set(["at", "on", "from", "to"]);
 
 const ANNOTATION_KEYS = [
   "annotation",
@@ -124,16 +109,41 @@ function normalized(key: string): string {
   return key.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
+/** Split camelCase / snake_case keys into comparable lowercase words. */
+function keyTokens(key: string): string[] {
+  return key
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/([A-Z])([A-Z][a-z])/g, "$1 $2")
+    .replace(/[^A-Za-z0-9]+/g, " ")
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
 function isAnnotation(key: string): boolean {
   const name = normalized(key);
   return ANNOTATION_KEYS.some((hint) => name === hint || name.startsWith(hint));
 }
 
+/**
+ * Only a *non-empty* object counts as a present input/result container. The
+ * recorder writes `tool_input: {}` when the real arguments use the camel
+ * `toolInput` spelling; reading that placeholder with `??` hides the real
+ * payload. Shared so every reader of these two spellings applies one rule.
+ */
+export function nonEmptyRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    Object.keys(value as Record<string, unknown>).length > 0
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
 function isMeta(key: string): boolean {
-  const name = normalized(key);
-  return (
-    META_KEY_HINTS.some((hint) => name.includes(hint)) ||
-    /^(?:[A-Za-z_]+_)?(?:at|on|from|to)$/.test(name)
+  return keyTokens(key).some(
+    (token) => META_KEY_TOKENS.has(token) || META_TAIL_TOKENS.has(token),
   );
 }
 
@@ -664,7 +674,15 @@ function inferKeywordLanguage(body: string): string | null {
  * generic view keeps multi-line values intact without markdown mangling.
  */
 export function fenceCode(text: string, language?: string | null): string {
-  return `\`\`\`${language ?? ""}\n${text.trimEnd()}\n\`\`\``;
+  const body = text.trimEnd();
+  // A captured diff can contain a line that is itself a ``` fence (a diff of a
+  // Markdown file). A three-backtick fence would be closed by that line and
+  // the rest of the block would render as prose. Use a fence longer than any
+  // backtick run in the body so no content line can close it.
+  const longestRun =
+    body.match(/`+/g)?.reduce((max, run) => Math.max(max, run.length), 0) ?? 0;
+  const fence = "`".repeat(Math.max(3, longestRun + 1));
+  return `${fence}${language ?? ""}\n${body}\n${fence}`;
 }
 
 const HEADING_LINE = /^\s{0,3}#{1,6}\s+\S/m;
@@ -747,12 +765,22 @@ export function contentToMarkdown(content: string, filePath?: string | null): st
  * fields, not the envelope. A container that ends up empty after the strip is
  * omitted entirely.
  */
-function stripMetaKeys(value: unknown, depth = 0): unknown {
+function stripMetaKeys(
+  value: unknown,
+  depth = 0,
+  seen = new WeakSet<object>(),
+): unknown {
   if (depth > 6) {
     return value;
   }
+  if (value && typeof value === "object") {
+    if (seen.has(value)) {
+      return "[circular reference]";
+    }
+    seen.add(value);
+  }
   if (Array.isArray(value)) {
-    return value.map((item) => stripMetaKeys(item, depth + 1));
+    return value.map((item) => stripMetaKeys(item, depth + 1, seen));
   }
   if (value && typeof value === "object") {
     const out: Record<string, unknown> = {};
@@ -762,7 +790,7 @@ function stripMetaKeys(value: unknown, depth = 0): unknown {
       if (isPayloadMetaKey(key) || (depth === 0 && isPayloadIdentityKey(key))) {
         continue;
       }
-      const stripped = stripMetaKeys(item, depth + 1);
+      const stripped = stripMetaKeys(item, depth + 1, seen);
       if (
         stripped !== undefined &&
         !(typeof stripped === "object" && stripped !== null && !Array.isArray(stripped) && Object.keys(stripped).length === 0)
@@ -810,7 +838,15 @@ export function fallbackPayloadMarkdown(payload: unknown): string {
   ) {
     return "";
   }
-  return contentToMarkdown(JSON.stringify(stripped, null, 2));
+  let json: string;
+  try {
+    json = JSON.stringify(stripped, null, 2);
+  } catch {
+    // Constructed payloads can be cyclic or carry non-serializable values;
+    // this is the last-resort pane, so it must degrade instead of throwing.
+    json = "[unserializable value]";
+  }
+  return contentToMarkdown(json);
 }
 
 /**
