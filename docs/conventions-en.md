@@ -147,7 +147,10 @@
     `Reasoning` / `AgentMessage` payloads whose `messageId` is the transcript
     entry's own id, de-duplicates by `transcriptKey` in
     `<ASTRO_HOME>/transcript-state/<source>-<session>.json` (the session
-    directory is timestamped, so a cursor cannot live there), and is
+    directory is timestamped, so a cursor cannot live there). The path comes
+    from the hook or from the common spellings (`session_file`, …); a host that
+    names none can be pointed at a file with `ASTRO_TRANSCRIPT_PATH` — Trae's
+    hook publishes no transcript, so it recovers nothing automatically. It is
     fail-open (`ASTRO_TRANSCRIPT_ENRICH=0` disables it; a missing module or a
     corrupt line costs only that read). The single Agent projection entry is
     the pure function `buildAgentView(events, platformId)`

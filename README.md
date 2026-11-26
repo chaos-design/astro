@@ -99,10 +99,13 @@ picked in the console back to the host inside its short hook window. See
   execution span, and an abnormal step states why it ended (failed / terminated
   / waiting plus the host's error text, with the derived `timeout` spelled out).
 - **Transcript recovery** for hook-only clients (WorkBuddy / CodeBuddy / Claude
-  / ZCode / Trae): the model's thinking and intermediate replies exist only in
-  the host transcript, so the recorder reads its new tail incrementally and
-  emits canonical `Reasoning` / `AgentMessage` events — verbatim, de-duplicated
-  per session, and fail-open (`ASTRO_TRANSCRIPT_ENRICH=0` turns it off).
+  / ZCode): the model's thinking and intermediate replies exist only in the
+  host transcript, so the recorder reads its new tail incrementally and emits
+  canonical `Reasoning` / `AgentMessage` events — verbatim, de-duplicated per
+  session, and fail-open (`ASTRO_TRANSCRIPT_ENRICH=0` turns it off). Trae's
+  hook publishes no transcript, so there is nothing to read there; the lookup
+  accepts the common key spellings, and `ASTRO_TRANSCRIPT_PATH=<file>` points
+  the same reader at a conversation export for a host that cannot name one.
 - **Retention**: Settings → Run history can delete runs older than N days
   (default off, 15 days) after a preview of what would go; the service prunes
   only expired session directories under the trace root and drops them from

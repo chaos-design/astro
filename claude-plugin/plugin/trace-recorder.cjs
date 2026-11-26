@@ -985,12 +985,28 @@ function stdinIdleTimeout(environment = process.env) {
  * Claude use `transcript_path`; ZCode also mirrors it as `transcriptPath` and
  * can put it inside a nested payload.
  */
-function transcriptPathOf(payload) {
+function transcriptPathOf(payload, environment = {}) {
   // Hosts name the same file differently: Claude / WorkBuddy / CodeBuddy /
-  // ZCode use `transcript_path`, some IDEs (Trae among them) spell it
-  // camelCase or call it a session / conversation / history file. Reading
-  // every common spelling keeps enrichment available without a per-client
-  // adapter, and a missing path simply yields no recovered events.
+  // ZCode use `transcript_path`, other IDEs spell it camelCase or call it a
+  // session / conversation / history file. Reading every common spelling keeps
+  // enrichment available without a per-client adapter, and a missing path
+  // simply yields no recovered events.
+  //
+  // Trae's hook publishes no transcript at all (checked against Trae CN's
+  // workbench bundle: no `transcript_path` anywhere), so its thinking cannot
+  // be recovered from a hook. `ASTRO_TRANSCRIPT_PATH` is the explicit escape
+  // hatch for a host like that: point it at a conversation file and the same
+  // incremental reader runs, without inventing a per-client adapter.
+  const override =
+    typeof environment.ASTRO_TRANSCRIPT_PATH === "string"
+      ? environment.ASTRO_TRANSCRIPT_PATH.trim()
+      : "";
+  if (override) {
+    // `~/…` is what a person writes in a shell profile, not a real path.
+    return override.startsWith("~/")
+      ? path.join(require("node:os").homedir(), override.slice(2))
+      : override;
+  }
   const keys = [
     "transcript_path",
     "transcriptPath",
@@ -1033,7 +1049,7 @@ function recoverTranscriptEvents(payload, environment, options = {}) {
     if (!isEnabled(environment.ASTRO_TRANSCRIPT_ENRICH ?? "1")) {
       return [];
     }
-    const transcriptPath = transcriptPathOf(payload);
+    const transcriptPath = transcriptPathOf(payload, environment);
     if (!transcriptPath) {
       return [];
     }

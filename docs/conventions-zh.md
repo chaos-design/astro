@@ -112,8 +112,12 @@
     hook 里给出的 `transcript_path` 增量读取尾部（单次 256 KiB 上限），产出规范
     `Reasoning` / `AgentMessage` 事件，`messageId` 用 transcript 条目自己的 id，
     以 `transcriptKey` 去重并写入 `<ASTRO_HOME>/transcript-state/<source>-<session>.json`
-    （会话目录带时间戳，游标不能放在那里）；全程 fail-open，
-    `ASTRO_TRANSCRIPT_ENRICH=0` 可关闭，模块缺失时 recorder 仍照常记录宿主事件；
+    （会话目录带时间戳，游标不能放在那里）；路径识别覆盖
+    `transcript_path` / `session_file` / `conversation_file` / `history_file` /
+    `messages_file` / `log_file` 等拼写，宿主不提供路径时用
+    `ASTRO_TRANSCRIPT_PATH` 显式指定（Trae 的 hook 不提供转录，故无自动补采）；
+    全程 fail-open，`ASTRO_TRANSCRIPT_ENRICH=0` 可关闭，模块缺失时 recorder 仍
+    照常记录宿主事件；
     Agent 投影唯一入口是纯函数 `buildAgentView(events, platformId)`
     （`src/lib/agent-view.ts`）：同 `messageId` 的流式前缀与最终消息合并为一个
     ReplyStep 并计数，前缀断裂记诊断且保留每一步，无 id 的老数据只用时间邻近 +

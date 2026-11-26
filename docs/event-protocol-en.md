@@ -463,6 +463,13 @@ the recorder reads the transcript's new tail and emits canonical events:
   ZCode's fresh temp directory per hook cannot duplicate a step.
 - **Bounded**: one read takes at most 256 KiB and parses at most 200 entries;
   the rest waits for the next hook.
+- **Path lookup**: besides `transcript_path` / `transcriptPath`, the recorder
+  accepts `session_file` / `conversation_file` / `history_file` /
+  `messages_file` / `log_file` (snake and camel, nested under `payload`). A
+  host that names no file at all can be pointed at one with
+  `ASTRO_TRANSCRIPT_PATH=<file>` (`~/` expands); the read rules and the cursor
+  are identical. **Trae's hook publishes no transcript** (its workbench bundle
+  has no `transcript_path`), so Trae has no body to recover today.
 - **Fail-open**: a missing file, a corrupt line or an unknown shape costs only
   that read. `ASTRO_TRANSCRIPT_ENRICH=0` disables recovery, and a missing
   module leaves the host event untouched.

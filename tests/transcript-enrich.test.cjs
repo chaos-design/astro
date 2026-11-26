@@ -569,3 +569,50 @@ test("the recorder finds a Trae transcript under its own key", () => {
     .map((event) => event.eventName);
   assert.deepEqual(names, ["Reasoning", "AgentMessage", "Stop"]);
 });
+
+test("an explicit transcript path covers hosts that publish none", () => {
+  const { spawnSync } = require("node:child_process");
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "astro-env-transcript-"));
+  const transcript = path.join(home, "exported-conversation.jsonl");
+  writeLines(transcript, [
+    { role: "assistant", reasoning: "先把 hook 载荷读出来。", content: "已接入。" },
+  ]);
+  const recorder = path.join(__dirname, "..", "plugin", "trace-recorder.cjs");
+  // Trae's hook carries no transcript at all; the escape hatch is the
+  // environment, not a guessed file location.
+  const result = spawnSync(process.execPath, [recorder, "--source=trae", "--quiet"], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      ASTRO_HOME: home,
+      ASTRO_AUTO_OPEN: "0",
+      ASTRO_TRANSCRIPT_PATH: transcript,
+    },
+    input: JSON.stringify({
+      session_id: "trae-env-1",
+      cwd: "/tmp/trae-project",
+      hook_event_name: "Stop",
+    }),
+    timeout: 10_000,
+  });
+  assert.equal(result.status, 0, result.stderr);
+  const files = [];
+  const walk = (directory) => {
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const target = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        walk(target);
+      } else if (entry.name === "events.jsonl") {
+        files.push(target);
+      }
+    }
+  };
+  walk(home);
+  const names = fs
+    .readFileSync(files[0], "utf8")
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line))
+    .map((event) => event.eventName);
+  assert.deepEqual(names, ["Reasoning", "AgentMessage", "Stop"]);
+});

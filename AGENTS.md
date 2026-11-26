@@ -94,11 +94,16 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   incrementally, emits canonical `Reasoning` / `AgentMessage` payloads whose
   `messageId` is the transcript entry's own id, and de-duplicates by
   `transcriptKey` in `<ASTRO_HOME>/transcript-state/<source>-<session>.json`.
-  It is fail-open (`ASTRO_TRANSCRIPT_ENRICH=0` disables it, a missing module or
-  a corrupt line costs only that read) and is mirrored into every portable
-  plugin's `plugin/` directory by `scripts/build-native-plugins.mjs`. Never let
-  a hook wait on it: it runs after stdin is read and before the host event is
-  appended, with a 256 KiB per-read cap.
+  The path comes from the hook (`transcript_path` plus the common spellings
+  `session_file` / `conversation_file` / `history_file` / `messages_file` /
+  `log_file`); a host that names none can be pointed at a file with
+  `ASTRO_TRANSCRIPT_PATH` (Trae's hook publishes no transcript, so it recovers
+  nothing automatically). It is fail-open (`ASTRO_TRANSCRIPT_ENRICH=0` disables
+  it, a missing module or a corrupt line costs only that read) and is mirrored
+  into every portable plugin's `plugin/` directory by
+  `scripts/build-native-plugins.mjs`. Never let a hook wait on it: it runs after
+  stdin is read and before the host event is appended, with a 256 KiB per-read
+  cap.
   Retention of captured runs lives only in `server/retention.mjs`
   (`findExpiredSessions` / `pruneExpiredSessions`, age = the session's newest
   `capturedAt`, guard 1–3650 days, deletes only `events.jsonl` session

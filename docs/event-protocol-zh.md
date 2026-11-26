@@ -443,6 +443,11 @@ max(已记录跨度, 当前时间 - 开始时间)
   转录文件被重写（变小）时偏移归零，但已记住的 `transcriptKey` 保留，因此 ZCode
   每次 hook 给一个新的临时目录也不会重复写入。
 - **有界**：单次最多读 256 KiB、最多解析 200 条；剩余部分留给下一次 hook。
+- **路径识别**：`transcript_path` / `transcriptPath` 之外还接受 `session_file` /
+  `conversation_file` / `history_file` / `messages_file` / `log_file`（snake 与 camel，
+  含嵌套 `payload.*`）；宿主完全不提供路径时，可用 `ASTRO_TRANSCRIPT_PATH=<file>`
+  显式指定（支持 `~/`），读取规则与游标完全相同。**Trae 的 hook 不提供转录**
+  （其 workbench 包里没有 `transcript_path`），因此 Trae 目前没有可补采的正文。
 - **fail-open**：文件缺失、行损坏、形状未知都只损失那一次读取；`ASTRO_TRANSCRIPT_ENRICH=0`
   关闭补采，模块缺失时记录器照常写宿主事件。
 
