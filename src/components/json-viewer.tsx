@@ -237,7 +237,15 @@ export function JsonViewer({
                       <ChevronDown aria-hidden="true" />
                     )}
                   </button>
-                ) : null}
+                ) : (
+                  // Every row keeps the toggle's 16px + gap gutter, folded or
+                  // not: without the spacer a leaf line sits 22px left of its
+                  // own container, so nesting visibly loses indent level.
+                  <span
+                    className="json-line__toggle json-line__toggle--spacer"
+                    aria-hidden="true"
+                  />
+                )}
                 <div className="json-line__tokens">
                   {row.tokens.map((token, tokenIndex) => (
                     <span

@@ -8040,6 +8040,22 @@ pre,
   position: relative;
 }
 
+/* The inspector's grid row gives the json tab a definite height, so the tree
+   owns its own scrollbar here — unlike the global overlay, whose window
+   scroll region stays in charge. Without this the clipped tail of a long
+   payload read as "the pane cannot scroll". */
+.inspector-tabs__content--json .json-viewer {
+  height: 100%;
+}
+
+.inspector-tabs__content--json .json-viewer__rows {
+  height: 100%;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-bright) transparent;
+}
+
 .inspector-overview {
   padding: 11px 12px 20px;
 }
@@ -8246,6 +8262,13 @@ pre,
 .json-line__toggle svg {
   width: 12px;
   height: 12px;
+}
+
+/* The spacer keeps the toggle gutter on every row so a leaf line never sits
+   left of its own container: hidden, not empty, so hover/pointer rules that
+   target .json-line__toggle stay inert on it. */
+.json-line__toggle--spacer {
+  visibility: hidden;
 }
 
 /* The Code view and the fenced blocks in Preview are two readings of the same
