@@ -535,6 +535,7 @@ test("hook output reports the reused page and preserves quiet-mode stdout", (t) 
   for (const file of [
     "runtime-config.cjs",
     "trace-recorder.cjs",
+    "transcript-enrich.cjs",
     "storage-paths.cjs",
   ]) {
     fs.copyFileSync(
