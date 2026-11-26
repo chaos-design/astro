@@ -634,12 +634,6 @@ export function AgentTranscript({
     });
   }, [syncScrollState]);
 
-  // The run can finish while the reader is still up the chain; re-evaluate the
-  // affordance without waiting for another scroll gesture.
-  useEffect(() => {
-    syncScrollState();
-  }, [live, syncScrollState]);
-
   useEffect(
     () => () => {
       if (scrollFrameRef.current !== null) {
@@ -706,6 +700,15 @@ export function AgentTranscript({
       setPendingCount((current) => current + (count - previous));
     }
   }, [view.steps, scrollToTop, syncScrollState]);
+
+  // Re-evaluate the affordance after the append pin above, never before it:
+  // a newly appended step sits below the viewport until that pin runs, so a
+  // layout read here first would flip `atBottomRef` to false and turn a live
+  // follow into a "N new messages" pill on every streamed batch. The run can
+  // also finish while the reader is up the chain; this covers that case too.
+  useEffect(() => {
+    syncScrollState();
+  }, [live, syncScrollState]);
 
   useEffect(() => {
     if (!selectedEventId || !targetStep) {

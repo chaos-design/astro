@@ -272,6 +272,25 @@ test("live text falls back to an incremental delta and carries the message id", 
   });
 });
 
+test("thinking and tool-call deltas never enter a streamed reply", () => {
+  // Pi fires message_update for every content kind. Only a text delta is
+  // assistant prose; a thinking/tool-call delta would break the prefix rule
+  // and leave a tool-only turn with an answer that never closes.
+  for (const type of ["thinking_delta", "toolcall_delta", "text_end", "done"]) {
+    assert.deepEqual(
+      readPiLiveText({
+        message: {
+          role: "assistant",
+          content: [{ type: "thinking", thinking: "internal" }],
+        },
+        assistantMessageEvent: { type, delta: "not reply text" },
+      }),
+      { messageId: "", text: null, delta: "" },
+      type,
+    );
+  }
+});
+
 test("unmapped events return empty payloads", () => {
   for (const type of [
     "message_start",

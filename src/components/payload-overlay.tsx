@@ -470,7 +470,7 @@ export function PayloadOverlay({
       row += 1;
     }
     return items;
-  }, [atoms, deferredQuery]);
+  }, [atoms, deferredQuery, searchEvent]);
   // Jump-to-edge controls for the chain, mounted beside the rail's search box.
   // Both stay mounted with the width reserved so the search box never resizes
   // while the list scrolls; an unreachable edge is disabled, not unmounted.
@@ -530,8 +530,15 @@ export function PayloadOverlay({
         atomHoverTimerRef.current = null;
       }
       setHoveredAtom(null);
+      return;
     }
-  }, [open]);
+    // Filtering (or a stream reset) can unmount the hovered row while the
+    // pointer sits still — no pointerleave fires, so the fixed card would stay
+    // anchored to a row that is no longer in the rail.
+    if (hoveredAtom && !atoms.some((atom) => atom.id === hoveredAtom.id)) {
+      setHoveredAtom(null);
+    }
+  }, [open, atoms, hoveredAtom]);
   const syncRailEdges = useCallback(() => {
     const list = railListRef.current;
     if (!list) {
@@ -639,10 +646,32 @@ export function PayloadOverlay({
     }
     return null;
   };
+  // A rail row is `position: relative`, so its `offsetTop` is measured from the
+  // nearest positioned ancestor (the fixed dialog), not from the list that
+  // actually scrolls — the rail itself establishes no containing block. Using
+  // it directly here scrolled the list by roughly the header height. Convert
+  // through viewport rects so the value shares `list.scrollTop`'s origin.
+  const railRowTop = (list: HTMLElement, row: HTMLElement): number =>
+    row.getBoundingClientRect().top - list.getBoundingClientRect().top + list.scrollTop;
   // A short, eased tween over the list's own scrollTop. Only the rail list
   // may move — revealing the row by hand keeps a content-paned horizontal
   // scroll from being dragged along by a walk up the scrollable ancestors.
+  const railTweenRef = useRef<number | null>(null);
+  useEffect(
+    () => () => {
+      if (railTweenRef.current !== null) {
+        cancelAnimationFrame(railTweenRef.current);
+      }
+    },
+    [],
+  );
   const animateRailTo = (list: HTMLElement, target: number) => {
+    // A second locate before the first tween finishes must replace it, not
+    // race it: concurrent rAF loops write the same scrollTop each frame.
+    if (railTweenRef.current !== null) {
+      cancelAnimationFrame(railTweenRef.current);
+      railTweenRef.current = null;
+    }
     const start = list.scrollTop;
     const delta = target - start;
     if (Math.abs(delta) < 1) {
@@ -656,10 +685,12 @@ export function PayloadOverlay({
       const eased = 1 - (1 - t) * (1 - t) * (1 - t);
       list.scrollTop = start + delta * eased;
       if (t < 1) {
-        requestAnimationFrame(step);
+        railTweenRef.current = requestAnimationFrame(step);
+      } else {
+        railTweenRef.current = null;
       }
     };
-    requestAnimationFrame(step);
+    railTweenRef.current = requestAnimationFrame(step);
   };
   useEffect(() => {
     if (!open) {
@@ -670,7 +701,8 @@ export function PayloadOverlay({
     if (!row || !list) {
       return;
     }
-    const target = revealTarget(list, row.offsetTop, row.offsetTop + row.offsetHeight, 0);
+    const rowTop = railRowTop(list, row);
+    const target = revealTarget(list, rowTop, rowTop + row.offsetHeight, 0);
     if (target === null) {
       return;
     }
@@ -699,7 +731,8 @@ export function PayloadOverlay({
     if (!row || !list) {
       return;
     }
-    const target = revealTarget(list, row.offsetTop, row.offsetTop + row.offsetHeight, 8);
+    const rowTop = railRowTop(list, row);
+    const target = revealTarget(list, rowTop, rowTop + row.offsetHeight, 8);
     if (target === null) {
       return;
     }

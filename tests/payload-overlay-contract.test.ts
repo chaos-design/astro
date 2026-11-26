@@ -817,15 +817,20 @@ test("scroll, padding and control polish keep the reading surface stable", () =>
   );
 });
 
-test("the rail hover card clears when the dialog closes", () => {
+test("the rail hover card clears when the dialog closes or the row disappears", () => {
   // Escape (and any close while the pointer is over a rail row) does not fire
   // pointerleave, so the debounced close never runs. The card must be gated on
   // `open` and the hover state cleared, or a fixed card stays over the console
-  // anchored to a row that has just unmounted.
+  // anchored to a row that has just unmounted. Filtering can unmount that row
+  // with the pointer still resting on it, so a vanished atom clears it too.
   assert.match(overlay, /card=\{open \? hoveredAtom : null\}/);
   assert.match(
     overlay,
-    /if \(!open\) \{[\s\S]*?setHoveredAtom\(null\);[\s\S]*?\}, \[open\]\)/,
+    /if \(!open\) \{[\s\S]*?setHoveredAtom\(null\);[\s\S]*?\}, \[open, atoms, hoveredAtom\]\)/,
+  );
+  assert.match(
+    overlay,
+    /hoveredAtom && !atoms\.some\(\(atom\) => atom\.id === hoveredAtom\.id\)/,
   );
 });
 

@@ -63,8 +63,15 @@ export function readPiLiveText(event: AnyEvent, syntheticId = ""): PiLiveText {
       return { messageId, text: accumulated, delta: "" };
     }
   }
+  const live = event?.assistantMessageEvent;
+  const liveType = typeof live?.type === "string" ? live.type : "";
+  // Pi fires message_update for thinking and tool-call deltas too. Their
+  // `delta` is reasoning text or tool argument JSON, not assistant prose —
+  // folding either into a streamed reply breaks the "each snapshot is a
+  // prefix of the final text" rule and can leave a tool-only turn with an
+  // answer that never closes. Untyped producers still use the delta.
   const candidate =
-    event?.assistantMessageEvent?.delta ??
+    (live && (!liveType || liveType === "text_delta") ? live.delta : undefined) ??
     event?.messageEvent?.delta ??
     event?.delta;
   return {

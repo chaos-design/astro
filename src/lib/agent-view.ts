@@ -14,8 +14,8 @@ import {
 import { buildTraceTurnIndex } from "./trajectory-model.ts";
 import {
   getTraceEventKey,
+  isBlockingUserQuestionStartEvent,
   isUserQuestionEvent,
-  isUserQuestionStartEvent,
 } from "./trace-event-kind.ts";
 import type { QuestionDescriptor } from "./interaction-contract.ts";
 import {
@@ -421,7 +421,7 @@ export function buildAgentView(
       }
       return;
     }
-    if (isUserQuestionStartEvent(event)) {
+    if (isBlockingUserQuestionStartEvent(event)) {
       const parsed = parseUserQuestionContent(event.payload);
       // A finished question's recorded answers usually arrive with the
       // paired result event (the recorder's PostToolUse), not the start.
@@ -473,18 +473,23 @@ export function buildAgentView(
       // paired start event. Only question tools get the projection — the
       // single classifier keeps every other tool's payload out of the
       // extractor on each batch.
-      const answers = isUserQuestionEvent(event)
+      const startParsed =
+        startEvent && isUserQuestionEvent(startEvent)
+          ? parseUserQuestionContent(startEvent.payload ?? {})
+          : null;
+      const ownAnswers = isUserQuestionEvent(event)
         ? parseUserQuestionContent(event.payload ?? {}).answers
         : [];
+      // The host can write the answers on either half of the pair — a decision
+      // hook injects them into the start's tool_input, a captured run records
+      // them on the result. Join both through the one rule so the result card
+      // highlights the selection no matter which event carried it.
+      const answers = mergeQuestionAnswers(startParsed?.answers ?? [], ownAnswers);
       const answerQuestions =
-        startEvent && isUserQuestionEvent(startEvent)
-          ? parseUserQuestionContent(startEvent.payload ?? {}).prompts.map(
-              (prompt) => ({
-                question: prompt.question,
-                options: prompt.options,
-              }),
-            )
-          : [];
+        startParsed?.prompts.map((prompt) => ({
+          question: prompt.question,
+          options: prompt.options,
+        })) ?? [];
       placement.push({
         index,
         step: {
@@ -492,7 +497,7 @@ export function buildAgentView(
           kind: "tool-result",
           payload: event.payload ?? {},
           eventName: event.eventName,
-          toolName: event.toolName ?? stringValue(event.payload?.tool_name),
+          toolName: event.toolName || stringValue(event.payload?.tool_name),
           inputs: getToolCallInputs(event, startEvent),
           answers,
           answerQuestions,

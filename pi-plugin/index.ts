@@ -300,8 +300,14 @@ export default function (pi: PiExtensionApi) {
             continue;
           }
           lastTerminal.set(sessionId, payload.eventName);
-        } else if (payload.eventName === "Notification") {
-          // A new model step means the previous terminal no longer dedupes.
+        } else if (
+          payload.eventName === "Notification" ||
+          payload.eventName === "UserPromptSubmit"
+        ) {
+          // A new model step — or a new prompt in the same session — opens a
+          // new run. The previous terminal no longer dedupes this turn's Stop;
+          // without the prompt case, every turn after the first lost its Stop
+          // and never reached a terminal run state.
           lastTerminal.delete(sessionId);
         }
         enqueue({

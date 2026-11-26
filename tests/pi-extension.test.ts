@@ -95,8 +95,10 @@ test("records a session into the pi trace root and claims it", async () => {
       },
       ctx,
     );
-    // The second closed turn reports the same terminal event; only the new
-    // agent message is kept.
+    // A second prompt opens a new run. Its Stop is a distinct terminal event
+    // and must not be deduped against the first turn's Stop.
+    await handlers.get("input")!({ text: "again" }, ctx);
+    await handlers.get("before_agent_start")!({ prompt: "again" }, ctx);
     await handlers.get("message_end")!(
       {
         message: {
@@ -136,7 +138,9 @@ test("records a session into the pi trace root and claims it", async () => {
         "Reasoning",
         "AgentMessage",
         "Stop",
+        "UserPromptSubmit",
         "AgentMessage",
+        "Stop",
         "PreToolUse",
         "PostToolUse",
         "SessionEnd",

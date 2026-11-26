@@ -217,6 +217,50 @@ test("a finished question projects its recorded answers and its result step carr
   );
 });
 
+test("a question result keeps answers written only on the start event", () => {
+  // A decision hook injects the answers into the start's tool_input and may
+  // leave the paired result without them. Both the question card and the
+  // result card must still highlight the recorded selection.
+  const events = copyEvents((event) => {
+    if (
+      event.eventName === "PostToolUse" &&
+      String(event.payload?.tool_name) === "AskUserQuestion"
+    ) {
+      event.payload = { ...event.payload, tool_response: {} };
+    }
+  });
+  const view = buildAgentView(events, "chatgpt");
+  const result = view.steps.find(
+    (step) => step.kind === "tool-result" && step.toolName === "AskUserQuestion",
+  );
+  assert.ok(result, "the question tool's result is still its own step");
+  if (result?.kind !== "tool-result") return;
+  assert.deepEqual(result.answers, [{ question: "选择部署方式？", answer: "本地" }]);
+});
+
+test("a permission request without question parameters stays a generic step", () => {
+  // A bare PermissionRequest(Bash-like) is a host authorization gate, not a
+  // user question. It must keep its permission.request key instead of becoming
+  // an empty question card.
+  const events = copyEvents((event) => {
+    if (event.eventName === "PreToolUse" && event.payload?.tool_name === "Read") {
+      event.eventName = "PermissionRequest";
+    }
+  });
+  const view = buildAgentView(events, "chatgpt");
+  const gate = view.steps.find(
+    (step) => step.kind === "event" && step.key === "permission.request",
+  );
+  assert.ok(gate, "the guard projects as a permission.request event step");
+  assert.equal(
+    view.steps.filter(
+      (step) => step.kind === "question" && !step.parsed.prompts.length,
+    ).length,
+    0,
+    "no empty question card is emitted for system authorization",
+  );
+});
+
 test("thinking steps carry the real reasoning text from the capture", () => {
   const events = copyEvents((event) => {
     if (event.eventName === "Reasoning") {
