@@ -43,7 +43,13 @@ const overlayBinding = app.slice(
  */
 test("the overlay switches preview by atom type", () => {
   assert.match(overlay, /variant === "question"/);
-  assert.match(overlay, /<QuestionPreview payload=\{activePayload as TracePayload\} \/>/);
+  // The rail can hand the whole event over; both previews unwrap it to the
+  // payload first (`payloadBodyOf`), so the envelope's source / cwd / toolName
+  // never read as the step's content.
+  assert.match(
+    overlay,
+    /<QuestionPreview\s+payload=\{payloadBodyOf\(activePayload\) as TracePayload\}\s*\/>/,
+  );
   assert.match(overlay, /USER QUESTION/);
   // The `{ __html }` wrapper is memoized on the string: React compares the
   // wrapper object by identity, and an inline literal re-set identical

@@ -10,6 +10,7 @@ import {
   isFoldableRelatedValue,
   isPayloadMetaKey,
   orderRelated,
+  payloadBodyOf,
   RELATED_VALUE_MAX_CHARS,
   splitPayloadPreview,
 } from "../src/lib/payload-preview.ts";
@@ -360,4 +361,49 @@ test("a captured source path fences code even when JSDoc looks like Markdown", (
   assert.match(contentToMarkdown(body, "/work/src/thing.ts"), /^```typescript\n/);
   // Without a path the prose/document guard still applies.
   assert.equal(contentToMarkdown(body), body);
+});
+
+test("an event envelope previews only its payload, never its stamps", () => {
+  // The overlay's rail can hand the whole `TraceEvent` to the Preview pane.
+  // Its envelope (source / cwd / toolName / sequence …) is a record *about*
+  // the capture, not content: previewing it printed the agent name as a
+  // paragraph and listed a dozen envelope keys as "related data".
+  const event = {
+    schemaVersion: 2,
+    id: "code-1",
+    capturedAt: "2026-11-26T16:26:07.451Z",
+    source: "workbuddy",
+    sourceVersion: "5.11.3",
+    workspaceId: "ws",
+    sessionId: "code-demo",
+    turnId: "turn-1",
+    parentId: null,
+    eventName: "PostToolUse",
+    nativeEventName: "PostToolUse",
+    toolUseId: "t1",
+    toolName: "Bash",
+    cwd: "/tmp/x",
+    status: null,
+    sequence: null,
+    payload: {
+      tool_input: { command: "pnpm install-plugins" },
+      tool_response: { exitCode: 0, stdout: "ok" },
+    },
+    locator: "trace://workbuddy/code-demo/code-1",
+  };
+  const body = payloadBodyOf(event);
+  assert.deepEqual(Object.keys(body as object), ["tool_input", "tool_response"]);
+  const split = splitPayloadPreview(body);
+  assert.equal(split.content.trim(), "ok");
+  const keys = split.related.map((field) => field.key);
+  for (const envelopeKey of ["source", "cwd", "toolName", "sessionId", "locator"]) {
+    assert.ok(!keys.includes(envelopeKey), `${envelopeKey} is envelope data`);
+  }
+  assert.ok(keys.includes("command"));
+  // A payload that merely looks similar is not unwrapped.
+  assert.deepEqual(payloadBodyOf({ eventName: "X", payload: { a: 1 } }), {
+    eventName: "X",
+    payload: { a: 1 },
+  });
+  assert.equal(payloadBodyOf("plain text"), "plain text");
 });

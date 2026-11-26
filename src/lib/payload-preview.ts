@@ -289,6 +289,36 @@ export type PayloadPreview = {
 };
 
 /**
+ * The body of one capture.
+ *
+ * A `TraceEvent` is a record *about* a capture — schema stamp, ids, timestamps,
+ * the client name, the working directory, the atom name — and only its
+ * `payload` is what the step actually carried. The overlay's `Code` view shows
+ * the raw event on purpose, but the Preview pane and its related-field list
+ * must read the payload: previewing the envelope printed `workbuddy` as a
+ * paragraph (the event's `source`) and listed `cwd` / `toolName` / `sequence`
+ * as if they were related data. One unwrap here keeps every caller honest.
+ */
+export function payloadBodyOf(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return value;
+  }
+  const record = value as Record<string, unknown>;
+  // The envelope's own signature: an event name plus a payload object. A tool
+  // payload that happens to carry both keys stays untouched (it has no
+  // `schemaVersion` / `capturedAt`).
+  if (
+    typeof record.eventName === "string" &&
+    record.payload &&
+    typeof record.payload === "object" &&
+    ("schemaVersion" in record || "capturedAt" in record || "sessionId" in record)
+  ) {
+    return record.payload;
+  }
+  return value;
+}
+
+/**
  * Split one payload into content and related fields. The search walks the
  * known container keys so `{ contract, captured }` and a tool response nested
  * under `tool_input` both resolve to the same content. Metadata is collected

@@ -53,6 +53,7 @@ import {
   collectPayloadFields,
   hasListPayload,
   orderRelated,
+  payloadBodyOf,
   splitPayloadPreview,
 } from "@/lib/payload-preview";
 import { findPayloadFilePath } from "@/lib/numbered-code";
@@ -272,9 +273,14 @@ type PreparedPreview = {
  * nothing to say falls back to highlighted JSON.
  */
 function preparePreview(
-  payload: unknown,
+  raw: unknown,
   variant: "default" | "question",
 ): PreparedPreview {
+  // The rail can hand over the whole event (an atom row whose tab resolves to
+  // the raw capture). Only its `payload` is content: without this unwrap the
+  // pane printed the event's `source` (the agent name) as the body and listed
+  // `cwd` / `toolName` / `sequence` as related data.
+  const payload = payloadBodyOf(raw);
   const split = splitPayloadPreview(payload);
   // A Read result's numbered body is rendered with a line-number gutter; the
   // captured file path selects its highlight language when one is available.
@@ -1191,7 +1197,9 @@ export function PayloadOverlay({
                         onScroll={handleContentScroll}
                         ref={contentBodyRef}
                       >
-                        <QuestionPreview payload={activePayload as TracePayload} />
+                        <QuestionPreview
+                          payload={payloadBodyOf(activePayload) as TracePayload}
+                        />
                       </div>
                     </div>
                   </section>
