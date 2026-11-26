@@ -52,7 +52,7 @@ import {
   splitPayloadPreview,
 } from "@/lib/payload-preview";
 import { findPayloadFilePath } from "@/lib/numbered-code";
-import { findDataImages, replaceDataImages } from "@/lib/embedded-image";
+import { markdownWithEmbeddedImages } from "@/lib/embedded-image";
 import { payloadToMarkdown } from "@/lib/payload-markdown";
 import { parseUserQuestionContent } from "@/lib/user-question-content";
 import type { TracePairLink } from "@/lib/trace-model";
@@ -282,15 +282,11 @@ function preparePreview(
     : split.content.trim()
       ? contentToMarkdown(split.content, findPayloadFilePath(payload))
       : payloadToMarkdown(payload) || fallbackPayloadMarkdown(payload);
-  // Inline image resources belong in the preview as images. Swap the raw
-  // base64 blobs for a short label and append them as Markdown images — the
-  // renderer's sanitizer already allows data:image sources only.
-  const embedded = findDataImages(JSON.stringify(payload ?? {}));
-  const source = embedded.length
-    ? `${replaceDataImages(textSource)}\n\n${embedded
-        .map((src, index) => `![内嵌图片 ${index + 1}](${src})`)
-        .join("\n\n")}`
-    : textSource;
+  // Inline image resources belong in the preview as images: the shared helper
+  // swaps raw base64 blobs for a short label and appends the distinct sources
+  // as Markdown images — the renderer's sanitizer already allows data:image
+  // sources only.
+  const source = markdownWithEmbeddedImages(textSource, payload);
   const rendered = renderMarkdownPreview(source);
   // Parsed for every row: a payload carrying a structured `questions` list is
   // the question list itself, whether or not the classifier named the event a
@@ -630,6 +626,9 @@ export function PayloadOverlay({
   // The locate token's last observed value, so the reveal effect can tell an
   // explicit 定位 (animate) apart from a live/stream follow (instant).
   const lastLocateRequestRef = useRef(0);
+  // The same observation from the content-active follow effect's side, so it
+  // can yield to the animated locate reveal for one pass instead of racing it.
+  const lastFollowLocateRef = useRef(0);
   // Bring a rail row into the visible band of the atom list. Returns the
   // target scrollTop, or null when the row is already comfortably in view.
   const revealTarget = (
@@ -717,13 +716,18 @@ export function PayloadOverlay({
     }
   }, [atoms.length, following, open, railRevealRequest, selectedEventId, railLocateRequest]);
   // The Agent pane's reading line moves through the chain as the reader
-  // scrolls; Preview / Code mark the single payload they show. Reveal the
-  // matching rail row when it drifts out of view, but never fight Live follow
-  // (which owns the rail while armed) and never move it for a visible row.
-  // A locate has already set contentActive === selected, so that case is
-  // owned by the animated reveal above — skip it here to avoid a jump.
+  // scrolls; the rail follows it: when the reading line lands on an atom that
+  // drifted out of the rail's visible band, that row is scrolled back in —
+  // even when it is the selected one, because reading the selected step by
+  // scrolling is still a scroll move, not a pick. Live follow owns the rail
+  // while armed, and an explicit locate just fired is animated by the reveal
+  // above, so both are yielded to here instead of raced.
   useEffect(() => {
-    if (!open || following || !contentActiveEventId || contentActiveEventId === selectedEventId) {
+    if (!open || following || !contentActiveEventId) {
+      return;
+    }
+    if (railLocateRequest !== lastFollowLocateRef.current) {
+      lastFollowLocateRef.current = railLocateRequest;
       return;
     }
     const row = contentActiveRowRef.current;
@@ -737,7 +741,7 @@ export function PayloadOverlay({
       return;
     }
     list.scrollTop = target;
-  }, [contentActiveEventId, following, open, selectedEventId]);
+  }, [contentActiveEventId, following, open, railLocateRequest]);
   const atomRefs = useRef<Array<HTMLButtonElement | null>>([]);
   // The reader's scroll position in the two preview panes, written by their
   // onScroll handlers (ref writes only — a streamed batch must not re-render).

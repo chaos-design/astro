@@ -53,6 +53,7 @@ import {
   splitPayloadPreview,
 } from "@/lib/payload-preview";
 import { payloadToMarkdown } from "@/lib/payload-markdown";
+import { markdownWithEmbeddedImages } from "@/lib/embedded-image";
 import { hookPhaseOf } from "@/lib/trace-event-kind";
 import { findPayloadFilePath } from "@/lib/numbered-code";
 import { formatDurationMs } from "@/lib/duration-label";
@@ -1115,8 +1116,11 @@ function StepBodyCollapse({
 function ThinkingBody({ step }: { step: ThinkingStep }) {
   // The captured thinking is the point of this block: it opens expanded, but
   // the shared toggle lets the reader fold it down to its one-line content
-  // description like any other step.
-  const source = useMemo(() => contentToMarkdown(step.text), [step.text]);
+  // description like any other step. Inline image resources render as images.
+  const source = useMemo(
+    () => markdownWithEmbeddedImages(contentToMarkdown(step.text)),
+    [step.text],
+  );
   return (
     <StepBodyCollapse label="推理" teaser={statCardRowHint(step)}>
       <MarkdownView source={source} />
@@ -1125,7 +1129,10 @@ function ThinkingBody({ step }: { step: ThinkingStep }) {
 }
 
 function ReplyBody({ step }: { step: ReplyStep }) {
-  const source = useMemo(() => contentToMarkdown(step.text), [step.text]);
+  const source = useMemo(
+    () => markdownWithEmbeddedImages(contentToMarkdown(step.text)),
+    [step.text],
+  );
   return (
     <StepBodyCollapse label="回复" teaser={statCardRowHint(step)}>
       {step.snapshotCount > 0 ? (
@@ -1163,14 +1170,18 @@ function ToolResultBody({ step }: { step: ToolResultStep }) {
   );
   const listPayload = hasListPayload(step.payload);
   const source = useMemo(
-    () =>
-      hasAnswers || shellOutput
-        ? ""
-        : listPayload
-          ? payloadToMarkdown(step.payload)
-          : split.content.trim()
-            ? contentToMarkdown(split.content, findPayloadFilePath(step.payload))
-            : payloadToMarkdown(bodyPayload),
+    () => {
+      const raw =
+        hasAnswers || shellOutput
+          ? ""
+          : listPayload
+            ? payloadToMarkdown(step.payload)
+            : split.content.trim()
+              ? contentToMarkdown(split.content, findPayloadFilePath(step.payload))
+              : payloadToMarkdown(bodyPayload);
+      // Inline image resources in the result render as images, not base64 walls.
+      return markdownWithEmbeddedImages(raw, step.payload);
+    },
     [
       hasAnswers,
       shellOutput,
@@ -1216,7 +1227,10 @@ function QuestionBody({
 }
 
 function GenericBody({ step }: { step: GenericStep }) {
-  const source = useMemo(() => contentToMarkdown(step.summary), [step.summary]);
+  const source = useMemo(
+    () => markdownWithEmbeddedImages(contentToMarkdown(step.summary), step.payload),
+    [step.summary, step.payload],
+  );
   // A tool-call event opens with its structured invocation so the reader sees
   // what ran before the related-fields dump. The CallBlock frame already shows
   // the tool name in its bar and the command / fields in its body, so the

@@ -14,6 +14,10 @@ const agentTranscript = readFileSync(
   new URL("../src/components/agent-transcript.tsx", import.meta.url),
   "utf8",
 );
+const embeddedImage = readFileSync(
+  new URL("../src/lib/embedded-image.ts", import.meta.url),
+  "utf8",
+);
 const app = readFileSync(new URL("../src/app.tsx", import.meta.url), "utf8");
 const traceModel = readFileSync(
   new URL("../src/lib/trace-model.ts", import.meta.url),
@@ -929,8 +933,10 @@ test("the header carries a prominent agent badge and hook badges are phase-colou
 test("Preview and Code locate the inspected atom and embedded images are previews", () => {
   assert.match(overlay, /if \(viewMode === "agent"\) \{\s*return;/);
   assert.match(overlay, /setContentActiveEventId\(selectedEventId \|\| null\)/);
-  assert.match(overlay, /findDataImages\(JSON\.stringify\(payload \?\? \{\}\)\)/);
-  assert.match(overlay, /!\[内嵌图片 \$\{index \+ 1\}\]\(\$\{src\}\)/);
+  // Embedded image resources are rendered through the shared helper, which
+  // rewrites the display source and appends Markdown image lines.
+  assert.match(overlay, /markdownWithEmbeddedImages\(textSource, payload\)/);
+  assert.match(embeddedImage, /!\[内嵌图片 \$\{index \+ 1\}\]\(\$\{source\}\)/);
   assert.match(stylesForOverlay, /\.payload-overlay__field-image \{/);
   assert.match(stylesForOverlay, /\.preview-mac-frame \.markdown-preview img \{/);
 });
@@ -959,6 +965,38 @@ test("a locate request smooth-scrolls the rail; the reveal target is shared", ()
   assert.match(overlay, /lastLocateRequestRef\.current = railLocateRequest/);
   assert.match(overlay, /animateRailTo\(list, target\)/);
   assert.match(overlay, /requestAnimationFrame\(step\)/);
+});
+
+/** Base64 image resources in a payload are rendered as images, never left as
+ * a wall of encoded text: the shared helper rewrites the display source and
+ * appends Markdown image lines, and both reading surfaces use it. */
+test("embedded base64 images render as images in the Agent bodies and the Preview pane", () => {
+  assert.match(
+    agentTranscript,
+    /import \{ markdownWithEmbeddedImages \} from "@\/lib\/embedded-image";/,
+  );
+  // Each step body's Markdown source passes through the helper (thinking /
+  // reply over their text, result / generic over the captured payload).
+  const bodyUses = agentTranscript.match(
+    /markdownWithEmbeddedImages\(/g,
+  );
+  assert.ok(bodyUses && bodyUses.length >= 4, "all step bodies embed images");
+  assert.match(overlay, /markdownWithEmbeddedImages\(textSource, payload\)/);
+});
+
+/** Scrolling the Agent pane drives the rail: the reading line's atom row is
+ * scrolled back into the rail's visible band — even when it is the selected
+ * step — without fighting Live follow or the animated locate reveal. */
+test("the rail follows the Agent pane's reading line into the visible band", () => {
+  assert.match(overlay, /lastFollowLocateRef\.current = railLocateRequest/);
+  assert.match(overlay, /const row = contentActiveRowRef\.current;/);
+  assert.match(overlay, /\}, \[contentActiveEventId, following, open, railLocateRequest\]\);/);
+  // Yielding to the animated locate for one pass keeps the two reveals from
+  // racing over the same row.
+  assert.match(
+    overlay,
+    /if \(railLocateRequest !== lastFollowLocateRef\.current\) \{\s*\n\s*lastFollowLocateRef\.current = railLocateRequest;\s*\n\s*return;/,
+  );
 });
 
 /** Selected Agent cards breathe — a slow glow pulse, disabled under reduced
