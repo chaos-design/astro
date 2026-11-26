@@ -153,6 +153,7 @@ import {
   panelHeaderCopyClass,
   retiredStorageKeys,
   resolvePerfHudInitial,
+  resolveRetentionPreference,
   isDemoGateOpen,
   shouldShowDemo,
   storageKeys,
@@ -163,6 +164,7 @@ import {
   type HistoryRangeId,
   type MaxSyncId,
   type QuestionPanelMode,
+  type RetentionPreference,
   type Theme,
 } from "./config/app-config";
 import {
@@ -327,6 +329,7 @@ import {
   playTaskCompletionChime,
   resolveChimeStatus,
 } from "./lib/task-completion-chime";
+import { fetchRetentionPreview, pruneRetention } from "./lib/retention";
 import {
   attachScrollFpsTracker,
   getPerfSnapshot,
@@ -385,7 +388,32 @@ function preloadHistorySearch() {
  * Shared empty collections. Reusing one instance keeps memoized children from
  * re-rendering on every parent render when there is nothing to show.
  */
+/**
+ * The retention sweep runs at most once a day. Kept browser-local and out of
+ * `storageKeys` on purpose: it is a bookkeeping marker, not a preference the
+ * settings dialog reads or the reset restores.
+ */
+const RETENTION_LAST_PRUNE_KEY = "astro:retention-last-prune";
+const RETENTION_PRUNE_INTERVAL_MS = 24 * 60 * 60 * 1000;
+
 const EMPTY_EVENTS: TraceEvent[] = [];
+/**
+ * The Agent view while the overlay is closed. One frozen empty view (not a
+ * fresh object) so the dialog's props stay referentially stable and a closed
+ * overlay costs nothing to re-render.
+ */
+const EMPTY_AGENT_VIEW: AgentView = {
+  steps: [],
+  stats: {
+    thinking: 0,
+    replies: 0,
+    questions: 0,
+    snapshotsMerged: 0,
+    turns: 0,
+    events: 0,
+  },
+  diagnostics: [],
+};
 /**
  * Minimum horizontal slot per node in the trajectory lane overview. Below
  * roughly this width the segments stop being distinguishable (and clickable),
@@ -3420,6 +3448,7 @@ function TraceInspector({
   overlayFollowAvailable,
   overlayAgentRunDurationMs,
   overlayAgentRunExecuting,
+  overlayAgentRunState,
   overlayAgentPlatform,
   overlaySearchEvent,
   onOverlayFollowingChange,
@@ -3464,6 +3493,15 @@ function TraceInspector({
    * `null` when the message has no clock of its own.
    */
   overlayAgentRunDurationMs?: number | null;
+  /**
+   * The displayed message's status and cause, for the Agent header's hover
+   * card: `timeout` is derived, every other reason is recorded.
+   */
+  overlayAgentRunState?: {
+    status: TraceRunStatus;
+    reason: RunTerminalReason | null;
+    detail: string | null;
+  } | null;
   /** Whether the selected message is executing — drives the Agent view's loading / scroll control. */
   overlayAgentRunExecuting: boolean;
   /** The agent that produced the run, for the dialog header's brand mark. */
@@ -3737,6 +3775,7 @@ function TraceInspector({
         agentView={agentView}
         agentRunDurationMs={overlayAgentRunDurationMs}
         agentRunExecuting={overlayAgentRunExecuting}
+        agentRunState={overlayAgentRunState}
         platform={overlayAgentPlatform}
         cacheScope={activeTab}
         followAvailable={overlayFollowAvailable}
@@ -5594,6 +5633,11 @@ export default function App() {
   // notification works without hunting for a switch. One preference drives
   // both the persisted value and the terminal-transition effect below. The
   // style picks the timbre; the status contour rule holds in every style.
+  // Retention of captured runs. The preference is the reader's; the service
+  // does the deleting, and only after the settings panel showed a preview.
+  const [retention, setRetention] = useState<RetentionPreference>(() =>
+    resolveRetentionPreference(window.localStorage),
+  );
   const [taskCompletionChime, setTaskCompletionChime] = useState<boolean>(() =>
     readStorageBoolean(
       window.localStorage,
@@ -5865,6 +5909,86 @@ export default function App() {
   useEffect(() => {
     writeStorageValue(window.localStorage, storageKeys.chimeStyle, chimeStyle);
   }, [chimeStyle]);
+
+  useEffect(() => {
+    writeStorageValue(
+      window.localStorage,
+      storageKeys.retention,
+      JSON.stringify(retention),
+    );
+  }, [retention]);
+
+  // One prune per day, at most: enabling retention is the reader's decision,
+  // but a console opened ten times before lunch must not sweep ten times.
+  // The request is fire-and-forget — a service that is not up yet simply
+  // leaves the old sessions for tomorrow — and a successful sweep is reported
+  // through the same notice channel as the other destructive actions.
+  // The settings panel previews through the service (the filesystem is its
+  // side), and prunes through the same call the daily sweep uses.
+  const handleRetentionPreview = useCallback(
+    (days: number) => fetchRetentionPreview(apiBase, days),
+    [apiBase],
+  );
+  const handleRetentionPrune = useCallback(
+    async (days: number) => {
+      const result = await pruneRetention(apiBase, days);
+      if (result.removed > 0) {
+        pushNotice(
+          "success",
+          `已清理 ${result.removed} 条超过 ${result.days} 天的历史消息`,
+          `${(result.bytes / (1024 * 1024)).toFixed(1)} MB 已释放`,
+        );
+      }
+      return result;
+    },
+    [apiBase, pushNotice],
+  );
+  const retentionPruneRef = useRef(false);
+  useEffect(() => {
+    if (!retention.enabled || retentionPruneRef.current) {
+      return;
+    }
+    retentionPruneRef.current = true;
+    let lastPrunedAt = 0;
+    try {
+      lastPrunedAt = Number(
+        window.localStorage.getItem(RETENTION_LAST_PRUNE_KEY) ?? 0,
+      );
+    } catch {
+      lastPrunedAt = 0;
+    }
+    if (
+      Number.isFinite(lastPrunedAt) &&
+      Date.now() - lastPrunedAt < RETENTION_PRUNE_INTERVAL_MS
+    ) {
+      return;
+    }
+    pruneRetention(apiBase, retention.days)
+      .then((result) => {
+        try {
+          window.localStorage.setItem(
+            RETENTION_LAST_PRUNE_KEY,
+            String(Date.now()),
+          );
+        } catch {
+          // Storage is optional; the in-memory guard still prevents a loop.
+        }
+        if (result.removed > 0) {
+          pushNotice(
+            "success",
+            `已清理 ${result.removed} 条超过 ${result.days} 天的历史消息`,
+            `${(result.bytes / (1024 * 1024)).toFixed(1)} MB 已释放`,
+          );
+        }
+      })
+      .catch((error: unknown) => {
+        pushNotice(
+          "error",
+          "历史消息自动清理失败",
+          error instanceof Error ? error.message : String(error),
+        );
+      });
+  }, [apiBase, pushNotice, retention.days, retention.enabled]);
 
   // The HUD is pure DOM outside the React tree (the tool that measures must
   // never enter the render path); React only decides *whether* it exists.
@@ -6818,10 +6942,17 @@ export default function App() {
   const activeEvents =
     activePromptRun?.events ?? activeSession?.events ?? EMPTY_EVENTS;
   // The Agent view is a pure projection of the same events the overlay rail
-  // uses. Memoize it so a once-per-second `now` tick never rebuilds the steps.
+  // uses. Memoize it so a once-per-second `now` tick never rebuilds the steps —
+  // and only build it while the overlay is open: the projection walks every
+  // event of the run (turn index, pair spans, steps), which is the single most
+  // expensive derivation per streaming batch, and the dialog mounts nothing
+  // while closed. Opening the overlay derives it once, on that render.
   const overlayAgentView = useMemo(
-    () => buildAgentView(activeEvents, platformId),
-    [activeEvents, platformId],
+    () =>
+      overlayOpen
+        ? buildAgentView(activeEvents, platformId)
+        : EMPTY_AGENT_VIEW,
+    [activeEvents, overlayOpen, platformId],
   );
   const activeDisplayState = activePromptRun
     ? getRunDisplayState(
@@ -6843,6 +6974,31 @@ export default function App() {
   // secondly `now` tick advances it while the run is live; an ended message
   // keeps its recorded total.
   const overlayAgentRunDurationMs = activeDisplayState?.duration ?? null;
+  // Why the displayed message ended, for the header clock's hover card. The
+  // recorded reason wins; a live run past its budget reports `timeout` through
+  // the same helper the RUN HISTORY row uses, so the two surfaces agree.
+  const overlayAgentTerminal = activePromptRun
+    ? getRunHistoryTerminalInfo(
+        activePromptRun,
+        [activePromptRun],
+        now,
+        appTimings.activeRunTimeoutMs,
+      )
+    : activeSession
+      ? getRunHistoryTerminalInfo(
+          activeSession,
+          activePromptRuns,
+          now,
+          appTimings.activeRunTimeoutMs,
+        )
+      : null;
+  const overlayAgentRunState = activeDisplayState
+    ? {
+        status: activeDisplayState.status,
+        reason: overlayAgentTerminal?.reason ?? null,
+        detail: overlayAgentTerminal?.detail ?? null,
+      }
+    : null;
   // The dialog header carries the producing agent's brand; the recorder's
   // client version is deliberately not shown — it belongs to the envelope,
   // not to the captured event.
@@ -8401,6 +8557,7 @@ export default function App() {
               maxSync={maxSync}
               perfHud={perfHud}
               questionPanelMode={questionPanelMode}
+              retention={retention}
               taskCompletionChime={taskCompletionChime}
               theme={theme}
               onActiveViewChange={(view) => {
@@ -8417,6 +8574,9 @@ export default function App() {
               onMaxSyncChange={setMaxSync}
               onPerfHudChange={setPerfHud}
               onQuestionPanelModeChange={changeQuestionPanelMode}
+              onRetentionChange={setRetention}
+              onRetentionPreview={handleRetentionPreview}
+              onRetentionPrune={handleRetentionPrune}
               onTaskCompletionChimeChange={setTaskCompletionChime}
               onChimeStyleChange={setChimeStyle}
               onThemeChange={setTheme}

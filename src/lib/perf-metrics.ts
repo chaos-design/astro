@@ -1,10 +1,13 @@
+import { formatPerfDuration } from "./duration-label.ts";
+
 /**
  * Dependency-free performance instrumentation for the studio frontend.
  *
  * The metrics stay cheap enough to always run: two PerformanceObservers
  * (long tasks, resource timings) plus paint entries, a bounded list-render
- * ring, and a scroll FPS tracker that only samples while the list actually
- * scrolls. Every value is readable from one place — `window.__astroPerf` —
+ * ring, a scroll FPS tracker that only samples while the list actually
+ * scrolls, and a resident page-FPS sampler that reads the page itself once a
+ * second. Every value is readable from one place — `window.__astroPerf` —
  * so a before/after comparison of an optimization reads a single consistent
  * snapshot instead of ad-hoc console timing.
  *
@@ -21,6 +24,10 @@ const LIST_RENDER_SAMPLE_LIMIT = 200;
 const SCROLL_FPS_SAMPLE_LIMIT = 100;
 /** Frame gap after the last scroll event at which a scroll sample closes. */
 const SCROLL_IDLE_MS = 400;
+/** The resident page-FPS window: one reading per second of painting. */
+export const PAGE_FPS_WINDOW_MS = 1000;
+/** Five minutes of one-second readings; enough to see a regression settle. */
+const PAGE_FPS_SAMPLE_LIMIT = 300;
 const HUD_UPDATE_MS = 500;
 
 export type ListRenderStats = {
@@ -38,6 +45,20 @@ export type ScrollFpsSample = {
   frames: number;
 };
 
+/**
+ * The page's own frame rate, sampled continuously (not only while the list
+ * scrolls): the number a reader means by "当前页面帧率". `frameMs` is the mean
+ * frame interval of the last window, so the same reading can be shown as fps
+ * or as milliseconds — the panel shows both.
+ */
+export type PageFpsStats = {
+  current: number;
+  average: number;
+  min: number;
+  samples: number;
+  frameMs: number;
+};
+
 export type PerfSnapshot = {
   /** Navigation start → the app's first committed render, in ms. */
   appReadyMs: number | null;
@@ -49,6 +70,8 @@ export type PerfSnapshot = {
     samples: number;
     worst: number;
   };
+  /** The page's own frame rate, independent of any scroll gesture. */
+  pageFps: PageFpsStats;
   listRender: ListRenderStats;
   network: {
     apiRequests: number;
@@ -65,6 +88,9 @@ const listRenderSamples: number[] = [];
 let listRenderRows = 0;
 const scrollFpsSamples: number[] = [];
 let lastScrollFps = 0;
+const pageFpsSamples: number[] = [];
+let pageFpsCurrent = 0;
+let pageFpsFrameMs = 0;
 let appReadyMs: number | null = null;
 let firstContentfulPaintMs: number | null = null;
 let largestContentfulPaintMs: number | null = null;
@@ -116,6 +142,41 @@ export function recordScrollSample(sample: ScrollFpsSample) {
   }
 }
 
+/**
+ * One closed page-FPS window. `frameMs` is recorded separately from fps so a
+ * 240Hz display and a 30Hz panel both read honestly: fps alone hides that a
+ * 120fps page can still miss a frame budget.
+ */
+export function recordPageFpsSample(fps: number, frameMs: number) {
+  if (!Number.isFinite(fps) || fps < 0) {
+    return;
+  }
+  pageFpsCurrent = Math.round(fps * 10) / 10;
+  pageFpsFrameMs = Number.isFinite(frameMs) && frameMs > 0 ? frameMs : 0;
+  pageFpsSamples.push(pageFpsCurrent);
+  if (pageFpsSamples.length > PAGE_FPS_SAMPLE_LIMIT) {
+    pageFpsSamples.shift();
+  }
+}
+
+/** Aggregates the resident page-FPS ring for the snapshot and the panel. */
+export function summarizePageFps(
+  samples: readonly number[],
+  current: number,
+  frameMs: number,
+): PageFpsStats {
+  const total = samples.reduce((sum, value) => sum + value, 0);
+  return {
+    current,
+    average: samples.length
+      ? Math.round((total / samples.length) * 10) / 10
+      : 0,
+    min: samples.length ? Math.min(...samples) : 0,
+    samples: samples.length,
+    frameMs,
+  };
+}
+
 export function markAppReady(now = typeof performance === "undefined" ? 0 : performance.now()) {
   if (appReadyMs === null && now > 0) {
     appReadyMs = Math.round(now);
@@ -150,6 +211,11 @@ export function getPerfSnapshot(): PerfSnapshot {
       samples: fpsSamples,
       worst: fpsSamples ? Math.min(...scrollFpsSamples) : 0,
     },
+    pageFps: summarizePageFps(
+      pageFpsSamples,
+      pageFpsCurrent,
+      pageFpsFrameMs,
+    ),
     listRender: {
       count: listCount,
       lastMs: listCount ? listRenderSamples[listCount - 1] : 0,
@@ -219,6 +285,79 @@ export function attachScrollFpsTracker(element: HTMLElement): () => void {
 }
 
 /**
+ * The resident page-FPS sampler: one requestAnimationFrame loop that closes a
+ * reading every {@link PAGE_FPS_WINDOW_MS} and then keeps going. This is the
+ * number the HUD's headline shows — a page can be perfectly smooth while
+ * nobody scrolls, and the scroll tracker above deliberately samples nothing
+ * then. The loop is paused while the document is hidden (a background tab
+ * paints nothing, and counting rAF there would report a frame rate that does
+ * not exist), and resumes with a fresh window on return. Returns a disconnect
+ * function; it is idempotent.
+ */
+export function startPageFpsSampler(): () => void {
+  if (
+    typeof window === "undefined" ||
+    typeof document === "undefined" ||
+    typeof requestAnimationFrame === "undefined"
+  ) {
+    return () => undefined;
+  }
+  let frame = 0;
+  let frames = 0;
+  let startedAt = 0;
+  let stopped = false;
+
+  const tick = (now: number) => {
+    frames += 1;
+    const elapsed = now - startedAt;
+    if (elapsed >= PAGE_FPS_WINDOW_MS) {
+      recordPageFpsSample(
+        computeFps(frames, elapsed),
+        elapsed / Math.max(1, frames),
+      );
+      frames = 0;
+      startedAt = now;
+    }
+    frame = requestAnimationFrame(tick);
+  };
+  const start = () => {
+    if (stopped || frame) {
+      return;
+    }
+    frames = 0;
+    startedAt = performance.now();
+    frame = requestAnimationFrame(tick);
+  };
+  const stop = () => {
+    if (frame) {
+      cancelAnimationFrame(frame);
+      frame = 0;
+    }
+  };
+  const onVisibilityChange = () => {
+    if (document.hidden) {
+      stop();
+    } else {
+      start();
+    }
+  };
+
+  document.addEventListener("visibilitychange", onVisibilityChange);
+  if (!document.hidden) {
+    start();
+  }
+
+  return () => {
+    if (stopped) {
+      return;
+    }
+    stopped = true;
+    stop();
+    document.removeEventListener("visibilitychange", onVisibilityChange);
+  };
+}
+
+/**
  * Installs the always-on observers (paint, long tasks, resource timings) and
  * exposes `window.__astroPerf.snapshot()`. Returns the disconnect function so
  * callers with a teardown path (tests, HMR) can remove them again.
@@ -228,6 +367,7 @@ export function installPerfMetrics(): () => void {
     return () => undefined;
   }
 
+  const stopPageFps = startPageFpsSampler();
   const observers: PerformanceObserver[] = [];
   try {
     const paint = new PerformanceObserver((entries) => {
@@ -292,6 +432,7 @@ export function installPerfMetrics(): () => void {
   };
 
   return () => {
+    stopPageFps();
     for (const observer of observers) {
       observer.disconnect();
     }
@@ -299,10 +440,10 @@ export function installPerfMetrics(): () => void {
   };
 }
 
-/** One headline number for the collapsed pill, e.g. `60fps · 0.8ms`. */
+/** One headline reading for the collapsed pill, e.g. `60fps · 16.7ms`. */
 export function formatHudHeadline(snapshot: PerfSnapshot): string {
-  const fps = snapshot.scrollFps.samples > 0 ? snapshot.scrollFps.average : snapshot.scrollFps.last;
-  return `${fps || "--"}fps · ${snapshot.listRender.averageMs.toFixed(1)}ms`;
+  const fps = snapshot.pageFps.current;
+  return `${fps || "--"}fps · ${formatPerfDuration(snapshot.pageFps.frameMs)}`;
 }
 
 /**
@@ -387,13 +528,14 @@ export type HudTile = {
 };
 
 export function getHudTiles(snapshot: PerfSnapshot): HudTile[] {
-  const fps =
-    snapshot.scrollFps.samples > 0 ? snapshot.scrollFps.average : snapshot.scrollFps.last;
+  // The page's own rate, not the scroll-gesture average: the reader asks
+  // "当前页面帧率" and may not have scrolled at all since opening the panel.
+  const fps = snapshot.pageFps.current;
   const render = snapshot.listRender.averageMs;
   return [
     {
       value: `${fps || "--"} fps`,
-      label: "滚动帧率",
+      label: "页面帧率",
       tone: fps >= 50 ? "ok" : fps >= 30 ? "warn" : "bad",
     },
     {
@@ -638,12 +780,42 @@ const metricSections: Array<{
     title: "加载 LOAD",
     doc: "导航开始到应用就绪 / 首帧内容（FCP）/ 最大内容（LCP）；本地服务下通常都在 1s 内",
     rows: [
-      { label: "应用就绪", value: (s) => `${s.appReadyMs ?? "--"} ms` },
+      {
+        label: "应用就绪",
+        value: (s) =>
+          s.appReadyMs === null ? "--" : formatPerfDuration(s.appReadyMs),
+      },
       {
         label: "首帧 / 最大内容",
         value: (s) =>
-          `${s.firstContentfulPaintMs ?? "--"} / ${s.largestContentfulPaintMs ?? "--"} ms`,
+          `${s.firstContentfulPaintMs === null ? "--" : formatPerfDuration(s.firstContentfulPaintMs)} / ${s.largestContentfulPaintMs === null ? "--" : formatPerfDuration(s.largestContentfulPaintMs)}`,
       },
+    ],
+  },
+  {
+    title: "页面帧率 PAGE FPS",
+    doc: "常驻采样：每秒一个窗口，统计页面自身的绘制帧率；标签页隐藏时暂停，回到前台重新开窗",
+    rows: [
+      {
+        label: "当前 · 平均 · 最低",
+        value: (s) =>
+          `${s.pageFps.current || "--"} / ${s.pageFps.average || "--"} / ${s.pageFps.min || "--"} fps`,
+        tone: (s) => {
+          if (s.pageFps.samples === 0) {
+            return undefined;
+          }
+          return s.pageFps.current >= 50
+            ? "ok"
+            : s.pageFps.current >= 30
+              ? "warn"
+              : "bad";
+        },
+      },
+      {
+        label: "帧耗时",
+        value: (s) => formatPerfDuration(s.pageFps.frameMs),
+      },
+      { label: "采样窗口数", value: (s) => `${s.pageFps.samples}` },
     ],
   },
   {
@@ -675,7 +847,7 @@ const metricSections: Array<{
       {
         label: "最近 · 平均 · 最大",
         value: (s) =>
-          `${s.listRender.lastMs.toFixed(1)} / ${s.listRender.averageMs.toFixed(1)} / ${s.listRender.maxMs.toFixed(1)} ms`,
+          `${formatPerfDuration(s.listRender.lastMs)} / ${formatPerfDuration(s.listRender.averageMs)} / ${formatPerfDuration(s.listRender.maxMs)}`,
         tone: (s) =>
           s.listRender.averageMs <= 8
             ? "ok"
@@ -709,11 +881,12 @@ const metricSections: Array<{
     rows: [
       {
         label: "次数 / 累计",
-        value: (s) => `${s.longTasks.count} / ${s.longTasks.totalMs.toFixed(0)} ms`,
+        value: (s) =>
+          `${s.longTasks.count} / ${formatPerfDuration(s.longTasks.totalMs)}`,
       },
       {
         label: "最长一次",
-        value: (s) => `${s.longTasks.maxMs} ms`,
+        value: (s) => formatPerfDuration(s.longTasks.maxMs),
         tone: (s) =>
           s.longTasks.count === 0
             ? "ok"

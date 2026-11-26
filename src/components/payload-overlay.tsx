@@ -41,7 +41,11 @@ import {
 import { RelatedFields } from "@/components/related-fields";
 import type { AgentView } from "@/lib/agent-view";
 import { getAtomPlatformConfig } from "@/config/atom-platforms";
-import type { PlatformId } from "@/types/trace";
+import type {
+  PlatformId,
+  RunTerminalReason,
+  TraceRunStatus,
+} from "@/types/trace";
 import { renderMarkdownPreview } from "@/lib/markdown-preview";
 import {
   contentToMarkdown,
@@ -341,6 +345,7 @@ export function PayloadOverlay({
   agentView,
   agentRunDurationMs = null,
   agentRunExecuting = false,
+  agentRunState = null,
   cacheScope = "",
   followAvailable = false,
   following = false,
@@ -369,6 +374,15 @@ export function PayloadOverlay({
    * `null` when the message has no clock of its own.
    */
   agentRunDurationMs?: number | null;
+  /**
+   * The displayed message's own status and, when it ended abnormally, why —
+   * read by the Agent view's header hover card.
+   */
+  agentRunState?: {
+    status: TraceRunStatus;
+    reason: RunTerminalReason | null;
+    detail: string | null;
+  } | null;
   /**
    * Whether the selected *message* is still executing. Distinct from
    * `followAvailable` (a session-level capability): the Agent view's loading
@@ -695,6 +709,13 @@ export function PayloadOverlay({
     if (!open) {
       return;
     }
+    // In the Agent pane the rail follows the *reading line* instead (the
+    // effect below): the reader scrolls the transcript, not the rail, so the
+    // newest-event selection is not where their eyes are. Preview / Code keep
+    // this selection-driven reveal — there the selected row is the content.
+    if (viewMode === "agent") {
+      return;
+    }
     const row = selectedRowRef.current;
     const list = row?.closest<HTMLElement>(".payload-overlay__atom-list");
     if (!row || !list) {
@@ -714,16 +735,19 @@ export function PayloadOverlay({
     } else {
       list.scrollTop = target;
     }
-  }, [atoms.length, following, open, railRevealRequest, selectedEventId, railLocateRequest]);
+  }, [atoms.length, following, open, railRevealRequest, selectedEventId, railLocateRequest, viewMode]);
   // The Agent pane's reading line moves through the chain as the reader
   // scrolls; the rail follows it: when the reading line lands on an atom that
   // drifted out of the rail's visible band, that row is scrolled back in —
   // even when it is the selected one, because reading the selected step by
-  // scrolling is still a scroll move, not a pick. Live follow owns the rail
-  // while armed, and an explicit locate just fired is animated by the reveal
-  // above, so both are yielded to here instead of raced.
+  // scrolling is still a scroll move, not a pick. This runs while Live follow
+  // is armed too: following advances the *selection* to the newest event, but
+  // a reader who scrolled up through the transcript is looking at an older
+  // card, and the rail must show the atom behind that card. An explicit
+  // locate just fired is animated by the reveal above, so it is yielded to
+  // here instead of raced.
   useEffect(() => {
-    if (!open || following || !contentActiveEventId) {
+    if (!open || !contentActiveEventId) {
       return;
     }
     if (railLocateRequest !== lastFollowLocateRef.current) {
@@ -741,7 +765,7 @@ export function PayloadOverlay({
       return;
     }
     list.scrollTop = target;
-  }, [contentActiveEventId, following, open, railLocateRequest]);
+  }, [contentActiveEventId, open, railLocateRequest, viewMode]);
   const atomRefs = useRef<Array<HTMLButtonElement | null>>([]);
   // The reader's scroll position in the two preview panes, written by their
   // onScroll handlers (ref writes only — a streamed batch must not re-render).
@@ -1074,6 +1098,11 @@ export function PayloadOverlay({
                           }
                           if (contentActive) {
                             contentActiveRowRef.current = node;
+                          } else if (contentActiveRowRef.current === node) {
+                            // The reading line moved on: drop the stale anchor so
+                            // the follow effect can never scroll to a row that no
+                            // longer represents the card on screen.
+                            contentActiveRowRef.current = null;
                           }
                           atomRefs.current[rowPosition] = node;
                         }}
@@ -1130,6 +1159,7 @@ export function PayloadOverlay({
                 live={agentRunExecuting}
                 locateRequest={agentLocateRequest}
                 runDurationMs={agentRunDurationMs}
+                runState={agentRunState}
                 onActiveEventChange={setContentActiveEventId}
               />
             ) : viewMode === "preview" ? (

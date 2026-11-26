@@ -1943,6 +1943,113 @@ pre,
   transform: translateX(18px);
 }
 
+/* Retention of captured runs: the day window and its presets sit under the
+   copy, and the confirm step is a bordered block — deleting captured evidence
+   must look different from flipping any other switch. */
+.settings-retention {
+  display: grid;
+  gap: 8px;
+}
+
+.settings-retention__controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.settings-retention__days {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-family: var(--font-mono, monospace);
+  font-size: var(--text-overline);
+}
+
+.settings-retention__input {
+  width: 64px;
+  padding: 3px 6px;
+  border: 1px solid var(--line-bright);
+  border-radius: 5px;
+  background: var(--panel);
+  color: var(--text);
+  font-family: inherit;
+  font-size: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
+.settings-retention__presets {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.settings-retention__preset {
+  padding: 2px 7px;
+  border: 1px solid var(--line-bright);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: var(--text-overline);
+}
+
+.settings-retention__preset:hover,
+.settings-retention__preset.is-active {
+  border-color: var(--violet);
+  color: var(--text-strong);
+}
+
+.settings-retention__confirm {
+  display: grid;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--amber) 42%, var(--line));
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--amber) 8%, transparent);
+  color: var(--text);
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+.settings-retention__actions {
+  display: inline-flex;
+  gap: 8px;
+}
+
+.settings-retention__action {
+  padding: 3px 9px;
+  border: 1px solid var(--line-bright);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: var(--text-overline);
+}
+
+.settings-retention__action.is-danger {
+  border-color: color-mix(in srgb, var(--red) 52%, var(--line));
+  color: var(--red);
+}
+
+.settings-retention__action.is-danger:hover {
+  background: color-mix(in srgb, var(--red) 12%, transparent);
+}
+
+.settings-retention__report {
+  margin: 0;
+  color: var(--status-completed);
+  font-size: 0.75rem;
+}
+
+.settings-retention__error {
+  margin: 0;
+  color: var(--red);
+  font-size: 0.75rem;
+}
+
 .settings-switch:focus-visible {
   outline: 2px solid color-mix(in srgb, var(--selection-border) 70%, transparent);
   outline-offset: 2px;
@@ -10701,16 +10808,25 @@ pre,
 }
 
 /* A small leading glyph on the count chips: quiet, sized to the label, and a
-   touch of spacing so the number still reads first. */
+   touch of spacing so the number still reads first. The glyph takes the chip's
+   own colour and is muted by opacity, not by a second colour token: a chip that
+   highlights on hover / when its card opens / while its clock is live carries
+   that highlight into the icon too, instead of leaving a grey glyph inside a
+   green chip. */
 .agent-transcript__stat-icon {
   flex: 0 0 auto;
   width: 0.875rem;
   height: 0.875rem;
-  color: var(--muted-soft, var(--muted));
+  color: inherit;
+  opacity: 0.62;
+  transition: opacity 120ms ease;
 }
 
-.agent-transcript__stat.is-merged .agent-transcript__stat-icon {
-  color: var(--teal);
+.agent-transcript__stat.is-merged .agent-transcript__stat-icon,
+.agent-transcript__stat-button:hover .agent-transcript__stat-icon,
+.agent-transcript__stat-wrap.is-open .agent-transcript__stat-icon,
+.agent-transcript__duration.is-live .agent-transcript__stat-icon {
+  opacity: 1;
 }
 
 .agent-transcript__stat-text {
@@ -10878,6 +10994,30 @@ pre,
 .agent-transcript__duration.is-live {
   border-color: var(--teal);
   color: var(--teal);
+}
+
+/* A finished message reads its outcome in the clock's own colour: green for a
+   completed run (the plain treatment), amber for terminated, red for failed,
+   teal for waiting. The hover card supplies the reason. */
+.agent-transcript__duration.is-failed {
+  border-color: var(--red);
+  color: var(--red);
+}
+
+.agent-transcript__duration.is-terminated {
+  border-color: var(--amber);
+  color: var(--amber);
+}
+
+.agent-transcript__duration.is-waiting {
+  border-color: var(--teal);
+  color: var(--teal);
+}
+
+.agent-transcript__status-reason {
+  color: var(--text);
+  line-height: 1.5;
+  white-space: normal;
 }
 
 .agent-transcript__diagnostics {
@@ -11270,6 +11410,113 @@ pre,
      is wide enough that the badges would otherwise press together. */
   gap: 8px;
   padding-right: 12px;
+}
+
+/* The step's own clock and outcome as one hover target. A step reports *its
+   own* span (a streamed reply's snapshots, a tool pair, a closed question),
+   never the run's accumulated total that the header clock shows; a step that
+   ended abnormally carries the status word in place, and the card below
+   states the classifier's reason plus the host's own detail text. */
+.agent-step__status-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.agent-step__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  border: 1px solid var(--line-bright);
+  border-radius: 999px;
+  color: var(--muted);
+  cursor: default;
+  font-family: var(--font-mono, monospace);
+  font-size: var(--text-overline);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.5;
+}
+
+.agent-step__status svg {
+  width: 0.75rem;
+  height: 0.75rem;
+  flex: 0 0 auto;
+}
+
+/* The shared duration class is scoped to `.atomic-log__row` there; inside a
+   step header it is plain text, so the chip keeps one border. */
+.agent-step__status .atomic-log__duration {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font-size: inherit;
+}
+
+.agent-step__status.is-failed {
+  border-color: color-mix(in srgb, var(--red) 46%, var(--line));
+  color: var(--red);
+}
+
+.agent-step__status.is-terminated {
+  border-color: color-mix(in srgb, var(--amber) 46%, var(--line));
+  color: var(--amber);
+}
+
+.agent-step__status.is-waiting {
+  border-color: color-mix(in srgb, var(--teal) 46%, var(--line));
+  color: var(--teal);
+}
+
+.agent-step__status-card {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 30;
+  display: grid;
+  width: max-content;
+  max-width: 320px;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--line-bright);
+  border-radius: 7px;
+  background: var(--panel);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 42%);
+  color: var(--text);
+  font-size: 0.6875rem;
+  letter-spacing: 0;
+  white-space: normal;
+}
+
+.agent-step__status-card strong {
+  color: var(--text-strong);
+}
+
+.agent-step__status-card em {
+  color: var(--muted);
+  font-style: normal;
+  line-height: 1.5;
+}
+
+.agent-step__status-detail,
+.agent-transcript__status-detail {
+  max-height: 9rem;
+  overflow: auto;
+  padding: 6px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--panel) 78%, #000);
+  color: var(--text);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.6875rem;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.agent-step__status-foot,
+.agent-transcript__status-foot {
+  color: var(--muted-soft, var(--muted));
+  font-size: 0.625rem;
+  font-variant-numeric: tabular-nums;
 }
 
 /* A tool call wears a mac window frame: a title bar with the three dots, the

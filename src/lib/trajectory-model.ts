@@ -267,7 +267,28 @@ function turnKeyFor(event: TraceEvent): string | number | null {
   return numericTurn(event.payload?.turn ?? event.payload?.iteration);
 }
 
+/**
+ * One turn index per event array. The Agent view, the trajectory lanes and
+ * the app's prompt-run builder all ask for the same index of the same
+ * snapshot; a streaming batch would otherwise walk every event (and parse
+ * every identity) three times. Keyed weakly so a replaced array — each batch
+ * is a new one — is collected with its index.
+ */
+const turnIndexCache = new WeakMap<object, ReadonlyMap<string, number>>();
+
 export function buildTraceTurnIndex(
+  events: readonly TraceEvent[],
+): ReadonlyMap<string, number> {
+  const cached = turnIndexCache.get(events);
+  if (cached) {
+    return cached;
+  }
+  const turnByEventId = buildTraceTurnIndexUncached(events);
+  turnIndexCache.set(events, turnByEventId);
+  return turnByEventId;
+}
+
+function buildTraceTurnIndexUncached(
   events: readonly TraceEvent[],
 ): ReadonlyMap<string, number> {
   const turnByEventId = new Map<string, number>();

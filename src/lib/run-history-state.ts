@@ -51,6 +51,35 @@ export const runTerminalReasonLabels: Readonly<
   timeout: "timeout",
 };
 
+/**
+ * The same reasons stated as a sentence, for the Agent view's hover cards.
+ * A code alone ("timeout") tells the reader nothing about *what* timed out;
+ * `timeout` in particular is derived at render time (a live run past its
+ * budget), so the sentence has to say so. One table, so a step card and the
+ * run header can never describe the same ending differently.
+ */
+export const runTerminalReasonDescriptions: Readonly<
+  Record<RunTerminalReason, string>
+> = {
+  aborted: "主动中止：宿主或读者取消了这次执行",
+  completed: "正常完成：宿主提交了最终回复",
+  error: "执行失败：宿主报告了错误，详情见下方记录",
+  interrupted: "被中断：执行被打断（Esc、Ctrl-C 或宿主取消）",
+  "session-end": "会话结束：宿主关闭了会话，执行随之停止",
+  timeout: "超时：超过活动运行时限仍未收到新事件，按终止处理",
+};
+
+/** Status wording for the Agent view's hover cards. */
+export const runStatusLabels: Readonly<
+  Record<"active" | "complete" | "failed" | "terminated" | "waiting", string>
+> = {
+  active: "执行中",
+  complete: "完成",
+  failed: "失败",
+  terminated: "终止",
+  waiting: "等待",
+};
+
 export type RunFreshness = {
   /** True when an executing run has gone silent past the stale threshold. */
   stale: boolean;

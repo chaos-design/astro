@@ -1,8 +1,16 @@
 import { getAtomIdForEvent } from "../config/atom-platforms.ts";
-import type { TraceEvent, TracePayload } from "../types/trace.ts";
+import type {
+  RunTerminalReason,
+  TraceEvent,
+  TracePayload,
+} from "../types/trace.ts";
 import {
-  buildPairDurations,
-  buildPairLinks,
+  getExceptionOutcome,
+  type ExceptionKind,
+  type ExceptionScope,
+} from "./exception-events.ts";
+import {
+  buildPairArtifacts,
   eventMeta,
   formatLogSequence,
   getEventSummary,
@@ -41,6 +49,21 @@ export type AgentStepKind =
   | "question"
   | "event";
 
+/**
+ * A non-normal outcome recorded for one step, read from the single exception
+ * classifier (`exception-events.ts`) — never a second list of failure event
+ * names. `detail` is the host's own text (error message, stderr, recorded
+ * reason) so a hover card can state *what* failed instead of only *that* it
+ * failed.
+ */
+export interface AgentStepStatus {
+  readonly status: "failed" | "terminated" | "waiting";
+  readonly kind: ExceptionKind;
+  readonly scope: ExceptionScope;
+  readonly reason: RunTerminalReason | null;
+  readonly detail: string | null;
+}
+
 export interface AgentStepBase {
   /** Stable step id: bound to the event id, or `stream:<messageId>`. */
   readonly id: string;
@@ -52,6 +75,15 @@ export interface AgentStepBase {
   readonly capturedAt: string;
   /** eventMeta tone — no second colour table. */
   readonly tone: string;
+  /**
+   * How long *this step* took, from the same paired-event spans the LOG
+   * badges read: a streamed reply spans its first snapshot → final message, a
+   * tool call its PreToolUse → result half, a closed question its two halves.
+   * `null` when the capture has no measurable span — never a fabricated 0ms.
+   */
+  readonly durationMs: number | null;
+  /** Non-normal outcome for this step's own event; `null` when it is normal. */
+  readonly status: AgentStepStatus | null;
 }
 
 export interface ThinkingStep extends AgentStepBase {
@@ -90,7 +122,6 @@ export interface ToolResultStep extends AgentStepBase {
   readonly answers: readonly UserQuestionAnswer[];
   /** The paired start event's question prompts, for the answer chips. */
   readonly answerQuestions: readonly QuestionDescriptor[];
-  readonly durationMs: number | null;
   readonly pairLink: TracePairLink | null;
 }
 
@@ -225,8 +256,12 @@ export function buildAgentView(
   platformId = "chatgpt",
 ): AgentView {
   const turnByEventId = buildTraceTurnIndex(events);
-  const pairDurations = buildPairDurations(events);
-  const pairLinks = buildPairLinks(events, turnByEventId);
+  // One flow walk produces both the per-step span and the pair marker; the
+  // separate helpers would rebuild the same flow twice per batch.
+  const { durations: pairDurations, links: pairLinks } = buildPairArtifacts(
+    events,
+    turnByEventId,
+  );
   const indexById = new Map<string, number>();
   events.forEach((event, index) => indexById.set(event.id, index));
 
@@ -254,6 +289,20 @@ export function buildAgentView(
   const diagnostics: AgentViewDiagnostic[] = [];
   const consumed = new Set<string>();
   let snapshotsMerged = 0;
+  // A batch re-derives the whole view, and one long run carries thousands of
+  // AgentMessage snapshots. Reading each payload once (not once per prefix
+  // comparison) is what keeps a 20k-event run from spending the batch in
+  // string building; the WeakMap ties the text to the immutable event.
+  const replyTextCache = new WeakMap<TraceEvent, string>();
+  const replyTextOf = (event: TraceEvent): string => {
+    const cached = replyTextCache.get(event);
+    if (cached !== undefined) {
+      return cached;
+    }
+    const text = replyText(event);
+    replyTextCache.set(event, text);
+    return text;
+  };
   // A run whose host publishes its reply as an `AgentMessage` is handled by
   // the reply-group pass above. Some hosts (WorkBuddy's ChatGPT-style capture)
   // publish no `AgentMessage` at all and instead carry the assistant's final
@@ -269,6 +318,48 @@ export function buildAgentView(
     }
   }
 
+  /** The host's own explanation of an abnormal step, trimmed to one string. */
+  const stepDetail = (event: TraceEvent): string | null => {
+    const payload = event.payload ?? {};
+    const response =
+      payload.tool_response && typeof payload.tool_response === "object"
+        ? (payload.tool_response as Record<string, unknown>)
+        : {};
+    const candidates = [
+      payload.error_message,
+      payload.error,
+      payload.status_detail,
+      payload.detail,
+      response.error,
+      response.stderr,
+      // A recorded reason is only a detail when it is free text, not a code
+      // the classifier already turned into a status.
+      typeof payload.reason === "string" && /\s/.test(payload.reason)
+        ? payload.reason
+        : "",
+    ];
+    for (const candidate of candidates) {
+      if (typeof candidate === "string" && candidate.trim()) {
+        return candidate.trim();
+      }
+    }
+    return null;
+  };
+
+  const stepStatus = (event: TraceEvent): AgentStepStatus | null => {
+    const outcome = getExceptionOutcome(event);
+    if (!outcome) {
+      return null;
+    }
+    return {
+      status: outcome.status,
+      kind: outcome.kind,
+      scope: outcome.scope,
+      reason: outcome.reason,
+      detail: stepDetail(event),
+    };
+  };
+
   const base = (event: TraceEvent): AgentStepBase => ({
     id: `event:${event.id}`,
     eventId: event.id,
@@ -277,13 +368,18 @@ export function buildAgentView(
     turn: turnByEventId.get(event.id) ?? 1,
     capturedAt: event.capturedAt,
     tone: eventMeta[event.eventName]?.tone ?? "unknown",
+    // The same paired span the LOG badge and the rail tooltip read: keys cover
+    // both halves of a closed pair, so a start event and its result report
+    // one duration.
+    durationMs: pairDurations.get(event.id) ?? null,
+    status: stepStatus(event),
   });
 
   const singleReply = (event: TraceEvent, messageId: string | null): ReplyStep => ({
     ...base(event),
     id: messageId ? `stream:${messageId}:${event.id}` : `event:${event.id}`,
     kind: "reply",
-    text: replyText(event),
+    text: replyTextOf(event),
     snapshotCount: 0,
     messageId,
     eventIds: [event.id],
@@ -301,16 +397,18 @@ export function buildAgentView(
         getEventTimestamp(left) - getEventTimestamp(right) ||
         (indexById.get(left.id) ?? 0) - (indexById.get(right.id) ?? 0),
     );
-    const breaks = ordered.filter(
-      (event, position) =>
-        position > 0 &&
-        !replyText(event).startsWith(replyText(ordered[position - 1])),
-    );
-    if (breaks.length) {
+    const breakIds = new Set<string>();
+    for (let position = 1; position < ordered.length; position += 1) {
+      const event = ordered[position];
+      if (!replyTextOf(event).startsWith(replyTextOf(ordered[position - 1]))) {
+        breakIds.add(event.id);
+      }
+    }
+    if (breakIds.size > 0) {
       // Never silently drop a snapshot whose prefix does not line up: record
       // the mismatch and keep every event as its own reply step.
       for (const event of ordered) {
-        const breakHere = breaks.includes(event);
+        const breakHere = breakIds.has(event.id);
         if (breakHere) {
           diagnostics.push({
             id: `prefix-break:${event.id}`,
@@ -329,7 +427,13 @@ export function buildAgentView(
       }
       return;
     }
-    const final = [...ordered].reverse().find((event) => !isStreamSnapshot(event));
+    let final: TraceEvent | undefined;
+    for (let position = ordered.length - 1; position >= 0; position -= 1) {
+      if (!isStreamSnapshot(ordered[position])) {
+        final = ordered[position];
+        break;
+      }
+    }
     const anchor = final ?? ordered[ordered.length - 1];
     const streamed = ordered.filter(isStreamSnapshot);
     snapshotsMerged += streamed.length;
@@ -345,19 +449,26 @@ export function buildAgentView(
         firstEvent = event;
       }
     }
+    const span =
+      getEventTimestamp(final ?? anchor) - getEventTimestamp(firstEvent);
     placement.push({
       index: firstIndex,
       step: {
         ...base(anchor),
         eventId: firstEvent.id,
         sequence: formatLogSequence(firstIndex + 1),
+        // A streamed reply's own execution time: first snapshot → final
+        // message. A single (unstreamed) message keeps the paired span (or
+        // null), never a fabricated zero.
+        durationMs:
+          span > 0 ? span : pairDurations.get(anchor.id) ?? null,
         // Two subagent origins can reuse one short message id. Their groups
         // are separate steps, so the id must name the group's own anchor too —
         // otherwise React sees duplicate keys and stepRefs overwrite each
         // other, pointing locate/scroll at the wrong card.
         id: messageId ? `stream:${messageId}:${anchor.id}` : `event:${anchor.id}`,
         kind: "reply",
-        text: replyText(final ?? anchor),
+        text: replyTextOf(final ?? anchor),
         snapshotCount: streamed.length,
         messageId,
         eventIds: ordered.map((event) => event.id),
@@ -404,10 +515,10 @@ export function buildAgentView(
           if (messageIdOf(candidate)) {
             break;
           }
-          const next = replyText(candidate);
+          const next = replyTextOf(candidate);
           if (
             replyScopeKey(candidate) !== replyScopeKey(last) ||
-            !next.startsWith(replyText(last)) ||
+            !next.startsWith(replyTextOf(last)) ||
             getEventTimestamp(candidate) - getEventTimestamp(last) >
               LEGACY_SNAPSHOT_GAP_MS
           ) {
@@ -528,16 +639,30 @@ export function buildAgentView(
 
   placement.sort((left, right) => left.index - right.index);
   const steps = placement.map((entry) => entry.step);
+  // One pass for the counters and the turn span: four `filter` calls over the
+  // same array and a second walk of every event cost more than the counting.
+  let thinking = 0;
+  let replies = 0;
+  let questions = 0;
   const turnValues = new Set<number>();
-  events.forEach((event) => {
+  for (const step of steps) {
+    if (step.kind === "thinking") {
+      thinking += 1;
+    } else if (step.kind === "reply") {
+      replies += 1;
+    } else if (step.kind === "question") {
+      questions += 1;
+    }
+  }
+  for (const event of events) {
     turnValues.add(turnByEventId.get(event.id) ?? 1);
-  });
+  }
   return {
     steps,
     stats: {
-      thinking: steps.filter((step) => step.kind === "thinking").length,
-      replies: steps.filter((step) => step.kind === "reply").length,
-      questions: steps.filter((step) => step.kind === "question").length,
+      thinking,
+      replies,
+      questions,
       snapshotsMerged,
       turns: turnValues.size,
       events: events.length,

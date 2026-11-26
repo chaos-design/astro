@@ -220,8 +220,11 @@ test("the Agent view's header reads its execution time from the root display sta
   assert.match(agentTranscript, /runDurationMs !== null/);
   // The header's execution clock reads a fixed two-digit `HH:MM:SS` from the
   // shared display state — every tick is the same eight characters, so a live
-  // run advancing each second never shifts the chip width (no jitter).
-  assert.match(agentTranscript, /formatExecutionClock\(runDurationMs\)/);
+  // run advancing each second never shifts the chip width (no jitter). The
+  // chip is its own component now (it carries the status hover card), so the
+  // clock is formatted there from the same display-state value.
+  assert.match(agentTranscript, /<RunClockChip[\s\S]*?durationMs=\{runDurationMs\}/);
+  assert.match(agentTranscript, /formatExecutionClock\(durationMs\)/);
   assert.match(traceModel, /export function formatExecutionClock/);
   assert.match(
     traceModel,
@@ -990,7 +993,14 @@ test("embedded base64 images render as images in the Agent bodies and the Previe
 test("the rail follows the Agent pane's reading line into the visible band", () => {
   assert.match(overlay, /lastFollowLocateRef\.current = railLocateRequest/);
   assert.match(overlay, /const row = contentActiveRowRef\.current;/);
-  assert.match(overlay, /\}, \[contentActiveEventId, following, open, railLocateRequest\]\);/);
+  // The reading line owns the rail while the Agent pane is showing — Live
+  // follow advances the selection but must not yank the rail away from the
+  // card the reader is on, so `following` is not a guard here any more.
+  assert.match(overlay, /\}, \[contentActiveEventId, open, railLocateRequest, viewMode\]\);/);
+  assert.doesNotMatch(overlay, /if \(!open \|\| following \|\| !contentActiveEventId\)/);
+  // …and the selection-driven reveal steps aside in the Agent view, so the
+  // two effects cannot fight over the same row.
+  assert.match(overlay, /if \(viewMode === "agent"\) \{\s*\n\s*return;/);
   // Yielding to the animated locate for one pass keeps the two reveals from
   // racing over the same row.
   assert.match(

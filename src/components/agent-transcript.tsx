@@ -6,6 +6,7 @@ import {
   ChevronDown,
   ChevronsDown,
   ChevronRight,
+  CircleStop,
   HelpCircle,
   Layers,
   Lightbulb,
@@ -37,6 +38,7 @@ import {
 import { cn } from "@/lib/utils";
 import type {
   AgentStep,
+  AgentStepStatus,
   AgentView,
   ReplyStep,
   ThinkingStep,
@@ -44,6 +46,11 @@ import type {
   QuestionStep,
   GenericStep,
 } from "@/lib/agent-view";
+import {
+  runStatusLabels,
+  runTerminalReasonDescriptions,
+} from "@/lib/run-history-state";
+import type { RunTerminalReason, TraceRunStatus } from "@/types/trace";
 import {
   collectPayloadFields,
   contentToMarkdown,
@@ -465,6 +472,163 @@ function StatChip({
 }
 
 /**
+ * The main message's accumulated execution clock. Hovering it states the
+ * message's own status and, when it did not complete normally, the cause —
+ * the one place a reader can learn that a run "terminated because it timed
+ * out" instead of guessing from a grey badge.
+ */
+function RunClockChip({
+  durationMs,
+  live,
+  state,
+}: {
+  durationMs: number;
+  live: boolean;
+  state: {
+    status: TraceRunStatus;
+    reason: RunTerminalReason | null;
+    detail: string | null;
+  } | null;
+}) {
+  const [open, setOpen] = useState(false);
+  const status = state?.status ?? null;
+  const statusWord = status ? runStatusLabels[status] : null;
+  const reasonText = state?.reason
+    ? runTerminalReasonDescriptions[state.reason]
+    : status === "waiting"
+      ? "等待：宿主在等待输入或限流，计时仍在推进"
+      : status === "complete"
+        ? null
+        : live
+          ? "执行中：仍在接收事件，计时每秒推进"
+          : status
+            ? "异常：宿主报告了非正常结束，未附带更具体的原因"
+            : null;
+  return (
+    <span
+      className={cn("agent-transcript__stat-wrap", open && "is-open")}
+      onPointerEnter={() => setOpen(true)}
+      onPointerLeave={() => setOpen(false)}
+    >
+      <span
+        aria-label="本条消息的累计执行时间与状态"
+        className={cn(
+          "agent-transcript__stat",
+          "agent-transcript__duration",
+          live && "is-live",
+          status && status !== "active" && `is-${status}`,
+        )}
+        tabIndex={0}
+      >
+        <Timer aria-hidden="true" className="agent-transcript__stat-icon" />
+        <span className="agent-transcript__stat-text">
+          执行 {formatExecutionClock(durationMs)}
+        </span>
+      </span>
+      {open ? (
+        <span className="agent-transcript__stat-card" role="tooltip">
+          <span className="agent-transcript__stat-card-title">
+            本条消息 · {statusWord ?? "执行中"}
+          </span>
+          {reasonText ? (
+            <span className="agent-transcript__status-reason">{reasonText}</span>
+          ) : null}
+          {state?.detail ? (
+            <code className="agent-transcript__status-detail">
+              {state.detail}
+            </code>
+          ) : null}
+          <span className="agent-transcript__status-foot">
+            累计执行 {formatExecutionClock(durationMs)} · 含本条消息内所有子步骤
+          </span>
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+/**
+ * The step's own clock and outcome, as one hover target. A step card answers
+ * two questions a bare number cannot: *how long did this step take* (its own
+ * span, not the run's accumulated total) and, when it ended abnormally, *why*
+ * — a status word plus the classifier's reason sentence plus the host's own
+ * detail text. Nothing here invents a cause: the reason comes from
+ * `run-history-state`'s one table and the detail from the captured payload.
+ */
+function StepStatusBadge({
+  durationMs,
+  label,
+  sequence,
+  status,
+}: {
+  durationMs: number | null;
+  /** The badge prefix: this step's LOG row number. */
+  label: string;
+  sequence: string;
+  status: AgentStepStatus | null;
+}) {
+  const [open, setOpen] = useState(false);
+  if (durationMs === null && !status) {
+    return null;
+  }
+  const statusWord = status ? runStatusLabels[status.status] : null;
+  const reasonText = status?.reason
+    ? runTerminalReasonDescriptions[status.reason]
+    : status?.status === "waiting"
+      ? "等待：宿主在等待输入或限流，不是失败"
+      : status
+        ? "异常：宿主报告了非正常结束，未附带更具体的原因"
+        : null;
+  return (
+    <span
+      className={cn("agent-step__status-wrap", open && "is-open")}
+      onPointerEnter={() => setOpen(true)}
+      onPointerLeave={() => setOpen(false)}
+    >
+      <span
+        aria-label={`${label} 耗时与状态`}
+        className={cn(
+          "agent-step__status",
+          status && `is-${status.status}`,
+        )}
+        tabIndex={0}
+      >
+        {status ? (
+          status.status === "waiting" ? (
+            <LoaderCircle aria-hidden="true" className="animate-spin" />
+          ) : (
+            <CircleStop aria-hidden="true" />
+          )
+        ) : (
+          <Timer aria-hidden="true" />
+        )}
+        {durationMs !== null ? (
+          <span className="atomic-log__duration">{formatDurationMs(durationMs)}</span>
+        ) : null}
+        {statusWord ? <span>{statusWord}</span> : null}
+      </span>
+      {open ? (
+        <span className="agent-step__status-card" role="tooltip">
+          <strong>
+            {sequence} · {statusWord ?? "耗时"}
+          </strong>
+          {reasonText ? <em>{reasonText}</em> : null}
+          {status?.detail ? (
+            <code className="agent-step__status-detail">{status.detail}</code>
+          ) : null}
+          <span className="agent-step__status-foot">
+            {durationMs !== null
+              ? `本步耗时 ${formatDurationMs(durationMs)}`
+              : "本步没有可测量的起止跨度"}
+            {status ? ` · 范围 ${status.scope}` : ""}
+          </span>
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+/**
  * The Agent view of one run: the captured sequence rendered as the artifacts
  * an Agent produces — thinking, replies, tool results and user questions.
  * It is a pure consumer of `AgentView`; every payload still goes through the
@@ -479,6 +643,7 @@ export function AgentTranscript({
   live,
   locateRequest,
   runDurationMs,
+  runState = null,
   onActiveEventChange,
 }: {
   view: AgentView;
@@ -494,6 +659,16 @@ export function AgentTranscript({
    * executes, the recorded total once it ended; `null` when the message has
    * no clock of its own. */
   runDurationMs: number | null;
+  /**
+   * Why the displayed message ended the way it did. The header clock answers
+   * "how long did this message run"; hovering it answers "and why did it
+   * stop" — including the derived `timeout`, which no captured event records.
+   */
+  runState?: {
+    status: TraceRunStatus;
+    reason: RunTerminalReason | null;
+    detail: string | null;
+  } | null;
   /** The event whose card is currently at the reading line. The caller marks
    * the matching rail atom so the reader can see which atom produced what
    * they are reading. Reported only when it changes — never on every tick. */
@@ -800,18 +975,11 @@ export function AgentTranscript({
       <div className="agent-transcript__head">
         <span className="agent-transcript__view-label">AGENT VIEW</span>
         {runDurationMs !== null ? (
-          <span
-            className={cn(
-              "agent-transcript__stat",
-              "agent-transcript__duration",
-              live && "is-live",
-            )}
-          >
-            <Timer aria-hidden="true" className="agent-transcript__stat-icon" />
-            <span className="agent-transcript__stat-text">
-              执行 {formatExecutionClock(runDurationMs)}
-            </span>
-          </span>
+          <RunClockChip
+            durationMs={runDurationMs}
+            live={live}
+            state={runState}
+          />
         ) : null}
         <StatChip
           icon={<Lightbulb aria-hidden="true" className="agent-transcript__stat-icon" />}
@@ -1039,16 +1207,17 @@ function StepCard({
           <span className="agent-step__code">{step.sequence}</span>
           <span className="agent-step__turn">T{step.turn}</span>
         </button>
-        {step.kind === "tool-result" ? (
-          <span className="agent-step__head-badges">
-            {step.durationMs !== null ? (
-              <span className="atomic-log__duration">{formatDurationMs(step.durationMs)}</span>
-            ) : null}
-            {step.pairLink ? (
-              <PairLinkMarker link={step.pairLink} onLocate={onLocate} />
-            ) : null}
-          </span>
-        ) : null}
+        <span className="agent-step__head-badges">
+          <StepStatusBadge
+            durationMs={step.durationMs}
+            label={`第 ${step.sequence} 行的耗时与状态`}
+            sequence={step.sequence}
+            status={step.status}
+          />
+          {step.kind === "tool-result" && step.pairLink ? (
+            <PairLinkMarker link={step.pairLink} onLocate={onLocate} />
+          ) : null}
+        </span>
       </div>
       <div className="agent-step__body">
         {step.kind === "thinking" ? (

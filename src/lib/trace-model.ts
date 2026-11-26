@@ -1535,8 +1535,10 @@ function createFlowEntries(events: readonly TraceEvent[]): FlowEntry[] {
 
   events.forEach((event, stepIndex) => {
     if (event.eventName === "UserPromptSubmit") toolEntries.clear();
-    const toolKey = toolKeyFor(event);
+    // The tool key is a four-part join; only the two tool event kinds use it,
+    // and a long run is mostly messages and reasoning.
     if (event.eventName === "PreToolUse") {
+      const toolKey = toolKeyFor(event);
       const baseId = `tool-${event.toolUseId || event.id}`;
       let id = baseId;
       while (usedIds.has(id)) id += `:${event.id}`;
@@ -1561,7 +1563,7 @@ function createFlowEntries(events: readonly TraceEvent[]): FlowEntry[] {
     }
 
     if (toolResultEvents.has(event.eventName) && event.toolUseId) {
-      const entry = toolEntries.get(toolKey)?.shift();
+      const entry = toolEntries.get(toolKeyFor(event))?.shift();
       if (entry) {
         entry.endEvent = event;
         entry.endStepIndex = stepIndex;
@@ -1582,7 +1584,19 @@ function createFlowEntries(events: readonly TraceEvent[]): FlowEntry[] {
     });
   });
 
-  const ordered = entries.sort((left, right) => left.timestamp - right.timestamp);
+  // A capture is normally written in timestamp order, so the sort is often a
+  // no-op: one adjacent scan skips the O(n log n) reordering (and the array
+  // churn) for the common case, and only an out-of-order tail pays for it.
+  let sorted = true;
+  for (let index = 1; index < entries.length; index += 1) {
+    if (entries[index].timestamp < entries[index - 1].timestamp) {
+      sorted = false;
+      break;
+    }
+  }
+  const ordered = sorted
+    ? entries
+    : entries.sort((left, right) => left.timestamp - right.timestamp);
   flowEntriesCache.set(events, ordered);
   return ordered;
 }
@@ -1683,7 +1697,28 @@ export function buildFlow(
 export function buildPairDurations(
   events: readonly TraceEvent[],
 ): ReadonlyMap<string, number> {
+  return buildPairArtifacts(events, null).durations;
+}
+
+/**
+ * Both pair projections in **one** `createFlowEntries` pass. The Agent view
+ * needs the span of every step *and* the marker that names the other half;
+ * computing them through the two public helpers built the whole flow twice per
+ * batch (the dominant cost of a 20k-event rebuild). One walk, two maps, same
+ * definitions — the public helpers below delegate here so there is still only
+ * one pairing rule.
+ */
+export function buildPairArtifacts(
+  events: readonly TraceEvent[],
+  turnByEventId: ReadonlyMap<string, number> | null,
+): {
+  durations: ReadonlyMap<string, number>;
+  links: ReadonlyMap<string, TracePairLink>;
+} {
   const durations = new Map<string, number>();
+  const links = new Map<string, TracePairLink>();
+  const closed: Array<{ entry: ReturnType<typeof createFlowEntries>[number] }> =
+    [];
   for (const entry of createFlowEntries(events)) {
     if (!entry.endEvent) {
       continue;
@@ -1694,8 +1729,52 @@ export function buildPairDurations(
     );
     durations.set(entry.startEvent.id, duration);
     durations.set(entry.endEvent.id, duration);
+    closed.push({ entry });
   }
-  return durations;
+  if (!turnByEventId) {
+    return { durations, links };
+  }
+  // Number pairs in LOG order (not timestamp order), so `#1` in a marker is
+  // the first pair a reader meets in that turn.
+  closed.sort((left, right) => left.entry.stepIndex - right.entry.stepIndex);
+  const ordinalByTurn = new Map<number, number>();
+  for (const { entry } of closed) {
+    const endEvent = entry.endEvent;
+    if (!endEvent || entry.startEvent.id === endEvent.id) {
+      continue;
+    }
+    const pairId = entry.startEvent.id;
+    const turn = turnByEventId.get(entry.startEvent.id) ?? 1;
+    const ordinal = (ordinalByTurn.get(turn) ?? 0) + 1;
+    ordinalByTurn.set(turn, ordinal);
+    const startIndex = entry.stepIndex + 1;
+    const endIndex = (entry.endStepIndex ?? entry.stepIndex) + 1;
+    // The marker names the *other* half's LOG row, so from either row the
+    // reader sees exactly where to look (and where a click will jump).
+    const shared = {
+      pairId,
+      turn,
+      ordinal,
+      startIndex,
+      endIndex,
+      rows: `${formatLogSequence(startIndex)} ↔ ${formatLogSequence(endIndex)}`,
+    };
+    links.set(entry.startEvent.id, {
+      ...shared,
+      partnerId: endEvent.id,
+      role: "start",
+      partnerIndex: endIndex,
+      label: `T${turn}·${formatLogSequence(endIndex)}`,
+    });
+    links.set(endEvent.id, {
+      ...shared,
+      partnerId: entry.startEvent.id,
+      role: "end",
+      partnerIndex: startIndex,
+      label: `T${turn}·${formatLogSequence(startIndex)}`,
+    });
+  }
+  return { durations, links };
 }
 
 /**

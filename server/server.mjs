@@ -26,6 +26,11 @@ import runtimeConfigLoader from "../plugin/runtime-config.cjs";
 import storagePaths from "../plugin/storage-paths.cjs";
 import { createDemoDatasetReader } from "./demo-dataset.mjs";
 import { TraceRepository } from "./trace-repository.mjs";
+import {
+  findExpiredSessions,
+  pruneExpiredSessions,
+  resolveRetentionRoot,
+} from "./retention.mjs";
 import { writeTraceDirectory } from "./runtime-settings.mjs";
 import {
   InteractionStoreError,
@@ -1033,6 +1038,53 @@ async function handleRequest(request, response) {
   if (request.method === "DELETE" && requestUrl.pathname === "/api/events") {
     store.clear();
     sendJson(response, 200, { status: "cleared" });
+    return;
+  }
+
+  // Retention, preview first: the settings panel shows the reader exactly
+  // what a prune would delete (count, bytes, oldest run) before enabling it.
+  // Nothing outside the trace root is ever a candidate, and `data/demo-events.json`
+  // is not under it.
+  if (
+    request.method === "GET" &&
+    requestUrl.pathname === "/api/retention/preview"
+  ) {
+    try {
+      const report = findExpiredSessions({
+        root: resolveRetentionRoot(runtimeConfig.environment),
+        days: requestUrl.searchParams.get("days") ?? undefined,
+      });
+      sendJson(response, 200, report);
+    } catch (error) {
+      sendJson(response, error.status || 500, { error: error.message });
+    }
+    return;
+  }
+
+  if (
+    request.method === "POST" &&
+    requestUrl.pathname === "/api/retention/prune"
+  ) {
+    let body;
+    try {
+      body = await readJsonBody(request);
+    } catch (error) {
+      sendJson(response, 400, { error: error.message });
+      return;
+    }
+    try {
+      const result = pruneExpiredSessions({
+        root: resolveRetentionRoot(runtimeConfig.environment),
+        days: body?.days,
+      });
+      // The files are gone: drop their in-memory stores and let every open
+      // console reset from the truth on disk instead of keeping the deleted
+      // runs in its RUN HISTORY.
+      store.forgetMissing();
+      sendJson(response, 200, result);
+    } catch (error) {
+      sendJson(response, error.status || 500, { error: error.message });
+    }
     return;
   }
 
