@@ -2,7 +2,7 @@
 title: 控制台细节修复与文档交付
 priority: P1
 created: 2026-11-27 00:11:29
-updated: 2026-11-27 00:44:49
+updated: 2026-11-27 00:45:35
 ---
 
 # 控制台细节修复与文档交付
@@ -37,15 +37,15 @@ updated: 2026-11-27 00:44:49
 - [x] T8 未提交镜像与文档提交：核对 `*-plugin/server/*` 与 `server/` 的一致性，连同计划 03 / interaction-hooks 文档一并提交，不夹带无关改动。
 - [x] T9 README 与文档截图更新：用 `.workbuddy/wiki-docs/fixture-rel.mjs` + `cdp-shots-rel.mjs` 重拍 `docs/assets/astro-desktop.png`、`history-search.png`、`perf-hud.png`（含新的页面帧率与时间量纲），README 文案补 Agent 时长/清理/帧率。
 - [x] T10 飞书 wiki 六篇更新：更新 02 架构（补 transcript 补采、retention、派生单一定义）与 01/04/06 的功能与截图；`docs +update --command overwrite` 串行重推并核对图片数量。
-- [ ] T11 全量校验并 push：tsc（root + site）、全量测试、`vite build`、`verify-console-build`；conventional commits 分组提交并推送，PR #30 描述同步。
+- [x] T11 全量校验并 push：tsc（root + site）、全量测试、`vite build`、`verify-console-build`；conventional commits 分组提交并推送，PR #30 描述同步。
 
 ## 完成标准
 
-- [ ] code: 11 项全部落地；身份键剔除只有 `payload-preview.ts` 一处定义；菜单关闭无第二套监听；Trae 补采与其它客户端共用 `transcript-enrich.cjs`。
-- [ ] linter_result: `./node_modules/.bin/tsc --noEmit` 与 `./node_modules/.bin/tsc -p site/tsconfig.json --noEmit` 退出码均为 0。
-- [ ] unit_test_result: `node --test tests/*.test.*`（无沙箱）全绿，记录总数与新增用例。
-- [ ] func_test_result: 真实服务 + headless Chrome 截图核对（设置预览、Preview、菜单、代码块、HUD），并记录命令与结果。
-- [ ] status: 剩余风险（静态回退 200 无法区分、飞书上传需授权、截图依赖本机 Chrome）与回滚方式已写入本文件。
+- [x] code: 11 项全部落地；身份键剔除只有 `payload-preview.ts` 一处定义；菜单关闭无第二套监听；Trae 补采与其它客户端共用 `transcript-enrich.cjs`。
+- [x] linter_result: `./node_modules/.bin/tsc --noEmit` 与 `./node_modules/.bin/tsc -p site/tsconfig.json --noEmit` 退出码均为 0。
+- [x] unit_test_result: `node --test tests/*.test.*`（无沙箱）1023 pass / 0 fail，基线 1014，新增 9（retention-client 5、transcript Trae 2、payload-preview 2）。
+- [x] func_test_result: 真实服务（`ASTRO_HOME=/tmp/astro-ui ASTRO_PORT=4411`、`/tmp/astro-perf-fixture` 4412）+ 无头 Chrome CDP：Agent 视图/预览/菜单/HUD 截图核对；安装版 recorder 对真实 WorkBuddy 转录写出 14 Reasoning + 12 AgentMessage + 1 Stop；`vite build` + `verify-console-build` 通过；6 篇飞书文档 overwrite 成功（revision 106/63/57/121/35/67）。
+- [x] status: 剩余风险（静态回退 200 无法区分、飞书上传需授权、截图依赖本机 Chrome）与回滚方式已写入本文件。
 
 ## 风险与回滚
 
@@ -77,3 +77,6 @@ updated: 2026-11-27 00:44:49
 - 2026-11-27 00:44:49 README + README-zh: Agent data view / transcript recovery / retention / page-FPS bullets and a Console Workflows subsection; docs/assets astro-hero, astro-desktop, history-search, perf-hud re-shot from a real fixture with headless Chrome (1600px wide, sizes comparable to the old files)
 - 2026-11-27 00:44:49 完成 #10 T10 飞书 wiki 六篇更新：更新 02 架构（补 transcript 补采、retention、派生单一定义）与 01/04/06 的功能与截图；`docs +update --command overwrite` 串行重推并核对图片数量。
 - 2026-11-27 00:44:49 lark-cli docs +update overwrite on the 6 ASTRO wiki docs: 01 (Agent view 6.9, perf 6.10, retention row), 02 (transcript recovery 2.5, retention routes, perf memo, 7.1 decisions, module map), 03 (recovered fields + cursor + retention 12.1), 04 (5.1 second render path), 05 (8.1 terms), 06 (9.4 retention, 9.5 acceptance); revisions 106/63/57/121/35/67; media refreshed (shot-overview, shot-agent-view, shot-perf-hud, shot-history-search)
+- 2026-11-27 00:45:28 完成 #11 T11 全量校验并 push：tsc（root + site）、全量测试、`vite build`、`verify-console-build`；conventional commits 分组提交并推送，PR #30 描述同步。
+- 2026-11-27 00:45:28 tsc root+site exit 0; node --test 1023/1023 unsandboxed; vite build + verify-console-build ok; commits c796584 (capture), f98c096 (console), 4233ae3 (docs); pushed to origin/feat/agent-data-view
+- 2026-11-27 00:45:35 归档：任务与完成标准全部满足
