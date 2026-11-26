@@ -65,6 +65,24 @@
     freshness window, IDLE stale wording) while RUN HISTORY shows RUNNING; a
     rate-limit wait keeps its WAITING capsule;
   - the time window lives only in `src/lib/run-history-window.ts`;
+  - retention of captured runs lives only in `server/retention.mjs`
+    (`findExpiredSessions` / `pruneExpiredSessions`): expiry is the newest
+    event's `capturedAt` (never the file mtime), the window is guarded to
+    1–3650 days, and only `events.jsonl` session directories under the trace
+    root are deleted. The console stores the preference only
+    (`ASTROX_RETENTION`, default off / 15 days), previews through
+    `GET /api/retention/preview`, prunes through `POST /api/retention/prune`,
+    and the prune route must call `TraceRepository.forgetMissing()` so a
+    removed session never lingers in memory;
+  - the page frame rate lives only in `src/lib/perf-metrics.ts`
+    (`startPageFpsSampler`, one 1-second window, paused while the document is
+    hidden); the scroll-gesture tracker answers a different question and is
+    not a substitute;
+  - display durations have exactly two ladders, both in
+    `src/lib/duration-label.ts`: `formatDurationMs` (one dominant unit per
+    tier, for LOG / rail badges) and `formatPerfDuration`
+    (`ms` → `s` → `01M01s` → `01H01M`, two digits, for the performance
+    panel). Never inline a third;
   - the preview page's opened state lives only in `plugin/trace-recorder.cjs`
     (`readPreviewState` / `markPreviewOpened`, persisted as
     `preview-state.json` in `ASTRO_HOME`): the service marks it when a console
@@ -122,8 +140,18 @@
     and questions), `Preview` (rendered Markdown — headings, GFM task lists,
     highlighted code — and question/option/answer lists) and `Code` (the
     untouched structured JSON), never a second conversion or sanitizer.
-    The single Agent projection entry is the pure function
-    `buildAgentView(events, platformId)` (`src/lib/agent-view.ts`): snapshots
+    Clients that only publish hook events (WorkBuddy / CodeBuddy / Claude /
+    ZCode) carry no thinking or intermediate reply in their payloads; the one
+    recovery path is `plugin/transcript-enrich.cjs`: it reads the host's
+    `transcript_path` tail incrementally (256 KiB per read), emits canonical
+    `Reasoning` / `AgentMessage` payloads whose `messageId` is the transcript
+    entry's own id, de-duplicates by `transcriptKey` in
+    `<ASTRO_HOME>/transcript-state/<source>-<session>.json` (the session
+    directory is timestamped, so a cursor cannot live there), and is
+    fail-open (`ASTRO_TRANSCRIPT_ENRICH=0` disables it; a missing module or a
+    corrupt line costs only that read). The single Agent projection entry is
+    the pure function `buildAgentView(events, platformId)`
+    (`src/lib/agent-view.ts`): snapshots
     sharing a `messageId` merge with the final message into one counted
     ReplyStep, a broken prefix records a diagnostic while every step survives,
     and id-less legacy captures only fold time-adjacent `startsWith` chains.
@@ -154,8 +182,13 @@
     list is the body that is never foldable. Scrolling the Agent pane drives
     the rail too: the reading line's atom row scrolls back into the rail's
     visible band through the content-active follow effect (an explicit
-    locate's eased reveal takes one pass of precedence), and an armed Live
-    follow keeps owning the rail. The bottom test has one definition,
+    locate's eased reveal takes one pass of precedence). While the Agent
+    pane is showing, the rail follows **the reading line only** — an armed
+    Live follow still advances the selection, but it no longer owns the rail;
+    `Preview` / `Code` are the views where the selected row decides. The
+    selection-driven reveal is therefore skipped in the Agent view and
+    `following` is not a guard on the content-active follow, so the two
+    effects cannot fight over the same row. The bottom test has one definition,
     `isAgentTranscriptAtBottom` in `src/lib/agent-transcript-scroll.ts` (24px
     tolerance), and `isLatestStepVisible` decides whether the newest step is
     in the viewport (a tall last reply can be on screen well above the
@@ -352,14 +385,19 @@
     without their own observation fall back to the session-start model, and
     the UI shows the `MODEL` tag only when a value exists;
   - the paired-event duration lives only in `src/lib/trace-model.ts`
-    (`buildPairDurations`, reusing `createFlowEntries` pairing): a span is
+    (`buildPairArtifacts`, one `createFlowEntries` pass producing the span map
+    and the link map together; `buildPairDurations` / `buildPairLinks` are its
+    two projections and must not walk the flow again): a span is
     reported only for a *closed* pair (a start event with a matching result,
     e.g. `PreToolUse` → `PostToolUse`/`PostToolUseFailure`); unpaired events
     are never counted, and a turn's `totalPairDuration` sums each unique pair
     once even though both halves and every projected atom carry the same span.
     The LOG row, the trajectory data layer (`pairDuration` /
-    `totalPairDuration`), and the hover block card all read from this single
-    source;
+    `totalPairDuration`), the Agent step's own `durationMs`, and the hover
+    block card all read from this single source. A step's `status` is
+    `getExceptionOutcome` plus the host's own detail text — never a second
+    failure list — and the Chinese reason sentences live only in
+    `src/lib/run-history-state.ts` (`runTerminalReasonDescriptions`);
   - the pair-link marker's identity also lives only in
     `src/lib/trace-model.ts` (`buildPairLinks`, reusing the same
     `createFlowEntries` pairing): the two halves point at each other's event

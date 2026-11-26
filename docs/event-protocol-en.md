@@ -440,6 +440,45 @@ Each physical line must be one complete JSON object. The reader isolates a malfo
 
 `accepted` counts only newly appended IDs. Oversized bodies return 413 and malformed JSON returns 400.
 
+### 12.1 Transcript recovery
+
+Hook-only clients (WorkBuddy / CodeBuddy / Claude / ZCode) name their session
+transcript as `transcript_path` in the hook payload; the model's thinking and
+intermediate replies exist only in that file. Before writing the host event,
+the recorder reads the transcript's new tail and emits canonical events:
+
+| Field | Value |
+| --- | --- |
+| `eventName` | `Reasoning` (thinking) or `AgentMessage` (reply) |
+| `payload.recoveredFrom` | always `"transcript"` |
+| `payload.client` | the client that produced the transcript |
+| `payload.messageId` | the transcript entry's own id (Claude uses `message.id`), so blocks of one message merge by `messageId` |
+| `payload.text` / `payload.message` | the verbatim transcript text (no re-joining, no truncation) |
+| `payload.transcriptKey` | `<kind>:<id>:<body digest>`, the de-duplication key |
+| `nativeEventName` | `"transcript"` |
+
+- **Incremental**: the cursor is a byte offset stored in
+  `ASTRO_HOME/transcript-state/<source>-<session>.json`. A rewritten (shrunk)
+  file resets the offset but keeps the remembered `transcriptKey` values, so
+  ZCode's fresh temp directory per hook cannot duplicate a step.
+- **Bounded**: one read takes at most 256 KiB and parses at most 200 entries;
+  the rest waits for the next hook.
+- **Fail-open**: a missing file, a corrupt line or an unknown shape costs only
+  that read. `ASTRO_TRANSCRIPT_ENRICH=0` disables recovery, and a missing
+  module leaves the host event untouched.
+
+### 12.2 Retention
+
+| Method | Path | Contract |
+| --- | --- | --- |
+| `GET` | `/api/retention/preview?days=<1..3650>` | Read-only preview: `{ days, cutoff, now, sessions[], eventFiles, bytes }` |
+| `POST` | `/api/retention/prune` with `{ "days": 15 }` | Deletes expired session directories, returns `{ days, cutoff, removed, bytes, directories }`, then drops those sessions from memory and broadcasts `reset` |
+
+Expiry is the session's **newest event `capturedAt`**, never the file mtime.
+Only `events.jsonl` session directories under the trace root are deleted;
+`data/demo-events.json` is never a candidate. A non-integer or out-of-range
+`days` is a 400.
+
 ## 13. SSE Contract
 
 `GET /api/stream` accepts `hours=<n>` (capped at 744) to bound the first snapshot;

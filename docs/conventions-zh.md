@@ -56,6 +56,18 @@
     长新鲜度窗口与 IDLE 文案），但 RUN HISTORY 以 RUNNING 呈现，限流等待仍显示
     WAITING；
   - 时间窗口计算只在 `src/lib/run-history-window.ts`；
+  - 捕获历史的保留策略只在 `server/retention.mjs`（`findExpiredSessions` /
+    `pruneExpiredSessions`）：过期口径是「最后一条事件的 `capturedAt`」而不是
+    文件 mtime，天数守卫 1–3650，删除只发生在 trace 根下的 `events.jsonl` 会话
+    目录；控制台只存偏好（`ASTROX_RETENTION`，默认关闭、15 天）并通过
+    `GET /api/retention/preview` 预演、`POST /api/retention/prune` 执行，删除后
+    必须调用 `TraceRepository.forgetMissing()`，不得让已删会话留在内存里；
+  - 页面帧率只在 `src/lib/perf-metrics.ts`（`startPageFpsSampler`，1 秒一个窗口，
+    `visibilitychange` 隐藏时暂停）；滚动帧率是另一件事，不能互相替代；
+  - 展示用时长只有两条阶梯，都在 `src/lib/duration-label.ts`：
+    `formatDurationMs`（每个量级一个主导单位，给 LOG / rail 徽标）与
+    `formatPerfDuration`（`ms` → `s` → `01M01s` → `01H01M`，两位补零，给性能
+    面板）；不得在组件里再拼第三套；
   - 预览页「是否打开过」的状态只在 `plugin/trace-recorder.cjs`
     （`readPreviewState` / `markPreviewOpened`，持久化为 `ASTRO_HOME` 下的
     `preview-state.json`）：服务端在控制台页面接入 `/api/stream` 时打点，
@@ -95,6 +107,13 @@
     切换提供 `Agent`（默认：把同一事件序列投影为思考块、合并后的回复、工具结果与提问）、
     `Preview`（渲染后的 Markdown：标题、GFM 任务列表、高亮代码、问题/选项/答案）
     与 `Code`（未加工的原始 JSON）三种形态，不再另写一份转换或消毒逻辑；
+    仅靠 hook 上报的客户端（WorkBuddy / CodeBuddy / Claude / ZCode）没有思考与
+    中间回复的载荷，补采唯一入口是 `plugin/transcript-enrich.cjs`：按宿主在
+    hook 里给出的 `transcript_path` 增量读取尾部（单次 256 KiB 上限），产出规范
+    `Reasoning` / `AgentMessage` 事件，`messageId` 用 transcript 条目自己的 id，
+    以 `transcriptKey` 去重并写入 `<ASTRO_HOME>/transcript-state/<source>-<session>.json`
+    （会话目录带时间戳，游标不能放在那里）；全程 fail-open，
+    `ASTRO_TRANSCRIPT_ENRICH=0` 可关闭，模块缺失时 recorder 仍照常记录宿主事件；
     Agent 投影唯一入口是纯函数 `buildAgentView(events, platformId)`
     （`src/lib/agent-view.ts`）：同 `messageId` 的流式前缀与最终消息合并为一个
     ReplyStep 并计数，前缀断裂记诊断且保留每一步，无 id 的老数据只用时间邻近 +
@@ -118,7 +137,10 @@
     收起态显示一行摘要，切换钮读「收起/展开」+ chevron；问题列表是可折叠
     正文中唯一例外——它从不折叠）；Agent 窗格上下滚动驱动左侧 rail：阅读
     行的原子行被滚回 rail 可视区（content-active 跟随效果，显式定位的缓动
-    展示让出一帧），Live 跟随时 rail 仍归 Live 所有。
+    展示让出一帧）。**停在 Agent 视图时 rail 只认阅读行**——Live 跟随推进
+    选中态但不再抢走 rail，`Preview` / `Code` 才由选中行决定；`following`
+    不再作为 content-active 跟随的守卫，选中行 reveal 在 Agent 视图下直接
+    跳过，避免两个效果互抢同一行。
     `src/lib/agent-transcript-scroll.ts` 的 `isAgentTranscriptAtBottom`（24px 容差）
     单一判定是否仍在底部，`isLatestStepVisible` 判定最新步骤是否仍在视口内
     （高回复未到最底时也可能可见）。overlay 的
@@ -265,13 +287,14 @@
     zcode 的会话起始模型）在此归一成一个展示串；某条运行自身没上报模型时
     回退到会话起始模型（ZCode 只在 SessionStart 携带 model），界面只在有
     可显示值时渲染 `MODEL` 标签；
-  - 成对原子事件的耗时只在 `src/lib/trace-model.ts`（`buildPairDurations`，
-    复用 `createFlowEntries` 的配对）：仅对已闭合的成对事件（起始有结果
-    收尾，如 `PreToolUse`→`PostToolUse`/`PostToolUseFailure`）给出开始→结果
-    的时长，不成对的事件一律不计入；轮次的 `totalPairDuration` 按唯一 pair
-    求和（一个工具调用会投影成多个原子，两半也带同一跨度，不能按原子累加）；
-    LOG 行、轨迹数据层（`pairDuration` / `totalPairDuration`）与悬停区块卡片
-    都从这一处取值；
+  - 成对原子事件的耗时只在 `src/lib/trace-model.ts`（`buildPairArtifacts`，
+    一次 `createFlowEntries` 遍历同时产出跨度表与关联表；`buildPairDurations`
+    / `buildPairLinks` 是它的两个投影，不得各自再走一遍 flow）：仅对已闭合的
+    成对事件（起始有结果收尾，如 `PreToolUse`→`PostToolUse`/`PostToolUseFailure`）
+    给出开始→结果的时长，不成对的事件一律不计入；轮次的 `totalPairDuration` 按
+    唯一 pair 求和（一个工具调用会投影成多个原子，两半也带同一跨度，不能按原子
+    累加）；LOG 行、轨迹数据层（`pairDuration` / `totalPairDuration`）、Agent
+    步骤自身的 `durationMs` 与悬停区块卡片都从这一处取值；
   - 成对关联标记的身份同样只在 `src/lib/trace-model.ts`（`buildPairLinks`，
     复用同一份 `createFlowEntries` 配对）：两半互指对方 ID，标记文字是
     `T<轮次>·#<另一半的 LOG 行号>`（轮次取起始事件的 `buildTraceTurnIndex` 结果，

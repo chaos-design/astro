@@ -71,12 +71,41 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   the UI shows the tag only when a run reports a model.
   Paired-event duration (the start→result span of a closed pair, e.g.
   `PreToolUse` → `PostToolUse`/`PostToolUseFailure`) lives only in
-  `src/lib/trace-model.ts` (`buildPairDurations`, reusing `createFlowEntries`
-  pairing); unpaired events are never counted, and a turn's
-  `totalPairDuration` counts each closed pair once even though both halves and
-  every projected atom carry the same span. The LOG row, the trajectory data
-  layer (`pairDuration` / `totalPairDuration`), and the hover block card all
-  read from this one source.
+  `src/lib/trace-model.ts` (`buildPairArtifacts`, one `createFlowEntries` pass
+  producing both the span map and the pair links; `buildPairDurations` /
+  `buildPairLinks` delegate to it); unpaired events are never counted, and a
+  turn's `totalPairDuration` counts each closed pair once even though both
+  halves and every projected atom carry the same span. The LOG row, the
+  trajectory data layer (`pairDuration` / `totalPairDuration`), the Agent
+  step's own duration, and the hover block card all read from this one source.
+  A step's `status` is `getExceptionOutcome` plus the host's own detail text —
+  never a second failure list — and the Chinese reason sentences live only in
+  `src/lib/run-history-state.ts` (`runTerminalReasonDescriptions`).
+  Display durations have exactly two ladders, both in
+  `src/lib/duration-label.ts`: `formatDurationMs` (one dominant unit per tier,
+  for LOG / rail badges) and `formatPerfDuration` (ms → s → `01M01s` →
+  `01H01M`, two digits, for the performance panel). Do not inline a third.
+  Page frame rate is sampled only in `src/lib/perf-metrics.ts`
+  (`startPageFpsSampler`, one 1s window, paused while the document is hidden);
+  the scroll-gesture FPS tracker answers a different question and is not a
+  substitute.
+  Transcript recovery for hook-only clients lives only in
+  `plugin/transcript-enrich.cjs`: it reads the host's `transcript_path` tail
+  incrementally, emits canonical `Reasoning` / `AgentMessage` payloads whose
+  `messageId` is the transcript entry's own id, and de-duplicates by
+  `transcriptKey` in `<ASTRO_HOME>/transcript-state/<source>-<session>.json`.
+  It is fail-open (`ASTRO_TRANSCRIPT_ENRICH=0` disables it, a missing module or
+  a corrupt line costs only that read) and is mirrored into every portable
+  plugin's `plugin/` directory by `scripts/build-native-plugins.mjs`. Never let
+  a hook wait on it: it runs after stdin is read and before the host event is
+  appended, with a 256 KiB per-read cap.
+  Retention of captured runs lives only in `server/retention.mjs`
+  (`findExpiredSessions` / `pruneExpiredSessions`, age = the session's newest
+  `capturedAt`, guard 1–3650 days, deletes only `events.jsonl` session
+  directories under the trace root). The console's settings panel previews
+  through `GET /api/retention/preview`; the prune route is the only writer, and
+  it must call `TraceRepository.forgetMissing()` so a pruned run never stays in
+  memory.
   Turn numbering lives only in `src/lib/trajectory-model.ts`
   (`buildTraceTurnIndex`): a numbered source keeps its own number (DeepSeek's
   `data.turn` can start at 5), an opaque identity takes the next ordinal,
