@@ -112,10 +112,10 @@ function RetentionField({
     setPending(true);
     onPreview(retention.days)
       .then((next) => {
-        setPreview(next);
+        setPreview(next ?? null);
         setPending(false);
         // Nothing to delete: enabling is honest without a second click.
-        if (next.eventFiles === 0) {
+        if (!next || next.eventFiles === 0) {
           onChange({ ...retention, enabled: true });
         }
       })

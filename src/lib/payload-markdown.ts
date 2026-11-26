@@ -19,6 +19,7 @@ import {
   contentToMarkdown,
   fenceCode,
   isPayloadContainerKey,
+  isPayloadEnvelopeKey,
   isPayloadIdentityKey,
   isPayloadMetaKey,
 } from "./payload-preview.ts";
@@ -560,7 +561,7 @@ function objectToMarkdown(value: UnknownRecord, depth: number, seen: WeakSet<obj
     // The recorder's identity stamp (client name + version) belongs in the
     // dialog header, never in the preview body. Drop it at the top level of
     // the payload only: a deeper `version` field is genuine captured data.
-    if (depth === 0 && isPayloadIdentityKey(key)) {
+    if (isPayloadEnvelopeKey(key) || (depth === 0 && isPayloadIdentityKey(key))) {
       continue;
     }
     // A container key (tool_input / payload / …) hides the content one level
@@ -608,7 +609,7 @@ function readableFields(value: unknown, depth: number, seen: WeakSet<object>): s
   seen.add(value);
   const lines: string[] = [];
   for (const [key, item] of Object.entries(value)) {
-    if (depth === 0 && isPayloadIdentityKey(key)) {
+    if (isPayloadEnvelopeKey(key) || (depth === 0 && isPayloadIdentityKey(key))) {
       continue;
     }
     const container = item !== null && typeof item === "object" && isPayloadContainerKey(key);

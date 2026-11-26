@@ -804,11 +804,21 @@ test("scroll, padding and control polish keep the reading surface stable", () =>
   assert.match(stylesForOverlay, /\.payload-overlay__pane--content \{\s*\n\s*min-width: 0;/);
   assert.match(
     stylesForOverlay,
-    /\.payload-overlay__pane \.payload-overlay__body \{[\s*\S]*?padding: 10px 18px 20px;/,
+    /\.payload-overlay__pane \.payload-overlay__body \{[\s*\S]*?padding: 12px 18px 22px;/,
   );
   assert.match(
     stylesForOverlay,
-    /\.payload-overlay__pane--related \.payload-overlay__body \{[\s*\S]*?padding: 0 16px 20px;/,
+    /\.payload-overlay__pane--related \.payload-overlay__body \{[\s*\S]*?padding: 6px 16px 22px;/,
+  );
+  // The pane title is a section header, not a floating label: an accent rule
+  // before it and a hairline under it, with the body inset below.
+  assert.match(
+    stylesForOverlay,
+    /\.payload-overlay__pane-title::before \{[\s*\S]*?background: color-mix\(in srgb, var\(--violet\)/,
+  );
+  assert.match(
+    stylesForOverlay,
+    /\.payload-overlay__pane-title \{[\s*\S]*?padding: 14px 18px 10px;[\s*\S]*?border-bottom: 1px solid/,
   );
 
   // The rail head no longer prints a "LOG · N" counter beside the search box.

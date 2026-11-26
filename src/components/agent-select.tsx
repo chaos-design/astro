@@ -101,6 +101,17 @@ export const AgentSelect = memo(function AgentSelect({
     setFocusedIndex(0);
   }, [query, open]);
 
+  // A switch always leaves the picker closed. Selecting an option already
+  // closes it, but the switch itself re-renders the whole shell (new sessions,
+  // new canvas); a rapid second click can land while the popover is still
+  // animating out and leave `open` true with no panel on screen — the next
+  // click then only toggles that stale state, so the picker looks dead. Tying
+  // the closed state to the selected value makes "switched" and "closed" the
+  // same event.
+  useEffect(() => {
+    setOpen(false);
+  }, [value]);
+
   // Keep the keyboard-highlighted option visible while navigating.
   useEffect(() => {
     if (!open) {

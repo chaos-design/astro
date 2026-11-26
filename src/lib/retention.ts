@@ -36,9 +36,12 @@ export type RetentionPruneResult = {
 
 /** The preview request can fail for a bad window; the message is the service's. */
 export class RetentionRequestError extends Error {
-  constructor(message: string, readonly status: number) {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
     super(message);
     this.name = "RetentionRequestError";
+    this.status = status;
   }
 }
 
@@ -54,7 +57,24 @@ async function readJsonResponse<T>(response: Response): Promise<T> {
       body && typeof body === "object" && "error" in body
         ? String((body as { error: unknown }).error)
         : `HTTP ${response.status}`;
-    throw new RetentionRequestError(message, response.status);
+    // A 404 means the service predates the retention routes: the settings
+    // panel cannot fix that, only a restart of the local service can.
+    throw new RetentionRequestError(
+      response.status === 404
+        ? `${message}：本地服务还没有清理接口，重启本地服务后再试`
+        : message,
+      response.status,
+    );
+  }
+  // A static host that rewrites unknown paths to `index.html` answers 200 with
+  // HTML, and an old service can answer 200 with no body. Both used to reach
+  // the caller as `null` and crashed on `preview.eventFiles`; name the real
+  // problem instead of a property access error.
+  if (body === null || typeof body !== "object") {
+    throw new RetentionRequestError(
+      "本地服务没有返回 JSON（可能仍是旧版本，或请求被静态页回退）；重启本地服务后再试",
+      response.status,
+    );
   }
   return body as T;
 }

@@ -579,11 +579,22 @@ const pillStyles: Partial<CSSStyleDeclaration> = {
   pointerEvents: "auto",
   display: "inline-flex",
   alignItems: "center",
+  justifyContent: "center",
   gap: "6px",
+  // A fixed width, not a content-driven one: the two readings tick every
+  // 500ms (`60fps · 16.7ms` → `5fps · 200ms`), and a pill that grows with them
+  // resizes its host, which drags the right-anchored panel sideways once per
+  // tick — the "panel jitters while numbers change" report. Reserved width
+  // keeps the host, the pill and the panel perfectly still.
+  width: "128px",
+  boxSizing: "border-box",
+  overflow: "hidden",
+  whiteSpace: "nowrap",
+  fontVariantNumeric: "tabular-nums",
   padding: "4px 11px",
   borderRadius: "999px",
   border: "1px solid rgba(148, 163, 184, 0.35)",
-  background: "rgba(7, 10, 16, 0.88)",
+  background: "rgba(7, 10, 16, 0.97)",
   color: "#c9d6ea",
   font: "inherit",
   fontSize: "10px",
@@ -608,11 +619,12 @@ const panelBodyStyles: Partial<CSSStyleDeclaration> = {
   maxHeight: "min(560px, calc(100vh - 96px))",
   borderRadius: "12px",
   border: "1px solid rgba(148, 163, 184, 0.28)",
-  background: "rgba(7, 10, 16, 0.94)",
+  background: "rgba(7, 10, 16, 0.985)",
   color: "#c9d6ea",
   fontSize: "11px",
   lineHeight: "1.5",
   padding: "0",
+  fontVariantNumeric: "tabular-nums",
   boxShadow: "0 12px 32px rgba(0, 0, 0, 0.55)",
 };
 
@@ -747,7 +759,12 @@ const rowValueStyles: Partial<CSSStyleDeclaration> = {
   color: "#e8f0ff",
   fontVariantNumeric: "tabular-nums",
   textAlign: "right",
-  whiteSpace: "pre-wrap",
+  // A value that wraps to a second line changes the panel's height, which
+  // re-anchors the whole floating layer. Values are short readings; keep them
+  // on one line and let an over-long one clip instead of resizing the panel.
+  whiteSpace: "nowrap",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
 };
 
 const usageStyles: Partial<CSSStyleDeclaration> = {

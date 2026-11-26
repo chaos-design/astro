@@ -79,14 +79,27 @@ const CONTAINER_KEYS = [
 ];
 
 /**
- * The client's own identity, not per-event data: a tool result should not
- * re-print the agent name and the recorder's version beside the fields that
- * matter. These are top-level envelope keys the recorder stamps on every
- * event; dropping them here keeps the related-field inventory on the event
- * itself. Matched by exact normalized name so a real `version` field inside
- * a tool payload (a deeper path) is not caught.
+ * Envelope identity, not per-event data: the client's own name, the recorder's
+ * version, the trace locator and the schema stamp are written on every event
+ * by the producer. A preview is what the event *carried*; re-printing
+ * `workbuddy` / `5.11.3` / `trace://…` beside the real body made a tool result
+ * look like it had three lines of content and no way to tell which line was
+ * the answer. These keys are dropped from both the Markdown body and the
+ * related-field inventory.
+ *
+ * `version` stays in its own set: a *tool payload* can genuinely record a
+ * version, so it is only dropped at the envelope levels (depth ≤ 1), while the
+ * unambiguous stamps below are dropped at any depth.
  */
-const IDENTITY_KEYS = new Set(["client", "version"]);
+const ENVELOPE_IDENTITY_KEYS = new Set([
+  "client",
+  "sourceclient",
+  "sourceversion",
+  "schemaversion",
+  "locator",
+  "workspaceid",
+]);
+const IDENTITY_KEYS = new Set([...ENVELOPE_IDENTITY_KEYS, "version"]);
 
 /**
  * Whether a key is the recorder's own identity stamp. Exported so the
@@ -97,6 +110,14 @@ const IDENTITY_KEYS = new Set(["client", "version"]);
  */
 export function isPayloadIdentityKey(key: string): boolean {
   return IDENTITY_KEYS.has(normalized(key));
+}
+
+/**
+ * A stamp that is identity wherever it appears (never a tool's own field):
+ * the agent name, the recorder / schema version source, the trace locator.
+ */
+export function isPayloadEnvelopeKey(key: string): boolean {
+  return ENVELOPE_IDENTITY_KEYS.has(normalized(key));
 }
 
 type UnknownRecord = Record<string, unknown>;
@@ -290,6 +311,11 @@ export function splitPayloadPreview(value: unknown, depth = 0, seen = new WeakSe
   const contents: string[] = [];
 
   for (const [key, item] of Object.entries(record)) {
+    // Envelope identity (agent name / version / locator) is not content and
+    // not a related field: the dialog header already names the client.
+    if (isPayloadEnvelopeKey(key) || (depth === 0 && isPayloadIdentityKey(key))) {
+      continue;
+    }
     const name = normalized(key);
     if (CONTENT_KEYS.includes(name)) {
       // A content field is usually a string, but tool responses nest text in
@@ -459,7 +485,7 @@ export function collectPayloadFields(
     // on every event by the source; a result's field inventory should stay on
     // the event, so only the root level drops it. A deeper payload that
     // genuinely records a version field keeps it.
-    if (prefix === "" && isPayloadIdentityKey(key)) {
+    if (isPayloadEnvelopeKey(key) || (depth === 0 && isPayloadIdentityKey(key))) {
       continue;
     }
     const path = prefix ? `${prefix}.${key}` : key;
@@ -787,7 +813,11 @@ function stripMetaKeys(
     for (const [key, item] of Object.entries(value)) {
       // The recorder's own identity stamp is never preview content: the agent
       // name and client version are shown once, in the dialog header.
-      if (isPayloadMetaKey(key) || (depth === 0 && isPayloadIdentityKey(key))) {
+      if (
+        isPayloadMetaKey(key) ||
+        isPayloadEnvelopeKey(key) ||
+        (depth === 0 && isPayloadIdentityKey(key))
+      ) {
         continue;
       }
       const stripped = stripMetaKeys(item, depth + 1, seen);

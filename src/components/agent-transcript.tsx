@@ -16,6 +16,7 @@ import {
   Timer,
 } from "lucide-react";
 import {
+  memo,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -794,6 +795,19 @@ export function AgentTranscript({
     }
   }, [live, view.steps, onActiveEventChange]);
 
+  // One stable registration callback for every card: an inline closure per
+  // row would defeat the memo above on every render.
+  const registerStep = useCallback(
+    (stepId: string, element: HTMLElement | null) => {
+      if (element) {
+        stepRefs.current.set(stepId, element);
+      } else {
+        stepRefs.current.delete(stepId);
+      }
+    },
+    [],
+  );
+
   const handleScroll = useCallback(() => {
     const container = scrollRef.current;
     if (container) {
@@ -1057,17 +1071,11 @@ export function AgentTranscript({
                 key={step.id}
                 step={step}
                 selected={step.id === targetStep?.id}
-                onSelect={() => onSelectEvent(step.eventId)}
+                onSelectEvent={onSelectEvent}
                 onLocate={onSelectEvent}
                 questionBinding={questionBinding}
                 questionIsCurrent={step.kind === "question" && step.eventId === questionEventId}
-                register={(element) => {
-                  if (element) {
-                    stepRefs.current.set(step.id, element);
-                  } else {
-                    stepRefs.current.delete(step.id);
-                  }
-                }}
+                registerStep={registerStep}
               />
             ))
           ) : (
@@ -1113,23 +1121,26 @@ export function AgentTranscript({
   );
 }
 
-function StepCard({
+const StepCard = memo(function StepCard({
   step,
   selected,
-  onSelect,
+  onSelectEvent,
   onLocate,
   questionBinding,
   questionIsCurrent,
-  register,
+  registerStep,
 }: {
   step: AgentStep;
   selected: boolean;
-  onSelect: () => void;
+  onSelectEvent: (eventId: string) => void;
   onLocate: (eventId: string) => void;
   questionBinding: QuestionAnswerBinding | null;
   questionIsCurrent: boolean;
-  register: (element: HTMLElement | null) => void;
+  registerStep: (stepId: string, element: HTMLElement | null) => void;
 }) {
+  const onSelect = () => onSelectEvent(step.eventId);
+  const register = (element: HTMLElement | null) =>
+    registerStep(step.id, element);
   const header = (() => {
     switch (step.kind) {
       case "thinking":
@@ -1236,6 +1247,44 @@ function StepCard({
         )}
       </div>
     </section>
+  );
+}, stepCardPropsEqual);
+
+/**
+ * A long run renders every step, and reading it scrolls the pane: a scroll
+ * frame changes the reading-line highlight, not the projection. Without this
+ * comparison every card re-rendered on every frame — each one re-running its
+ * header and Markdown decisions — which is what made scrolling a long Agent
+ * message list feel heavy. `step` is the projection's own object (a new one
+ * only when the view is rebuilt), and the question binding only matters to the
+ * one card that is the current question.
+ */
+function stepCardPropsEqual(
+  previous: {
+    step: AgentStep;
+    selected: boolean;
+    onSelectEvent: (eventId: string) => void;
+    registerStep: (stepId: string, element: HTMLElement | null) => void;
+    questionBinding: QuestionAnswerBinding | null;
+    questionIsCurrent: boolean;
+  },
+  next: {
+    step: AgentStep;
+    selected: boolean;
+    onSelectEvent: (eventId: string) => void;
+    registerStep: (stepId: string, element: HTMLElement | null) => void;
+    questionBinding: QuestionAnswerBinding | null;
+    questionIsCurrent: boolean;
+  },
+) {
+  return (
+    previous.step === next.step &&
+    previous.selected === next.selected &&
+    previous.onSelectEvent === next.onSelectEvent &&
+    previous.registerStep === next.registerStep &&
+    previous.questionIsCurrent === next.questionIsCurrent &&
+    (previous.questionBinding === next.questionBinding ||
+      !next.questionIsCurrent)
   );
 }
 

@@ -5857,11 +5857,54 @@ export default function App() {
       }
       closeNavMenu(true);
     };
+    // A disclosure that only closes on a page click stays open while the
+    // reader switches apps or tabs and comes back, framing the console with a
+    // menu they forgot they opened. Losing the window's focus (or the tab)
+    // closes it the way an OS menu does.
+    const handleWindowBlur = () => {
+      closeNavMenu();
+    };
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        closeNavMenu();
+      }
+    };
+    // Keyboard focus leaving the panel closes it too — but never while focus
+    // moved into a portalled popup the panel opened (a Radix select's listbox
+    // renders outside the panel, and closing on that would swallow the pick).
+    const handleFocusOut = (event: FocusEvent) => {
+      const next = event.relatedTarget as Node | null;
+      if (!next) {
+        return;
+      }
+      if (
+        navMenuRef.current?.contains(next) ||
+        navToggleRef.current?.contains(next)
+      ) {
+        return;
+      }
+      if (
+        next instanceof Element &&
+        next.closest(
+          '[role="listbox"], [role="menu"], [role="dialog"], [data-radix-popper-content-wrapper]',
+        )
+      ) {
+        return;
+      }
+      closeNavMenu();
+    };
     document.addEventListener("pointerdown", handlePointerDown);
     document.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("blur", handleWindowBlur);
+    const panel = navMenuRef.current;
+    panel?.addEventListener("focusout", handleFocusOut);
     return () => {
       document.removeEventListener("pointerdown", handlePointerDown);
       document.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("blur", handleWindowBlur);
+      panel?.removeEventListener("focusout", handleFocusOut);
     };
   }, [closeNavMenu, navMenuOpen]);
 

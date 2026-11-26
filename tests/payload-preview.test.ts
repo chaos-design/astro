@@ -13,6 +13,7 @@ import {
   RELATED_VALUE_MAX_CHARS,
   splitPayloadPreview,
 } from "../src/lib/payload-preview.ts";
+import { payloadToMarkdown } from "../src/lib/payload-markdown.ts";
 
 test("metadata key matching uses whole words, not substrings", () => {
   // A substring test silently dropped real prose: "id" hid `guidelines`,
@@ -268,16 +269,48 @@ test("a scalar array carries its items so the pane can render a list", () => {
   assert.equal(row?.value, "first, second", "the joined value still copies verbatim");
 });
 
-test("the root client identity is dropped but a nested version field is kept", () => {
+test("envelope identity is dropped while a tool's own version field is kept", () => {
   const fields = collectPayloadFields({
     client: "WorkBuddy",
     version: "5.11.3",
-    tool_response: { version: "1.0.0" },
+    sourceVersion: "5.11.3",
+    sourceClient: "WorkBuddy",
+    locator: "trace://workbuddy/s1/e1",
+    schemaVersion: 2,
+    tool_response: { version: "1.0.0", client: "the captured SDK name" },
   });
   const keys = fields.map((field) => field.key);
   assert.ok(!keys.includes("client"), "the agent name does not leak into the list");
   assert.ok(!keys.includes("version"), "the recorder version does not leak");
+  assert.ok(!keys.includes("sourceVersion"), "the recorder version spelling does not leak");
+  assert.ok(!keys.includes("sourceClient"), "the client spelling does not leak");
+  assert.ok(!keys.includes("locator"), "the trace locator is not a field of the event");
+  assert.ok(!keys.includes("schemaVersion"), "the schema stamp is envelope data");
+  assert.ok(
+    !keys.includes("tool_response.client"),
+    "the client stamp is identity at any depth",
+  );
   assert.ok(keys.includes("tool_response.version"), "a deeper version field is genuine data");
+});
+
+test("an envelope-only payload has no preview body", () => {
+  // A Stop / SessionStart event carries timestamps, the client identity and a
+  // trace locator — no prose. It used to preview that locator as the body, so
+  // the pane showed a bare `trace://…` URL where the answer should be.
+  assert.equal(
+    payloadToMarkdown({
+      start_time: 1795706182594,
+      client: "WorkBuddy",
+      version: "5.11.3",
+      locator: "trace://workbuddy/s1/e1",
+    }),
+    "",
+  );
+  assert.equal(fallbackPayloadMarkdown({ client: "WorkBuddy", locator: "trace://x/y/z" }), "");
+  assert.deepEqual(
+    splitPayloadPreview({ client: "WorkBuddy", locator: "trace://x/y/z" }).related,
+    [],
+  );
 });
 
 test("a tool result that echoes its inputs back is shown once", () => {
