@@ -486,6 +486,37 @@ function compactRecordStatus(record: UnknownRecord): string | undefined {
  * field present on ANY item turns the whole list into a task list, so a
  * pending row next to a finished one still reads as one checklist.
  */
+/** A list of uniform records with no headline field is a table, not a run of
+ *  `key=value · key=value` strings: the keys become columns and a long path
+ *  stays in its own cell instead of being swallowed by a paragraph. */
+function recordsToTable(records: readonly UnknownRecord[]): string {
+  const keys: string[] = [];
+  for (const record of records) {
+    for (const key of Object.keys(record)) {
+      if (!keys.includes(key)) {
+        keys.push(key);
+      }
+    }
+  }
+  if (!keys.length) {
+    return "";
+  }
+  const cell = (value: unknown): string => {
+    const text =
+      value === null || value === undefined || value === ""
+        ? "—"
+        : escapeInline(String(value));
+    return text.replace(/\|/g, "\\|").replace(/[\r\n]+/g, " ");
+  };
+  return [
+    `| ${keys.map((key) => cell(key)).join(" | ")} |`,
+    `| ${keys.map(() => "---").join(" | ")} |`,
+    ...records.map(
+      (record) => `| ${keys.map((key) => cell(record[key])).join(" | ")} |`,
+    ),
+  ].join("\n");
+}
+
 function compactListMarkdown(items: readonly unknown[]): string {
   const records = items.map((item) => (isCompactRecord(item) ? item : null));
   if (records.some((record) => record === null) || !items.length) {
@@ -495,6 +526,15 @@ function compactListMarkdown(items: readonly unknown[]): string {
     const status = compactRecordStatus(record as UnknownRecord);
     return status !== undefined;
   });
+  const hasPrimary = records.some((record) =>
+    LIST_PRIMARY_KEYS.some((key) => {
+      const value = (record as UnknownRecord)[key];
+      return typeof value === "string" && Boolean(value.trim());
+    }),
+  );
+  if (!hasStatus && !hasPrimary) {
+    return recordsToTable(records as UnknownRecord[]);
+  }
   return (records as UnknownRecord[])
     .map((record) => {
       let primary = "";

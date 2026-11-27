@@ -861,7 +861,7 @@ test("scroll, padding and control polish keep the reading surface stable", () =>
   );
   assert.match(
     stylesForOverlay,
-    /\.payload-overlay__pane--related \.payload-overlay__body \{[\s*\S]*?padding: 6px 16px 22px;/,
+    /\.payload-overlay__pane--related \.payload-overlay__body \{[\s*\S]*?padding: 8px 18px 22px;/,
   );
   // The pane title is a section header, not a floating label: an accent rule
   // before it and a hairline under it, with the body inset below.
@@ -1153,6 +1153,12 @@ test("key-value blocks have a framed, hoverable surface", () => {
   assert.match(stylesForOverlay, /\.agent-step__call-field:hover/);
   assert.match(stylesForOverlay, /\.agent-step__related summary \{[\s\S]*?border-radius: 999px/);
   assert.match(stylesForOverlay, /\.agent-step__related\[open\] summary::before/);
+  // A bounded key gutter keeps the value column usable, and both the clock
+  // tooltip and the pane headers share the content inset.
+  assert.match(stylesForOverlay, /\.payload-overlay__field \{[\s\S]*?minmax\(96px, 168px\) minmax\(0, 1fr\)/);
+  assert.match(stylesForOverlay, /\.agent-transcript__stat-card \{[\s\S]*?padding: 9px 14px/);
+  assert.match(stylesForOverlay, /\.payload-overlay__pane-head \{[\s\S]*?padding: 14px 18px 12px/);
+  assert.match(stylesForOverlay, /\.payload-overlay__pane--related \.payload-overlay__body \{[\s\S]*?padding: 8px 18px 22px/);
 });
 
 /** A one-item array is one message: its content is rendered directly, never
@@ -1234,6 +1240,9 @@ test("the progress strip keeps edge buttons, hides when idle, and grows smoothly
   assert.match(agentTranscript, /tick\.turn < activeTurn && "is-passed"/);
   assert.match(agentTranscript, /PROGRESS_PAN_FEEDBACK_MS = 420/);
   assert.match(agentTranscript, /panning && "is-panning"/);
+  // A transform on the ticks layer creates a stacking context: the layer, not
+  // just the dots, must be lifted over the later-painted fill.
+  assert.match(stylesForOverlay, /\.agent-transcript__progress-ticks \{[\s\S]*?z-index: 1/);
   assert.match(stylesForOverlay, /\.agent-transcript__progress-tick \{[\s\S]*?z-index: 1/);
   assert.match(stylesForOverlay, /\.agent-transcript__progress-tick\.is-passed::after/);
   assert.match(stylesForOverlay, /\.agent-transcript__progress\.is-panning [\s\S]{0,180}box-shadow/);
@@ -1246,4 +1255,12 @@ test("the progress strip keeps edge buttons, hides when idle, and grows smoothly
   assert.match(agentTranscript, /new ResizeObserver\(onResize\)/);
   assert.match(agentTranscript, /ticksRef\.current = next/);
   assert.match(agentTranscript, /for \(const tick of ticksNow\)/);
+  // A single controlled tip lives on the strip, outside the track's overflow
+  // window, so a hovered dot actually shows its turn / steps / LOG row.
+  assert.match(agentTranscript, /const showTickTip = useCallback/);
+  assert.match(agentTranscript, /\{hoveredTick \? \(\s*\n\s*<div/);
+  assert.match(agentTranscript, /onPointerEnter=\{\(event\) => showTickTip\(tick, event\.currentTarget\)\}/);
+  assert.match(agentTranscript, /第 \{hoveredTick\.tick\.turn\} 轮/);
+  assert.doesNotMatch(agentTranscript, /<span className="agent-transcript__progress-tip"/);
+  assert.match(stylesForOverlay, /\.agent-transcript__progress-tip \{[\s\S]*?width: 148px[\s\S]*?pointer-events: none/);
 });

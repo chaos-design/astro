@@ -663,6 +663,7 @@ function ChainProgress({
 }) {
   const fillRef = useRef<HTMLDivElement | null>(null);
   const frameRef = useRef<number | null>(null);
+  const stripRef = useRef<HTMLDivElement | null>(null);
   const trackRef = useRef<HTMLDivElement | null>(null);
   const progressRef = useRef(1);
   // The tick area pans with the two edge buttons when turns are dense enough
@@ -682,6 +683,28 @@ function ChainProgress({
   // a real switch between windows instead of a no-op on a static bar.
   const [panning, setPanning] = useState(false);
   const panTimerRef = useRef<number | null>(null);
+  // One tooltip lives on the strip, outside the track's overflow window: a
+  // tooltip nested in a tick used to be clipped away before it could be read.
+  const [hoveredTick, setHoveredTick] = useState<{
+    tick: ProgressTick;
+    left: number;
+  } | null>(null);
+  const showTickTip = useCallback((tick: ProgressTick, anchor: HTMLElement) => {
+    const strip = stripRef.current;
+    if (!strip) {
+      return;
+    }
+    const bounds = anchor.getBoundingClientRect();
+    const stripBounds = strip.getBoundingClientRect();
+    const center = bounds.left + bounds.width / 2 - stripBounds.left;
+    setHoveredTick({
+      tick,
+      left: Math.min(
+        Math.max(0, stripBounds.width - 148),
+        Math.max(0, center - 74),
+      ),
+    });
+  }, []);
   const shiftTicks = useCallback((direction: 1 | -1) => {
     const layer = ticksLayerRef.current;
     if (!layer) {
@@ -695,6 +718,7 @@ function ChainProgress({
     const next = Math.min(max, Math.max(0, panRef.current + direction * max * 0.6));
     panRef.current = next;
     setPan(next);
+    setHoveredTick(null);
     setPanning(true);
     if (panTimerRef.current !== null) {
       window.clearTimeout(panTimerRef.current);
@@ -871,6 +895,7 @@ function ChainProgress({
         !visible && "is-hidden",
         panning && "is-panning",
       )}
+      ref={stripRef}
     >
       {/* The pan buttons sit at the two outer edges and the track fills the
           space between them; dense turns widen the tick layer underneath. */}
@@ -907,6 +932,10 @@ function ChainProgress({
                 const element = stepRefs.get(tick.firstStepId);
                 element?.scrollIntoView({ behavior: "smooth", block: "start" });
               }}
+              onBlur={() => setHoveredTick(null)}
+              onFocus={(event) => showTickTip(tick, event.currentTarget)}
+              onPointerEnter={(event) => showTickTip(tick, event.currentTarget)}
+              onPointerLeave={() => setHoveredTick(null)}
               style={{
                 left:
                   layerWidth > 0
@@ -914,14 +943,7 @@ function ChainProgress({
                     : undefined,
               }}
               type="button"
-            >
-              <span className="agent-transcript__progress-tip" role="tooltip">
-                <strong>第 {tick.turn} 轮</strong>
-                <span>
-                  {tick.count} 步 · 从 {tick.sequence} 行开始
-                </span>
-              </span>
-            </button>
+            />
           ))}
         </div>
         <div className="agent-transcript__progress-fill" ref={fillRef} />
@@ -937,6 +959,18 @@ function ChainProgress({
       >
         <ChevronRight aria-hidden="true" />
       </button>
+      {hoveredTick ? (
+        <div
+          className="agent-transcript__progress-tip"
+          role="tooltip"
+          style={{ left: `${hoveredTick.left}px` }}
+        >
+          <strong>第 {hoveredTick.tick.turn} 轮</strong>
+          <span>
+            {hoveredTick.tick.count} 步 · 从 {hoveredTick.tick.sequence} 行开始
+          </span>
+        </div>
+      ) : null}
     </div>
   );
 }

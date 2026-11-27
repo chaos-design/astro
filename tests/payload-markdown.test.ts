@@ -95,6 +95,20 @@ test("a todos array renders as a GFM checklist of blocks, not a JSON dump", () =
   assert.doesNotMatch(markdown, /```json/);
 });
 
+test("a headline-free array of records renders as a table, not a flattened string", () => {
+  const markdown = payloadToMarkdown({
+    deleted: [
+      { operation: "trash", path: "/tmp/a|b", runtime: "node" },
+      { operation: "trash", path: "/tmp/c", runtime: "node" },
+    ],
+  });
+  assert.match(markdown, /^\| operation \| path \| runtime \|/);
+  assert.match(markdown, /^\| --- \| --- \| --- \|/m);
+  // A path containing a pipe must stay in its own cell.
+  assert.match(markdown, /\/tmp\/a\\\|b/);
+  assert.doesNotMatch(markdown, /operation=trash · path=/);
+});
+
 test("a boolean status drives the todo checkbox too", () => {
   const markdown = payloadToMarkdown({
     todos: [

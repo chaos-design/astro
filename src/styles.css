@@ -6431,7 +6431,9 @@ pre,
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 14px 16px 10px;
+  /* Same 18px inset as the scrolling body below, so the title's accent rule
+     and text line up with the first content card. */
+  padding: 14px 18px 12px;
 }
 
 .payload-overlay__pane-head .payload-overlay__pane-title {
@@ -6457,7 +6459,7 @@ pre,
 }
 
 .payload-overlay__pane--related .payload-overlay__body {
-  padding: 6px 16px 22px;
+  padding: 8px 18px 22px;
 }
 
 .payload-overlay__pane .payload-overlay__body::-webkit-scrollbar {
@@ -6699,8 +6701,10 @@ pre,
 .payload-overlay__field {
   display: grid;
   min-width: 0;
-  grid-template-columns: minmax(96px, 0.9fr) minmax(0, 1.4fr);
-  gap: 10px;
+  /* A quarter-width key gutter wasted half a wide pane on labels: bound it
+     to a readable max and let the value own the rest of the row. */
+  grid-template-columns: minmax(96px, 168px) minmax(0, 1fr);
+  gap: 12px;
   padding: 8px 8px;
   border-bottom: 1px solid var(--line);
   border-radius: 5px;
@@ -8177,6 +8181,10 @@ pre,
   position: absolute;
   inset: 0 auto 0 0;
   height: 100%;
+  /* The layer has a transform, which creates its own stacking context: a
+     z-index on the dots alone cannot lift them over the later-painted fill.
+     Lift the whole layer instead. */
+  z-index: 1;
   transition:
     transform 420ms cubic-bezier(0.22, 1, 0.36, 1),
     width 320ms cubic-bezier(0.22, 1, 0.36, 1);
@@ -8303,12 +8311,14 @@ pre,
   transform: translateX(-50%) scale(1.3);
 }
 
+/* The tip is mounted on the strip, above the track's overflow window, and
+   positioned from the hovered dot; a tip inside a tick used to be clipped. */
 .agent-transcript__progress-tip {
   position: absolute;
   bottom: calc(100% + 6px);
-  left: 50%;
-  z-index: 30;
-  display: none;
+  z-index: 40;
+  display: grid;
+  width: 148px;
   gap: 2px;
   padding: 6px 9px;
   border: 1px solid var(--line-bright);
@@ -8317,13 +8327,8 @@ pre,
   box-shadow: 0 12px 32px rgb(0 0 0 / 42%);
   color: var(--text);
   font-size: 0.6875rem;
-  transform: translateX(-50%);
   white-space: nowrap;
-}
-
-.agent-transcript__progress-tick:hover .agent-transcript__progress-tip,
-.agent-transcript__progress-tick:focus-visible .agent-transcript__progress-tip {
-  display: grid;
+  pointer-events: none;
 }
 
 .agent-transcript__progress-tip strong {
@@ -8333,19 +8338,6 @@ pre,
 .agent-transcript__progress-tip span {
   color: var(--muted);
   font-variant-numeric: tabular-nums;
-}
-
-/* Edge ticks would hang their hover card off-screen; keep the first and the
-   last tick's card inside the pane. */
-.agent-transcript__progress-tick:first-of-type .agent-transcript__progress-tip {
-  left: 0;
-  transform: none;
-}
-
-.agent-transcript__progress-tick:last-of-type .agent-transcript__progress-tip {
-  left: auto;
-  right: 0;
-  transform: none;
 }
 
 /* Message stepping beside the agent name: a quiet ‹ n/N › cluster. The
@@ -11470,17 +11462,16 @@ pre,
   top: calc(100% + 6px);
   left: 0;
   z-index: 20;
+  min-width: 214px;
+  max-width: 300px;
   /* Hidden until a driver re-shows it: the stat chips' controlled `is-open`,
      or the clock chip's CSS hover / keyboard focus. */
   display: none;
-  min-width: 190px;
-  max-width: 264px;
   flex-direction: column;
-  gap: 2px;
-  /* No right padding: the scroll list reaches the card's inner right edge so
-     its scrollbar sits flush against the border, not a gap inside it. The
-     title and rows keep their own horizontal inset. */
-  padding: 6px 0;
+  gap: 3px;
+  /* Roomy on both sides: the clock card is prose (reason + totals), not a
+     dense row list, so its text must not hug the border. */
+  padding: 9px 14px;
   border: 1px solid var(--line-bright);
   border-radius: 7px;
   background: var(--panel);
@@ -11499,7 +11490,7 @@ pre,
 }
 
 .agent-transcript__stat-card-title {
-  padding: 2px 4px 4px;
+  padding: 0 0 4px;
   color: var(--muted);
   font-weight: var(--weight-medium, 600);
 }
@@ -11507,7 +11498,7 @@ pre,
 .agent-transcript__stat-card-row {
   display: grid;
   width: 100%;
-  padding: 3px 4px;
+  padding: 4px 2px;
   border: 0;
   border-radius: 4px;
   background: transparent;
@@ -11603,7 +11594,7 @@ pre,
 /* The rows reach the list's inner right edge (no card gutter), so give them
    their own right inset to keep the turn label clear of the scrollbar. */
 .agent-transcript__stat-card-row {
-  padding-right: 8px;
+  padding-right: 4px;
 }
 
 /* A run-level clock has two readings and two treatments: teal while it is
