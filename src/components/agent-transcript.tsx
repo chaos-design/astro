@@ -24,7 +24,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type CSSProperties,
   type ReactNode,
   type RefObject,
 } from "react";
@@ -610,15 +609,6 @@ function StepStatusBadge({
   );
 }
 
-/** One comfortable slot per tick before the strip gives the track more room.
- *  Below it the three columns stay even; denser turns widen the track in
- *  notches so the change reads as a deliberate growth, not a jump. */
-const PROGRESS_COMFORT_SLOT = 24;
-const PROGRESS_DENSITY_STEP = 4;
-const PROGRESS_EVEN_EDGE = 100 / 3;
-const PROGRESS_MIN_EDGE = 12;
-const PROGRESS_EDGE_NOTCH = 7;
-
 type ProgressTick = {
   /** The turn's first step, for the click-to-jump. */
   firstStepId: string;
@@ -667,7 +657,7 @@ function ChainProgress({
 }) {
   const fillRef = useRef<HTMLDivElement | null>(null);
   const frameRef = useRef<number | null>(null);
-  const stripRef = useRef<HTMLDivElement | null>(null);
+  const trackRef = useRef<HTMLDivElement | null>(null);
   const progressRef = useRef(1);
   // The tick area pans with the two edge buttons when turns are dense enough
   // to overflow; the strip itself never shows a scrollbar. The layer widens
@@ -682,9 +672,6 @@ function ChainProgress({
   // Nothing to report until the chain actually overflows: the strip is hidden
   // on first render and only appears once a turn can be placed on it.
   const [visible, setVisible] = useState(false);
-  // The three columns are even by default. Dense turns give the track more of
-  // the strip in discrete notches; CSS animates between the two layouts.
-  const [edgePercent, setEdgePercent] = useState(PROGRESS_EVEN_EDGE);
   const shiftTicks = useCallback((direction: 1 | -1) => {
     const layer = ticksLayerRef.current;
     if (!layer) {
@@ -752,33 +739,13 @@ function ChainProgress({
       (left, right) => left.ratio - right.ratio,
     );
     setTicks((previous) => (sameTicks(previous, next) ? previous : next));
-    // Density is measured against the whole strip, never the track: the track
-    // itself is what the notch below animates, so feeding it back in would
-    // oscillate between "dense" and "comfortable" on every frame.
-    const stripWidth = stripRef.current?.clientWidth ?? 0;
-    const count = next.length;
-    const slot = count > 0 ? stripWidth / count : PROGRESS_COMFORT_SLOT;
-    const notch = Math.min(
-      3,
-      Math.max(
-        0,
-        Math.ceil((PROGRESS_COMFORT_SLOT - slot) / PROGRESS_DENSITY_STEP),
-      ),
-    );
-    const edge = Math.max(
-      PROGRESS_MIN_EDGE,
-      PROGRESS_EVEN_EDGE - notch * PROGRESS_EDGE_NOTCH,
-    );
-    setEdgePercent((previous) =>
-      Math.abs(previous - edge) < 0.01 ? previous : edge,
-    );
-    // The track's settled width at this notch (two edges plus the 4px gaps);
-    // the ticks layer eases to it, so a dense chain grows visibly instead of
-    // snapping to its final size.
-    const settledTrackWidth = Math.max(0, stripWidth * (1 - (2 * edge) / 100) - 8);
-    const width = Math.max(settledTrackWidth, count * 13);
+    // The two pan buttons own fixed slots at the ends; the track takes all
+    // the room between them. Dense turns widen the tick layer past that
+    // track, and its width eases there instead of snapping.
+    const trackWidth = trackRef.current?.clientWidth ?? 0;
+    const width = Math.max(trackWidth, next.length * 13);
     setLayerWidth((previous) => (previous === width ? previous : width));
-    setCanShift(width > settledTrackWidth + 4);
+    setCanShift(width > trackWidth + 4);
     // The breathing tick: the last turn whose position the reader has
     // reached. Compared against the rounded position so the state flips once
     // per tick, not per frame.
@@ -836,16 +803,10 @@ function ChainProgress({
   return (
     <div
       aria-hidden={visible ? "false" : "true"}
-      className={cn(
-        "agent-transcript__progress",
-        !visible && "is-hidden",
-      )}
-      ref={stripRef}
-      style={{ "--progress-edge": `${edgePercent}%` } as CSSProperties}
+      className={cn("agent-transcript__progress", !visible && "is-hidden")}
     >
-      {/* The three columns start even; dense turns hand room to the middle
-          column in notches and the edge buttons pan the tick layer, so no
-          scrollbar ever appears and the whole strip stays balanced. */}
+      {/* The pan buttons sit at the two outer edges and the track fills the
+          space between them; dense turns widen the tick layer underneath. */}
       <button
         aria-label="向左平移刻度"
         className={cn(
@@ -857,7 +818,7 @@ function ChainProgress({
       >
         <ChevronLeft aria-hidden="true" />
       </button>
-      <div className="agent-transcript__progress-track">
+      <div className="agent-transcript__progress-track" ref={trackRef}>
         <div
           className="agent-transcript__progress-ticks"
           ref={ticksLayerRef}

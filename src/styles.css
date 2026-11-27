@@ -7223,6 +7223,11 @@ pre,
   top: 0;
   left: 0;
   visibility: hidden;
+  /* Radix disables pointer events on the body while the dialog is modal. The
+     card is a sibling of DialogContent, not a child, so it must opt back in
+     or the pointer falls through to the console behind it: neither hovering
+     the summary nor clicking the jump target could work. */
+  pointer-events: auto;
   animation: run-history-hovercard-in 120ms ease-out;
 }
 
@@ -8020,7 +8025,6 @@ pre,
    the tick's card states the turn on hover. Ticks sit above the bar so they
    stay clickable without the pointer leaving the strip. */
 .agent-transcript__progress {
-  --progress-edge: 33.333%;
   flex: none;
   /* Under the header, riding over its border edge to edge: the bed spans the
      whole strip, so the header's bottom hairline is covered for its entire
@@ -8029,16 +8033,13 @@ pre,
   padding: 0 2px 2px;
   position: relative;
   z-index: 1;
-  /* Even by default: left button, track and right button each own a third.
-     Dense turns hand the outer columns to the track in notches; the grid
-     columns and the opacity ease together so the growth reads as one motion. */
+  /* The pan buttons own fixed slots at the two outer edges; the track takes
+     every pixel between them. Only the tick layer grows when turns get dense. */
   display: grid;
-  grid-template-columns: var(--progress-edge) minmax(0, 1fr) var(--progress-edge);
+  grid-template-columns: 18px minmax(0, 1fr) 18px;
   align-items: center;
   column-gap: 4px;
-  transition:
-    grid-template-columns 320ms cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 200ms ease;
+  transition: opacity 200ms ease;
 }
 
 /* No overflowing chain, no bar: the strip reserves nothing until a turn can

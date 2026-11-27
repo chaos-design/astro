@@ -647,7 +647,7 @@ export function PayloadOverlay({
     atomHoverTimerRef.current = window.setTimeout(() => {
       atomHoverTimerRef.current = null;
       setHoveredAtom(null);
-    }, 120);
+    }, 180);
   }, []);
   const cancelAtomHoverClose = useCallback(() => {
     if (atomHoverTimerRef.current !== null) {

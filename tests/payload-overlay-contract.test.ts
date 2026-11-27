@@ -394,7 +394,8 @@ test("the rail row is the LOG row, not a second row imitation", () => {
   assert.match(overlay, /openAtomHover\(atom, pointerEvent\.currentTarget\)/);
   assert.match(overlay, /<AtomHoverCardLayer/);
   assert.match(overlay, /payload-overlay__atom-hover-fields/);
-  assert.match(stylesForOverlay, /\.payload-overlay__atom-hover \{[\s\S]*?position: fixed/);
+  assert.match(stylesForOverlay, /\.payload-overlay__atom-hover \{[\s\S]*?position: fixed[\s\S]*?pointer-events: auto/);
+  assert.match(overlay, /setTimeout\(\(\) => \{[\s\S]{0,140}\}, 180\)/);
   assert.match(agentTranscript, /agent-transcript__stat-card/);
   // The card is capped, folds long summaries behind one toggle, and can be
   // clicked after the pointer reaches it to commit the same rail selection.
@@ -1169,9 +1170,10 @@ test("file and image values share one typed resource classifier", () => {
   assert.match(embeddedImage, /CAPTURED_IMAGE_MIME_TYPES/);
 });
 
-/** The progress strip splits evenly, appears only when a chain overflows, and
- * eases its way to a wider track when turns get dense. */
-test("the progress strip is even by default, hidden when idle, and grows smoothly", () => {
+/** The pan buttons stay at the two outer edges, the track owns the middle,
+ * the strip appears only when a chain overflows, and the tick layer eases to
+ * its denser width. */
+test("the progress strip keeps edge buttons, hides when idle, and grows smoothly", () => {
   const progressCss = stylesForOverlay.slice(
     stylesForOverlay.indexOf(".agent-transcript__progress {"),
     stylesForOverlay.indexOf(".agent-transcript__progress-tick {"),
@@ -1179,25 +1181,21 @@ test("the progress strip is even by default, hidden when idle, and grows smoothl
   assert.match(progressCss, /margin-top: -3px/);
   assert.match(
     progressCss,
-    /grid-template-columns: var\(--progress-edge\) minmax\(0, 1fr\) var\(--progress-edge\)/,
+    /grid-template-columns: 18px minmax\(0, 1fr\) 18px/,
   );
-  assert.match(progressCss, /--progress-edge: 33\.333%/);
-  assert.match(progressCss, /transition:[\s\S]*?grid-template-columns 320ms/);
+  assert.doesNotMatch(progressCss, /--progress-edge|33\.333%/);
+  assert.match(progressCss, /transition: opacity 200ms ease/);
   assert.match(
     progressCss,
     /\.agent-transcript__progress\.is-hidden \{[\s\S]*?height: 0[\s\S]*?opacity: 0/,
   );
   assert.match(progressCss, /\.agent-transcript__progress-ticks \{[\s\S]*?width 320ms/);
   assert.match(progressCss, /\.agent-transcript__progress-fill \{[\s\S]*?width 180ms/);
-  // The arrows keep their opaque chips but sit centred in the even columns.
-  assert.match(progressCss, /\.agent-transcript__progress-edge \{[\s\S]*?justify-self: center[\s\S]*?background: var\(--panel-raised\)/);
+  assert.match(progressCss, /\.agent-transcript__progress-edge \{[\s\S]*?background: var\(--panel-raised\)/);
   assert.doesNotMatch(progressCss, /background: none/);
   assert.doesNotMatch(progressCss, /opacity: 0\.6/);
   assert.match(agentTranscript, /className=\{cn\(\s*"agent-transcript__progress-edge"/);
-  // Density uses the stable strip width, so the animated track cannot feed
-  // back into its own layout decision.
-  assert.match(agentTranscript, /PROGRESS_COMFORT_SLOT = 24/);
-  assert.match(agentTranscript, /const stripWidth = stripRef\.current\?\.clientWidth \?\? 0/);
+  assert.match(agentTranscript, /<div className="agent-transcript__progress-track" ref=\{trackRef\}>/);
+  assert.match(agentTranscript, /const trackWidth = trackRef\.current\?\.clientWidth \?\? 0/);
   assert.match(agentTranscript, /!visible && "is-hidden"/);
-  assert.match(agentTranscript, /setEdgePercent\(\(previous\) =>/);
 });
