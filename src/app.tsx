@@ -3428,6 +3428,7 @@ function TraceInspector({
   overlayAgentRunDurationMs,
   overlayAgentRunExecuting,
   overlayAgentRunState,
+  apiBase,
   messageStepper,
   overlayAgentPlatform,
   overlaySearchEvent,
@@ -3482,6 +3483,8 @@ function TraceInspector({
     reason: RunTerminalReason | null;
     detail: string | null;
   } | null;
+  /** The service base, for the image preview window's file endpoint. */
+  apiBase: string;
   /** ‹ n/N › message stepping, rendered in the overlay's header. */
   messageStepper?: {
     activeKey: string;
@@ -3762,6 +3765,7 @@ function TraceInspector({
         agentRunDurationMs={overlayAgentRunDurationMs}
         agentRunExecuting={overlayAgentRunExecuting}
         agentRunState={overlayAgentRunState}
+        apiBase={apiBase}
         messageStepper={messageStepper}
         platform={overlayAgentPlatform}
         cacheScope={activeTab}
@@ -8974,6 +8978,7 @@ export default function App() {
               />
               <TraceInspector
                 activeTab={inspectorTab}
+                apiBase={apiBase}
                 agentView={overlayAgentView}
                 node={selectedNode}
                 event={selectedEvent}

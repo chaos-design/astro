@@ -7887,6 +7887,36 @@ pre,
   margin-top: 0;
 }
 
+.payload-item__image {
+  display: block;
+  max-width: 100%;
+  max-height: 320px;
+  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
+}
+
+.payload-item__fold {
+  display: grid;
+  gap: 6px;
+}
+
+.payload-item__fold-toggle {
+  justify-self: start;
+  padding: 2px 8px;
+  border: 1px solid var(--line-bright);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: var(--text-overline);
+}
+
+.payload-item__fold-toggle:hover {
+  color: var(--text-strong);
+  border-color: var(--violet);
+}
+
 .payload-item__fields {
   display: grid;
   gap: 3px;
@@ -7962,18 +7992,27 @@ pre,
   height: 0.625rem;
 }
 
-.agent-transcript__progress-edge.is-hidden {
-  visibility: hidden;
+.agent-transcript__progress-edge.is-idle {
+  color: var(--muted-soft, var(--muted));
+  opacity: 0.6;
 }
 
 .agent-transcript__progress-track {
   position: relative;
   height: 10px;
-  /* The tick area pans with the edge buttons; a scrollbar would fight the
-     strip's own height, so overflow stays invisible. */
-  overflow-x: hidden;
-  overflow-y: hidden;
+  flex: 1 1 auto;
+  min-width: 0;
+  /* The tick layer slides with the edge buttons; overflow stays invisible —
+     the strip never shows a scrollbar. */
+  overflow: hidden;
   scrollbar-width: none;
+}
+
+.agent-transcript__progress-ticks {
+  position: absolute;
+  inset: 0 auto 0 0;
+  height: 100%;
+  transition: transform 160ms ease-out;
 }
 
 .agent-transcript__progress::before {
@@ -8015,6 +8054,10 @@ pre,
   background: none;
   cursor: pointer;
   transform: translateX(-50%);
+}
+
+.agent-transcript__progress-tick.is-active {
+  z-index: 1;
 }
 
 .agent-transcript__progress-tick::after {
@@ -8111,7 +8154,11 @@ pre,
    current message's position out of the session's total. */
 .run-stepper {
   display: inline-flex;
+  /* Content-sized and pinned to the header's right column end: the header is
+     a three-column grid, and the 1fr right column would otherwise stretch the
+     stepper across the leftover space. */
   flex: 0 0 auto;
+  justify-self: end;
   align-items: center;
   gap: 3px;
   padding: 2px 5px;
@@ -11141,7 +11188,8 @@ pre,
   align-items: center;
   gap: 7px;
   padding: 9px 16px;
-  border-bottom: 1px solid var(--line);
+  /* No bottom border: the progress strip's bed rides over this edge and is
+     the separator itself (visible even with no ticks). */
   color: var(--text-strong);
   font-family: var(--font-mono, monospace);
   font-size: 0.6875rem;
@@ -12124,7 +12172,8 @@ pre,
   display: flex;
   align-items: flex-start;
   gap: 6px;
-  padding: 10px 12px 11px;
+  /* Symmetric: an uneven vertical inset read as a squeezed value row. */
+  padding: 10px 12px;
 }
 
 .agent-step__command .markdown-preview {

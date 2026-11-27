@@ -430,6 +430,7 @@ export function PayloadOverlay({
   agentRunDurationMs = null,
   agentRunExecuting = false,
   agentRunState = null,
+  apiBase,
   messageStepper = null,
   cacheScope = "",
   followAvailable = false,
@@ -468,6 +469,8 @@ export function PayloadOverlay({
     reason: RunTerminalReason | null;
     detail: string | null;
   } | null;
+  /** The service base, for the image preview window's file endpoint. */
+  apiBase: string;
   /** ‹ n/N › message stepping; rendered beside the agent name in the header. */
   messageStepper?: {
     activeKey: string;
@@ -1020,9 +1023,7 @@ export function PayloadOverlay({
                 {getAtomPlatformConfig(platform).label}
               </span>
             </span>
-            {/* Outside the agent capsule: the stepper is a navigation control
-                of its own, not part of the agent's identity badge. */}
-            {messageStepper ? <MessageStepper {...messageStepper} /> : null}
+
             <DialogTitle className="sr-only">{label}</DialogTitle>
           </div>
           <ToggleGroup
@@ -1051,6 +1052,9 @@ export function PayloadOverlay({
               Code
             </ToggleGroupItem>
           </ToggleGroup>
+          {/* Right edge, after the view switch: the stepper sizes to its
+              content (‹ n/N ›), never stretching into the leftover space. */}
+          {messageStepper ? <MessageStepper {...messageStepper} /> : null}
         </header>
         <div className="payload-overlay__main">
           {atoms.length > 0 ? (
@@ -1251,6 +1255,7 @@ export function PayloadOverlay({
                 questionBinding={questionBinding}
                 questionEventId={questionEventId}
                 live={agentRunExecuting}
+                apiBase={apiBase}
                 locateRequest={agentLocateRequest}
                 runDurationMs={agentRunDurationMs}
                 runState={agentRunState}

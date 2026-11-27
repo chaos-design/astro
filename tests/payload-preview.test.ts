@@ -172,18 +172,28 @@ test("orders annotations before the other related fields", () => {
   assert.equal(ordered[0].key, "comment");
 });
 
-test("orderRelated keeps a grouped annotation inside its array element", () => {
-  // An annotation captured inside `questions[0]` must not float to the pane
-  // top: it would leave its element and read as the root's own note.
+test("a single-element array of records shows the records' own fields", () => {
+  // One entry needs no `[0]` header — there is no index ambiguity — and its
+  // fields walk directly under the array key.
   const fields = collectPayloadFields({
     questions: [{ header: "方式", note: "逐块渲染" }],
   });
-  const ordered = orderRelated(fields);
-  assert.equal(ordered[0].groupHeader, true, "element header opens the group");
-  assert.equal(ordered[0].key, "questions[0]");
-  const noteIndex = ordered.findIndex((field) => field.key === "questions[0].note");
-  assert.ok(noteIndex > 0, "the grouped note stays behind its element header");
-  assert.equal(ordered[noteIndex].annotation, true);
+  const byKey = new Map(fields.map((field) => [field.key, field.value]));
+  assert.equal(byKey.get("questions.header"), "方式");
+  const note = fields.find((field) => field.key === "questions.note");
+  assert.equal(note?.annotation, true, "the note stays an annotation");
+  assert.ok(!fields.some((field) => field.groupHeader), "no index header for one element");
+});
+
+test("a single-entry array whose record is mostly one text field shows that value", () => {
+  // A tool response shaped `{type, text}` is its `text`: the `type` / index
+  // scaffolding around one string made the row read twice.
+  const fields = collectPayloadFields({
+    tool_response: { content: [{ type: "text", text: "Read file /tmp/x" }] },
+  });
+  const byKey = new Map(fields.map((field) => [field.key, field.value]));
+  assert.equal(byKey.get("tool_response.content"), "Read file /tmp/x");
+  assert.ok(!fields.some((field) => field.key === "tool_response.content[0]"));
 });
 
 test("only values past the limit fold, each on its own", () => {
@@ -210,7 +220,9 @@ test("the field inventory shows every field, including content, empty and nested
   assert.equal(byKey.get("flag"), "false", "false stays visible");
   assert.equal(byKey.get("zero"), "0", "zero stays visible");
   assert.equal(byKey.get("tool_response.tool_use_id"), "tu_1", "nested paths qualified");
-  assert.equal(byKey.get("tool_response.content[0].type"), "text", "array objects walked by index");
+  // A one-entry text record shows its main value directly (see the
+  // single-entry test above); the `type` stamp is envelope data around it.
+  assert.equal(byKey.get("tool_response.content"), "result");
 });
 
 test("an array of objects opens each element with an indexed group row", () => {
@@ -228,28 +240,32 @@ test("an array of objects opens each element with an indexed group row", () => {
       },
     ],
   });
+  // One element, so no `questions[0]` header: the element's own array of
+  // options still opens with its indexed rows.
   const headers = fields.filter((field) => field.groupHeader);
   assert.deepEqual(
     headers.map((field) => field.key),
-    ["questions[0]", "questions[0].options[0]", "questions[0].options[1]"],
+    ["questions.options[0]", "questions.options[1]"],
     "one header row per element, walk order",
   );
   assert.deepEqual(
     headers.map((field) => field.label),
-    ["questions[0]", "options[0]", "options[1]"],
+    ["options[0]", "options[1]"],
     "the header label is the relative indexed path",
   );
   assert.deepEqual(
     headers.map((field) => field.level),
-    [0, 1, 1],
-    "top-level elements nest at 0, arrays inside them at 1",
+    [1, 1],
+    "arrays inside the single element nest one step",
   );
-  const member = fields.find((field) => field.key === "questions[0].options[1].description");
+  const member = fields.find((field) => field.key === "questions.options[1].description");
   assert.equal(member?.value, "第二项");
   assert.equal(member?.label, "description", "members keep their bare key");
   assert.equal(member?.level, 1);
   assert.equal(member?.groupHeader, undefined);
-  const multiple = fields.find((field) => field.key === "questions[0].multiple");
+  // The record's scalar members keep their path under the array key (the
+  // `false` value stays visible per the inventory rule).
+  const multiple = fields.find((field) => field.key === "questions.multiple");
   assert.equal(multiple?.value, "false");
   assert.equal(multiple?.level, 0, "scalar members carry their element's level");
 });

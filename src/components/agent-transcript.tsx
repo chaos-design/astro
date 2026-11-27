@@ -685,28 +685,32 @@ function ChainProgress({
   stepRefs: Map<string, HTMLElement>;
 }) {
   const fillRef = useRef<HTMLDivElement | null>(null);
-  const trackRef = useRef<HTMLDivElement | null>(null);
   const frameRef = useRef<number | null>(null);
   const progressRef = useRef(1);
   // The tick area pans with the two edge buttons when turns are dense enough
-  // to overflow; the strip itself never shows a scrollbar.
+  // to overflow; the strip itself never shows a scrollbar. The layer widens
+  // only past a comfortable per-tick spacing, and the pan clamps to it.
+  const trackRef = useRef<HTMLDivElement | null>(null);
+  const ticksLayerRef = useRef<HTMLDivElement | null>(null);
   const [canShift, setCanShift] = useState(false);
+  const [pan, setPan] = useState(0);
+  const panRef = useRef(0);
+  // The tick layer is at least as wide as the track and widens to one
+  // comfortable slot per turn; the pan window slides over it.
+  const [layerWidth, setLayerWidth] = useState(0);
   const shiftTicks = useCallback((direction: 1 | -1) => {
-    const track = trackRef.current;
-    if (!track) {
+    const layer = ticksLayerRef.current;
+    if (!layer) {
       return;
     }
-    track.scrollBy({
-      behavior: "smooth",
-      left: direction * Math.max(160, track.clientWidth * 0.6),
-    });
-  }, []);
-  const handleTrackScroll = useCallback(() => {
-    const track = trackRef.current;
-    if (!track) {
+    const parentWidth = layer.parentElement?.clientWidth ?? layer.clientWidth;
+    const max = layer.offsetWidth - parentWidth;
+    if (max <= 0) {
       return;
     }
-    setCanShift(track.scrollWidth > track.clientWidth + 4);
+    const next = Math.min(max, Math.max(0, panRef.current + direction * max * 0.6));
+    panRef.current = next;
+    setPan(next);
   }, []);
   const [ticks, setTicks] = useState<ProgressTick[]>([]);
   // The tick the reader's position has just passed (or sits on) breathes —
@@ -758,10 +762,13 @@ function ChainProgress({
       (left, right) => left.ratio - right.ratio,
     );
     setTicks((previous) => (sameTicks(previous, next) ? previous : next));
+    // Dense turns: one comfortable slot each (13px) widens the layer beyond
+    // the track, which is what the pan buttons slide the window over.
     const track = trackRef.current;
-    if (track) {
-      setCanShift(track.scrollWidth > track.clientWidth + 4);
-    }
+    const trackWidth = track?.clientWidth ?? 0;
+    const width = Math.max(trackWidth, ticks.length * 13);
+    setLayerWidth((previous) => (previous === width ? previous : width));
+    setCanShift(width > trackWidth + 4);
     // The breathing tick: the last turn whose position the reader has
     // reached. Compared against the rounded position so the state flips once
     // per tick, not per frame.
@@ -782,6 +789,12 @@ function ChainProgress({
 
   // Scroll drives the fill on its own rAF budget; a resize of the container
   // (panel drag, viewport change) re-measures the ticks.
+  // A live append changes the scroll range and the tick positions without a
+  // scroll event; re-measure on the chain's own growth.
+  useEffect(() => {
+    measure();
+  }, [measure, steps.length, steps.at(-1)?.id]);
+
   useEffect(() => {
     const container = scrollRef.current;
     if (!container) {
@@ -810,59 +823,62 @@ function ChainProgress({
     };
   }, [measure, scrollRef]);
 
-  if (!ticks.length) {
-    return null;
-  }
   return (
     <div aria-hidden="false" className="agent-transcript__progress">
-      {/* Dense turns overflow the strip; the edge buttons pan the tick area
-          instead of a scrollbar, which the strip never shows. */}
+      {/* Left / right pan buttons frame the strip (‹ track ›); dense turns
+          widen the tick layer and the buttons move the visible window, so no
+          scrollbar ever appears. */}
       <button
         aria-label="向左平移刻度"
         className={cn(
           "agent-transcript__progress-edge",
-          !canShift && "is-hidden",
+          !canShift && "is-idle",
         )}
         onClick={() => shiftTicks(-1)}
         type="button"
       >
         <ChevronLeft aria-hidden="true" />
       </button>
-      <div
-        className="agent-transcript__progress-track"
-        onScroll={handleTrackScroll}
-        ref={trackRef}
-      >
-        <div className="agent-transcript__progress-fill" ref={fillRef} />
-        {ticks.map((tick) => (
-          <button
-            aria-label={`跳到第 ${tick.turn} 轮（${tick.count} 步，从第 ${tick.sequence} 行开始）`}
-            className={cn(
-              "agent-transcript__progress-tick",
-              tick.turn === activeTurn && "is-active",
-            )}
-            key={tick.turn}
-            onClick={() => {
-              const element = stepRefs.get(tick.firstStepId);
-              element?.scrollIntoView({ behavior: "smooth", block: "start" });
-            }}
-            style={{ left: `${tick.ratio * 100}%` }}
-            type="button"
-          >
-            <span className="agent-transcript__progress-tip" role="tooltip">
-              <strong>第 {tick.turn} 轮</strong>
-              <span>
-                {tick.count} 步 · 从 {tick.sequence} 行开始
+      <div className="agent-transcript__progress-track">
+        <div
+          className="agent-transcript__progress-ticks"
+          ref={ticksLayerRef}
+          style={{
+            transform: `translateX(${-pan}px)`,
+            width: layerWidth > 0 ? `${layerWidth}px` : undefined,
+          }}
+        >
+          {ticks.map((tick) => (
+            <button
+              aria-label={`跳到第 ${tick.turn} 轮（${tick.count} 步，从第 ${tick.sequence} 行开始）`}
+              className={cn(
+                "agent-transcript__progress-tick",
+                tick.turn === activeTurn && "is-active",
+              )}
+              key={tick.turn}
+              onClick={() => {
+                const element = stepRefs.get(tick.firstStepId);
+                element?.scrollIntoView({ behavior: "smooth", block: "start" });
+              }}
+              style={{ left: layerWidth > 0 ? `${tick.ratio * layerWidth}px` : undefined }}
+              type="button"
+            >
+              <span className="agent-transcript__progress-tip" role="tooltip">
+                <strong>第 {tick.turn} 轮</strong>
+                <span>
+                  {tick.count} 步 · 从 {tick.sequence} 行开始
+                </span>
               </span>
-            </span>
-          </button>
-        ))}
+            </button>
+          ))}
+        </div>
+        <div className="agent-transcript__progress-fill" ref={fillRef} />
       </div>
       <button
         aria-label="向右平移刻度"
         className={cn(
           "agent-transcript__progress-edge",
-          !canShift && "is-hidden",
+          !canShift && "is-idle",
         )}
         onClick={() => shiftTicks(1)}
         type="button"
@@ -889,6 +905,7 @@ export function AgentTranscript({
   locateRequest,
   runDurationMs,
   runState = null,
+  apiBase,
   onActiveEventChange,
 }: {
   view: AgentView;
@@ -900,6 +917,8 @@ export function AgentTranscript({
   live: boolean;
   /** Bumped by an explicit rail / step / pair pick, never by live follow. */
   locateRequest: number;
+  /** The service base, for the image preview window's file endpoint. */
+  apiBase: string;
   /** The displayed message's execution time: advancing while the run
    * executes, the recorded total once it ended; `null` when the message has
    * no clock of its own. */
@@ -1361,6 +1380,7 @@ export function AgentTranscript({
                 key={step.id}
                 step={step}
                 selected={step.id === targetStep?.id}
+                apiBase={apiBase}
                 onSelectEvent={onSelectEvent}
                 onLocate={onSelectEvent}
                 questionBinding={questionBinding}
@@ -1414,6 +1434,7 @@ export function AgentTranscript({
 const StepCard = memo(function StepCard({
   step,
   selected,
+  apiBase,
   onSelectEvent,
   onLocate,
   questionBinding,
@@ -1422,6 +1443,7 @@ const StepCard = memo(function StepCard({
 }: {
   step: AgentStep;
   selected: boolean;
+  apiBase: string;
   onSelectEvent: (eventId: string) => void;
   onLocate: (eventId: string) => void;
   questionBinding: QuestionAnswerBinding | null;
@@ -1526,14 +1548,14 @@ const StepCard = memo(function StepCard({
         ) : step.kind === "reply" ? (
           <ReplyBody step={step} />
         ) : step.kind === "tool-result" ? (
-          <ToolResultBody step={step} />
+          <ToolResultBody apiBase={apiBase} step={step} />
         ) : step.kind === "question" ? (
           <QuestionBody
             step={step}
             answer={questionIsCurrent ? questionBinding : null}
           />
         ) : (
-          <GenericBody step={step} />
+          <GenericBody apiBase={apiBase} step={step} />
         )}
       </div>
     </section>
@@ -1649,7 +1671,13 @@ function ReplyBody({ step }: { step: ReplyStep }) {
   );
 }
 
-function ToolResultBody({ step }: { step: ToolResultStep }) {
+function ToolResultBody({
+  apiBase,
+  step,
+}: {
+  apiBase: string;
+  step: ToolResultStep;
+}) {
   // A result that closes a user-question tool shows its recorded answers in
   // the shared answer-rows rendering (highlighted option chips, Markdown
   // free text) instead of the generic JSON body.
@@ -1734,7 +1762,7 @@ function ToolResultBody({ step }: { step: ToolResultStep }) {
           <AnswerRows questions={step.answerQuestions} rows={step.answers} />
         </div>
       ) : arrayItems ? (
-        <PayloadItemBlocks items={arrayItems} />
+        <PayloadItemBlocks apiBase={apiBase} items={arrayItems} />
       ) : source.trim() ? (
         <MarkdownView source={source} />
       ) : null}
@@ -1757,7 +1785,7 @@ function QuestionBody({
   );
 }
 
-function GenericBody({ step }: { step: GenericStep }) {
+function GenericBody({ apiBase, step }: { apiBase: string; step: GenericStep }) {
   const source = useMemo(
     () => markdownWithEmbeddedImages(contentToMarkdown(step.summary), step.payload),
     [step.summary, step.payload],

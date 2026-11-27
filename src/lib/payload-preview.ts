@@ -489,6 +489,35 @@ export function collectPayloadFields(
       });
       return mergeRelated(fields);
     }
+    // A single record is its main content, not an indexed wrapper: a
+    // `[0]` header followed by `type` / `text` rows made a one-entry result
+    // read as scaffolding around one string. When the record is mostly one
+    // text field (a tool response shape), that value *is* the row; otherwise
+    // the record's own fields follow without the index header.
+    if (value.length === 1) {
+      const only = value[0];
+      if (only && typeof only === "object" && !Array.isArray(only)) {
+        const childLevel = level === undefined ? 0 : level + 1;
+        const record = only as Record<string, unknown>;
+        const mainKey = ["text", "message", "content", "summary"].find(
+          (key) => typeof record[key] === "string" && (record[key] as string).trim(),
+        );
+        if (mainKey && Object.keys(record).length <= 3) {
+          fields.push({
+            key: prefix,
+            label: prefix,
+            value: record[mainKey] as string,
+            annotation: false,
+            ...(level === undefined ? {} : { level }),
+          });
+          return mergeRelated(fields);
+        }
+        return mergeRelated([
+          ...fields,
+          ...collectPayloadFields(only, prefix, depth + 1, seen, childLevel),
+        ]);
+      }
+    }
     const childLevel = level === undefined ? 0 : level + 1;
     value.forEach((item, index) => {
       const childPrefix = `${prefix}[${index}]`;
