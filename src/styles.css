@@ -1951,6 +1951,38 @@ pre,
   gap: 8px;
 }
 
+/* The sweep's stated semantics: two-step enable, a timer, one directory.
+   The scope path is a code chip because it is the one thing a reader copies
+   to check what the sweep will touch. */
+.settings-retention__terms {
+  display: grid;
+  gap: 4px;
+  margin: 4px 0 0;
+  padding-left: 16px;
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.55;
+}
+
+.settings-retention__terms strong {
+  color: var(--text-strong);
+}
+
+.settings-retention__scope {
+  max-width: 100%;
+  overflow: hidden;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--panel) 78%, #000);
+  color: var(--text);
+  direction: rtl;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.6875rem;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .settings-retention__controls {
   display: flex;
   align-items: center;
@@ -7825,18 +7857,20 @@ pre,
    stay clickable without the pointer leaving the strip. */
 .agent-transcript__progress {
   flex: none;
-  padding: 0 14px;
+  /* Under the header: a hairline strip, not a bar — the ticks and the fill
+     stay visible without spending the list's vertical budget. */
+  padding: 0 14px 2px;
 }
 
 .agent-transcript__progress-track {
   position: relative;
-  height: 14px;
+  height: 10px;
 }
 
 .agent-transcript__progress-track::before {
   content: "";
   position: absolute;
-  inset: 6px 0 auto;
+  inset: 4px 0 auto;
   height: 2px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--line) 78%, transparent);
@@ -7844,7 +7878,7 @@ pre,
 
 .agent-transcript__progress-fill {
   position: absolute;
-  top: 6px;
+  top: 4px;
   left: 0;
   height: 2px;
   width: 0;
@@ -7856,8 +7890,8 @@ pre,
 .agent-transcript__progress-tick {
   position: absolute;
   top: 0;
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 10px;
   padding: 0;
   border: 0;
   background: none;
@@ -7868,10 +7902,10 @@ pre,
 .agent-transcript__progress-tick::after {
   content: "";
   position: absolute;
-  top: 4px;
+  top: 3px;
   left: 50%;
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--muted) 72%, var(--line));
   transform: translateX(-50%);
@@ -11048,7 +11082,9 @@ pre,
   top: calc(100% + 6px);
   left: 0;
   z-index: 20;
-  display: flex;
+  /* Hidden until a driver re-shows it: the stat chips' controlled `is-open`,
+     or the clock chip's CSS hover / keyboard focus. */
+  display: none;
   min-width: 190px;
   max-width: 264px;
   flex-direction: column;
@@ -11066,8 +11102,12 @@ pre,
 }
 
 .agent-transcript__stat-wrap:hover .agent-transcript__stat-card,
-.agent-transcript__stat-wrap:focus-within .agent-transcript__stat-card {
-  display: grid;
+.agent-transcript__stat-wrap:focus-visible .agent-transcript__stat-card {
+  display: flex;
+}
+
+.agent-transcript__stat-wrap.is-open .agent-transcript__stat-card {
+  display: flex;
 }
 
 .agent-transcript__stat-card-title {
@@ -11208,19 +11248,19 @@ pre,
 /* The accumulated clock is graded with the same heat ladder as the LOG when
    the message is neither live nor status-coloured: the grade rides on the
    text span so the chip's border stays calm. */
-.agent-transcript__stat-text.heat-fast {
+.agent-transcript__duration.heat-fast {
   color: var(--status-completed);
 }
 
-.agent-transcript__stat-text.heat-normal {
+.agent-transcript__duration.heat-normal {
   color: var(--teal);
 }
 
-.agent-transcript__stat-text.heat-slow {
+.agent-transcript__duration.heat-slow {
   color: var(--amber);
 }
 
-.agent-transcript__stat-text.heat-very-slow {
+.agent-transcript__duration.heat-very-slow {
   color: var(--status-failed);
 }
 
@@ -11668,19 +11708,19 @@ pre,
   font-size: inherit;
 }
 
-.agent-step__status .atomic-log__duration.heat-fast {
+.agent-step__status.heat-fast {
   color: var(--status-completed);
 }
 
-.agent-step__status .atomic-log__duration.heat-normal {
+.agent-step__status.heat-normal {
   color: var(--teal);
 }
 
-.agent-step__status .atomic-log__duration.heat-slow {
+.agent-step__status.heat-slow {
   color: var(--amber);
 }
 
-.agent-step__status .atomic-log__duration.heat-very-slow {
+.agent-step__status.heat-very-slow {
   color: var(--status-failed);
 }
 
@@ -11722,7 +11762,7 @@ pre,
 }
 
 .agent-step__status-wrap:hover .agent-step__status-card,
-.agent-step__status-wrap:focus-within .agent-step__status-card {
+.agent-step__status-wrap:focus-visible .agent-step__status-card {
   display: grid;
 }
 

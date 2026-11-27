@@ -407,7 +407,8 @@ function StatChip({
   icon,
   steps,
   open,
-  onOpenChange,
+  onOpen,
+  onLeave,
   onJump,
 }: {
   name: string;
@@ -417,44 +418,17 @@ function StatChip({
   icon: ReactNode;
   steps: readonly AgentStep[];
   open: boolean;
-  onOpenChange: (name: string | null) => void;
+  /** Opening cancels any pending close — including another chip's. */
+  onOpen: (name: string) => void;
+  /** Leaving schedules the close on the one shared timer. */
+  onLeave: () => void;
   onJump: (eventId: string) => void;
 }) {
-  // Closing on hover-out is delayed a beat so a pointer travelling down into
-  // the card across the gap still lands on a row — otherwise a one-item list
-  // (card title + a single row) is too small to reach before the card closes.
-  const closeTimer = useRef<number | null>(null);
-  const cancelClose = () => {
-    if (closeTimer.current !== null) {
-      window.clearTimeout(closeTimer.current);
-      closeTimer.current = null;
-    }
-  };
-  useEffect(() => () => cancelClose(), []);
   return (
     <span
       className={cn("agent-transcript__stat-wrap", open && "is-open")}
-      onPointerEnter={() => {
-        cancelClose();
-        onOpenChange(name);
-      }}
-      onPointerLeave={(event) => {
-        cancelClose();
-        // DOM fires `pointerenter(next)` *before* `pointerleave(previous)`,
-        // so moving from one chip onto another opened the next card and this
-        // leave then scheduled a close that fired 140ms later — the new card
-        // flashed and, with the pointer at rest, never came back. A leave
-        // whose pointer landed on any stat chip (or inside the open card)
-        // hands ownership over instead of scheduling a close.
-        const next = event.relatedTarget;
-        if (
-          next instanceof Element &&
-          next.closest(".agent-transcript__stat-wrap")
-        ) {
-          return;
-        }
-        closeTimer.current = window.setTimeout(() => onOpenChange(null), 140);
-      }}
+      onPointerEnter={() => onOpen(name)}
+      onPointerLeave={onLeave}
     >
       <button
         className="agent-transcript__stat agent-transcript__stat-button"
@@ -545,18 +519,16 @@ function RunClockChip({
           "agent-transcript__duration",
           live && "is-live",
           status && status !== "active" && `is-${status}`,
+          // The grade colours icon and text together; a live or status-coloured
+          // clock keeps its own meaning.
+          !live && (!status || status === "complete")
+            ? `heat-${durationHeatClass(durationMs)}`
+            : null,
         )}
         tabIndex={0}
       >
         <Timer aria-hidden="true" className="agent-transcript__stat-icon" />
-        <span
-          className={cn(
-            "agent-transcript__stat-text",
-            !live &&
-              (!status || status === "complete") &&
-              `heat-${durationHeatClass(durationMs)}`,
-          )}
-        >
+        <span className="agent-transcript__stat-text">
           执行 {formatExecutionClock(durationMs)}
         </span>
       </span>
@@ -623,6 +595,9 @@ function StepStatusBadge({
         className={cn(
           "agent-step__status",
           status && `is-${status.status}`,
+          // The grade colours the whole badge — icon included — so the icon
+          // never stays grey inside a coloured chip.
+          status ? null : `heat-${durationHeatClass(durationMs ?? 0)}`,
         )}
         tabIndex={0}
       >
@@ -636,12 +611,7 @@ function StepStatusBadge({
           <Timer aria-hidden="true" />
         )}
         {durationMs !== null ? (
-          <span
-            className={cn(
-              "atomic-log__duration",
-              `heat-${durationHeatClass(durationMs)}`,
-            )}
-          >
+          <span className="atomic-log__duration">
             {formatDurationMs(durationMs)}
           </span>
         ) : null}
@@ -973,18 +943,21 @@ export function AgentTranscript({
     const distanceFromBottom =
       container.scrollHeight - container.scrollTop - container.clientHeight;
     const scrolledUp = distanceFromBottom > AGENT_SCROLL_JUMP_THRESHOLD;
-    // Reconcile the gesture latch with position: settling back within the
-    // threshold of the bottom means the reader is no longer reading history,
-    // so the show button tracks where the reader *is*, not where they *were*
-    // — an earlier wheel-up no longer lingers after scrolling back down.
+    // The jump pill is armed by the reader's own upward gesture only. A
+    // position test here would fire on every append: between a live step
+    // landing and the pin running, the distance from the bottom momentarily
+    // crosses the threshold and the pill flashed into an append that the
+    // reader never scrolled away from. The latch clears by position — settle
+    // back within the threshold of the bottom and reading history is over —
+    // so an earlier wheel-up no longer lingers after scrolling back down.
     if (!scrolledUp) {
       scrolledUpRef.current = false;
     }
-    if (scrolledUpRef.current || scrolledUp) {
+    if (scrolledUpRef.current) {
       setShowJump(live || scrollable);
     } else if (!latestVisible) {
-      // Scrolled down but the newest step is still off screen (e.g. located
-      // to an older step): keep a live loading read, but arming is on scroll-up.
+      // Located to an older step (or the pin has not landed yet): no pill —
+      // the reader did not scroll away, so the view must not claim they did.
       setShowJump(false);
     }
   }, [live, view.steps, onActiveEventChange]);
@@ -1177,6 +1150,37 @@ export function AgentTranscript({
     return { ...groups, turn: turnSteps };
   }, [view.steps]);
   const [openStat, setOpenStat] = useState<string | null>(null);
+  // One close timer for every chip: a per-instance timer cannot be cancelled
+  // by the chip the pointer moved onto, and DOM fires pointerenter(next)
+  // before pointerleave(previous) — the previous chip's timer then closed the
+  // card the next chip had just opened (the flash-then-dead hover). Opening
+  // any chip cancels the shared timer; leaving schedules it again, so the
+  // 140ms gap stays reachable but can never close a newer card.
+  const statCloseTimerRef = useRef<number | null>(null);
+  const openStatChip = useCallback((name: string) => {
+    if (statCloseTimerRef.current !== null) {
+      window.clearTimeout(statCloseTimerRef.current);
+      statCloseTimerRef.current = null;
+    }
+    setOpenStat(name);
+  }, []);
+  const scheduleStatChipClose = useCallback(() => {
+    if (statCloseTimerRef.current !== null) {
+      window.clearTimeout(statCloseTimerRef.current);
+    }
+    statCloseTimerRef.current = window.setTimeout(() => {
+      statCloseTimerRef.current = null;
+      setOpenStat(null);
+    }, 140);
+  }, []);
+  useEffect(
+    () => () => {
+      if (statCloseTimerRef.current !== null) {
+        window.clearTimeout(statCloseTimerRef.current);
+      }
+    },
+    [],
+  );
 
   return (
     <div className="agent-transcript">
@@ -1195,7 +1199,8 @@ export function AgentTranscript({
           label={`${view.stats.thinking} 思考`}
           steps={statGroups.thinking}
           open={openStat === "thinking"}
-          onOpenChange={setOpenStat}
+          onOpen={openStatChip}
+          onLeave={scheduleStatChipClose}
           onJump={onSelectEvent}
         />
         <StatChip
@@ -1204,7 +1209,8 @@ export function AgentTranscript({
           label={`${view.stats.replies} 回复`}
           steps={statGroups.reply}
           open={openStat === "reply"}
-          onOpenChange={setOpenStat}
+          onOpen={openStatChip}
+          onLeave={scheduleStatChipClose}
           onJump={onSelectEvent}
         />
         <StatChip
@@ -1213,7 +1219,8 @@ export function AgentTranscript({
           label={`${view.stats.questions} 提问`}
           steps={statGroups.question}
           open={openStat === "question"}
-          onOpenChange={setOpenStat}
+          onOpen={openStatChip}
+          onLeave={scheduleStatChipClose}
           onJump={onSelectEvent}
         />
         <StatChip
@@ -1222,7 +1229,8 @@ export function AgentTranscript({
           label={`${view.stats.turns} 轮`}
           steps={statGroups.turn}
           open={openStat === "turn"}
-          onOpenChange={setOpenStat}
+          onOpen={openStatChip}
+          onLeave={scheduleStatChipClose}
           onJump={onSelectEvent}
         />
         <StatChip
@@ -1231,7 +1239,8 @@ export function AgentTranscript({
           label={`${view.stats.events} 事件`}
           steps={statGroups.event}
           open={openStat === "event"}
-          onOpenChange={setOpenStat}
+          onOpen={openStatChip}
+          onLeave={scheduleStatChipClose}
           onJump={onSelectEvent}
         />
         {view.stats.snapshotsMerged > 0 ? (
@@ -1253,6 +1262,13 @@ export function AgentTranscript({
           ))}
         </div>
       ) : null}
+      {/* The progress strip sits directly under the header — it reads as part
+          of the view's chrome, not as a floating bar over the list's end. */}
+      <ChainProgress
+        scrollRef={scrollRef}
+        stepRefs={stepRefs.current}
+        steps={view.steps}
+      />
       <div className="agent-transcript__surface">
         <div
           className="agent-transcript__scroll"
@@ -1276,11 +1292,6 @@ export function AgentTranscript({
             <p className="payload-overlay__empty">这次运行还没有可呈现的事件。</p>
           )}
         </div>
-        <ChainProgress
-          scrollRef={scrollRef}
-          stepRefs={stepRefs.current}
-          steps={view.steps}
-        />
         {live && !showJump ? (
           <div
             aria-live="polite"
@@ -1496,13 +1507,18 @@ function stepCardPropsEqual(
  */
 function StepBodyCollapse({
   label,
-  teaser,
+  body,
   children,
 }: {
   /** Toggle verb: 收起{label} / 展开{label}. */
   label: string;
-  /** One-line content description shown while collapsed. */
-  teaser: string;
+  /**
+   * The step's own content, shown **in full** while collapsed: folding a
+   * step hides its apparatus (the call block, the snapshot badge), never
+   * the message itself — a truncated teaser read as "the content is gone".
+   */
+  body: ReactNode;
+  /** The expanded view: the body plus the step's apparatus. */
   children: ReactNode;
 }) {
   const [expanded, setExpanded] = useState(true);
@@ -1521,11 +1537,7 @@ function StepBodyCollapse({
         )}
         {expanded ? `收起${label}` : `展开${label}`}
       </button>
-      {expanded ? (
-        children
-      ) : (
-        <p className="agent-step__teaser">{teaser || label}</p>
-      )}
+      {expanded ? children : body}
     </>
   );
 }
@@ -1539,7 +1551,10 @@ function ThinkingBody({ step }: { step: ThinkingStep }) {
     [step.text],
   );
   return (
-    <StepBodyCollapse label="推理" teaser={statCardRowHint(step)}>
+    <StepBodyCollapse
+      body={<MarkdownView source={source} />}
+      label="推理"
+    >
       <MarkdownView source={source} />
     </StepBodyCollapse>
   );
@@ -1551,7 +1566,10 @@ function ReplyBody({ step }: { step: ReplyStep }) {
     [step.text],
   );
   return (
-    <StepBodyCollapse label="回复" teaser={statCardRowHint(step)}>
+    <StepBodyCollapse
+      body={<MarkdownView source={source} fallback="这条消息没有正文。" />}
+      label="回复"
+    >
       {step.snapshotCount > 0 ? (
         <p className="agent-step__badge">
           {step.snapshotCount} 个流式快照已合并
@@ -1611,8 +1629,22 @@ function ToolResultBody({ step }: { step: ToolResultStep }) {
   // The one structured extractor drives the call block: a captured shell
   // command is a terminal line, every other tool is a list of named inputs —
   // never a flattened `field=value` string.
+  // The collapsed view is the result's own body in full — folding hides the
+  // call block and the related-field list, never the content the reader came
+  // for. A shell call's output lives in the terminal block when expanded, so
+  // its collapsed body falls back to the generic dump of the same payload.
+  const resultBody = source.trim() ? (
+    <MarkdownView source={source} />
+  ) : hasAnswers ? (
+    <div className="agent-step__answers">
+      <span className="agent-step__answers-label">ANSWERS</span>
+      <AnswerRows questions={step.answerQuestions} rows={step.answers} />
+    </div>
+  ) : (
+    <p className="agent-step__teaser">{statCardRowHint(step) || "结果"}</p>
+  );
   return (
-    <StepBodyCollapse label="结果" teaser={statCardRowHint(step)}>
+    <StepBodyCollapse body={resultBody} label="结果">
       {step.inputs ? (
         <CallBlock inputs={step.inputs} output={shellOutput} />
       ) : null}
@@ -1656,7 +1688,10 @@ function GenericBody({ step }: { step: GenericStep }) {
   // (non-tool) events where it is the whole body.
   const inputs = step.inputs;
   return (
-    <StepBodyCollapse label="内容" teaser={statCardRowHint(step)}>
+    <StepBodyCollapse
+      body={<MarkdownView source={source} />}
+      label="内容"
+    >
       {inputs ? <CallBlock inputs={inputs} /> : null}
       {inputs ? null : <MarkdownView source={source} />}
       <StepRelated payload={step.payload} resetToken={step.id} />

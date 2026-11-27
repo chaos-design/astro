@@ -7754,8 +7754,11 @@ function RunStepper({
   onStep: (delta: 1 | -1) => void;
   runs: readonly TracePromptRun[];
 }) {
-  const index = runs.findIndex((run) => run.key === activeKey);
-  if (runs.length < 2 || index < 0) {
+  // An unset selection counts as the newest message: the stepper renders as
+  // soon as the session has two messages, not only after the first pick.
+  const found = runs.findIndex((run) => run.key === activeKey);
+  const index = found >= 0 ? found : runs.length - 1;
+  if (runs.length < 2) {
     return null;
   }
   const earlier = index > 0 ? runs[index - 1] : null;
@@ -8678,6 +8681,7 @@ const selectHistorySearchResult = (entry: HistorySearchEntry) => {
               historyRange={historyRange}
               liveView={liveFilter}
               maxSync={maxSync}
+              retentionScope={service?.dataRoot || ""}
               perfHud={perfHud}
               questionPanelMode={questionPanelMode}
               retention={retention}

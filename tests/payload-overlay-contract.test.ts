@@ -168,15 +168,20 @@ test("the Agent view keeps a reader's scroll and offers a jump to the newest ste
   // few pixels of the bottom: a tall last reply can be visible well above it.
   assert.match(agentTranscript, /isLatestStepVisible\(/);
   assert.match(agentTranscript, /atBottomRef\.current = absoluteBottom \|\| latestVisible/);
-  // The centered pill offers itself by position — a little height above the
-  // bottom edge — not only by the last gesture. An upward move arms it
-  // (including a programmatic locate to an older step); the absolute bottom
-  // disarms it.
+  // The centered pill arms on the reader's own upward gesture only: a
+  // position test fired on every live append (between a step landing and the
+  // pin running the distance crossed the threshold), flashing the pill into
+  // an append the reader never scrolled away from. The gesture latch still
+  // clears by position, so settling back near the bottom disarms it.
   assert.match(agentTranscript, /setShowJump\(live \|\| scrollable\)/);
   assert.match(agentTranscript, /scrolledUpRef\.current = top < lastScrollTopRef\.current - 1/);
   assert.match(
     agentTranscript,
-    /if \(scrolledUpRef\.current \|\| scrolledUp\) \{[\s\S]{0,40}setShowJump\(live \|\| scrollable\)/,
+    /if \(scrolledUpRef\.current\) \{[\s\S]{0,40}setShowJump\(live \|\| scrollable\)/,
+  );
+  assert.doesNotMatch(
+    agentTranscript,
+    /if \(scrolledUpRef\.current \|\| scrolledUp\)/,
   );
   // The position rule is a named threshold, shared with the tests, not a
   // magic number inline in the component.
@@ -278,11 +283,15 @@ test("agent steps show a captured command and real thinking on first render", ()
   assert.match(stylesForOverlay, /\.agent-step--tool-result \{/);
   // Every step body shares one expand/collapse affordance (opens expanded,
   // folds to a one-line content description) instead of each owning its own.
-  assert.match(agentTranscript, /function StepBodyCollapse[\s\S]{0,400}useState\(true\)/);
-  assert.match(agentTranscript, /<StepBodyCollapse label="推理"/);
-  assert.match(agentTranscript, /<StepBodyCollapse label="回复"/);
-  assert.match(agentTranscript, /<StepBodyCollapse label="结果"/);
-  assert.match(agentTranscript, /<StepBodyCollapse label="内容"/);
+  // Folding a step hides its apparatus, never the message: the collapsed
+  // view renders the step's own body in full (no truncated teaser).
+  assert.match(agentTranscript, /function StepBodyCollapse[\s\S]{0,600}body: ReactNode/);
+  assert.match(agentTranscript, /\{expanded \? children : body\}/);
+  // The step bodies pass their own full body for the collapsed view.
+  assert.match(agentTranscript, /<StepBodyCollapse[\s\S]{0,80}label="推理"/);
+  assert.match(agentTranscript, /<StepBodyCollapse[\s\S]{0,80}label="回复"/);
+  assert.match(agentTranscript, /<StepBodyCollapse body=\{resultBody\} label="结果">/);
+  assert.match(agentTranscript, /<StepBodyCollapse[\s\S]{0,80}label="内容"/);
 });
 
 test("an answers-only question falls back to the markdown answer preview", () => {

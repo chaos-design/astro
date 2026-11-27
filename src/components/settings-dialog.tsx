@@ -68,11 +68,14 @@ type ChoiceIcon = (typeof themeOptions)[number]["icon"];
  */
 function RetentionField({
   retention,
+  scope,
   onChange,
   onPreview,
   onPrune,
 }: {
   retention: RetentionPreference;
+  /** The only directory the sweep may ever touch (the service's trace root). */
+  scope: string;
   onChange: (next: RetentionPreference) => void;
   onPreview: (days: number) => Promise<RetentionPreview>;
   onPrune: (days: number) => Promise<RetentionPruneResult>;
@@ -156,9 +159,31 @@ function RetentionField({
       <div className="settings-field__copy">
         <strong>历史消息自动清理</strong>
         <span>
-          开启后，每次打开控制台最多清理一次：删除最后一条事件早于设定天数的消息
-          （整条消息的会话目录）。默认 15 天、关闭时不会删除任何数据；删除不可恢复。
+          定时任务语义，三点都写在这里：
         </span>
+        <ul className="settings-retention__terms">
+          <li>
+            <strong>两步确认</strong>：第一次点击开关只读取预览（条数 / 体积 /
+            最早一条），按钮写明「确认开启并清理 N 条」，点它才真正开启并执行第一轮。
+          </li>
+          <li>
+            <strong>定时运行</strong>：开启后作为定时任务，每次打开控制台最多执行
+            一次（24 小时节流，浏览器记录上次执行时间），删除最后一条事件早于保留
+            天数的消息所在的整条会话目录。
+          </li>
+          <li>
+            <strong>只作用于指定目录</strong>：清理范围是本地服务的数据目录
+            {scope ? (
+              <code className="settings-retention__scope" title={scope}>
+                {scope}
+              </code>
+            ) : (
+              "（服务在线时显示）"
+            )}
+            下的 <code>events.jsonl</code> 会话，永不触碰该目录之外的任何路径；
+            删除不可恢复，关闭开关立即停止，已删数据不会回来。
+          </li>
+        </ul>
       </div>
       <div className="settings-retention__controls">
         <label className="settings-retention__days">
@@ -477,6 +502,7 @@ export function SettingsDialog({
   perfHud,
   questionPanelMode,
   retention,
+  retentionScope,
   taskCompletionChime,
   theme,
   onActiveViewChange,
@@ -506,6 +532,8 @@ export function SettingsDialog({
   perfHud: boolean;
   questionPanelMode: QuestionPanelMode;
   retention: RetentionPreference;
+  /** The service's data directory, shown as the sweep's only scope. */
+  retentionScope: string;
   taskCompletionChime: boolean;
   theme: Theme;
   onActiveViewChange: (view: ActiveView) => void;
@@ -678,6 +706,7 @@ export function SettingsDialog({
                 onPreview={onRetentionPreview}
                 onPrune={onRetentionPrune}
                 retention={retention}
+                scope={retentionScope}
               />
               <div className="settings-field">
                 <div className="settings-field__copy">
