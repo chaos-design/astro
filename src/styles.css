@@ -7808,7 +7808,7 @@ pre,
 }
 
 .atomic-log__row .atomic-log__duration.heat-normal {
-  color: var(--text);
+  color: var(--teal);
 }
 
 .atomic-log__row .atomic-log__duration.heat-slow {
@@ -7817,6 +7817,168 @@ pre,
 
 .atomic-log__row .atomic-log__duration.heat-very-slow {
   color: var(--status-failed);
+}
+
+/* The Agent chain's scroll progress: a hairline under the message list.
+   The fill is the completion; each turn puts a tick at its own position, and
+   the tick's card states the turn on hover. Ticks sit above the bar so they
+   stay clickable without the pointer leaving the strip. */
+.agent-transcript__progress {
+  flex: none;
+  padding: 0 14px;
+}
+
+.agent-transcript__progress-track {
+  position: relative;
+  height: 14px;
+}
+
+.agent-transcript__progress-track::before {
+  content: "";
+  position: absolute;
+  inset: 6px 0 auto;
+  height: 2px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--line) 78%, transparent);
+}
+
+.agent-transcript__progress-fill {
+  position: absolute;
+  top: 6px;
+  left: 0;
+  height: 2px;
+  width: 0;
+  border-radius: 999px;
+  background: var(--violet);
+  transition: width 120ms linear;
+}
+
+.agent-transcript__progress-tick {
+  position: absolute;
+  top: 0;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  transform: translateX(-50%);
+}
+
+.agent-transcript__progress-tick::after {
+  content: "";
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--muted) 72%, var(--line));
+  transform: translateX(-50%);
+  transition: background 140ms ease, transform 140ms ease;
+}
+
+.agent-transcript__progress-tick:hover::after,
+.agent-transcript__progress-tick:focus-visible::after {
+  background: var(--violet);
+  transform: translateX(-50%) scale(1.3);
+}
+
+.agent-transcript__progress-tip {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  z-index: 30;
+  display: none;
+  gap: 2px;
+  padding: 6px 9px;
+  border: 1px solid var(--line-bright);
+  border-radius: 7px;
+  background: var(--panel);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 42%);
+  color: var(--text);
+  font-size: 0.6875rem;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.agent-transcript__progress-tick:hover .agent-transcript__progress-tip,
+.agent-transcript__progress-tick:focus-visible .agent-transcript__progress-tip {
+  display: grid;
+}
+
+.agent-transcript__progress-tip strong {
+  color: var(--text-strong);
+}
+
+.agent-transcript__progress-tip span {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Edge ticks would hang their hover card off-screen; keep the first and the
+   last tick's card inside the pane. */
+.agent-transcript__progress-tick:first-of-type .agent-transcript__progress-tip {
+  left: 0;
+  transform: none;
+}
+
+.agent-transcript__progress-tick:last-of-type .agent-transcript__progress-tip {
+  left: auto;
+  right: 0;
+  transform: none;
+}
+
+/* Message stepping beside the agent name: a quiet ‹ n/N › cluster. The
+   buttons stay short so the toolbar keeps one height; the count is the
+   current message's position out of the session's total. */
+.run-stepper {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 4px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+}
+
+.run-stepper__button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+}
+
+.run-stepper__button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--violet) 14%, transparent);
+  color: var(--text-strong);
+}
+
+.run-stepper__button:disabled {
+  color: var(--muted-soft, var(--muted));
+  cursor: default;
+  opacity: 0.45;
+}
+
+.run-stepper__button svg {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+.run-stepper__count {
+  min-width: 2.6em;
+  color: var(--muted);
+  font-family: var(--font-mono, monospace);
+  font-size: var(--text-overline);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
 }
 
 /* One shared marker for the two halves of a closed pair, rendered identically
@@ -10903,6 +11065,11 @@ pre,
   letter-spacing: 0;
 }
 
+.agent-transcript__stat-wrap:hover .agent-transcript__stat-card,
+.agent-transcript__stat-wrap:focus-within .agent-transcript__stat-card {
+  display: grid;
+}
+
 .agent-transcript__stat-card-title {
   padding: 2px 4px 4px;
   color: var(--muted);
@@ -11036,6 +11203,25 @@ pre,
 .agent-transcript__duration.is-waiting {
   border-color: var(--teal);
   color: var(--teal);
+}
+
+/* The accumulated clock is graded with the same heat ladder as the LOG when
+   the message is neither live nor status-coloured: the grade rides on the
+   text span so the chip's border stays calm. */
+.agent-transcript__stat-text.heat-fast {
+  color: var(--status-completed);
+}
+
+.agent-transcript__stat-text.heat-normal {
+  color: var(--teal);
+}
+
+.agent-transcript__stat-text.heat-slow {
+  color: var(--amber);
+}
+
+.agent-transcript__stat-text.heat-very-slow {
+  color: var(--status-failed);
 }
 
 .agent-transcript__status-reason {
@@ -11482,6 +11668,22 @@ pre,
   font-size: inherit;
 }
 
+.agent-step__status .atomic-log__duration.heat-fast {
+  color: var(--status-completed);
+}
+
+.agent-step__status .atomic-log__duration.heat-normal {
+  color: var(--teal);
+}
+
+.agent-step__status .atomic-log__duration.heat-slow {
+  color: var(--amber);
+}
+
+.agent-step__status .atomic-log__duration.heat-very-slow {
+  color: var(--status-failed);
+}
+
 .agent-step__status.is-failed {
   border-color: color-mix(in srgb, var(--red) 46%, var(--line));
   color: var(--red);
@@ -11502,7 +11704,9 @@ pre,
   top: calc(100% + 6px);
   right: 0;
   z-index: 30;
-  display: grid;
+  /* CSS-hover driven: the card stays mounted and the browser owns the hover,
+     so a re-render under the pointer can no longer flash it away. */
+  display: none;
   width: max-content;
   max-width: 320px;
   gap: 4px;
@@ -11515,6 +11719,11 @@ pre,
   font-size: 0.6875rem;
   letter-spacing: 0;
   white-space: normal;
+}
+
+.agent-step__status-wrap:hover .agent-step__status-card,
+.agent-step__status-wrap:focus-within .agent-step__status-card {
+  display: grid;
 }
 
 .agent-step__status-card strong {

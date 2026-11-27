@@ -64,7 +64,53 @@ function hashText(text) {
  * `payload.content[].reasoning_text`, plus the plain `text` / `message` keys
  * some releases use. Empty string when the entry carries no thinking.
  */
-function reasoningText(entry) {
+/**
+ * Block types and field names that carry a model's thinking, across the
+ * clients that write transcripts: Claude writes `thinking` blocks, some IDEs
+ * write `thought` or a localized `深度思考`, DeepSeek-style records put the
+ * text under `reasoning_content`. One table so a thinking step is recovered
+ * no matter which spelling its host used — and so none of them leak into a
+ * reply body (or a reply into thinking), which is what left the Agent view's
+ * thinking and reply blocks misaligned.
+ */
+const THINKING_BLOCK_TYPES = new Set([
+  "thinking",
+  "thought",
+  "reasoning",
+  "reasoningtext",
+  "reasoningcontent",
+  "deepthinking",
+  "summarytext",
+  "summary",
+  // Localized block types: some hosts write the model's thinking with a
+  // Chinese type field instead of an English one.
+  "深度思考",
+  "思考",
+  "思考过程",
+]);
+
+const THINKING_TEXT_FIELDS = [
+  "thinking",
+  "thought",
+  "reasoning",
+  "reasoning_content",
+  "reasoningContent",
+  "summary_text",
+];
+
+function isThinkingEntryType(value) {
+  const normalized = stringValue(value).toLowerCase().replace(/[\s_-]/g, "");
+  return (
+    normalized === "reasoning" ||
+    normalized === "thought" ||
+    normalized === "deepthinking"
+  );
+}
+
+function thinkingBlockText(part) {
+  if (!part || typeof part !== "object") {
+    return "";
+  }
   const parts = [];
   const push = (value) => {
     const text = stringValue(value);
@@ -72,18 +118,52 @@ function reasoningText(entry) {
       parts.push(text);
     }
   };
+  for (const field of THINKING_TEXT_FIELDS) {
+    push(part[field]);
+  }
+  // A typed block's `text` counts only when the type itself says thinking:
+  // on a reasoning entry every block is thinking, while on a message entry a
+  // plain `text` block is the reply and must not double as thinking.
+  const blockType = stringValue(part.type).toLowerCase().replace(/[\s_-]/g, "");
+  if (!blockType || THINKING_BLOCK_TYPES.has(blockType)) {
+    push(part.text);
+    push(part.summary);
+  }
+  return parts.join("\n\n");
+}
+
+function reasoningText(entry) {
+  const role =
+    stringValue(entry.role) ||
+    stringValue(entry.message?.role) ||
+    stringValue(entry.payload?.role);
+  // A user's or tool's record never carries thinking.
+  if (role && role !== "assistant") {
+    return "";
+  }
   const type = stringValue(entry.type);
   const payloadType = stringValue(entry.payload?.type);
-  if (type === "reasoning" || payloadType === "reasoning") {
-    push(entry.text);
-    push(entry.thinking);
-    push(entry.reasoning);
-    for (const node of [entry.rawContent, entry.content]) {
+  const parts = [];
+  const push = (value) => {
+    const text = stringValue(value);
+    if (text.trim()) {
+      parts.push(text);
+    }
+  };
+
+  if (isThinkingEntryType(type) || isThinkingEntryType(payloadType)) {
+    // A dedicated thinking entry: every block and every known field is
+    // thinking, whatever the host named it.
+    for (const field of THINKING_TEXT_FIELDS) {
+      push(entry[field]);
+      push(entry.payload?.[field]);
+    }
+    for (const node of [entry.rawContent, entry.content, entry.payload?.content]) {
       if (Array.isArray(node)) {
         for (const part of node) {
-          if (part && typeof part === "object") {
-            push(part.text);
-            push(part.thinking);
+          const text = thinkingBlockText(part);
+          if (text.trim()) {
+            parts.push(text);
           }
         }
       }
@@ -95,36 +175,39 @@ function reasoningText(entry) {
           push(part && typeof part === "object" ? part.text : part);
         }
       }
-      if (Array.isArray(payload.content)) {
-        for (const part of payload.content) {
-          if (part && typeof part === "object") {
-            push(part.text);
-            push(part.thinking);
-          }
-        }
-      }
       push(payload.text);
     }
+    return parts.join("\n\n");
   }
-  // A plain conversation record (`{role: "assistant", reasoning: "..."}`) is
-  // what several IDE hooks write; the same text under `thinking` is read too.
-  if (stringValue(entry.role) === "assistant") {
-    push(entry.reasoning);
-    push(entry.thinking);
+
+  // Plain conversation records put the whole thinking under one field
+  // (`{role: "assistant", reasoning: "..."}` is what several IDE hooks
+  // write); the reply text stays with `assistantText`, which never reads
+  // these fields, so the two bodies cannot double-count.
+  for (const field of THINKING_TEXT_FIELDS) {
+    push(entry[field]);
+    push(entry.payload?.[field]);
+    push(entry.message?.[field]);
   }
-  // An assistant turn can carry its thinking as one content block among its
-  // text blocks (Claude). Reading it here is what keeps a turn's reasoning
-  // even though the same entry also produces the reply.
-  const message = entry.message;
-  if (message && typeof message === "object" && Array.isArray(message.content)) {
-    for (const part of message.content) {
-      if (
-        part &&
-        typeof part === "object" &&
-        (part.type === "thinking" || part.type === "reasoning")
-      ) {
-        push(part.thinking);
-        push(part.text);
+  // An assistant record whose thinking rides along as content blocks among
+  // its text (Claude's sibling blocks, a `thought` field on the entry): only
+  // the typed thinking blocks are thinking — the plain text is the reply and
+  // stays with `assistantText`.
+  for (const node of [entry.rawContent, entry.content, entry.message?.content, entry.payload?.content]) {
+    if (!Array.isArray(node)) {
+      continue;
+    }
+    for (const part of node) {
+      if (!part || typeof part !== "object") {
+        continue;
+      }
+      const blockType = stringValue(part.type).toLowerCase().replace(/[\s_-]/g, "");
+      if (!blockType || !THINKING_BLOCK_TYPES.has(blockType)) {
+        continue;
+      }
+      const text = thinkingBlockText(part);
+      if (text.trim()) {
+        parts.push(text);
       }
     }
   }
@@ -189,7 +272,10 @@ function entryKind(entry) {
   const type = stringValue(entry.type);
   const payloadType = stringValue(entry.payload?.type);
   const messageRole = stringValue(entry.message?.role);
-  if (type === "reasoning" || payloadType === "reasoning") {
+  if (
+    isThinkingEntryType(type) ||
+    isThinkingEntryType(payloadType)
+  ) {
     return "reasoning";
   }
   if (type === "event_msg" && payloadType === "agent_message") {

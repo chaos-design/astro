@@ -24,6 +24,7 @@ import {
   useRef,
   useState,
   type ReactNode,
+  type RefObject,
 } from "react";
 
 import { MarkdownView } from "@/components/markdown-view";
@@ -51,6 +52,7 @@ import {
   runStatusLabels,
   runTerminalReasonDescriptions,
 } from "@/lib/run-history-state";
+import { durationHeatClass } from "@/lib/duration-label";
 import type { RunTerminalReason, TraceRunStatus } from "@/types/trace";
 import {
   collectPayloadFields,
@@ -360,9 +362,23 @@ function statCardRowHint(step: AgentStep): string {
     case "thinking":
     case "reply":
       return collapse(step.text);
-    case "tool-result":
+    case "tool-result": {
+      // Folded, the reader wants the *result's* own first line — the inputs'
+      // key/value pairs (a Read's file_path, a Bash's command) are already
+      // visible in the call block header, and a teaser that repeats them
+      // made a folded card look like it had no content at all.
       if (step.inputs?.command) {
+        const output = shellOutputOf(step.payload);
+        const teaser = collapse(output || "");
+        if (teaser) {
+          return teaser;
+        }
         return collapse(step.inputs.command);
+      }
+      const content = splitPayloadPreview(step.payload).content;
+      const teaser = collapse(content || "");
+      if (teaser) {
+        return teaser;
       }
       if (step.inputs?.fields?.length) {
         return collapse(
@@ -372,6 +388,7 @@ function statCardRowHint(step: AgentStep): string {
         );
       }
       return "";
+    }
     case "question":
       // A question's text is its own prompt, not a command; leave the row's
       // preview to the name so the card stays one calm line.
@@ -421,8 +438,21 @@ function StatChip({
         cancelClose();
         onOpenChange(name);
       }}
-      onPointerLeave={() => {
+      onPointerLeave={(event) => {
         cancelClose();
+        // DOM fires `pointerenter(next)` *before* `pointerleave(previous)`,
+        // so moving from one chip onto another opened the next card and this
+        // leave then scheduled a close that fired 140ms later — the new card
+        // flashed and, with the pointer at rest, never came back. A leave
+        // whose pointer landed on any stat chip (or inside the open card)
+        // hands ownership over instead of scheduling a close.
+        const next = event.relatedTarget;
+        if (
+          next instanceof Element &&
+          next.closest(".agent-transcript__stat-wrap")
+        ) {
+          return;
+        }
         closeTimer.current = window.setTimeout(() => onOpenChange(null), 140);
       }}
     >
@@ -491,7 +521,6 @@ function RunClockChip({
     detail: string | null;
   } | null;
 }) {
-  const [open, setOpen] = useState(false);
   const status = state?.status ?? null;
   const statusWord = status ? runStatusLabels[status] : null;
   const reasonText = state?.reason
@@ -505,12 +534,10 @@ function RunClockChip({
           : status
             ? "异常：宿主报告了非正常结束，未附带更具体的原因"
             : null;
+  // CSS-hover driven like the step badges: a live run re-renders every second,
+  // and a stateful hover card would flash off on each of those renders.
   return (
-    <span
-      className={cn("agent-transcript__stat-wrap", open && "is-open")}
-      onPointerEnter={() => setOpen(true)}
-      onPointerLeave={() => setOpen(false)}
-    >
+    <span className="agent-transcript__stat-wrap">
       <span
         aria-label="本条消息的累计执行时间与状态"
         className={cn(
@@ -522,28 +549,33 @@ function RunClockChip({
         tabIndex={0}
       >
         <Timer aria-hidden="true" className="agent-transcript__stat-icon" />
-        <span className="agent-transcript__stat-text">
+        <span
+          className={cn(
+            "agent-transcript__stat-text",
+            !live &&
+              (!status || status === "complete") &&
+              `heat-${durationHeatClass(durationMs)}`,
+          )}
+        >
           执行 {formatExecutionClock(durationMs)}
         </span>
       </span>
-      {open ? (
-        <span className="agent-transcript__stat-card" role="tooltip">
-          <span className="agent-transcript__stat-card-title">
-            本条消息 · {statusWord ?? "执行中"}
-          </span>
-          {reasonText ? (
-            <span className="agent-transcript__status-reason">{reasonText}</span>
-          ) : null}
-          {state?.detail ? (
-            <code className="agent-transcript__status-detail">
-              {state.detail}
-            </code>
-          ) : null}
-          <span className="agent-transcript__status-foot">
-            累计执行 {formatExecutionClock(durationMs)} · 含本条消息内所有子步骤
-          </span>
+      <span className="agent-transcript__stat-card" role="tooltip">
+        <span className="agent-transcript__stat-card-title">
+          本条消息 · {statusWord ?? "执行中"}
         </span>
-      ) : null}
+        {reasonText ? (
+          <span className="agent-transcript__status-reason">{reasonText}</span>
+        ) : null}
+        {state?.detail ? (
+          <code className="agent-transcript__status-detail">
+            {state.detail}
+          </code>
+        ) : null}
+        <span className="agent-transcript__status-foot">
+          累计执行 {formatExecutionClock(durationMs)} · 含本条消息内所有子步骤
+        </span>
+      </span>
     </span>
   );
 }
@@ -568,7 +600,6 @@ function StepStatusBadge({
   sequence: string;
   status: AgentStepStatus | null;
 }) {
-  const [open, setOpen] = useState(false);
   if (durationMs === null && !status) {
     return null;
   }
@@ -580,12 +611,13 @@ function StepStatusBadge({
       : status
         ? "异常：宿主报告了非正常结束，未附带更具体的原因"
         : null;
+  // The card is CSS-hover driven, not state driven: a React re-render while
+  // the pointer rests on the badge replaces the element, and a stateful
+  // `mouseenter` never re-fires on the replacement — the card flashed once
+  // (moving from a thinking badge onto a reply badge re-renders the list)
+  // and then never came back. CSS `:hover` survives every re-render.
   return (
-    <span
-      className={cn("agent-step__status-wrap", open && "is-open")}
-      onPointerEnter={() => setOpen(true)}
-      onPointerLeave={() => setOpen(false)}
-    >
+    <span className="agent-step__status-wrap">
       <span
         aria-label={`${label} 耗时与状态`}
         className={cn(
@@ -604,28 +636,190 @@ function StepStatusBadge({
           <Timer aria-hidden="true" />
         )}
         {durationMs !== null ? (
-          <span className="atomic-log__duration">{formatDurationMs(durationMs)}</span>
+          <span
+            className={cn(
+              "atomic-log__duration",
+              `heat-${durationHeatClass(durationMs)}`,
+            )}
+          >
+            {formatDurationMs(durationMs)}
+          </span>
         ) : null}
         {statusWord ? <span>{statusWord}</span> : null}
       </span>
-      {open ? (
-        <span className="agent-step__status-card" role="tooltip">
-          <strong>
-            {sequence} · {statusWord ?? "耗时"}
-          </strong>
-          {reasonText ? <em>{reasonText}</em> : null}
-          {status?.detail ? (
-            <code className="agent-step__status-detail">{status.detail}</code>
-          ) : null}
-          <span className="agent-step__status-foot">
-            {durationMs !== null
-              ? `本步耗时 ${formatDurationMs(durationMs)}`
-              : "本步没有可测量的起止跨度"}
-            {status ? ` · 范围 ${status.scope}` : ""}
-          </span>
+      <span className="agent-step__status-card" role="tooltip">
+        <strong>
+          {sequence} · {statusWord ?? "耗时"}
+        </strong>
+        {reasonText ? <em>{reasonText}</em> : null}
+        {status?.detail ? (
+          <code className="agent-step__status-detail">{status.detail}</code>
+        ) : null}
+        <span className="agent-step__status-foot">
+          {durationMs !== null
+            ? `本步耗时 ${formatDurationMs(durationMs)}`
+            : "本步没有可测量的起止跨度"}
+          {status ? ` · 范围 ${status.scope}` : ""}
         </span>
-      ) : null}
+      </span>
     </span>
+  );
+}
+
+type ProgressTick = {
+  /** The turn's first step, for the click-to-jump. */
+  firstStepId: string;
+  ratio: number;
+  /** Steps in this turn. */
+  count: number;
+  /** The turn's first LOG row, so a hover names where it starts. */
+  sequence: string;
+  turn: number;
+};
+
+function sameTicks(
+  previous: readonly ProgressTick[],
+  next: readonly ProgressTick[],
+): boolean {
+  return (
+    previous.length === next.length &&
+    previous.every((tick, index) => {
+      const other = next[index];
+      return (
+        tick.turn === other.turn &&
+        tick.count === other.count &&
+        tick.firstStepId === other.firstStepId &&
+        Math.abs(tick.ratio - other.ratio) < 0.002
+      );
+    })
+  );
+}
+
+/**
+ * The Agent chain's scroll progress: a thin bar under the message list whose
+ * fill is the scroll completion, with one tick per turn. Hovering a tick
+ * states the turn (number, step count, where it starts in the LOG); clicking
+ * one scrolls that turn's first card into view. The fill is written straight
+ * to the element — a progress state would re-render the whole chain once per
+ * scroll frame, exactly the cost the list's memoization exists to avoid.
+ */
+function ChainProgress({
+  scrollRef,
+  steps,
+  stepRefs,
+}: {
+  scrollRef: RefObject<HTMLDivElement | null>;
+  steps: readonly AgentStep[];
+  stepRefs: Map<string, HTMLElement>;
+}) {
+  const fillRef = useRef<HTMLDivElement | null>(null);
+  const frameRef = useRef<number | null>(null);
+  const [ticks, setTicks] = useState<ProgressTick[]>([]);
+
+  const measure = useCallback(() => {
+    const container = scrollRef.current;
+    if (!container) {
+      return;
+    }
+    const range = container.scrollHeight - container.clientHeight;
+    if (fillRef.current) {
+      fillRef.current.style.width =
+        range <= 4 ? "100%" : `${Math.min(100, Math.max(0, (container.scrollTop / range) * 100))}%`;
+    }
+    if (range <= 4) {
+      // Everything is on screen: no ticks to place.
+      setTicks((previous) => (previous.length ? [] : previous));
+      return;
+    }
+    const containerTop = container.getBoundingClientRect().top;
+    const firstByTurn = new Map<number, ProgressTick>();
+    for (const step of steps) {
+      if (firstByTurn.has(step.turn)) {
+        const existing = firstByTurn.get(step.turn);
+        if (existing) {
+          existing.count += 1;
+        }
+        continue;
+      }
+      const element = stepRefs.get(step.id);
+      if (!element) {
+        continue;
+      }
+      const top =
+        element.getBoundingClientRect().top - containerTop + container.scrollTop;
+      firstByTurn.set(step.turn, {
+        firstStepId: step.id,
+        count: 1,
+        ratio: Math.min(1, Math.max(0, top / range)),
+        sequence: step.sequence,
+        turn: step.turn,
+      });
+    }
+    const next = [...firstByTurn.values()].sort(
+      (left, right) => left.ratio - right.ratio,
+    );
+    setTicks((previous) => (sameTicks(previous, next) ? previous : next));
+  }, [scrollRef, steps, stepRefs]);
+
+  // Scroll drives the fill on its own rAF budget; a resize of the container
+  // (panel drag, viewport change) re-measures the ticks.
+  useEffect(() => {
+    const container = scrollRef.current;
+    if (!container) {
+      return;
+    }
+    measure();
+    const onScroll = () => {
+      if (frameRef.current !== null) {
+        return;
+      }
+      frameRef.current = window.requestAnimationFrame(() => {
+        frameRef.current = null;
+        measure();
+      });
+    };
+    container.addEventListener("scroll", onScroll, { passive: true });
+    const observer = new ResizeObserver(onScroll);
+    observer.observe(container);
+    return () => {
+      container.removeEventListener("scroll", onScroll);
+      observer.disconnect();
+      if (frameRef.current !== null) {
+        window.cancelAnimationFrame(frameRef.current);
+        frameRef.current = null;
+      }
+    };
+  }, [measure, scrollRef]);
+
+  if (!ticks.length) {
+    return null;
+  }
+  return (
+    <div aria-hidden="false" className="agent-transcript__progress">
+      <div className="agent-transcript__progress-track">
+        <div className="agent-transcript__progress-fill" ref={fillRef} />
+        {ticks.map((tick) => (
+          <button
+            aria-label={`跳到第 ${tick.turn} 轮（${tick.count} 步，从第 ${tick.sequence} 行开始）`}
+            className="agent-transcript__progress-tick"
+            key={tick.turn}
+            onClick={() => {
+              const element = stepRefs.get(tick.firstStepId);
+              element?.scrollIntoView({ behavior: "smooth", block: "start" });
+            }}
+            style={{ left: `${tick.ratio * 100}%` }}
+            type="button"
+          >
+            <span className="agent-transcript__progress-tip" role="tooltip">
+              <strong>第 {tick.turn} 轮</strong>
+              <span>
+                {tick.count} 步 · 从 {tick.sequence} 行开始
+              </span>
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -1082,6 +1276,11 @@ export function AgentTranscript({
             <p className="payload-overlay__empty">这次运行还没有可呈现的事件。</p>
           )}
         </div>
+        <ChainProgress
+          scrollRef={scrollRef}
+          stepRefs={stepRefs.current}
+          steps={view.steps}
+        />
         {live && !showJump ? (
           <div
             aria-live="polite"

@@ -616,3 +616,109 @@ test("an explicit transcript path covers hosts that publish none", () => {
     .map((event) => event.eventName);
   assert.deepEqual(names, ["Reasoning", "AgentMessage", "Stop"]);
 });
+
+test("every thinking spelling recovers as reasoning, never as a reply", () => {
+  const directory = makeDir();
+  const transcript = path.join(directory, "spelling.jsonl");
+  writeLines(transcript, [
+    // A dedicated `thought` entry (some hosts spell the entry itself this way).
+    { type: "thought", thinking: "先查 hook 配置。" },
+    // A localized block type riding on an assistant message.
+    {
+      type: "message",
+      role: "assistant",
+      content: [
+        { type: "深度思考", text: "先读派生层。" },
+        { type: "text", text: "已修复。" },
+      ],
+    },
+    // DeepSeek-style reasoning_content on a plain record.
+    { role: "assistant", reasoning_content: "再看投影顺序。", content: "完成。" },
+    // A `thought` field on a message entry's own block.
+    {
+      type: "message",
+      role: "assistant",
+      message: {
+        role: "assistant",
+        content: [
+          { type: "thinking", thought: "按 messageId 对齐。" },
+          { type: "text", text: "对齐了。" },
+        ],
+      },
+    },
+  ]);
+  const payloads = readTranscriptEvents({
+    transcriptPath: transcript,
+    sessionId: "spelling-1",
+    source: "generic",
+  }).payloads;
+  const reasoning = payloads
+    .filter((p) => p.eventName === "Reasoning")
+    .map((p) => p.payload.text);
+  const replies = payloads
+    .filter((p) => p.eventName === "AgentMessage")
+    .map((p) => p.payload.message);
+  assert.deepEqual(
+    reasoning,
+    ["先查 hook 配置。", "先读派生层。", "再看投影顺序。", "按 messageId 对齐。"],
+  );
+  assert.deepEqual(replies, ["已修复。", "完成。", "对齐了。"]);
+  // No text double-counts: each spelling's thinking stays out of the reply
+  // and each reply stays out of the thinking.
+  for (const reply of replies) {
+    assert.ok(!reasoning.includes(reply), `${reply} leaked into thinking`);
+  }
+});
+
+test("every thinking spelling recovers as reasoning, never as a reply", () => {
+  const directory = makeDir();
+  const transcript = path.join(directory, "spelling.jsonl");
+  writeLines(transcript, [
+    // A dedicated `thought` entry (some hosts spell the entry itself this way).
+    { type: "thought", thinking: "先查 hook 配置。" },
+    // A localized block type riding on an assistant message.
+    {
+      type: "message",
+      role: "assistant",
+      content: [
+        { type: "深度思考", text: "先读派生层。" },
+        { type: "text", text: "已修复。" },
+      ],
+    },
+    // DeepSeek-style reasoning_content on a plain record.
+    { role: "assistant", reasoning_content: "再看投影顺序。", content: "完成。" },
+    // A `thought` field on a message entry's own block.
+    {
+      type: "message",
+      role: "assistant",
+      message: {
+        role: "assistant",
+        content: [
+          { type: "thinking", thought: "按 messageId 对齐。" },
+          { type: "text", text: "对齐了。" },
+        ],
+      },
+    },
+  ]);
+  const payloads = readTranscriptEvents({
+    transcriptPath: transcript,
+    sessionId: "spelling-1",
+    source: "generic",
+  }).payloads;
+  const reasoning = payloads
+    .filter((p) => p.eventName === "Reasoning")
+    .map((p) => p.payload.text);
+  const replies = payloads
+    .filter((p) => p.eventName === "AgentMessage")
+    .map((p) => p.payload.message);
+  assert.deepEqual(
+    reasoning,
+    ["先查 hook 配置。", "先读派生层。", "再看投影顺序。", "按 messageId 对齐。"],
+  );
+  assert.deepEqual(replies, ["已修复。", "完成。", "对齐了。"]);
+  // No text double-counts: each spelling's thinking stays out of the reply
+  // and each reply stays out of the thinking.
+  for (const reply of replies) {
+    assert.ok(!reasoning.includes(reply), `${reply} leaked into thinking`);
+  }
+});

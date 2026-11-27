@@ -225,7 +225,11 @@ import {
 import {
   describeWorkspacePath,
 } from "./lib/workspace-path";
-import { formatDurationMs } from "./lib/duration-label";
+import {
+  durationHeatClass,
+  formatDurationMs,
+  type DurationHeat,
+} from "./lib/duration-label";
 import { buildAgentView, type AgentView } from "./lib/agent-view";
 import {
   OTHERS_AGENT_ID,
@@ -512,31 +516,6 @@ function formatRunDate(timestamp: string | number) {
  * Applied to the trajectory's wall-time and pair badges; the badge keeps its
  * shape but lets the colour encode speed.
  */
-type DurationHeat = "idle" | "fast" | "normal" | "slow" | "very-slow";
-
-const DURATION_HEAT = {
-  idle: 0,
-  fast: 10_000,
-  normal: 60_000,
-  slow: 600_000,
-} as const;
-
-function durationHeatClass(milliseconds: number): DurationHeat {
-  if (!Number.isFinite(milliseconds) || milliseconds <= 0) {
-    return "idle";
-  }
-  if (milliseconds < DURATION_HEAT.fast) {
-    return "fast";
-  }
-  if (milliseconds < DURATION_HEAT.normal) {
-    return "normal";
-  }
-  if (milliseconds < DURATION_HEAT.slow) {
-    return "slow";
-  }
-  return "very-slow";
-}
-
 /**
  * The trajectory legend: the status markers (what each dot colour means) and
  * the duration heat tiers (what each duration colour means). The user reported
@@ -553,13 +532,13 @@ const STATUS_LEGEND: ReadonlyArray<{ label: string; tone: string }> = [
 
 /**
  * The duration heat tiers, labelled by the threshold that opens the tier (one
- * number, matching the stepped units the row prints: <10s, <1m, <10m, ≥10m).
+ * number, matching the stepped units the row prints: <10s, <1m, <5m, ≥5m).
  */
 const DURATION_LEGEND: ReadonlyArray<{ label: string; heat: DurationHeat }> = [
   { heat: "fast", label: "<10s" },
   { heat: "normal", label: "<1m" },
-  { heat: "slow", label: "<10m" },
-  { heat: "very-slow", label: "≥10m" },
+  { heat: "slow", label: "<5m" },
+  { heat: "very-slow", label: "≥5m" },
 ];
 
 function getEventAction(event: TraceEvent) {
@@ -7721,7 +7700,108 @@ export default function App() {
     [promptRunsBySession, sessionsByKey],
   );
 
-  const selectHistorySearchResult = (entry: HistorySearchEntry) => {
+  /**
+   * Step to the neighbouring message of the active session. `delta = -1` is
+   * the earlier message, `1` the later one — the stepper renders them as
+   * ‹ / ›, and the anchor event lands the LOG and the canvas on the new
+   * message instead of leaving the selection inside the old one.
+   */
+  const stepPromptRun = useCallback(
+    (delta: 1 | -1) => {
+      if (!activePromptRun || activePromptRuns.length < 2) {
+        return;
+      }
+      const index = activePromptRuns.findIndex(
+        (run) => run.key === activePromptRun.key,
+      );
+      if (index < 0) {
+        return;
+      }
+      const target = activePromptRuns[index + delta];
+      if (!target) {
+        return;
+      }
+      preserveAtomSelectionRef.current = false;
+      setActivePromptRunKey(target.key);
+      const anchor = delta > 0 ? target.events[0] : target.events.at(-1);
+      if (anchor) {
+        setSelectedEventId(anchor.id);
+        setSelectedAtomId(getAtomIdForEvent(anchor, platformId) || null);
+      }
+      setReplayMode(false);
+      setPlaying(false);
+      setLogLocateRequest((current) => current + 1);
+    },
+    [
+      activePromptRun,
+      activePromptRuns,
+      platformId,
+    ],
+  );
+
+  /**
+ * ‹ / › message stepping beside the agent name: with a long run history, the
+ * reader moves between messages without opening the history pane. The count
+ * names the current message out of the session's total; hovering a button
+ * states the target, so a step never has to be confirmed by opening a pane.
+ */
+function RunStepper({
+  activeKey,
+  onStep,
+  runs,
+}: {
+  activeKey: string;
+  onStep: (delta: 1 | -1) => void;
+  runs: readonly TracePromptRun[];
+}) {
+  const index = runs.findIndex((run) => run.key === activeKey);
+  if (runs.length < 2 || index < 0) {
+    return null;
+  }
+  const earlier = index > 0 ? runs[index - 1] : null;
+  const later = index < runs.length - 1 ? runs[index + 1] : null;
+  const titleFor = (run: TracePromptRun | null) =>
+    run
+      ? getEventSummary(run.prompt).slice(0, 120).replace(/\s+/g, " ")
+      : "";
+  return (
+    <span className="run-stepper">
+      <button
+        aria-label="上一条消息"
+        className="run-stepper__button"
+        disabled={!earlier}
+        onClick={() => {
+          if (earlier) {
+            onStep(-1);
+          }
+        }}
+        title={earlier ? `上一条：${titleFor(earlier)}` : undefined}
+        type="button"
+      >
+        <ChevronLeft aria-hidden="true" />
+      </button>
+      <span className="run-stepper__count">
+        {index + 1}/{runs.length}
+      </span>
+      <button
+        aria-label="下一条消息"
+        className="run-stepper__button"
+        disabled={!later}
+        onClick={() => {
+          if (later) {
+            onStep(1);
+          }
+        }}
+        title={later ? `下一条：${titleFor(later)}` : undefined}
+        type="button"
+      >
+        <ChevronRight aria-hidden="true" />
+      </button>
+    </span>
+  );
+}
+
+const selectHistorySearchResult = (entry: HistorySearchEntry) => {
     const targetPlatform = getPlatformForSource(entry.source) ?? platformId;
     preserveAtomSelectionRef.current = targetPlatform !== platformId;
     setPlatformId(targetPlatform);
@@ -8775,6 +8855,13 @@ export default function App() {
                   }}
                 />
               </div>
+              {/* Message stepping beside the agent name: ‹ / › moves through
+                  this session's messages without opening the history pane. */}
+              <RunStepper
+                activeKey={activePromptRun?.key || ""}
+                onStep={stepPromptRun}
+                runs={activePromptRuns}
+              />
               <div className="canvas-view-switch" role="group" aria-label="画布视图">
                 <IconAction
                   label="拓扑视图"

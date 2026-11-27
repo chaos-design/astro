@@ -25,8 +25,10 @@ test("the generic view is content-only: metadata keys and scalars stay out", () 
   assert.doesNotMatch(markdown, /###|turns|count|`3`|`true`/);
 });
 
-test("arrays of plain values render as a list and other scalars stay readable", () => {
-  assert.equal(payloadToMarkdown(["one", "two"]), "- one\n- two");
+test("arrays of plain values render as one block per item and other scalars stay readable", () => {
+  // One block per item, not bullets: a stack of values reads cleanly without
+  // list markers, and an item that is code keeps its own fence.
+  assert.equal(payloadToMarkdown(["one", "two"]), "one\n\ntwo");
   assert.equal(payloadToMarkdown(42), "42");
   assert.equal(payloadToMarkdown(null), "");
   assert.equal(payloadToMarkdown({ blank: "", kept: "yes" }), "yes");
@@ -76,7 +78,7 @@ test("an Edit input with trailing newlines previews a minimal diff", () => {
   assert.doesNotMatch(markdown, /-\n\+\n/);
 });
 
-test("a todos array renders as a GFM checklist, not a JSON dump", () => {
+test("a todos array renders as a GFM checklist of blocks, not a JSON dump", () => {
   const markdown = payloadToMarkdown({
     todos: [
       { content: "pnpm test", status: "completed", priority: "high" },
@@ -86,7 +88,7 @@ test("a todos array renders as a GFM checklist, not a JSON dump", () => {
   });
   assert.equal(
     markdown,
-    "- [x] pnpm test — priority=high\n- [ ] pnpm build — priority=high\n- [ ] push the branch — priority=low",
+    "[x] pnpm test — priority=high\n\n[ ] pnpm build — priority=high\n\n[ ] push the branch — priority=low",
   );
   assert.doesNotMatch(markdown, /```json/);
 });
@@ -99,10 +101,10 @@ test("a boolean status drives the todo checkbox too", () => {
     ],
   });
   // `done` is a status key; boolean true maps to the done value "true".
-  assert.equal(markdown, "- [x] A\n- [ ] B");
+  assert.equal(markdown, "[x] A\n\n[ ] B");
 });
 
-test("a lone array field is a list, not an unwrapped document", () => {
+test("a lone array field renders as blocks, not an unwrapped document", () => {
   // A `{ todos }` payload has one key, but unwrapping would join the
   // checklist rows into prose; the list keeps its shape.
   const markdown = payloadToMarkdown({
@@ -111,7 +113,7 @@ test("a lone array field is a list, not an unwrapped document", () => {
       { content: "ship it", status: "pending" },
     ],
   });
-  assert.equal(markdown, "- [x] fix the bug\n- [ ] ship it");
+  assert.equal(markdown, "[x] fix the bug\n\n[ ] ship it");
 });
 
 test("a captured shell command is fenced instead of rendered as prose", () => {

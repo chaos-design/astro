@@ -65,3 +65,47 @@ export function formatPerfDuration(milliseconds: number): string {
   const hours = Math.floor(totalMinutes / 60);
   return `${pad(hours)}H${pad(totalMinutes % 60)}M`;
 }
+
+/**
+ * The colour grade of a measured span — four quiet tones plus idle, no
+ * wording: green for a routine span, teal for normal model work, amber for a
+ * long-but-explainable step, red for one worth investigating. The thresholds
+ * are span-shaped, not number-shaped: a tool call under 10s is routine, a
+ * streamed reply between 10s and a minute is normal model work, one to five
+ * minutes is long (a big build, a long generation), and past five minutes the
+ * reader should know why. A non-measurable span stays neutral — never a
+ * colour that implies a judgement. One classifier for every duration the
+ * console prints (LOG badge, trajectory pair, Agent step card, run clock),
+ * so the same span reads with the same colour everywhere.
+ */
+export type DurationHeat =
+  | "idle"
+  | "fast"
+  | "normal"
+  | "slow"
+  | "very-slow";
+
+const DURATION_HEAT = {
+  /** Under 10s: routine work. */
+  fast: 10_000,
+  /** Under 1min: normal model work. */
+  normal: 60_000,
+  /** Under 5min: long but explainable. */
+  slow: 300_000,
+} as const;
+
+export function durationHeatClass(milliseconds: number): DurationHeat {
+  if (!Number.isFinite(milliseconds) || milliseconds <= 0) {
+    return "idle";
+  }
+  if (milliseconds < DURATION_HEAT.fast) {
+    return "fast";
+  }
+  if (milliseconds < DURATION_HEAT.normal) {
+    return "normal";
+  }
+  if (milliseconds < DURATION_HEAT.slow) {
+    return "slow";
+  }
+  return "very-slow";
+}

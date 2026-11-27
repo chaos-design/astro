@@ -525,9 +525,11 @@ function compactListMarkdown(items: readonly unknown[]): string {
         .map(([key, value]) => `${escapeInline(key)}=${escapeInline(String(value))}`)
         .join(" · ");
       const body = primary ? escapeInline(primary) : safeJson(record);
-      return `- ${checkbox}${body}${suffix ? ` — ${suffix}` : ""}`;
+      // Block lines, not bullets: each record is its own quiet row, the
+      // status checkbox keeping its checklist reading.
+      return `${checkbox}${body}${suffix ? ` — ${suffix}` : ""}`;
     })
-    .join("\n");
+    .join("\n\n");
 }
 
 function arrayToMarkdown(value: unknown[], depth: number, seen: WeakSet<object>): string {
@@ -541,8 +543,11 @@ function arrayToMarkdown(value: unknown[], depth: number, seen: WeakSet<object>)
   if (!items.length) {
     return "";
   }
+  // One block per item, not a bullet list: a result that carries an array of
+  // short values reads as a stack of blocks, and an item that is code keeps
+  // its own fence instead of being re-bulleted inside a list item.
   if (items.every((item) => !item.includes("\n"))) {
-    return items.map((item) => `- ${item}`).join("\n");
+    return items.join("\n\n");
   }
   return items.join("\n\n---\n\n");
 }

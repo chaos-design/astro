@@ -578,8 +578,17 @@ test("a payload without prose falls back to highlighted JSON", () => {
  * second composite formatter may grow in the overlay.
  */
 test("the overlay's duration badge shares the LOG unit ladder", () => {
-  assert.match(app, /import \{ formatDurationMs \} from "\.\/lib\/duration-label";/);
+  assert.match(
+    app,
+    /import \{[\s\S]*?formatDurationMs,[\s\S]*?\} from "\.\/lib\/duration-label";/,
+  );
   assert.match(railBinding, /formatDurationMs\(pairDuration\)/);
+  // The Agent view's step badges and the header clock grade their spans with
+  // the same shared heat classifier — no second tone table in the component.
+  assert.match(
+    agentTranscript,
+    /import \{ durationHeatClass \} from "@\/lib\/duration-label";/,
+  );
   assert.doesNotMatch(app, /formatOverlayDuration/);
   assert.doesNotMatch(app, /function formatDurationMs\(milliseconds: number\)/);
 });
