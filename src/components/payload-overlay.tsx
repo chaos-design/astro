@@ -116,6 +116,9 @@ export type PayloadOverlayAtom = {
   type: string;
 };
 
+/** Past this length the card clamps its summary and offers an explicit fold. */
+const HOVER_SUMMARY_CHARS = 220;
+
 /**
  * One controlled hover card serves the whole rail. A tooltip root per row
  * would multiply into hundreds of portals that re-render on every stream tick;
@@ -128,13 +131,21 @@ const AtomHoverCardLayer = memo(function AtomHoverCardLayer({
   cardRef,
   onCardPointerEnter,
   onCardPointerLeave,
+  onSelectAtom,
 }: {
   anchorRef: RefObject<HTMLElement | null>;
   card: PayloadOverlayAtom | null;
   cardRef: RefObject<HTMLDivElement | null>;
   onCardPointerEnter: () => void;
   onCardPointerLeave: (event: ReactPointerEvent<HTMLDivElement>) => void;
+  onSelectAtom: (atomId: string, eventId: string) => void;
 }) {
+  // One atom at a time: a fold opened on row #095 must not stay open when the
+  // pointer moves to #096, and closing the card resets it for the next hover.
+  const [summaryExpanded, setSummaryExpanded] = useState(false);
+  useEffect(() => {
+    setSummaryExpanded(false);
+  }, [card?.id]);
   useLayoutEffect(() => {
     if (!card) {
       return undefined;
@@ -195,7 +206,7 @@ const AtomHoverCardLayer = memo(function AtomHoverCardLayer({
       document.removeEventListener("scroll", schedule, true);
       window.removeEventListener("resize", schedule);
     };
-  }, [anchorRef, card, cardRef]);
+  }, [anchorRef, card, cardRef, summaryExpanded]);
 
   if (!card) {
     return null;
@@ -203,6 +214,7 @@ const AtomHoverCardLayer = memo(function AtomHoverCardLayer({
   return (
     <div
       className="payload-overlay__atom-hover"
+      onClick={() => onSelectAtom(card.atomId, card.id)}
       onPointerEnter={onCardPointerEnter}
       onPointerLeave={onCardPointerLeave}
       ref={cardRef}
@@ -253,9 +265,37 @@ const AtomHoverCardLayer = memo(function AtomHoverCardLayer({
           ) : null}
         </dl>
         {card.summary ? (
-          <p className="payload-overlay__atom-hover-summary">{card.summary}</p>
+          <>
+            <p
+              className={cn(
+                "payload-overlay__atom-hover-summary",
+                card.summary.length > HOVER_SUMMARY_CHARS &&
+                  !summaryExpanded &&
+                  "is-clamped",
+              )}
+            >
+              {card.summary}
+            </p>
+            {card.summary.length > HOVER_SUMMARY_CHARS ? (
+              <button
+                aria-expanded={summaryExpanded}
+                className="payload-overlay__atom-hover-toggle"
+                onClick={(event) => {
+                  // Folding the text is not a jump: keep the pointer on the
+                  // card and let the layout effect re-place the grown card.
+                  event.stopPropagation();
+                  setSummaryExpanded((current) => !current);
+                }}
+                type="button"
+              >
+                {summaryExpanded
+                  ? "收起"
+                  : `展开（${card.summary.length} 字符）`}
+              </button>
+            ) : null}
+          </>
         ) : null}
-        <p className="payload-overlay__atom-hover-hint">点击该行跳转到此原子</p>
+        <p className="payload-overlay__atom-hover-hint">点击卡片跳转到此原子</p>
       </div>
     </div>
   );
@@ -1389,6 +1429,7 @@ export function PayloadOverlay({
         cardRef={atomCardRef}
         onCardPointerEnter={cancelAtomHoverClose}
         onCardPointerLeave={closeAtomHover}
+        onSelectAtom={onSelectAtom}
       />
     </Dialog>
   );

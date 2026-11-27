@@ -1,5 +1,9 @@
 import { useState, type ReactNode } from "react";
-import { contentToMarkdown, splitPayloadPreview } from "@/lib/payload-preview";
+import {
+  contentToMarkdown,
+  inferCodeLanguage,
+  splitPayloadPreview,
+} from "@/lib/payload-preview";
 import { findPayloadFilePath } from "@/lib/numbered-code";
 import { payloadToMarkdown } from "@/lib/payload-markdown";
 import {
@@ -15,15 +19,26 @@ import { cn } from "@/lib/utils";
  * reader is looking. */
 const FOLD_TEXT_CHARS = 600;
 
+/** Code is the reason the reader opened a tool result: a 2667-character
+ *  source file or shell dump is rendered whole even when it dwarfs the fold
+ *  threshold. The fenced Markdown is the strongest signal (the shared
+ *  content decision already spoke); the raw value catches code that arrived
+ *  inside a richer envelope. */
+function isCodePayload(raw: string, source: string): boolean {
+  return /^\s*`{3,}/.test(source) || inferCodeLanguage(raw) !== null;
+}
+
 function FoldableMarkdown({
   source,
+  raw,
   length,
 }: {
   source: string;
+  raw: string;
   length: number;
 }) {
   const [expanded, setExpanded] = useState(false);
-  if (length <= FOLD_TEXT_CHARS) {
+  if (length <= FOLD_TEXT_CHARS || isCodePayload(raw, source)) {
     return <MarkdownView source={source} />;
   }
   // Fold by source length, not raw characters: a fenced source is the text the
@@ -92,13 +107,19 @@ function PayloadItemContent({
     // (`text`, `message`, `content`, …) instead of dumping every scalar value.
     // A record with no content field still falls back to the generic view.
     const split = typeof item === "string" ? null : splitPayloadPreview(item);
+    const raw =
+      typeof item === "string"
+        ? item
+        : split?.content.trim()
+          ? split.content
+          : "";
     const text = split?.content.trim()
       ? contentToMarkdown(split.content, findPayloadFilePath(item))
       : typeof item === "string"
         ? contentToMarkdown(item)
         : payloadToMarkdown(item);
     const source = markdownWithEmbeddedImages(text, item);
-    return <FoldableMarkdown length={text.length} source={source} />;
+    return <FoldableMarkdown length={text.length} raw={raw} source={source} />;
   }
   if (item !== null && typeof item === "object" && !Array.isArray(item)) {
     const entries = Object.entries(item as Record<string, unknown>).filter(
@@ -119,7 +140,13 @@ function PayloadItemContent({
     );
   }
   const text = contentToMarkdown(String(item));
-  return <FoldableMarkdown length={String(item).length} source={text} />;
+  return (
+    <FoldableMarkdown
+      length={String(item).length}
+      raw={String(item)}
+      source={text}
+    />
+  );
 }
 
 /**

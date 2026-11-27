@@ -24,6 +24,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type ReactNode,
   type RefObject,
 } from "react";
@@ -466,10 +467,10 @@ function StatChip({
 }
 
 /**
- * The main message's accumulated execution clock. Hovering it states the
- * message's own status and, when it did not complete normally, the cause —
- * the one place a reader can learn that a run "terminated because it timed
- * out" instead of guessing from a grey badge.
+ * The main message's accumulated execution clock. This is a run-level timer,
+ * not an atom badge: it has exactly two readings — 执行 while the run is
+ * still receiving events, 结束 once it stopped. The host's finer outcome
+ * stays in the step badges; hovering here only explains the timer itself.
  */
 function RunClockChip({
   durationMs,
@@ -484,51 +485,35 @@ function RunClockChip({
     detail: string | null;
   } | null;
 }) {
-  const status = state?.status ?? null;
-  const statusWord = status ? runStatusLabels[status] : null;
-  const reasonText = state?.reason
-    ? runTerminalReasonDescriptions[state.reason]
-    : status === "waiting"
-      ? "等待：宿主在等待输入或限流，计时仍在推进"
-      : status === "complete"
-        ? null
-        : live
-          ? "执行中：仍在接收事件，计时每秒推进"
-          : status
-            ? "异常：宿主报告了非正常结束，未附带更具体的原因"
-            : null;
+  const reasonText = live
+    ? "执行中：仍在接收事件，计时每秒推进"
+    : state?.reason
+      ? runTerminalReasonDescriptions[state.reason]
+      : "已结束：计时停在记录的总时长，不再推进";
   // CSS-hover driven like the step badges: a live run re-renders every second,
   // and a stateful hover card would flash off on each of those renders.
   return (
     <span className="agent-transcript__stat-wrap">
       <span
-        aria-label="本条消息的累计执行时间与状态"
+        aria-label="本条消息的累计执行时间"
         className={cn(
           "agent-transcript__stat",
           "agent-transcript__duration",
-          live && "is-live",
-          status && status !== "active" && `is-${status}`,
-          // The grade colours icon and text together; a live or status-coloured
-          // clock keeps its own meaning.
-          !live && (!status || status === "complete")
-            ? `heat-${durationHeatClass(durationMs)}`
-            : null,
+          live ? "is-live" : "is-ended",
         )}
         tabIndex={0}
       >
         <Timer aria-hidden="true" className="agent-transcript__stat-icon" />
         <span className="agent-transcript__stat-text">
-          执行 {formatExecutionClock(durationMs)}
+          {live ? "执行" : "结束"} {formatExecutionClock(durationMs)}
         </span>
       </span>
       <span className="agent-transcript__stat-card" role="tooltip">
         <span className="agent-transcript__stat-card-title">
-          本条消息 · {statusWord ?? "执行中"}
+          本条消息 · {live ? "执行中" : "已结束"}
         </span>
-        {reasonText ? (
-          <span className="agent-transcript__status-reason">{reasonText}</span>
-        ) : null}
-        {state?.detail ? (
+        <span className="agent-transcript__status-reason">{reasonText}</span>
+        {!live && state?.detail ? (
           <code className="agent-transcript__status-detail">
             {state.detail}
           </code>
@@ -625,6 +610,15 @@ function StepStatusBadge({
   );
 }
 
+/** One comfortable slot per tick before the strip gives the track more room.
+ *  Below it the three columns stay even; denser turns widen the track in
+ *  notches so the change reads as a deliberate growth, not a jump. */
+const PROGRESS_COMFORT_SLOT = 24;
+const PROGRESS_DENSITY_STEP = 4;
+const PROGRESS_EVEN_EDGE = 100 / 3;
+const PROGRESS_MIN_EDGE = 12;
+const PROGRESS_EDGE_NOTCH = 7;
+
 type ProgressTick = {
   /** The turn's first step, for the click-to-jump. */
   firstStepId: string;
@@ -673,11 +667,11 @@ function ChainProgress({
 }) {
   const fillRef = useRef<HTMLDivElement | null>(null);
   const frameRef = useRef<number | null>(null);
+  const stripRef = useRef<HTMLDivElement | null>(null);
   const progressRef = useRef(1);
   // The tick area pans with the two edge buttons when turns are dense enough
   // to overflow; the strip itself never shows a scrollbar. The layer widens
   // only past a comfortable per-tick spacing, and the pan clamps to it.
-  const trackRef = useRef<HTMLDivElement | null>(null);
   const ticksLayerRef = useRef<HTMLDivElement | null>(null);
   const [canShift, setCanShift] = useState(false);
   const [pan, setPan] = useState(0);
@@ -685,6 +679,12 @@ function ChainProgress({
   // The tick layer is at least as wide as the track and widens to one
   // comfortable slot per turn; the pan window slides over it.
   const [layerWidth, setLayerWidth] = useState(0);
+  // Nothing to report until the chain actually overflows: the strip is hidden
+  // on first render and only appears once a turn can be placed on it.
+  const [visible, setVisible] = useState(false);
+  // The three columns are even by default. Dense turns give the track more of
+  // the strip in discrete notches; CSS animates between the two layouts.
+  const [edgePercent, setEdgePercent] = useState(PROGRESS_EVEN_EDGE);
   const shiftTicks = useCallback((direction: 1 | -1) => {
     const layer = ticksLayerRef.current;
     if (!layer) {
@@ -717,10 +717,13 @@ function ChainProgress({
       fillRef.current.style.width = `${progress * 100}%`;
     }
     if (range <= 4) {
-      // Everything is on screen: no ticks to place.
+      // Everything is on screen: no progress to report, so the whole strip
+      // (buttons included) steps aside instead of showing an idle bed.
       setTicks((previous) => (previous.length ? [] : previous));
+      setVisible(false);
       return;
     }
+    setVisible(true);
     const containerTop = container.getBoundingClientRect().top;
     const firstByTurn = new Map<number, ProgressTick>();
     for (const step of steps) {
@@ -749,13 +752,33 @@ function ChainProgress({
       (left, right) => left.ratio - right.ratio,
     );
     setTicks((previous) => (sameTicks(previous, next) ? previous : next));
-    // Dense turns: one comfortable slot each (13px) widens the layer beyond
-    // the track, which is what the pan buttons slide the window over.
-    const track = trackRef.current;
-    const trackWidth = track?.clientWidth ?? 0;
-    const width = Math.max(trackWidth, ticks.length * 13);
+    // Density is measured against the whole strip, never the track: the track
+    // itself is what the notch below animates, so feeding it back in would
+    // oscillate between "dense" and "comfortable" on every frame.
+    const stripWidth = stripRef.current?.clientWidth ?? 0;
+    const count = next.length;
+    const slot = count > 0 ? stripWidth / count : PROGRESS_COMFORT_SLOT;
+    const notch = Math.min(
+      3,
+      Math.max(
+        0,
+        Math.ceil((PROGRESS_COMFORT_SLOT - slot) / PROGRESS_DENSITY_STEP),
+      ),
+    );
+    const edge = Math.max(
+      PROGRESS_MIN_EDGE,
+      PROGRESS_EVEN_EDGE - notch * PROGRESS_EDGE_NOTCH,
+    );
+    setEdgePercent((previous) =>
+      Math.abs(previous - edge) < 0.01 ? previous : edge,
+    );
+    // The track's settled width at this notch (two edges plus the 4px gaps);
+    // the ticks layer eases to it, so a dense chain grows visibly instead of
+    // snapping to its final size.
+    const settledTrackWidth = Math.max(0, stripWidth * (1 - (2 * edge) / 100) - 8);
+    const width = Math.max(settledTrackWidth, count * 13);
     setLayerWidth((previous) => (previous === width ? previous : width));
-    setCanShift(width > trackWidth + 4);
+    setCanShift(width > settledTrackWidth + 4);
     // The breathing tick: the last turn whose position the reader has
     // reached. Compared against the rounded position so the state flips once
     // per tick, not per frame.
@@ -811,10 +834,18 @@ function ChainProgress({
   }, [measure, scrollRef]);
 
   return (
-    <div aria-hidden="false" className="agent-transcript__progress">
-      {/* Left / right pan buttons own fixed slots on either side of the
-          track (‹ track ›); dense turns widen the tick layer and the buttons
-          move the visible window, so no scrollbar ever appears. */}
+    <div
+      aria-hidden={visible ? "false" : "true"}
+      className={cn(
+        "agent-transcript__progress",
+        !visible && "is-hidden",
+      )}
+      ref={stripRef}
+      style={{ "--progress-edge": `${edgePercent}%` } as CSSProperties}
+    >
+      {/* The three columns start even; dense turns hand room to the middle
+          column in notches and the edge buttons pan the tick layer, so no
+          scrollbar ever appears and the whole strip stays balanced. */}
       <button
         aria-label="向左平移刻度"
         className={cn(

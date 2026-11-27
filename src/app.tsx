@@ -5804,6 +5804,8 @@ export default function App() {
   const previousAtomRef = useRef("");
   const navMenuRef = useRef<HTMLDivElement | null>(null);
   const navToggleRef = useRef<HTMLButtonElement | null>(null);
+  const menuControlRef = useRef<HTMLDivElement | null>(null);
+  const menuToggleRef = useRef<HTMLButtonElement | null>(null);
   const headerNavCollapsed = useMediaQuery(
     `(max-width: ${appLayout.headerNavCollapseMaxWidth}px)`,
   );
@@ -5814,6 +5816,74 @@ export default function App() {
       navToggleRef.current?.focus();
     }
   }, []);
+
+  const closeMenu = useCallback((restoreFocus = false) => {
+    setMenuOpen(false);
+    if (restoreFocus) {
+      menuToggleRef.current?.focus();
+    }
+  }, []);
+
+  // The brand menu needs the same dismissal rules as the collapsed nav menu:
+  // toggle alone left it open across an app switch, a tab switch or a click
+  // elsewhere on the page. Pointer, keyboard, focus and window blur all close
+  // it; focus moving into a portalled popup is the one deliberate exception.
+  useEffect(() => {
+    if (!menuOpen) {
+      return undefined;
+    }
+    const panel = menuControlRef.current;
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (!target || panel?.contains(target)) {
+        return;
+      }
+      closeMenu();
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        closeMenu(true);
+      }
+    };
+    const handleWindowBlur = () => {
+      closeMenu();
+    };
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        closeMenu();
+      }
+    };
+    const handleFocusOut = (event: FocusEvent) => {
+      const next = event.relatedTarget as Node | null;
+      if (!next) {
+        return;
+      }
+      if (panel?.contains(next)) {
+        return;
+      }
+      if (
+        next instanceof Element &&
+        next.closest(
+          '[role="listbox"], [role="menu"], [role="dialog"], [data-radix-popper-content-wrapper]',
+        )
+      ) {
+        return;
+      }
+      closeMenu();
+    };
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("blur", handleWindowBlur);
+    panel?.addEventListener("focusout", handleFocusOut);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("blur", handleWindowBlur);
+      panel?.removeEventListener("focusout", handleFocusOut);
+    };
+  }, [closeMenu, menuOpen]);
 
   // A viewport that grows past the breakpoint restores the horizontal nav, so
   // the disclosure state must not survive the resize.
@@ -8469,8 +8539,9 @@ export default function App() {
             </span>
             <small>AGENT STATE TRACE &amp; RUNTIME OBSERVATIONS</small>
           </div>
-          <div className="menu-control">
+          <div className="menu-control" ref={menuControlRef}>
             <IconAction
+              ref={menuToggleRef}
               label="追踪操作"
               onClick={() => setMenuOpen((current) => !current)}
               aria-expanded={menuOpen}
@@ -8482,7 +8553,7 @@ export default function App() {
               <div className="action-menu">
                 <HeaderNavActions
                   actions={headerNavActions}
-                  onSelect={() => setMenuOpen(false)}
+                  onSelect={() => closeMenu()}
                 />
               </div>
             ) : null}

@@ -245,10 +245,19 @@ test("the Agent view's header reads its execution time from the root display sta
     traceModel,
     /formatExecutionClock[\s\S]*?padStart\(2, "0"\)/,
   );
-  // While the message executes the reading still advances, so the accent
-  // marks it live; an ended message keeps the plain stat treatment.
-  assert.match(agentTranscript, /live && "is-live"/);
+  // The header clock is a run timer, not an atom badge: 执行 while running,
+  // 结束 once stopped. No failure / waiting / terminated vocabulary leaks in.
+  assert.match(agentTranscript, /live \? "is-live" : "is-ended"/);
+  assert.match(agentTranscript, /\{live \? "执行" : "结束"\} \{formatExecutionClock\(durationMs\)\}/);
+  assert.match(agentTranscript, /本条消息 · \{live \? "执行中" : "已结束"\}/);
+  const clock = agentTranscript.slice(
+    agentTranscript.indexOf("function RunClockChip"),
+    agentTranscript.indexOf("function StepStatusBadge"),
+  );
+  assert.doesNotMatch(clock, /runStatusLabels|is-\$\{status\}|heat-/);
   assert.match(stylesForOverlay, /\.agent-transcript__duration\.is-live \{[\s\S]*?color: var\(--teal\)/);
+  assert.match(stylesForOverlay, /\.agent-transcript__duration\.is-ended \{[\s\S]*?color: var\(--muted-soft, var\(--muted\)\)/);
+  assert.doesNotMatch(stylesForOverlay, /\.agent-transcript__duration\.is-(failed|terminated|waiting)/);
 });
 
 test("agent steps show a captured command and real thinking on first render", () => {
@@ -387,6 +396,16 @@ test("the rail row is the LOG row, not a second row imitation", () => {
   assert.match(overlay, /payload-overlay__atom-hover-fields/);
   assert.match(stylesForOverlay, /\.payload-overlay__atom-hover \{[\s\S]*?position: fixed/);
   assert.match(agentTranscript, /agent-transcript__stat-card/);
+  // The card is capped, folds long summaries behind one toggle, and can be
+  // clicked after the pointer reaches it to commit the same rail selection.
+  assert.match(stylesForOverlay, /\.payload-overlay__atom-hover-card \{[\s\S]*?max-height: min\(360px, calc\(100vh - 24px\)\)/);
+  assert.match(overlay, /HOVER_SUMMARY_CHARS = 220/);
+  assert.match(overlay, /"payload-overlay__atom-hover-summary"[\s\S]{0,240}"is-clamped"/);
+  assert.match(overlay, /payload-overlay__atom-hover-toggle/);
+  assert.match(overlay, /event\.stopPropagation\(\);\s*\n\s*setSummaryExpanded/);
+  assert.match(overlay, /onClick=\{\(\) => onSelectAtom\(card\.atomId, card\.id\)\}/);
+  assert.match(overlay, /点击卡片跳转到此原子/);
+  assert.match(stylesForOverlay, /\.payload-overlay__atom-hover-toggle:hover/);
   // Pair cross-reference marker, shared with the LOG and trajectory.
   assert.match(overlay, /<PairLinkMarker/);
   assert.match(stylesForOverlay, /\.payload-overlay__rail \.atomic-log__row \{/);
@@ -1124,6 +1143,12 @@ test("a single array item renders its content, not a key/value grid", () => {
   assert.match(bareBranch, /payloadToMarkdown\(item\)/);
   assert.doesNotMatch(bareBranch, /payload-item__fields|<dl>/);
   assert.match(itemBlocks, /<PayloadItemContent apiBase=\{apiBase\} bare item=\{items\[0\]\} \/>/);
+  // Long code / shell payloads are rendered whole: the character fold is for
+  // prose dumps only, and uses the shared code-signal inferencer rather than
+  // a second list of languages.
+  assert.match(itemBlocks, /import \{[\s\S]{0,160}inferCodeLanguage/);
+  assert.match(itemBlocks, /function isCodePayload\(raw: string, source: string\)/);
+  assert.match(itemBlocks, /length <= FOLD_TEXT_CHARS \|\| isCodePayload\(raw, source\)/);
   // A tool result nests its array under `toolResponse.content`; the Agent
   // view must find that array through the same list-shape definition.
   assert.match(agentTranscript, /return findFirstListPayload\(candidate\);/);
@@ -1144,17 +1169,35 @@ test("file and image values share one typed resource classifier", () => {
   assert.match(embeddedImage, /CAPTURED_IMAGE_MIME_TYPES/);
 });
 
-/** The progress strip's pan buttons have opaque chips in their own slots and
- * the strip lifts into the header edge, above its former -1px overlap. */
-test("the progress arrows own opaque slots and the strip sits higher", () => {
+/** The progress strip splits evenly, appears only when a chain overflows, and
+ * eases its way to a wider track when turns get dense. */
+test("the progress strip is even by default, hidden when idle, and grows smoothly", () => {
   const progressCss = stylesForOverlay.slice(
     stylesForOverlay.indexOf(".agent-transcript__progress {"),
-    stylesForOverlay.indexOf(".agent-transcript__progress-track {"),
+    stylesForOverlay.indexOf(".agent-transcript__progress-tick {"),
   );
   assert.match(progressCss, /margin-top: -3px/);
-  assert.match(progressCss, /grid-template-columns: 18px minmax\(0, 1fr\) 18px/);
-  assert.match(progressCss, /\.agent-transcript__progress-edge \{[\s\S]*?background: var\(--panel-raised\)/);
+  assert.match(
+    progressCss,
+    /grid-template-columns: var\(--progress-edge\) minmax\(0, 1fr\) var\(--progress-edge\)/,
+  );
+  assert.match(progressCss, /--progress-edge: 33\.333%/);
+  assert.match(progressCss, /transition:[\s\S]*?grid-template-columns 320ms/);
+  assert.match(
+    progressCss,
+    /\.agent-transcript__progress\.is-hidden \{[\s\S]*?height: 0[\s\S]*?opacity: 0/,
+  );
+  assert.match(progressCss, /\.agent-transcript__progress-ticks \{[\s\S]*?width 320ms/);
+  assert.match(progressCss, /\.agent-transcript__progress-fill \{[\s\S]*?width 180ms/);
+  // The arrows keep their opaque chips but sit centred in the even columns.
+  assert.match(progressCss, /\.agent-transcript__progress-edge \{[\s\S]*?justify-self: center[\s\S]*?background: var\(--panel-raised\)/);
   assert.doesNotMatch(progressCss, /background: none/);
   assert.doesNotMatch(progressCss, /opacity: 0\.6/);
   assert.match(agentTranscript, /className=\{cn\(\s*"agent-transcript__progress-edge"/);
+  // Density uses the stable strip width, so the animated track cannot feed
+  // back into its own layout decision.
+  assert.match(agentTranscript, /PROGRESS_COMFORT_SLOT = 24/);
+  assert.match(agentTranscript, /const stripWidth = stripRef\.current\?\.clientWidth \?\? 0/);
+  assert.match(agentTranscript, /!visible && "is-hidden"/);
+  assert.match(agentTranscript, /setEdgePercent\(\(previous\) =>/);
 });

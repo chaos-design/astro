@@ -7228,10 +7228,9 @@ pre,
 
 .payload-overlay__atom-hover-card {
   max-width: min(420px, calc(100vw - 24px));
-  /* Detail must be readable in full: the placement code already clamps the
-     card inside the viewport, so a fixed 340px cap only cut off long hook
-     summaries and extra field rows. */
-  max-height: calc(100vh - 24px);
+  /* A hover card must not blanket the console: it stays under a fixed cap,
+     the long summary folds inside it, and the expanded text scrolls here. */
+  max-height: min(360px, calc(100vh - 24px));
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 10px 12px 9px;
@@ -7240,7 +7239,9 @@ pre,
   background: var(--panel-raised);
   box-shadow: 0 12px 30px rgb(0 0 0 / 42%);
   color: var(--text);
+  cursor: pointer;
   font-size: var(--text-caption);
+  transition: max-height 240ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .payload-overlay__atom-hover-head {
@@ -7300,6 +7301,34 @@ pre,
   color: var(--text);
   line-height: 1.5;
   overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+/* A captured response can be thousands of characters: clamp the resting
+   summary to a readable slice and let the explicit toggle reveal the rest. */
+.payload-overlay__atom-hover-summary.is-clamped {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 8;
+  line-clamp: 8;
+  overflow: hidden;
+}
+
+.payload-overlay__atom-hover-toggle {
+  margin-top: 6px;
+  padding: 2px 8px;
+  border: 1px solid var(--line-bright);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: var(--text-overline);
+}
+
+.payload-overlay__atom-hover-toggle:hover {
+  border-color: var(--violet);
+  color: var(--text-strong);
 }
 
 .payload-overlay__atom-hover-hint {
@@ -7991,6 +8020,7 @@ pre,
    the tick's card states the turn on hover. Ticks sit above the bar so they
    stay clickable without the pointer leaving the strip. */
 .agent-transcript__progress {
+  --progress-edge: 33.333%;
   flex: none;
   /* Under the header, riding over its border edge to edge: the bed spans the
      whole strip, so the header's bottom hairline is covered for its entire
@@ -7999,12 +8029,29 @@ pre,
   padding: 0 2px 2px;
   position: relative;
   z-index: 1;
-  /* The pan buttons own fixed slots at either end: the tick window can never
-     grow under them, and their opaque surfaces hide the bed beneath. */
+  /* Even by default: left button, track and right button each own a third.
+     Dense turns hand the outer columns to the track in notches; the grid
+     columns and the opacity ease together so the growth reads as one motion. */
   display: grid;
-  grid-template-columns: 18px minmax(0, 1fr) 18px;
+  grid-template-columns: var(--progress-edge) minmax(0, 1fr) var(--progress-edge);
   align-items: center;
   column-gap: 4px;
+  transition:
+    grid-template-columns 320ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 200ms ease;
+}
+
+/* No overflowing chain, no bar: the strip reserves nothing until a turn can
+   actually be placed on it. Height goes to zero as well, so the header keeps
+   its original border while the strip is absent. */
+.agent-transcript__progress.is-hidden {
+  height: 0;
+  margin-top: 0;
+  padding-block: 0;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
 }
 
 /* Dense turns overflow the strip: the edge buttons pan the tick area and the
@@ -8016,6 +8063,7 @@ pre,
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  justify-self: center;
   width: 18px;
   height: 14px;
   padding: 0;
@@ -8057,7 +8105,9 @@ pre,
   position: absolute;
   inset: 0 auto 0 0;
   height: 100%;
-  transition: transform 160ms ease-out;
+  transition:
+    transform 240ms cubic-bezier(0.22, 1, 0.36, 1),
+    width 320ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .agent-transcript__progress::before {
@@ -8086,7 +8136,7 @@ pre,
     color-mix(in srgb, var(--teal) 70%, transparent),
     var(--violet)
   );
-  transition: width 120ms linear;
+  transition: width 180ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .agent-transcript__progress-tick {
@@ -11452,50 +11502,17 @@ pre,
   padding-right: 8px;
 }
 
-/* The displayed message's execution time, read from the same display state
- * the RUN HISTORY row reads. While the run executes the number still
- * advances, so the accent marks the reading as live; an ended run settles
- * on its recorded total in the plain stat treatment. */
+/* A run-level clock has two readings and two treatments: teal while it is
+   still counting, neutral once it stopped. It deliberately does not inherit
+   the atom's completed / failed / terminated / waiting palette. */
 .agent-transcript__duration.is-live {
   border-color: var(--teal);
   color: var(--teal);
 }
 
-/* A finished message reads its outcome in the clock's own colour: green for a
-   completed run (the plain treatment), amber for terminated, red for failed,
-   teal for waiting. The hover card supplies the reason. */
-.agent-transcript__duration.is-failed {
-  border-color: var(--red);
-  color: var(--red);
-}
-
-.agent-transcript__duration.is-terminated {
-  border-color: var(--amber);
-  color: var(--amber);
-}
-
-.agent-transcript__duration.is-waiting {
-  border-color: var(--teal);
-  color: var(--teal);
-}
-
-/* The accumulated clock is graded with the same heat ladder as the LOG when
-   the message is neither live nor status-coloured: the grade rides on the
-   text span so the chip's border stays calm. */
-.agent-transcript__duration.heat-fast {
-  color: var(--status-completed);
-}
-
-.agent-transcript__duration.heat-normal {
-  color: var(--teal);
-}
-
-.agent-transcript__duration.heat-slow {
-  color: var(--amber);
-}
-
-.agent-transcript__duration.heat-very-slow {
-  color: var(--status-failed);
+.agent-transcript__duration.is-ended {
+  border-color: color-mix(in srgb, var(--line) 70%, var(--muted));
+  color: var(--muted-soft, var(--muted));
 }
 
 .agent-transcript__status-reason {
