@@ -147,14 +147,14 @@
     跳过，避免两个效果互抢同一行。
     `src/lib/agent-transcript-scroll.ts` 的 `isAgentTranscriptAtBottom`（24px 容差）
     单一判定是否仍在底部，`isLatestStepVisible` 判定最新步骤是否仍在视口内
-    （高回复未到最底时也可能可见）。overlay 的
+    （高回复未到最底时也可能可见），`latestStepHiddenOutside` 给出最新步骤
+    完全离开视口的像素数。overlay 的
     `agentLocateRequest` 只由显式点选递增，实时跟随不抢阅读位置；新步骤到达而
-    读者不在最新步骤时不推其阅读位置，只累计条数。居中按钮由**向上滚动
-    手势**触发（`scrolledUpRef`，连续两次 `scrollTop` 读数），而不仅是最新
-    步骤滚出视口：任何向上滚动都会唤起它（包括程序定位到更早步骤），向下
-    滚动及到达绝对底部则撤下；实时跟随在最新步骤仍在视口内时继续
-    （`atBottomRef = absoluteBottom || latestVisible`），绝对底部同时重置
-    手势基线。按钮出现后，运行中的卡片带待读
+    读者不在最新步骤时不推其阅读位置，只累计条数。居中按钮只看**位置**：
+    最新步骤越出视口超过 `AGENT_SCROLL_HIDDEN_STEP_THRESHOLD`（64px）即出现，
+    不读滚动方向、不保留手势 latch；程序定位到更早步骤与向上滚动落在同一
+    状态，向下滚回或到达绝对底部则撤下。实时跟随在最新步骤仍在视口内时
+    继续（`atBottomRef = absoluteBottom || latestVisible`）。按钮出现后，运行中的卡片带待读
     条数，结束后的同一按钮变为「快速滚动到底部」；定位**最新**步骤
     （实时跟随、跳回、或显式点选最后一步）会把容器钉到**绝对底部**
     （`scrollHeight`），让末条贴住底边并从这里恢复跟随，只有定位**更早**
@@ -185,7 +185,14 @@
     `invocation` 字符串只是它的薄封装；diff 字段（`old/new`/`content`）与命令
     自带的 `command`/`cmd` 键均排除，不重复打印；按**词边界换行**
     （`overflow-wrap: break-word`、`white-space: pre-wrap`），不在词中间截断
-    也不横向滚动；
+    也不横向滚动；数组结果只有一个元素时**直接渲染该元素的内容**——先取
+    `text`/`message`/`content` 等正文字段（`splitPayloadPreview`），没有正文
+    才退回通用视图，不套一层 key-value 字段表；嵌在 `toolResponse.content`
+    里的数组由 `findFirstListPayload` 用同一个紧凑列表判据取出，不再只读
+    载荷根层；图片与文件由 `src/lib/captured-image.ts` 的**唯一分类器**
+    判定（MIME 白名单同源），data-URL / 远端 / 本地图片渲染为图片，非图片
+    附件渲染为带路径的卡片，Agent 正文、工具调用字段与 Markdown 清理共用
+    这套判定，不另写扩展名正则；
     `Preview` 分两块区域：「原子内容」（真实文本，代码/JSON 高亮、Markdown 渲染）
     与「相关数据」（**全部**字段：含 content 键、空值、null/false/0 与嵌套路径，
     注释优先；对象数组保留形状——每个元素自带一行带下标的**分组行**

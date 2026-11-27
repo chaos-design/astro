@@ -10,17 +10,21 @@
  * payload untouched.
  */
 
+import { CAPTURED_IMAGE_MIME_TYPES } from "./captured-image.ts";
+
 // No whitespace in the encoded body: a whitespace-inclusive class would keep
 // consuming the words *after* an inline image in a JSON string.
 export const DATA_IMAGE_PATTERN =
-  /data:image\/(png|jpe?g|gif|webp|avif|bmp);base64,([A-Za-z0-9+/=]+)/g;
+  /data:image\/([A-Za-z0-9.+-]+);base64,([A-Za-z0-9+/=]+)/g;
 
-/** The set of MIME types the console and the Markdown sanitizer both allow. */
-const ALLOWED_MIME = new Set(["png", "jpeg", "jpg", "gif", "webp", "avif", "bmp"]);
-
+/**
+ * The whitelist lives with the captured-resource classifier (`captured-image.ts`)
+ * so the same data URL is an image — or is not — on every surface: item blocks,
+ * call fields, the Markdown sanitizer and this rewrite.
+ */
 function normalize(match: RegExpExecArray): string | null {
   const mime = match[1].toLowerCase();
-  if (!ALLOWED_MIME.has(mime)) {
+  if (!CAPTURED_IMAGE_MIME_TYPES.has(mime)) {
     return null;
   }
   const encoded = match[2].replace(/\s/g, "");
@@ -57,7 +61,7 @@ export function replaceDataImages(
   return text.replace(
     DATA_IMAGE_PATTERN,
     (match, mime: string, encoded: string) =>
-      ALLOWED_MIME.has(mime.toLowerCase()) && encoded.replace(/\s/g, "")
+      CAPTURED_IMAGE_MIME_TYPES.has(mime.toLowerCase()) && encoded.replace(/\s/g, "")
         ? placeholder
         : match,
   );

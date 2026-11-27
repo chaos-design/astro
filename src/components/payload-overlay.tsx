@@ -1017,11 +1017,17 @@ export function PayloadOverlay({
             <span className="eyebrow">
               {variant === "question" ? "USER QUESTION" : "CAPTURED PAYLOAD"}
             </span>
-            <span className="payload-overlay__agent">
-              <PlatformIcon platform={platform} width={20} height={20} />
-              <span className="payload-overlay__agent-name">
-                {getAtomPlatformConfig(platform).label}
+            {/* The stepper belongs with the run it steps through: it sits in
+                the same row as the producing agent's name, not at the far edge
+                of the header next to the close button. */}
+            <span className="payload-overlay__identity">
+              <span className="payload-overlay__agent">
+                <PlatformIcon platform={platform} width={20} height={20} />
+                <span className="payload-overlay__agent-name">
+                  {getAtomPlatformConfig(platform).label}
+                </span>
               </span>
+              {messageStepper ? <MessageStepper {...messageStepper} /> : null}
             </span>
 
             <DialogTitle className="sr-only">{label}</DialogTitle>
@@ -1052,9 +1058,6 @@ export function PayloadOverlay({
               Code
             </ToggleGroupItem>
           </ToggleGroup>
-          {/* Right edge, after the view switch: the stepper sizes to its
-              content (‹ n/N ›), never stretching into the leftover space. */}
-          {messageStepper ? <MessageStepper {...messageStepper} /> : null}
         </header>
         <div className="payload-overlay__main">
           {atoms.length > 0 ? (

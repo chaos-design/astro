@@ -683,6 +683,15 @@ The inspector provides:
   `captured`, keeping topology metadata out of the layer. `Code` is the raw,
   token-coloured JSON of the same payload, so both readings stay in one dialog;
   with nothing previewable the overlay says so and `Code` still shows it.
+  Images and files are typed by one classifier (`src/lib/captured-image.ts`
+  owns the MIME whitelist): whitelisted data URLs, remote image URLs and local
+  image paths render as images (raw base64 becomes a short 内嵌图片 label with
+  the image appended), while a `.pdf` or another non-image file becomes an
+  attachment chip with its captured path instead of a broken `<img>`. A
+  one-element array renders that element's content directly — its `text` /
+  `message` / `content` field first, the generic view only as a fallback — with
+  no key/value field grid around it. The Agent bodies, the Preview pane and
+  tool-call fields all read the same classifier; `Code` keeps the raw payload.
   The default `Agent` view presents the same run as the artifacts an Agent
   actually produces: every `Reasoning` event is its own thinking block that
   shows the real captured thinking by default and can be collapsed
@@ -701,14 +710,17 @@ The inspector provides:
   of silently dropping data. Questions reuse the existing read-only preview
   or the one actionable form; answerability still comes from the interaction
   state. Selecting a step and selecting a rail row are the same state, with
-  instant positioning. Only a **manual upward scroll** reveals the
-  bottom-centered spinning "back to latest" pill — programmatic locating and
-  live pinning never trigger it. Live events no longer yank the reader down;
-  new steps only count up on the pill, and a click jumps straight to the last
-  step and clears the count. Scrolling back to the bottom dismisses the pill
-  and resumes automatic following, so new content keeps appending. Once the
-  run has ended, stopping above the last step turns the same control into a
-  plain "scroll to bottom" button without the spinner. While the
+  instant positioning. The bottom-centered spinning "back to latest" pill
+  appears whenever the newest step has left the viewport by more than 64px,
+  regardless of scroll direction — an upward wheel, a downward overshoot or a
+  programmatic locate to an older step all land in the same state; while any
+  part of the newest message is still visible, the pill stays away. Live
+  events no longer yank the reader down; new steps only count up on the pill,
+  and a click jumps straight to the last step and clears the count. Returning
+  to the newest step or the bottom dismisses the pill and resumes automatic
+  following, so new content keeps appending. Once the run has ended, stopping
+  above the last step turns the same control into a plain "scroll to bottom"
+  button without the spinner, with the same position-only rule. While the
   run is still executing, a spinning
   loading state follows the newest step and disappears when it finishes. The
   scroll test is throttled to one layout read per frame, so the console's

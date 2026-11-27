@@ -198,13 +198,14 @@
     bottom). The overlay bumps `agentLocateRequest` only for an explicit pick
     so live follow never steals the reader's scroll; arriving steps never
     push a reader who is above the newest step — they only add up the count.
-    The centered pill is armed by an upward scroll gesture (`scrolledUpRef`
-    from consecutive `scrollTop` reads), not merely by the newest step
-    leaving view: any upward scroll arms it, including a programmatic locate
-    to an older step; downward movement and the absolute bottom disarm it.
-    Live pinning keeps following while the newest step is visible
-    (`atBottomRef = absoluteBottom || latestVisible`); the absolute bottom
-    also resets the gesture baseline. Once
+    `latestStepHiddenOutside` measures how far the newest step has left the
+    viewport. The centered pill reads that position only: once the step is
+    fully out of view by more than `AGENT_SCROLL_HIDDEN_STEP_THRESHOLD` (64px)
+    it appears, with no scroll-direction latch — a programmatic locate to an
+    older step and an upward wheel land in the same state, while returning
+    downward or reaching the absolute bottom disarms it. Live pinning keeps
+    following while the newest step is visible
+    (`atBottomRef = absoluteBottom || latestVisible`). Once
     armed, a live run's pill carries the pending-step count and an ended
     run's becomes a plain "scroll to bottom" control. Locating the *newest*
     step (live follow, jump, or an explicit pick of the last step)
@@ -247,7 +248,17 @@
     string is a thin formatter over it. Diff-carrying fields and a command's
     own `command` / `cmd` key are excluded so nothing prints twice. Both wrap
     at word boundaries (`overflow-wrap: break-word`, `white-space: pre-wrap`)
-    instead of truncating mid-word or scrolling sideways. The overlay's left rail is the run's **message chain in the
+    instead of truncating mid-word or scrolling sideways. A one-element array
+    renders its element's content directly — `splitPayloadPreview` reads the
+    `text` / `message` / `content` body first and the generic view is only a
+    fallback, never a key/value field grid; an array nested in
+    `toolResponse.content` is found by `findFirstListPayload` using the same
+    compact-list test, not by reading only the payload root. Images and files
+    are typed by the single classifier in `src/lib/captured-image.ts` (one MIME
+    whitelist): data URLs, remote and local images render as images, non-image
+    attachments as a path-labelled chip; Agent bodies, call fields and the
+    Markdown sanitizer all use it instead of growing another extension regex.
+    The overlay's left rail is the run's **message chain in the
     LOG's own data standard**, fed by `overlayAtoms`, mapped from the same
     `buildLogEntries(activeEvents, …)` result the LOG list prints (app.tsx):
     one row per **event** (carrying the harness atom id it commits to), split

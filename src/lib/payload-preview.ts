@@ -392,44 +392,83 @@ export function splitPayloadPreview(value: unknown, depth = 0, seen = new WeakSe
  * Detection lives here, beside the other preview heuristics, so both panes
  * make the same call without importing each other.
  */
+/** The single shape test behind both list detection and list lookup. */
+function isCompactLabelledList(value: unknown[]): boolean {
+  if (!value.length) {
+    return false;
+  }
+  const records = value.filter(
+    (item) => item !== null && typeof item === "object" && !Array.isArray(item),
+  );
+  if (records.length !== value.length) {
+    return false;
+  }
+  // A list of records is a list when any item has a primary label and the
+  // records are compact (no nested objects) — the checklist renderer's own
+  // contract. Mixed scalar arrays are joined prose, not a list here.
+  const compact = records.every((record) =>
+    Object.values(record as Record<string, unknown>).every(
+      (item) => item === null || item === undefined || typeof item !== "object",
+    ),
+  );
+  const labelled = records.some((record) =>
+    ["content", "label", "title", "name", "text", "subject", "description"].some(
+      (key) => typeof (record as Record<string, unknown>)[key] === "string",
+    ),
+  );
+  return compact && labelled;
+}
+
 export function hasListPayload(value: unknown, depth = 0, seen = new WeakSet<object>()): boolean {
   if (depth > 6 || value === null || typeof value !== "object" || seen.has(value)) {
     return false;
   }
   seen.add(value);
   if (Array.isArray(value)) {
-    if (!value.length) {
-      return false;
-    }
-    const records = value.filter(
-      (item) => item !== null && typeof item === "object" && !Array.isArray(item),
-    );
-    if (records.length === value.length && records.length > 0) {
-      // A list of records is a list when any item has a primary label and the
-      // records are compact (no nested objects) — the checklist renderer's
-      // own contract. Mixed scalar arrays are joined prose, not a list here.
-      const compact = records.every((record) =>
-        Object.values(record as Record<string, unknown>).every(
-          (item) =>
-            item === null ||
-            item === undefined ||
-            typeof item !== "object",
-        ),
-      );
-      const labelled = records.some((record) =>
-        ["content", "label", "title", "name", "text", "subject", "description"].some(
-          (key) => typeof (record as Record<string, unknown>)[key] === "string",
-        ),
-      );
-      if (compact && labelled) {
-        return true;
-      }
+    if (isCompactLabelledList(value)) {
+      return true;
     }
     return value.some((item) => hasListPayload(item, depth + 1, seen));
   }
   return Object.values(value as Record<string, unknown>).some(
     (item) => hasListPayload(item, depth + 1, seen),
   );
+}
+
+/**
+ * The first list-shaped array inside a payload, however deeply a tool result
+ * wraps it (`toolResponse.content`, a captured envelope, …). Detection is the
+ * same `isCompactLabelledList` used by `hasListPayload`, so a payload that
+ * claims to be a list always has an array the block renderer can find.
+ */
+export function findFirstListPayload(
+  value: unknown,
+  depth = 0,
+  seen = new WeakSet<object>(),
+): unknown[] | null {
+  if (depth > 6 || value === null || typeof value !== "object" || seen.has(value)) {
+    return null;
+  }
+  seen.add(value);
+  if (Array.isArray(value)) {
+    if (isCompactLabelledList(value)) {
+      return value;
+    }
+    for (const item of value) {
+      const found = findFirstListPayload(item, depth + 1, seen);
+      if (found) {
+        return found;
+      }
+    }
+    return null;
+  }
+  for (const item of Object.values(value as Record<string, unknown>)) {
+    const found = findFirstListPayload(item, depth + 1, seen);
+    if (found) {
+      return found;
+    }
+  }
+  return null;
 }
 
 /**

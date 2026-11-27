@@ -168,24 +168,28 @@ test("the Agent view keeps a reader's scroll and offers a jump to the newest ste
   // few pixels of the bottom: a tall last reply can be visible well above it.
   assert.match(agentTranscript, /isLatestStepVisible\(/);
   assert.match(agentTranscript, /atBottomRef\.current = absoluteBottom \|\| latestVisible/);
-  // The centered pill arms on the reader's own upward gesture only: a
-  // position test fired on every live append (between a step landing and the
-  // pin running the distance crossed the threshold), flashing the pill into
-  // an append the reader never scrolled away from. The gesture latch still
-  // clears by position, so settling back near the bottom disarms it.
-  assert.match(agentTranscript, /setShowJump\(live \|\| scrollable\)/);
-  assert.match(agentTranscript, /scrolledUpRef\.current = top < lastScrollTopRef\.current - 1/);
+  // Direction is not consulted: the pill reads how far the newest step has
+  // left the viewport, so an explicit locate and a wheel gesture land on the
+  // same state. No `scrolledUpRef` / consecutive scrollTop latch may creep
+  // back in.
+  assert.match(agentTranscript, /latestStepHiddenOutside\(viewport, stepRect\)/);
   assert.match(
     agentTranscript,
-    /if \(scrolledUpRef\.current\) \{[\s\S]{0,40}setShowJump\(live \|\| scrollable\)/,
+    /hidden > AGENT_SCROLL_HIDDEN_STEP_THRESHOLD && \(live \|\| scrollable\)/,
   );
-  assert.doesNotMatch(
+  assert.doesNotMatch(agentTranscript, /scrolledUpRef|lastScrollTopRef/);
+  assert.doesNotMatch(agentTranscript, /AGENT_SCROLL_JUMP_THRESHOLD/);
+  // With the gesture latch gone, the append pin and the re-check must both
+  // run before paint — otherwise a streamed batch paints one frame with the
+  // new step below the fold and the pill already armed.
+  assert.match(
     agentTranscript,
-    /if \(scrolledUpRef\.current \|\| scrolledUp\)/,
+    /useLayoutEffect\(\(\) => \{\s*\n\s*const count = view\.steps\.length/,
   );
-  // The position rule is a named threshold, shared with the tests, not a
-  // magic number inline in the component.
-  assert.match(agentTranscript, /distanceFromBottom > AGENT_SCROLL_JUMP_THRESHOLD/);
+  assert.match(
+    agentTranscript,
+    /useLayoutEffect\(\(\) => \{\s*\n\s*syncScrollState\(\);/,
+  );
   // The bottom loading row is only the "reader is at the newest step" read;
   // once the newest step leaves the viewport the centered pill owns the
   // loading state instead, so the two never show at once.
@@ -995,6 +999,26 @@ test("the header leads with the agent identity and no longer repeats it on the r
   assert.match(stylesForOverlay, /\.payload-overlay__agent \{\s*\n\s*display: inline-flex/);
 });
 
+/** The message stepper is part of the agent identity row, not a second badge
+ * on the header's far right: the view switch stays centered between the two
+ * columns and the stepper sits immediately after the agent's name. */
+test("the message stepper sits beside the agent name", () => {
+  const copy = overlay.slice(
+    overlay.indexOf('<div className="payload-overlay__copy">'),
+    overlay.indexOf("</header>"),
+  );
+  const badge = copy.indexOf("payload-overlay__agent-name");
+  const stepper = copy.indexOf("<MessageStepper {...messageStepper} />");
+  assert.ok(badge >= 0 && stepper > badge, "stepper follows the agent name");
+  assert.match(copy, /<span className="payload-overlay__identity">/);
+  assert.match(stylesForOverlay, /\.payload-overlay__identity \{[\s\S]*?display: flex/);
+  const stepperCss = stylesForOverlay.slice(
+    stylesForOverlay.indexOf(".run-stepper {"),
+    stylesForOverlay.indexOf(".run-stepper__button {"),
+  );
+  assert.doesNotMatch(stepperCss, /justify-self/);
+});
+
 /** The 定位 affordance animates the rail into view while the scroll-into-view
  * for live follow stays instant. */
 test("a locate request smooth-scrolls the rail; the reveal target is shared", () => {
@@ -1077,4 +1101,60 @@ test("the replay footer opens the global payload dialog when a message is select
   assert.match(app, /onOpenOverlay=\{.*setOverlayOpen\(true\)/);
   // The button itself is the inspector's expand glyph.
   assert.match(app, /label="展开全局弹窗查看选中消息"/);
+});
+
+const itemBlocks = readFileSync(
+  new URL("../src/components/payload-item-blocks.tsx", import.meta.url),
+  "utf8",
+);
+const capturedImage = readFileSync(
+  new URL("../src/lib/captured-image.ts", import.meta.url),
+  "utf8",
+);
+
+/** A one-item array is one message: its content is rendered directly, never
+ * tabulated. Multi-item arrays keep per-record blocks for context. */
+test("a single array item renders its content, not a key/value grid", () => {
+  const bareBranch = itemBlocks.slice(
+    itemBlocks.indexOf("if (bare) {"),
+    itemBlocks.indexOf("if (item !== null"),
+  );
+  assert.match(bareBranch, /splitPayloadPreview\(item\)/);
+  assert.match(bareBranch, /contentToMarkdown\(split\.content/);
+  assert.match(bareBranch, /payloadToMarkdown\(item\)/);
+  assert.doesNotMatch(bareBranch, /payload-item__fields|<dl>/);
+  assert.match(itemBlocks, /<PayloadItemContent apiBase=\{apiBase\} bare item=\{items\[0\]\} \/>/);
+  // A tool result nests its array under `toolResponse.content`; the Agent
+  // view must find that array through the same list-shape definition.
+  assert.match(agentTranscript, /return findFirstListPayload\(candidate\);/);
+  assert.doesNotMatch(agentTranscript, /const firstArray = Object\.values\(/);
+});
+
+/** One resource classifier types file paths, image paths and data URLs on
+ * every preview surface; a non-image file is a chip, never a broken <img>. */
+test("file and image values share one typed resource classifier", () => {
+  assert.match(capturedImage, /export function classifyCapturedResource\(/);
+  assert.match(capturedImage, /kind: "file"/);
+  assert.match(capturedImage, /CAPTURED_IMAGE_MIME_TYPES/);
+  assert.match(itemBlocks, /classifyCapturedResource\(item, apiBase\)/);
+  assert.match(itemBlocks, /payload-to-markdown|payloadToMarkdown/);
+  assert.match(itemBlocks, /className="payload-item__file"/);
+  assert.match(agentTranscript, /classifyCapturedResource\(field\.value, ""\)/);
+  assert.doesNotMatch(agentTranscript, /IMAGE_SOURCE_EXT|imageFieldKind/);
+  assert.match(embeddedImage, /CAPTURED_IMAGE_MIME_TYPES/);
+});
+
+/** The progress strip's pan buttons have opaque chips in their own slots and
+ * the strip lifts into the header edge, above its former -1px overlap. */
+test("the progress arrows own opaque slots and the strip sits higher", () => {
+  const progressCss = stylesForOverlay.slice(
+    stylesForOverlay.indexOf(".agent-transcript__progress {"),
+    stylesForOverlay.indexOf(".agent-transcript__progress-track {"),
+  );
+  assert.match(progressCss, /margin-top: -3px/);
+  assert.match(progressCss, /grid-template-columns: 18px minmax\(0, 1fr\) 18px/);
+  assert.match(progressCss, /\.agent-transcript__progress-edge \{[\s\S]*?background: var\(--panel-raised\)/);
+  assert.doesNotMatch(progressCss, /background: none/);
+  assert.doesNotMatch(progressCss, /opacity: 0\.6/);
+  assert.match(agentTranscript, /className=\{cn\(\s*"agent-transcript__progress-edge"/);
 });

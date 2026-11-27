@@ -1,6 +1,12 @@
-import { useState } from "react";
-import { contentToMarkdown } from "@/lib/payload-preview";
-import { resolveCapturedImage } from "@/lib/captured-image";
+import { useState, type ReactNode } from "react";
+import { contentToMarkdown, splitPayloadPreview } from "@/lib/payload-preview";
+import { findPayloadFilePath } from "@/lib/numbered-code";
+import { payloadToMarkdown } from "@/lib/payload-markdown";
+import {
+  classifyCapturedResource,
+  type CapturedResource,
+} from "@/lib/captured-image";
+import { markdownWithEmbeddedImages } from "@/lib/embedded-image";
 import { MarkdownView } from "@/components/markdown-view";
 import { cn } from "@/lib/utils";
 
@@ -9,55 +15,90 @@ import { cn } from "@/lib/utils";
  * reader is looking. */
 const FOLD_TEXT_CHARS = 600;
 
-function FoldableText({ text }: { text: string }) {
+function FoldableMarkdown({
+  source,
+  length,
+}: {
+  source: string;
+  length: number;
+}) {
   const [expanded, setExpanded] = useState(false);
-  if (text.length <= FOLD_TEXT_CHARS) {
-    return <MarkdownView source={contentToMarkdown(text)} />;
+  if (length <= FOLD_TEXT_CHARS) {
+    return <MarkdownView source={source} />;
   }
+  // Fold by source length, not raw characters: a fenced source is the text the
+  // reader sees, and folding on the raw value could cut a fence mid-line.
+  const head = expanded
+    ? source
+    : `${source.slice(0, FOLD_TEXT_CHARS)}\n\n…`;
   return (
     <div className="payload-item__fold">
-      {expanded ? (
-        <MarkdownView source={contentToMarkdown(text)} />
-      ) : (
-        <MarkdownView source={contentToMarkdown(`${text.slice(0, FOLD_TEXT_CHARS)}…`)} />
-      )}
+      <MarkdownView source={head} />
       <button
         aria-expanded={expanded}
         className="payload-item__fold-toggle"
         onClick={() => setExpanded((current) => !current)}
         type="button"
       >
-        {expanded ? "收起" : `展开（${text.length} 字符）`}
+        {expanded ? "收起" : `展开（${length} 字符）`}
       </button>
     </div>
   );
 }
 
-/**
- * One array entry as its own block. Strings keep the shared content decision
- * (code fences, prose stays a document); objects render as a quiet key/value
- * grid instead of a JSON dump followed by a `key=value · key=value` echo —
- * the dump repeated every field twice, which is what made an array of records
- * read as noise.
- */
+/** A non-image attachment: the browser cannot open a local file and the
+ * service only previews images, so the honest rendering is a labelled chip
+ * with the captured path — never an <img> that fails to load. */
+function FileChip({ resource }: { resource: Extract<CapturedResource, { kind: "file" }> }) {
+  return (
+    <span className="payload-item__file">
+      <span aria-hidden="true" className="payload-item__file-glyph">📎</span>
+      <span className="payload-item__file-name">
+        {resource.name || resource.path}
+      </span>
+      <code title={resource.path}>{resource.path}</code>
+    </span>
+  );
+}
+
+/** One array entry's content. Images and files are typed resources; every
+ * other value is content and goes through the shared Markdown decision. */
 function PayloadItemContent({
   apiBase,
   item,
+  bare = false,
 }: {
   apiBase: string;
   item: unknown;
-}) {
-  // An image resource renders as the image, whatever shape carried it.
-  const image = resolveCapturedImage(item, apiBase);
-  if (image) {
+  /** A single-element array: render the value itself, never a key/value grid. */
+  bare?: boolean;
+}): ReactNode {
+  const resource = classifyCapturedResource(item, apiBase);
+  if (resource.kind === "image") {
     return (
       <img
-        alt="捕获的图片资源"
+        alt={resource.name ? `捕获的图片：${resource.name}` : "捕获的图片资源"}
         className="payload-item__image"
         loading="lazy"
-        src={image.src}
+        src={resource.src}
       />
     );
+  }
+  if (resource.kind === "file") {
+    return <FileChip resource={resource} />;
+  }
+  if (bare) {
+    // A one-item array is one message: read the field that *is* the content
+    // (`text`, `message`, `content`, …) instead of dumping every scalar value.
+    // A record with no content field still falls back to the generic view.
+    const split = typeof item === "string" ? null : splitPayloadPreview(item);
+    const text = split?.content.trim()
+      ? contentToMarkdown(split.content, findPayloadFilePath(item))
+      : typeof item === "string"
+        ? contentToMarkdown(item)
+        : payloadToMarkdown(item);
+    const source = markdownWithEmbeddedImages(text, item);
+    return <FoldableMarkdown length={text.length} source={source} />;
   }
   if (item !== null && typeof item === "object" && !Array.isArray(item)) {
     const entries = Object.entries(item as Record<string, unknown>).filter(
@@ -77,7 +118,8 @@ function PayloadItemContent({
       </dl>
     );
   }
-  return <FoldableText text={String(item)} />;
+  const text = contentToMarkdown(String(item));
+  return <FoldableMarkdown length={String(item).length} source={text} />;
 }
 
 /**
@@ -95,13 +137,13 @@ export function PayloadItemBlocks({
   items: readonly unknown[];
   className?: string;
 }) {
-  // A single entry needs no block wrapper: the important content renders
-  // directly (the key/value grid or the fenced value), and only a stack of
-  // records earns the per-item blocks.
+  // A single entry is one message, not a record to tabulate: render what it
+  // carried (a string, a record's real content, an image, a file chip) with no
+  // `[0]` frame and no key/value grid around it.
   if (items.length === 1) {
     return (
       <div className={cn("payload-item-list is-single", className)}>
-        <PayloadItemContent apiBase={apiBase} item={items[0]} />
+        <PayloadItemContent apiBase={apiBase} bare item={items[0]} />
       </div>
     );
   }

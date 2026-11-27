@@ -908,7 +908,17 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   blobs become a short label and the distinct sources append as Markdown
   image lines in every Agent step body and the Preview content pane; the
   Code pane keeps the untouched raw payload. Do not grow a second data-URL
-  renderer in a component. The
+  renderer in a component. Whether a captured value is an image, another file
+  or plain text is decided only by `classifyCapturedResource`
+  (`src/lib/captured-image.ts`), whose MIME whitelist is also imported by the
+  embedded-image helper and the Markdown sanitizer — an Agent call field, an
+  item block and the Preview pane must never disagree about the same value.
+  A non-image file renders as a path-labelled attachment chip, never a broken
+  `<img>`; a payload record that also carries body text stays content, not an
+  attachment. A one-element array renders that element's own content (body
+  fields first via `splitPayloadPreview`) with no key/value grid, and an array
+  nested under `toolResponse.content` is found by `findFirstListPayload`
+  through the same compact-list test as `hasListPayload`. The
   Input/Output/Raw tabs and the global expand layer share these two sources;
   `src/components/payload-overlay.tsx` only renders them — it must not grow a
   second conversion or sanitizer. The expand control opens a Dialog (portaled
@@ -1027,13 +1037,14 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   explicit pick, live follow counts new steps behind a bottom-centered pill
   without moving the reader, and the bottom / latest-step tests live only in
   `src/lib/agent-transcript-scroll.ts` (`isAgentTranscriptAtBottom`,
-  `isLatestStepVisible`). The centered pill is armed by an **upward scroll
-  gesture** (`scrolledUpRef` from consecutive `scrollTop` reads), not merely
-  by the newest step leaving view: any upward scroll arms it, including a
-  programmatic locate to an older step; downward movement and reaching the
-  absolute bottom disarm it. Live pinning still follows while the newest step
-  is on screen (`atBottomRef = absoluteBottom ||
-  latestVisible`); the absolute bottom resets the gesture baseline. Once armed, a live run's pill carries the pending-step
+  `isLatestStepVisible`, `latestStepHiddenOutside`). The centered pill reads
+  **position only**, never scroll direction: `latestStepHiddenOutside` is the
+  one measure of how far the newest step has left the viewport, and the pill
+  appears once it exceeds `AGENT_SCROLL_HIDDEN_STEP_THRESHOLD` (64px). An
+  upward wheel, a downward overshoot and a programmatic locate to an older
+  step land in the same state; returning to the newest step or the absolute
+  bottom disarms it. Live pinning still follows while the newest step is on
+  screen (`atBottomRef = absoluteBottom || latestVisible`). Once armed, a live run's pill carries the pending-step
   count and an ended run's becomes a plain scroll-to-bottom control. Locating
   the *newest* step — a live follow, a
   jump, or an explicit pick of the last step alike — pins the container to the

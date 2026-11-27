@@ -27,6 +27,7 @@ import typescript from "highlight.js/lib/languages/typescript";
 import xml from "highlight.js/lib/languages/xml";
 import yaml from "highlight.js/lib/languages/yaml";
 import { Marked } from "marked";
+import { CAPTURED_IMAGE_MIME_TYPES } from "./captured-image.ts";
 import { parseNumberedCode } from "./numbered-code.ts";
 
 // The captured payloads the console realistically carries — the docs site can
@@ -333,7 +334,13 @@ function isDangerousUrl(value: string): boolean {
     return true;
   }
   // Image data URLs are inert; every other data URL is a smuggling channel.
-  return scheme.startsWith("data:") && !scheme.startsWith("data:image/");
+  // The MIME whitelist is the captured-resource classifier's one definition,
+  // so a `data:image/tiff` that no surface can classify is stripped here too.
+  const imageMime = /^data:image\/([a-z0-9.+-]+)/i.exec(scheme);
+  return (
+    scheme.startsWith("data:") &&
+    !(imageMime && CAPTURED_IMAGE_MIME_TYPES.has(imageMime[1].toLowerCase()))
+  );
 }
 
 /**

@@ -7,23 +7,23 @@
  * without yanking them. Whether the newest step is in the reader's viewport
  * drives the centered affordance: it stays hidden while the newest message is
  * visible and appears — as a loading pill while the run executes, as a plain
- * quick-scroll button after it ends — only once that step has scrolled out of
- * view. A manual upward gesture is one way the step leaves the viewport, not a
- * gate of its own: programmatic locating of an older step scrolls it away too.
+ * quick-scroll button after it ends — only once that step has left the view by
+ * more than the threshold. Scroll direction is never consulted: the control
+ * answers "is the newest message still on screen", not "which way did the
+ * reader last wheel".
  */
 export const AGENT_SCROLL_BOTTOM_EPSILON = 24;
 
 /**
- * How far above the bottom a reader must sit before the centered jump pill
- * offers itself. A few pixels short of the last step is still "the bottom"
- * (live follow keeps pinning, the pill stays out of the way); a deliberate
- * scroll up past this line is a request to read history, and the pill shows.
- * It is a position rule, not a gesture one — the reader can arrive up there
- * scrolling up *or* settle there scrolling down; what matters is the
- * distance from the bottom, so the pill never flickers with the last wheel
- * direction.
+ * How far the newest step must sit *outside* the viewport before the centered
+ * jump pill offers itself. A few pixels of overlap still count as "the reader
+ * is looking at the newest message" (live follow keeps pinning, the pill stays
+ * out of the way); once the whole step is out of view by this much, the reader
+ * is reading history and the jump reads as available. It is a position rule —
+ * the reader can arrive up there scrolling up, scrolling down or through an
+ * explicit locate — so the pill never flickers with the last wheel direction.
  */
-export const AGENT_SCROLL_JUMP_THRESHOLD = 64;
+export const AGENT_SCROLL_HIDDEN_STEP_THRESHOLD = 64;
 
 export function isAgentTranscriptAtBottom(element: {
   readonly clientHeight: number;
@@ -37,15 +37,29 @@ export function isAgentTranscriptAtBottom(element: {
 }
 
 /**
- * Whether the newest step is in the reader's viewport. Being within a few
- * pixels of the bottom is only an approximation: a tall last reply can still
- * be on screen while the scroll position is well above the bottom. The jump
- * pill must stay hidden whenever the newest message is visible — the reader
- * is already looking at it — and only appear once it has scrolled out of view.
+ * Whether the newest step is anywhere in the reader's viewport. Being within a
+ * few pixels of the bottom is only an approximation: a tall last reply can
+ * still be on screen while the scroll position is well above the bottom. Live
+ * following uses this generous test so it keeps pinning while the reader is
+ * reading that reply.
  */
 export function isLatestStepVisible(
   viewport: { readonly top: number; readonly bottom: number },
   step: { readonly top: number; readonly bottom: number },
 ): boolean {
   return step.bottom > viewport.top && step.top < viewport.bottom;
+}
+
+/**
+ * How many pixels of the newest step are completely outside the viewport.
+ * Zero while any part of it is on screen, so a reader in the middle of a tall
+ * live reply is never offered a jump away from the message they are reading.
+ * Only when the step has left the view does the distance grow; that is the one
+ * signal the centered pill uses, independent of how the reader got there.
+ */
+export function latestStepHiddenOutside(
+  viewport: { readonly top: number; readonly bottom: number },
+  step: { readonly top: number; readonly bottom: number },
+): number {
+  return Math.max(0, viewport.top - step.bottom, step.top - viewport.bottom);
 }

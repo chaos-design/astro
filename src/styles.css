@@ -315,7 +315,7 @@ button:not([data-variant="console"]):not([data-variant="playback"]):not([data-sl
     [data-slot="tabs-trigger"]
   ):not(.run-history__live-jump):not(.service-card__restart):not(.settings-footer__button):not(.pair-link-marker):not(
     .question-options__option
-  ):not(.agent-step__head):not(.agent-step__toggle):not(.agent-transcript__jump):not(.agent-transcript__stat-button):not(.agent-transcript__stat-card-row):not(.preview-mac-frame__locate):not(.json-line__toggle) {
+  ):not(.agent-step__head):not(.agent-step__toggle):not(.agent-transcript__progress-edge):not(.agent-transcript__jump):not(.agent-transcript__stat-button):not(.agent-transcript__stat-card-row):not(.preview-mac-frame__locate):not(.json-line__toggle) {
   border: 0;
 }
 
@@ -323,7 +323,7 @@ button:not([data-variant="console"]):not([data-variant="playback"]):not([data-sl
     [data-slot="tabs-trigger"]
   ):not(.run-history__live-jump):not(.service-card__restart):not(.settings-footer__button):not(.pair-link-marker):not(
     .question-options__option
-  ):not(.agent-step__head):not(.agent-step__toggle):not(.agent-transcript__jump):not(.agent-transcript__stat-button):not(.agent-transcript__stat-card-row):not(.preview-mac-frame__locate):not(.json-line__toggle):focus-visible,
+  ):not(.agent-step__head):not(.agent-step__toggle):not(.agent-transcript__progress-edge):not(.agent-transcript__jump):not(.agent-transcript__stat-button):not(.agent-transcript__stat-card-row):not(.preview-mac-frame__locate):not(.json-line__toggle):focus-visible,
 input:not([data-slot="input-group-control"]):focus-visible {
   outline: 1px solid var(--selection-border);
   outline-offset: 2px;
@@ -6292,8 +6292,17 @@ pre,
 }
 
 /* The producing agent replaces the former title block on the left: a small
-   surface caption plus the icon-and-name badge. Icon + name only — the
-   recorder's client version is envelope data and is never printed here. */
+   surface caption plus one row holding the icon-and-name badge and the
+   message stepper. Icon + name only — the recorder's client version is
+   envelope data and is never printed here. */
+.payload-overlay__identity {
+  display: flex;
+  min-width: 0;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 8px;
+}
+
 .payload-overlay__agent {
   display: inline-flex;
   align-self: flex-start;
@@ -7895,6 +7904,36 @@ pre,
   border: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
 }
 
+/* A typed non-image attachment gets its own chip instead of an <img> that
+   can never load: the service only previews images, so show the real path. */
+.payload-item__file {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: baseline;
+  gap: 7px;
+  padding: 4px 8px;
+  border: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--panel) 84%, #000);
+}
+
+.payload-item__file-glyph {
+  font-size: 0.75rem;
+}
+
+.payload-item__file-name {
+  color: var(--text-strong);
+  font-weight: var(--weight-semibold, 650);
+  overflow-wrap: anywhere;
+}
+
+.payload-item__file code {
+  color: var(--muted);
+  font-family: var(--font-mono, monospace);
+  font-size: var(--text-overline);
+  overflow-wrap: anywhere;
+}
+
 .payload-item__fold {
   display: grid;
   gap: 6px;
@@ -7953,37 +7992,43 @@ pre,
    stay clickable without the pointer leaving the strip. */
 .agent-transcript__progress {
   flex: none;
-  /* Under the header, riding over its border edge to edge: the track spans
-     the full width, so the header's bottom hairline is covered for its whole
-     run instead of showing through at both ends. */
-  margin-top: -1px;
+  /* Under the header, riding over its border edge to edge: the bed spans the
+     whole strip, so the header's bottom hairline is covered for its entire
+     run. Lifted a little further into the header than a plain -1px overlap. */
+  margin-top: -3px;
   padding: 0 2px 2px;
   position: relative;
   z-index: 1;
-  display: flex;
+  /* The pan buttons own fixed slots at either end: the tick window can never
+     grow under them, and their opaque surfaces hide the bed beneath. */
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) 18px;
   align-items: center;
-  gap: 2px;
+  column-gap: 4px;
 }
 
 /* Dense turns overflow the strip: the edge buttons pan the tick area and the
-   strip itself never shows a scrollbar. */
+   strip itself never shows a scrollbar. Each button is its own opaque chip —
+   a transparent button let the track read through and the chevron vanish. */
 .agent-transcript__progress-edge {
+  position: relative;
+  z-index: 1;
   display: inline-flex;
-  flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  width: 16px;
-  height: 12px;
+  width: 18px;
+  height: 14px;
   padding: 0;
-  border: 0;
+  border: 1px solid var(--line);
   border-radius: 4px;
-  background: none;
+  background: var(--panel-raised);
   color: var(--muted);
   cursor: pointer;
 }
 
 .agent-transcript__progress-edge:hover {
-  background: color-mix(in srgb, var(--violet) 16%, transparent);
+  border-color: color-mix(in srgb, var(--violet) 46%, var(--line));
+  background: color-mix(in srgb, var(--violet) 14%, var(--panel-raised));
   color: var(--text-strong);
 }
 
@@ -7993,8 +8038,8 @@ pre,
 }
 
 .agent-transcript__progress-edge.is-idle {
+  border-color: color-mix(in srgb, var(--line) 55%, transparent);
   color: var(--muted-soft, var(--muted));
-  opacity: 0.6;
 }
 
 .agent-transcript__progress-track {
@@ -8150,15 +8195,12 @@ pre,
 }
 
 /* Message stepping beside the agent name: a quiet ‹ n/N › cluster. The
-   buttons stay short so the toolbar keeps one height; the count is the
-   current message's position out of the session's total. */
+   buttons stay short so the header keeps one height; the count is the
+   current message's position out of the session's total. It shares the
+   identity row with the agent badge and sizes to its own content. */
 .run-stepper {
   display: inline-flex;
-  /* Content-sized and pinned to the header's right column end: the header is
-     a three-column grid, and the 1fr right column would otherwise stretch the
-     stepper across the leftover space. */
   flex: 0 0 auto;
-  justify-self: end;
   align-items: center;
   gap: 3px;
   padding: 2px 5px;

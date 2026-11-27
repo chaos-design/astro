@@ -4,6 +4,7 @@ import {
   collectPayloadFields,
   contentToMarkdown,
   fallbackPayloadMarkdown,
+  findFirstListPayload,
   fenceCode,
   hasListPayload,
   inferCodeLanguage,
@@ -355,6 +356,20 @@ test("a numbered file dump is fenced in the language its path declares", () => {
     contentToMarkdown("a note 1→about steps\nand another line"),
     "a note 1→about steps\nand another line",
   );
+});
+
+test("the list lookup finds an array nested inside a tool response", () => {
+  // A tool result wraps its array in `toolResponse.content`; reading only the
+  // payload root made a one-item record render as a key/value field grid.
+  const payload = {
+    toolName: "Read",
+    toolResponse: { content: [{ type: "text", text: "ARRAY_SINGLE_CONTENT" }] },
+    tool_response: {},
+  };
+  assert.deepEqual(findFirstListPayload(payload), [
+    { type: "text", text: "ARRAY_SINGLE_CONTENT" },
+  ]);
+  assert.equal(findFirstListPayload({ toolName: "Read" }), null);
 });
 
 test("a todos-style array is detected as a list payload", () => {

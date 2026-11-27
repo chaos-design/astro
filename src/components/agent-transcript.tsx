@@ -34,9 +34,10 @@ import { PairLinkMarker } from "@/components/pair-link-marker";
 import { QuestionContent, QuestionPreview, type QuestionAnswerBinding } from "@/components/question-content";
 import { RelatedFields } from "@/components/related-fields";
 import {
-  AGENT_SCROLL_JUMP_THRESHOLD,
+  AGENT_SCROLL_HIDDEN_STEP_THRESHOLD,
   isAgentTranscriptAtBottom,
   isLatestStepVisible,
+  latestStepHiddenOutside,
 } from "@/lib/agent-transcript-scroll";
 import { cn } from "@/lib/utils";
 import type {
@@ -58,6 +59,7 @@ import type { RunTerminalReason, TraceRunStatus } from "@/types/trace";
 import {
   collectPayloadFields,
   contentToMarkdown,
+  findFirstListPayload,
   hasListPayload,
   inferCodeLanguage,
   orderRelated,
@@ -65,6 +67,7 @@ import {
 } from "@/lib/payload-preview";
 import { payloadToMarkdown } from "@/lib/payload-markdown";
 import { markdownWithEmbeddedImages } from "@/lib/embedded-image";
+import { classifyCapturedResource } from "@/lib/captured-image";
 import { hookPhaseOf } from "@/lib/trace-event-kind";
 import { findPayloadFilePath } from "@/lib/numbered-code";
 import { PayloadItemBlocks } from "@/components/payload-item-blocks";
@@ -183,48 +186,32 @@ function shellOutputOf(payload: unknown): string | null {
  */
 
 /**
- * A field whose value is an image is read as one: `image_url` / `image_path`
- * (and the OpenAI-style `input_image`) name the image an agent looked at, so
- * a raw path or data-URL should render as the image — a thumbnail when the
- * source is loadable, a labelled chip when it is a local path the browser
- * cannot open. Only these keys count, so an ordinary `url` / `path` field
- * that happens to hold text keeps its plain rendering.
+ * A call field that names a resource is typed by the shared classifier, not
+ * by a second image extension regex: an `image_url` renders as an image, a
+ * `file_path` to a PDF as a file chip, and an ordinary `path` holding prose
+ * stays plain text. The whitelist lives in `captured-image.ts` together with
+ * the item blocks and the Markdown sanitizer, so one value has one meaning.
  */
-const IMAGE_FIELD_KEYS = new Set([
+const RESOURCE_FIELD_KEYS = new Set([
   "image_url", "imageUrl", "image_path", "imagePath",
   "input_image", "image", "img",
+  "file", "file_path", "filePath", "attachment", "attachments",
+  "url", "uri", "path",
 ]);
-const IMAGE_SOURCE_EXT = /\.(png|jpe?g|gif|webp|avif|bmp|svg)([?#]|$)/i;
-
-function imageFieldKind(key: string, value: string): "remote" | "data" | "local" | null {
-  if (!IMAGE_FIELD_KEYS.has(key)) {
-    return null;
-  }
-  if (value.startsWith("data:image/")) {
-    return "data";
-  }
-  if (/^https?:\/\//i.test(value)) {
-    return "remote";
-  }
-  // A bare path (or any value naming an image file) is a local capture the
-  // console cannot load into an <img>; it still renders as a distinct chip.
-  if (IMAGE_SOURCE_EXT.test(value) || /[\\/][^\\/]+\.[a-z]{2,4}$/.test(value)) {
-    return "local";
-  }
-  return null;
-}
 
 function CallFieldValue({ field }: { field: ToolInputField }) {
-  const kind = imageFieldKind(field.key, field.value);
-  if (kind === "remote" || kind === "data") {
+  const resource = RESOURCE_FIELD_KEYS.has(field.key)
+    ? classifyCapturedResource(field.value, "")
+    : ({ kind: "text" } as const);
+  if (resource.kind === "image" && resource.origin !== "local") {
     return (
       <span className="agent-step__call-image">
         <img
-          alt={field.value}
+          alt={resource.name || field.value}
           className="agent-step__call-image__thumb"
           loading="lazy"
           referrerPolicy="no-referrer"
-          src={field.value}
+          src={resource.src}
         />
         <code className="agent-step__call-image__src" title={field.value}>
           {field.value}
@@ -232,12 +219,12 @@ function CallFieldValue({ field }: { field: ToolInputField }) {
       </span>
     );
   }
-  if (kind === "local") {
-    const base = field.value.split(/[\\/]/).pop() || field.value;
+  if (resource.kind !== "text") {
+    const base = resource.name || field.value.split(/[\\/]/).pop() || field.value;
     return (
       <span className="agent-step__call-image agent-step__call-image--local">
         <span aria-hidden="true" className="agent-step__call-image__glyph">
-          🖼
+          {resource.kind === "image" ? "🖼" : "📎"}
         </span>
         <span className="agent-step__call-image__path">
           <strong>{base}</strong>
@@ -825,9 +812,9 @@ function ChainProgress({
 
   return (
     <div aria-hidden="false" className="agent-transcript__progress">
-      {/* Left / right pan buttons frame the strip (‹ track ›); dense turns
-          widen the tick layer and the buttons move the visible window, so no
-          scrollbar ever appears. */}
+      {/* Left / right pan buttons own fixed slots on either side of the
+          track (‹ track ›); dense turns widen the tick layer and the buttons
+          move the visible window, so no scrollbar ever appears. */}
       <button
         aria-label="向左平移刻度"
         className={cn(
@@ -946,12 +933,9 @@ export function AgentTranscript({
   const initializedChainRef = useRef<string | null>(null);
   const lastLocateRef = useRef(locateRequest);
   const scrollFrameRef = useRef<number | null>(null);
-  // The centered pill follows an *upward gesture*, not merely "newest step
-  // out of view": the reader speaks with the wheel, so only a real scroll-up
-  // offers the jump. Programmatic pin / locate still update the baseline
-  // through the scroll event, but never arm the pill on their own.
-  const lastScrollTopRef = useRef(0);
-  const scrolledUpRef = useRef(false);
+  // The centered pill is a position read, not a gesture latch: it answers
+  // whether the newest step has left the viewport, however the reader got
+  // there (wheel, programmatic locate or an explicit atom pick).
   const [showJump, setShowJump] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
   // The last event reported as the reading line. Comparing before calling
@@ -961,8 +945,7 @@ export function AgentTranscript({
 
   // Programmatic positioning: the centered affordance is derived from whether
   // the newest step is still on screen, so a programmatic scroll (pin, locate,
-  // jump) can never masquerade as a manual one — there is no gesture state to
-  // get wrong.
+  // jump) is judged by the same position rule as a wheel gesture.
   const scrollToTop = useCallback(
     (element: HTMLElement, top: number, smooth = false) => {
       if (smooth) {
@@ -1015,50 +998,32 @@ export function AgentTranscript({
       onActiveEventChange?.(activeEventId);
     }
     const absoluteBottom = isAgentTranscriptAtBottom(container);
+    const viewport = container.getBoundingClientRect();
     // Live pinning keeps following while the newest step is visible, even if
     // the scroll position sits above the bottom edge (a tall last reply).
     const lastStep = view.steps.at(-1);
     const lastElement = lastStep ? stepRefs.current.get(lastStep.id) : null;
-    const latestVisible = lastElement
-      ? isLatestStepVisible(
-          container.getBoundingClientRect(),
-          lastElement.getBoundingClientRect(),
-        )
+    const stepRect = lastElement?.getBoundingClientRect() ?? null;
+    const latestVisible = stepRect
+      ? isLatestStepVisible(viewport, stepRect)
       : true;
     atBottomRef.current = absoluteBottom || latestVisible;
     if (absoluteBottom) {
       // Back at the very bottom: disarm the pill and resume live pinning.
       setShowJump(false);
       setPendingCount(0);
-      scrolledUpRef.current = false;
       return;
     }
-    // The pill offers itself by *position*, not only by the last gesture: the
-    // reader is a little height above the bottom edge, so reading history is
-    // plausible and the jump reads as available. A live run keeps its loading
-    // state in the pill with the pending-step count; a finished run becomes a
-    // plain quick-scroll button when the chain overflows.
+    // The pill answers one question: is the newest message still on screen?
+    // Direction is irrelevant — an explicit locate to an older step, a wheel
+    // down past the tail and a wheel up past it all arrive at the same state.
+    // Measuring the step (not the scroll distance) keeps a tall live reply's
+    // reader from being offered a jump away from the text they are reading.
     const scrollable = container.scrollHeight > container.clientHeight + 40;
-    const distanceFromBottom =
-      container.scrollHeight - container.scrollTop - container.clientHeight;
-    const scrolledUp = distanceFromBottom > AGENT_SCROLL_JUMP_THRESHOLD;
-    // The jump pill is armed by the reader's own upward gesture only. A
-    // position test here would fire on every append: between a live step
-    // landing and the pin running, the distance from the bottom momentarily
-    // crosses the threshold and the pill flashed into an append that the
-    // reader never scrolled away from. The latch clears by position — settle
-    // back within the threshold of the bottom and reading history is over —
-    // so an earlier wheel-up no longer lingers after scrolling back down.
-    if (!scrolledUp) {
-      scrolledUpRef.current = false;
-    }
-    if (scrolledUpRef.current) {
-      setShowJump(live || scrollable);
-    } else if (!latestVisible) {
-      // Located to an older step (or the pin has not landed yet): no pill —
-      // the reader did not scroll away, so the view must not claim they did.
-      setShowJump(false);
-    }
+    const hidden = stepRect ? latestStepHiddenOutside(viewport, stepRect) : 0;
+    setShowJump(
+      hidden > AGENT_SCROLL_HIDDEN_STEP_THRESHOLD && (live || scrollable),
+    );
   }, [live, view.steps, onActiveEventChange]);
 
   // One stable registration callback for every card: an inline closure per
@@ -1075,12 +1040,6 @@ export function AgentTranscript({
   );
 
   const handleScroll = useCallback(() => {
-    const container = scrollRef.current;
-    if (container) {
-      const top = container.scrollTop;
-      scrolledUpRef.current = top < lastScrollTopRef.current - 1;
-      lastScrollTopRef.current = top;
-    }
     if (scrollFrameRef.current !== null) {
       return;
     }
@@ -1122,8 +1081,6 @@ export function AgentTranscript({
     }
     atBottomRef.current = true;
     stepCountRef.current = view.steps.length;
-    scrolledUpRef.current = false;
-    lastScrollTopRef.current = container?.scrollTop ?? 0;
     setShowJump(false);
     setPendingCount(0);
   }, [chainId, scrollToTop]);
@@ -1133,7 +1090,7 @@ export function AgentTranscript({
   // A shorter chain (replay cursor back, a prefix break folding snapshots
   // into fewer steps) invalidates the count: the pill must not keep offering
   // "N new messages" that no longer exist.
-  useEffect(() => {
+  useLayoutEffect(() => {
     const count = view.steps.length;
     const previous = stepCountRef.current;
     stepCountRef.current = count;
@@ -1162,7 +1119,10 @@ export function AgentTranscript({
   // layout read here first would flip `atBottomRef` to false and turn a live
   // follow into a "N new messages" pill on every streamed batch. The run can
   // also finish while the reader is up the chain; this covers that case too.
-  useEffect(() => {
+  // The append pin above is a layout effect too: re-reading the position in a
+  // passive effect let one frame paint the new step below the fold with the
+  // pill already armed. Now the pin and this check commit before paint.
+  useLayoutEffect(() => {
     syncScrollState();
   }, [live, syncScrollState]);
 
@@ -1712,19 +1672,9 @@ function ToolResultBody({
     if (Array.isArray(candidate) && candidate.length) {
       return candidate;
     }
-    if (
-      candidate &&
-      typeof candidate === "object" &&
-      !Array.isArray(candidate)
-    ) {
-      const firstArray = Object.values(
-        candidate as Record<string, unknown>,
-      ).find((value) => Array.isArray(value) && value.length > 0);
-      if (Array.isArray(firstArray)) {
-        return firstArray;
-      }
-    }
-    return null;
+    // A tool result wraps its array one level down (`toolResponse.content`);
+    // reading only the root found nothing and printed the record as fields.
+    return findFirstListPayload(candidate);
   }, [bodyPayload, hasAnswers, listPayload, shellOutput]);
   const source = useMemo(
     () => {
