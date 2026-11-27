@@ -14,6 +14,7 @@ import {
   MessageSquare,
   Repeat,
   Timer,
+  ChevronLeft,
 } from "lucide-react";
 import {
   memo,
@@ -684,8 +685,29 @@ function ChainProgress({
   stepRefs: Map<string, HTMLElement>;
 }) {
   const fillRef = useRef<HTMLDivElement | null>(null);
+  const trackRef = useRef<HTMLDivElement | null>(null);
   const frameRef = useRef<number | null>(null);
   const progressRef = useRef(1);
+  // The tick area pans with the two edge buttons when turns are dense enough
+  // to overflow; the strip itself never shows a scrollbar.
+  const [canShift, setCanShift] = useState(false);
+  const shiftTicks = useCallback((direction: 1 | -1) => {
+    const track = trackRef.current;
+    if (!track) {
+      return;
+    }
+    track.scrollBy({
+      behavior: "smooth",
+      left: direction * Math.max(160, track.clientWidth * 0.6),
+    });
+  }, []);
+  const handleTrackScroll = useCallback(() => {
+    const track = trackRef.current;
+    if (!track) {
+      return;
+    }
+    setCanShift(track.scrollWidth > track.clientWidth + 4);
+  }, []);
   const [ticks, setTicks] = useState<ProgressTick[]>([]);
   // The tick the reader's position has just passed (or sits on) breathes —
   // a rounded state so the animation re-renders once per step, never per
@@ -736,6 +758,10 @@ function ChainProgress({
       (left, right) => left.ratio - right.ratio,
     );
     setTicks((previous) => (sameTicks(previous, next) ? previous : next));
+    const track = trackRef.current;
+    if (track) {
+      setCanShift(track.scrollWidth > track.clientWidth + 4);
+    }
     // The breathing tick: the last turn whose position the reader has
     // reached. Compared against the rounded position so the state flips once
     // per tick, not per frame.
@@ -789,7 +815,24 @@ function ChainProgress({
   }
   return (
     <div aria-hidden="false" className="agent-transcript__progress">
-      <div className="agent-transcript__progress-track">
+      {/* Dense turns overflow the strip; the edge buttons pan the tick area
+          instead of a scrollbar, which the strip never shows. */}
+      <button
+        aria-label="向左平移刻度"
+        className={cn(
+          "agent-transcript__progress-edge",
+          !canShift && "is-hidden",
+        )}
+        onClick={() => shiftTicks(-1)}
+        type="button"
+      >
+        <ChevronLeft aria-hidden="true" />
+      </button>
+      <div
+        className="agent-transcript__progress-track"
+        onScroll={handleTrackScroll}
+        ref={trackRef}
+      >
         <div className="agent-transcript__progress-fill" ref={fillRef} />
         {ticks.map((tick) => (
           <button
@@ -815,6 +858,17 @@ function ChainProgress({
           </button>
         ))}
       </div>
+      <button
+        aria-label="向右平移刻度"
+        className={cn(
+          "agent-transcript__progress-edge",
+          !canShift && "is-hidden",
+        )}
+        onClick={() => shiftTicks(1)}
+        type="button"
+      >
+        <ChevronRight aria-hidden="true" />
+      </button>
     </div>
   );
 }

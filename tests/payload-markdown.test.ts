@@ -29,6 +29,8 @@ test("arrays of plain values render as one block per item and other scalars stay
   // One block per item, not bullets: a stack of values reads cleanly without
   // list markers, and an item that is code keeps its own fence.
   assert.equal(payloadToMarkdown(["one", "two"]), "> one\n>\n> two");
+  // A single entry renders bare, without the quote frame.
+  assert.equal(payloadToMarkdown(["only"]), "only");
   assert.equal(payloadToMarkdown(42), "42");
   assert.equal(payloadToMarkdown(null), "");
   assert.equal(payloadToMarkdown({ blank: "", kept: "yes" }), "yes");

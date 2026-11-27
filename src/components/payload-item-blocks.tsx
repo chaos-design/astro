@@ -45,6 +45,16 @@ export function PayloadItemBlocks({
   items: readonly unknown[];
   className?: string;
 }) {
+  // A single entry needs no block wrapper: the important content renders
+  // directly (the key/value grid or the fenced value), and only a stack of
+  // records earns the per-item blocks.
+  if (items.length === 1) {
+    return (
+      <div className={cn("payload-item-list is-single", className)}>
+        <PayloadItemContent item={items[0]} />
+      </div>
+    );
+  }
   return (
     <div className={cn("payload-item-list", className)}>
       {items.map((item, position) => (

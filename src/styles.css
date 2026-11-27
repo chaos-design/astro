@@ -7878,6 +7878,11 @@ pre,
   overflow-wrap: anywhere;
 }
 
+/* A single entry carries no frame: its own grid or fence is the content. */
+.payload-item-list.is-single {
+  gap: 0;
+}
+
 .payload-item + .payload-item {
   margin-top: 0;
 }
@@ -7918,26 +7923,68 @@ pre,
    stay clickable without the pointer leaving the strip. */
 .agent-transcript__progress {
   flex: none;
-  /* Under the header, riding over its border: the strip reads as part of the
-     header's own chrome instead of a separate row below it. */
+  /* Under the header, riding over its border edge to edge: the track spans
+     the full width, so the header's bottom hairline is covered for its whole
+     run instead of showing through at both ends. */
   margin-top: -1px;
-  padding: 0 14px 2px;
+  padding: 0 2px 2px;
   position: relative;
   z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* Dense turns overflow the strip: the edge buttons pan the tick area and the
+   strip itself never shows a scrollbar. */
+.agent-transcript__progress-edge {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 12px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.agent-transcript__progress-edge:hover {
+  background: color-mix(in srgb, var(--violet) 16%, transparent);
+  color: var(--text-strong);
+}
+
+.agent-transcript__progress-edge svg {
+  width: 0.625rem;
+  height: 0.625rem;
+}
+
+.agent-transcript__progress-edge.is-hidden {
+  visibility: hidden;
 }
 
 .agent-transcript__progress-track {
   position: relative;
   height: 10px;
+  /* The tick area pans with the edge buttons; a scrollbar would fight the
+     strip's own height, so overflow stays invisible. */
+  overflow-x: hidden;
+  overflow-y: hidden;
+  scrollbar-width: none;
 }
 
-.agent-transcript__progress-track::before {
+.agent-transcript__progress::before {
   content: "";
   position: absolute;
   inset: 4px 0 auto;
-  height: 2px;
+  height: 3px;
   border-radius: 999px;
-  /* A brighter bed than the hairline grey, so the track itself reads. */
+  /* The bed spans the whole strip at the container level, so the header's
+     1px bottom border is covered edge to edge (the strip sits at -1px); the
+     edge buttons float above it at either end. */
   background: color-mix(in srgb, var(--muted) 42%, var(--line));
 }
 
@@ -7945,7 +7992,7 @@ pre,
   position: absolute;
   top: 4px;
   left: 0;
-  height: 2px;
+  height: 3px;
   width: 0;
   border-radius: 999px;
   /* A gradient along the read direction: the tail fades from the bed colour
@@ -8066,10 +8113,11 @@ pre,
   display: inline-flex;
   flex: 0 0 auto;
   align-items: center;
-  gap: 2px;
-  padding: 1px 4px;
+  gap: 3px;
+  padding: 2px 5px;
   border: 1px solid var(--line);
   border-radius: 7px;
+  background: color-mix(in srgb, var(--panel) 60%, transparent);
 }
 
 .run-stepper__button {

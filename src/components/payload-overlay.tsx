@@ -1019,10 +1019,10 @@ export function PayloadOverlay({
               <span className="payload-overlay__agent-name">
                 {getAtomPlatformConfig(platform).label}
               </span>
-              {messageStepper ? (
-                <MessageStepper {...messageStepper} />
-              ) : null}
             </span>
+            {/* Outside the agent capsule: the stepper is a navigation control
+                of its own, not part of the agent's identity badge. */}
+            {messageStepper ? <MessageStepper {...messageStepper} /> : null}
             <DialogTitle className="sr-only">{label}</DialogTitle>
           </div>
           <ToggleGroup

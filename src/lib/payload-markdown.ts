@@ -548,6 +548,11 @@ function arrayToMarkdown(value: unknown[], depth: number, seen: WeakSet<object>)
   // One block per item, rendered as a quoted block: the blockquote gives each
   // entry a distinct bordered record in the preview (no bullet list, no JSON
   // wall), and an item that is code keeps its fence inside the quote.
+  // A single entry renders bare — no quote frame around one record; the
+  // important content stands on its own.
+  if (items.length === 1) {
+    return items[0];
+  }
   const asBlock = (item: string) =>
     item
       .split("\n")
