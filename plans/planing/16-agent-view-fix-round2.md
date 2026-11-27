@@ -29,11 +29,11 @@ updated: 2026-11-27 14:29:07
 
 ## 完成标准
 
-- [ ] code: 实现、迁移和文档均已完成，不保留双轨逻辑
-- [ ] linter_result: `corepack pnpm lint` 退出码为 0
-- [ ] unit_test_result: 新增边界测试通过，关键包覆盖率不低于 90%
-- [ ] func_test_result: 对应场景完成真实进程验证
-- [ ] status: 状态、剩余风险和回滚方式已记录
+- [x] code: 实现、迁移和文档均已完成，不保留双轨逻辑
+- [x] linter_result: `./node_modules/.bin/tsc --noEmit`（root + site）`corepack pnpm lint` 退出码为 0
+- [x] unit_test_result: 新增边界测试通过，关键包覆盖率不低于 90%
+- [x] func_test_result: 对应场景完成真实进程验证
+- [x] status: 状态、剩余风险和回滚方式已记录
 
 ## 风险与回滚
 
