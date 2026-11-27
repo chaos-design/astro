@@ -78,14 +78,21 @@ function RetentionField({
   onPrune: (days: number) => Promise<RetentionPruneResult>;
 }) {
   const [preview, setPreview] = useState<RetentionPreview | null>(null);
-  const [pending, setPending] = useState(false);
+  // "Awaiting" spans the whole two-step enable: from the switch click until
+  // the reader confirms, cancels, or turns the switch off again. It cannot be
+  // the in-flight flag alone — that ends the moment the preview arrives, and
+  // a confirm block rendered on it vanished exactly then, so the confirm
+  // button never stayed on screen and the switch could not be turned on.
+  const [awaiting, setAwaiting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [report, setReport] = useState<string | null>(null);
 
   // The preview follows the window: changing 15 → 30 days must not leave the
-  // reader confirming a count computed for the old one.
+  // reader confirming a count computed for the old one. While the enable flow
+  // is active (`awaiting`), the refreshed count keeps the confirm button
+  // honest; while enabled, it feeds the "clean now" block.
   useEffect(() => {
-    if (!retention.enabled && !pending) {
+    if (!retention.enabled && !awaiting) {
       return;
     }
     let cancelled = false;
@@ -104,23 +111,25 @@ function RetentionField({
     return () => {
       cancelled = true;
     };
-  }, [onPreview, pending, retention.days, retention.enabled]);
+  }, [awaiting, onPreview, retention.days, retention.enabled]);
 
   const askToEnable = () => {
     setError(null);
     setReport(null);
-    setPending(true);
+    setAwaiting(true);
     onPreview(retention.days)
       .then((next) => {
-        setPreview(next ?? null);
-        setPending(false);
-        // Nothing to delete: enabling is honest without a second click.
-        if (!next || next.eventFiles === 0) {
+        setPreview(next);
+        // Nothing to delete: enabling is honest without a second click. A
+        // failed or empty-bodied preview must not enable anything silently —
+        // the named error below is the outcome the reader acts on.
+        if (next && next.eventFiles === 0) {
+          setAwaiting(false);
           onChange({ ...retention, enabled: true });
         }
       })
       .catch((reason: unknown) => {
-        setPending(false);
+        setAwaiting(false);
         setError(reason instanceof Error ? reason.message : String(reason));
       });
   };
@@ -129,7 +138,7 @@ function RetentionField({
     onPrune(retention.days)
       .then((result) => {
         onChange({ ...retention, enabled: true });
-        setPending(false);
+        setAwaiting(false);
         setReport(
           result.removed > 0
             ? `已删除 ${result.removed} 条消息（${(result.bytes / (1024 * 1024)).toFixed(1)} MB）`
@@ -196,6 +205,7 @@ function RetentionField({
           onClick={() => {
             if (retention.enabled) {
               onChange({ ...retention, enabled: false });
+              setAwaiting(false);
               setPreview(null);
               setReport(null);
               return;
@@ -208,7 +218,7 @@ function RetentionField({
           <span className="settings-switch__thumb" aria-hidden="true" />
         </button>
       </div>
-      {!retention.enabled && pending ? (
+      {!retention.enabled && awaiting ? (
         <div className="settings-retention__confirm" role="status">
           {preview ? (
             <>
@@ -222,7 +232,7 @@ function RetentionField({
                 <button
                   className="settings-retention__action"
                   onClick={() => {
-                    setPending(false);
+                    setAwaiting(false);
                     setPreview(null);
                   }}
                   type="button"
@@ -262,7 +272,7 @@ function RetentionField({
       ) : null}
       {error ? (
         <p className="settings-retention__error" role="alert">
-          清理预览失败：{error}
+          清理请求失败：{error}
         </p>
       ) : null}
     </div>
