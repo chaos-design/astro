@@ -2,7 +2,7 @@
 title: Agent 视图渲染与交互完善
 priority: P1
 created: 2026-11-27 13:01:05
-updated: 2026-11-27 13:46:46
+updated: 2026-11-27 15:01:31
 ---
 
 # Agent 视图渲染与交互完善
@@ -13,8 +13,8 @@ updated: 2026-11-27 13:46:46
 
 ## 范围
 
-- 包含：待补充
-- 不包含：待补充
+- 包含：Agent 步骤渲染（数组块式、折叠正文、思考拼写）、链路进度条、消息 stepper、时长分级
+- 不包含：服务端采集协议、保留策略的删除实现（本轮仅语义描述）、文档站构建
 
 ## 实施任务
 
@@ -59,3 +59,4 @@ updated: 2026-11-27 13:46:46
 - 2026-11-27 13:45:54 RunStepper beside AgentSelect: ‹ 1/N › steps the session's messages (setActivePromptRunKey + anchor event + locate), disabled at the edges, button title names the target prompt; hidden when the session has one message; e2e: 2/2 -> click prev -> 1/2
 - 2026-11-27 13:46:46 完成 #8 T8 全量校验并 push
 - 2026-11-27 13:46:46 tsc root+site exit 0; 1032/1032 unsandboxed; vite build ok; e2e evidence recorded; commits queued for push
+- 2026-11-27 15:01:31 归档：任务与完成标准全部满足
