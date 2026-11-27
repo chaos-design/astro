@@ -524,7 +524,9 @@ function compactListMarkdown(items: readonly unknown[]): string {
         })
         .map(([key, value]) => `${escapeInline(key)}=${escapeInline(String(value))}`)
         .join(" · ");
-      const body = primary ? escapeInline(primary) : safeJson(record);
+      // No primary key, no dump: the suffix already names every scalar, and
+      // repeating the whole record as JSON made one entry read twice.
+      const body = primary ? escapeInline(primary) : "";
       // Block lines, not bullets: each record is its own quiet row, the
       // status checkbox keeping its checklist reading.
       return `${checkbox}${body}${suffix ? ` — ${suffix}` : ""}`;
@@ -543,13 +545,15 @@ function arrayToMarkdown(value: unknown[], depth: number, seen: WeakSet<object>)
   if (!items.length) {
     return "";
   }
-  // One block per item, not a bullet list: a result that carries an array of
-  // short values reads as a stack of blocks, and an item that is code keeps
-  // its own fence instead of being re-bulleted inside a list item.
-  if (items.every((item) => !item.includes("\n"))) {
-    return items.join("\n\n");
-  }
-  return items.join("\n\n---\n\n");
+  // One block per item, rendered as a quoted block: the blockquote gives each
+  // entry a distinct bordered record in the preview (no bullet list, no JSON
+  // wall), and an item that is code keeps its fence inside the quote.
+  const asBlock = (item: string) =>
+    item
+      .split("\n")
+      .map((line) => (line ? `> ${line}` : ">"))
+      .join("\n");
+  return items.map(asBlock).join("\n>\n");
 }
 
 /**

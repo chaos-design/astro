@@ -2070,6 +2070,14 @@ pre,
   background: color-mix(in srgb, var(--red) 12%, transparent);
 }
 
+/* The armed confirm: the second click runs the sweep, so the armed state
+   must read heavier than the first click — filled, not just outlined. */
+.settings-retention__action.is-danger.is-armed {
+  background: var(--red);
+  border-color: var(--red);
+  color: #fff;
+}
+
 .settings-retention__report {
   margin: 0;
   color: var(--status-completed);
@@ -6043,11 +6051,13 @@ pre,
 }
 
 .markdown-preview blockquote {
-  padding: 5px 10px;
-  border-left: 2px solid color-mix(in srgb, var(--violet) 45%, var(--line));
-  border-radius: 0 4px 4px 0;
-  background: color-mix(in srgb, var(--violet) 6%, transparent);
-  color: var(--muted-soft);
+  margin: 6px 0;
+  padding: 7px 10px;
+  border: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
+  border-left: 2px solid color-mix(in srgb, var(--violet) 62%, var(--line));
+  border-radius: 0 7px 7px 0;
+  background: color-mix(in srgb, var(--panel) 84%, #000);
+  color: var(--text);
 }
 
 .markdown-preview blockquote > :last-child {
@@ -7851,15 +7861,69 @@ pre,
   color: var(--status-failed);
 }
 
+/* Array payloads render as item blocks: one bordered record per entry with
+   a left accent, so a stack of results reads as distinct rows instead of a
+   JSON wall echoed twice. An entry that is code keeps its fence inside. */
+.payload-item-list {
+  display: grid;
+  gap: 8px;
+}
+
+.payload-item {
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
+  border-left: 2px solid color-mix(in srgb, var(--violet) 62%, var(--line));
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--panel) 84%, #000);
+  overflow-wrap: anywhere;
+}
+
+.payload-item + .payload-item {
+  margin-top: 0;
+}
+
+.payload-item__fields {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+}
+
+.payload-item__field {
+  display: grid;
+  grid-template-columns: minmax(72px, max-content) 1fr;
+  gap: 8px;
+  align-items: baseline;
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+.payload-item__field dt {
+  color: var(--muted);
+  font-family: var(--font-mono, monospace);
+  font-size: var(--text-overline);
+  text-transform: none;
+}
+
+.payload-item__field dd {
+  margin: 0;
+  color: var(--text);
+  font-family: var(--font-mono, monospace);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
 /* The Agent chain's scroll progress: a hairline under the message list.
    The fill is the completion; each turn puts a tick at its own position, and
    the tick's card states the turn on hover. Ticks sit above the bar so they
    stay clickable without the pointer leaving the strip. */
 .agent-transcript__progress {
   flex: none;
-  /* Under the header: a hairline strip, not a bar — the ticks and the fill
-     stay visible without spending the list's vertical budget. */
+  /* Under the header, riding over its border: the strip reads as part of the
+     header's own chrome instead of a separate row below it. */
+  margin-top: -1px;
   padding: 0 14px 2px;
+  position: relative;
+  z-index: 1;
 }
 
 .agent-transcript__progress-track {
@@ -7873,7 +7937,8 @@ pre,
   inset: 4px 0 auto;
   height: 2px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--line) 78%, transparent);
+  /* A brighter bed than the hairline grey, so the track itself reads. */
+  background: color-mix(in srgb, var(--muted) 42%, var(--line));
 }
 
 .agent-transcript__progress-fill {
@@ -7883,7 +7948,13 @@ pre,
   height: 2px;
   width: 0;
   border-radius: 999px;
-  background: var(--violet);
+  /* A gradient along the read direction: the tail fades from the bed colour
+     into violet, so the fill reads as motion rather than a flat line. */
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--teal) 70%, transparent),
+    var(--violet)
+  );
   transition: width 120ms linear;
 }
 
@@ -7910,6 +7981,31 @@ pre,
   background: color-mix(in srgb, var(--muted) 72%, var(--line));
   transform: translateX(-50%);
   transition: background 140ms ease, transform 140ms ease;
+}
+
+/* The turn the reader's position has just reached breathes: a soft pulse
+   that marks "you are here" without stealing focus from the list. */
+.agent-transcript__progress-tick.is-active::after {
+  background: var(--violet);
+  animation: agent-progress-breathe 1.6s ease-in-out infinite;
+}
+
+@keyframes agent-progress-breathe {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--violet) 45%, transparent);
+    opacity: 1;
+  }
+  50% {
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--violet) 12%, transparent);
+    opacity: 0.72;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-transcript__progress-tick.is-active::after {
+    animation: none;
+  }
 }
 
 .agent-transcript__progress-tick:hover::after,

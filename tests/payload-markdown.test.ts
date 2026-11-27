@@ -28,7 +28,7 @@ test("the generic view is content-only: metadata keys and scalars stay out", () 
 test("arrays of plain values render as one block per item and other scalars stay readable", () => {
   // One block per item, not bullets: a stack of values reads cleanly without
   // list markers, and an item that is code keeps its own fence.
-  assert.equal(payloadToMarkdown(["one", "two"]), "one\n\ntwo");
+  assert.equal(payloadToMarkdown(["one", "two"]), "> one\n>\n> two");
   assert.equal(payloadToMarkdown(42), "42");
   assert.equal(payloadToMarkdown(null), "");
   assert.equal(payloadToMarkdown({ blank: "", kept: "yes" }), "yes");

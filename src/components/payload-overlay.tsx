@@ -1,4 +1,16 @@
-import { Bot, ChevronDown, ChevronUp, Code2, Crosshair, Eye, Radio, Search, X } from "lucide-react";
+import {
+  Bot,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronUp,
+  Code2,
+  Crosshair,
+  Eye,
+  Radio,
+  Search,
+  X,
+} from "lucide-react";
 import {
   useCallback,
   useDeferredValue,
@@ -60,7 +72,8 @@ import { findPayloadFilePath } from "@/lib/numbered-code";
 import { markdownWithEmbeddedImages } from "@/lib/embedded-image";
 import { payloadToMarkdown } from "@/lib/payload-markdown";
 import { parseUserQuestionContent } from "@/lib/user-question-content";
-import type { TracePairLink } from "@/lib/trace-model";
+import { getEventSummary, type TracePairLink } from "@/lib/trace-model";
+import type { TracePromptRun } from "@/types/trace";
 import type { TracePayload } from "@/types/trace";
 
 type PayloadViewMode = "agent" | "preview" | "code";
@@ -346,12 +359,78 @@ function preparePreview(
  * selected row in view; picking any row (or disarming) pins the payload so it
  * stops advancing.
  */
+/**
+ * ‹ n/N › message stepping, mounted in the overlay's header beside the agent
+ * name: the dialog is the "global popup" the reader switches messages from,
+ * so the stepper lives with the view it drives. The parent owns the
+ * navigation; the LOG lands on the target's anchor event.
+ */
+function MessageStepper({
+  activeKey,
+  onStep,
+  runs,
+}: {
+  activeKey: string;
+  onStep: (delta: 1 | -1) => void;
+  runs: readonly TracePromptRun[];
+}) {
+  // An unset selection counts as the newest message: the stepper renders as
+  // soon as the session has two messages, not only after the first pick.
+  const found = runs.findIndex((run) => run.key === activeKey);
+  const index = found >= 0 ? found : runs.length - 1;
+  if (runs.length < 2) {
+    return null;
+  }
+  const earlier = index > 0 ? runs[index - 1] : null;
+  const later = index < runs.length - 1 ? runs[index + 1] : null;
+  const titleFor = (run: TracePromptRun | null) =>
+    run
+      ? getEventSummary(run.prompt).slice(0, 120).replace(/\s+/g, " ")
+      : "";
+  return (
+    <span className="run-stepper">
+      <button
+        aria-label="上一条消息"
+        className="run-stepper__button"
+        disabled={!earlier}
+        onClick={() => {
+          if (earlier) {
+            onStep(-1);
+          }
+        }}
+        title={earlier ? `上一条：${titleFor(earlier)}` : undefined}
+        type="button"
+      >
+        <ChevronLeft aria-hidden="true" />
+      </button>
+      <span className="run-stepper__count">
+        {index + 1}/{runs.length}
+      </span>
+      <button
+        aria-label="下一条消息"
+        className="run-stepper__button"
+        disabled={!later}
+        onClick={() => {
+          if (later) {
+            onStep(1);
+          }
+        }}
+        title={later ? `下一条：${titleFor(later)}` : undefined}
+        type="button"
+      >
+        <ChevronRight aria-hidden="true" />
+      </button>
+    </span>
+  );
+}
+
 export function PayloadOverlay({
   atoms,
   agentView,
   agentRunDurationMs = null,
   agentRunExecuting = false,
   agentRunState = null,
+  messageStepper = null,
   cacheScope = "",
   followAvailable = false,
   following = false,
@@ -388,6 +467,12 @@ export function PayloadOverlay({
     status: TraceRunStatus;
     reason: RunTerminalReason | null;
     detail: string | null;
+  } | null;
+  /** ‹ n/N › message stepping; rendered beside the agent name in the header. */
+  messageStepper?: {
+    activeKey: string;
+    onStep: (delta: 1 | -1) => void;
+    runs: readonly TracePromptRun[];
   } | null;
   /**
    * Whether the selected *message* is still executing. Distinct from
@@ -934,6 +1019,9 @@ export function PayloadOverlay({
               <span className="payload-overlay__agent-name">
                 {getAtomPlatformConfig(platform).label}
               </span>
+              {messageStepper ? (
+                <MessageStepper {...messageStepper} />
+              ) : null}
             </span>
             <DialogTitle className="sr-only">{label}</DialogTitle>
           </div>

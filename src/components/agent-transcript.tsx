@@ -66,6 +66,7 @@ import { payloadToMarkdown } from "@/lib/payload-markdown";
 import { markdownWithEmbeddedImages } from "@/lib/embedded-image";
 import { hookPhaseOf } from "@/lib/trace-event-kind";
 import { findPayloadFilePath } from "@/lib/numbered-code";
+import { PayloadItemBlocks } from "@/components/payload-item-blocks";
 import { formatDurationMs } from "@/lib/duration-label";
 import {
   formatExecutionClock,
@@ -684,7 +685,12 @@ function ChainProgress({
 }) {
   const fillRef = useRef<HTMLDivElement | null>(null);
   const frameRef = useRef<number | null>(null);
+  const progressRef = useRef(1);
   const [ticks, setTicks] = useState<ProgressTick[]>([]);
+  // The tick the reader's position has just passed (or sits on) breathes —
+  // a rounded state so the animation re-renders once per step, never per
+  // scroll frame.
+  const [activeTurn, setActiveTurn] = useState<number | null>(null);
 
   const measure = useCallback(() => {
     const container = scrollRef.current;
@@ -692,9 +698,10 @@ function ChainProgress({
       return;
     }
     const range = container.scrollHeight - container.clientHeight;
+    const progress = range <= 4 ? 1 : Math.min(1, Math.max(0, container.scrollTop / range));
+    progressRef.current = progress;
     if (fillRef.current) {
-      fillRef.current.style.width =
-        range <= 4 ? "100%" : `${Math.min(100, Math.max(0, (container.scrollTop / range) * 100))}%`;
+      fillRef.current.style.width = `${progress * 100}%`;
     }
     if (range <= 4) {
       // Everything is on screen: no ticks to place.
@@ -729,6 +736,22 @@ function ChainProgress({
       (left, right) => left.ratio - right.ratio,
     );
     setTicks((previous) => (sameTicks(previous, next) ? previous : next));
+    // The breathing tick: the last turn whose position the reader has
+    // reached. Compared against the rounded position so the state flips once
+    // per tick, not per frame.
+    const nearest = [...firstByTurn.values()]
+      .filter((tick) => tick.ratio <= progress + 0.0005)
+      .reduce<ProgressTick | null>(
+        (best, tick) => (!best || tick.ratio > best.ratio ? tick : best),
+        null,
+      );
+    setActiveTurn((previous) =>
+      (previous === null ? -1 : previous) === (nearest ? nearest.turn : -1)
+        ? previous
+        : nearest
+          ? nearest.turn
+          : null,
+    );
   }, [scrollRef, steps, stepRefs]);
 
   // Scroll drives the fill on its own rAF budget; a resize of the container
@@ -771,7 +794,10 @@ function ChainProgress({
         {ticks.map((tick) => (
           <button
             aria-label={`跳到第 ${tick.turn} 轮（${tick.count} 步，从第 ${tick.sequence} 行开始）`}
-            className="agent-transcript__progress-tick"
+            className={cn(
+              "agent-transcript__progress-tick",
+              tick.turn === activeTurn && "is-active",
+            )}
             key={tick.turn}
             onClick={() => {
               const element = stepRefs.get(tick.firstStepId);
@@ -1507,21 +1533,16 @@ function stepCardPropsEqual(
  */
 function StepBodyCollapse({
   label,
-  body,
   children,
 }: {
   /** Toggle verb: 收起{label} / 展开{label}. */
   label: string;
-  /**
-   * The step's own content, shown **in full** while collapsed: folding a
-   * step hides its apparatus (the call block, the snapshot badge), never
-   * the message itself — a truncated teaser read as "the content is gone".
-   */
-  body: ReactNode;
   /** The expanded view: the body plus the step's apparatus. */
   children: ReactNode;
 }) {
   const [expanded, setExpanded] = useState(true);
+  // Collapsed, the step shows only its toggle: the content itself appears on
+  // expand, so a folded chain is a calm list of labels, not a wall of text.
   return (
     <>
       <button
@@ -1537,7 +1558,7 @@ function StepBodyCollapse({
         )}
         {expanded ? `收起${label}` : `展开${label}`}
       </button>
-      {expanded ? children : body}
+      {expanded ? children : null}
     </>
   );
 }
@@ -1551,10 +1572,7 @@ function ThinkingBody({ step }: { step: ThinkingStep }) {
     [step.text],
   );
   return (
-    <StepBodyCollapse
-      body={<MarkdownView source={source} />}
-      label="推理"
-    >
+    <StepBodyCollapse label="推理">
       <MarkdownView source={source} />
     </StepBodyCollapse>
   );
@@ -1566,10 +1584,7 @@ function ReplyBody({ step }: { step: ReplyStep }) {
     [step.text],
   );
   return (
-    <StepBodyCollapse
-      body={<MarkdownView source={source} fallback="这条消息没有正文。" />}
-      label="回复"
-    >
+    <StepBodyCollapse label="回复">
       {step.snapshotCount > 0 ? (
         <p className="agent-step__badge">
           {step.snapshotCount} 个流式快照已合并
@@ -1604,13 +1619,38 @@ function ToolResultBody({ step }: { step: ToolResultStep }) {
     [step.inputs?.command, step.payload],
   );
   const listPayload = hasListPayload(step.payload);
+  // A top-level array payload renders as item blocks — one bordered record
+  // per entry, code fenced inside — not as a markdown wall. The blocks read
+  // the display copy (the command's leaves are already in the call block).
+  const arrayItems = useMemo(() => {
+    if (!listPayload || hasAnswers || shellOutput) {
+      return null;
+    }
+    const candidate = bodyPayload;
+    if (Array.isArray(candidate) && candidate.length) {
+      return candidate;
+    }
+    if (
+      candidate &&
+      typeof candidate === "object" &&
+      !Array.isArray(candidate)
+    ) {
+      const firstArray = Object.values(
+        candidate as Record<string, unknown>,
+      ).find((value) => Array.isArray(value) && value.length > 0);
+      if (Array.isArray(firstArray)) {
+        return firstArray;
+      }
+    }
+    return null;
+  }, [bodyPayload, hasAnswers, listPayload, shellOutput]);
   const source = useMemo(
     () => {
       const raw =
         hasAnswers || shellOutput
           ? ""
           : listPayload
-            ? payloadToMarkdown(step.payload)
+            ? ""
             : split.content.trim()
               ? contentToMarkdown(split.content, findPayloadFilePath(step.payload))
               : payloadToMarkdown(bodyPayload);
@@ -1629,22 +1669,8 @@ function ToolResultBody({ step }: { step: ToolResultStep }) {
   // The one structured extractor drives the call block: a captured shell
   // command is a terminal line, every other tool is a list of named inputs —
   // never a flattened `field=value` string.
-  // The collapsed view is the result's own body in full — folding hides the
-  // call block and the related-field list, never the content the reader came
-  // for. A shell call's output lives in the terminal block when expanded, so
-  // its collapsed body falls back to the generic dump of the same payload.
-  const resultBody = source.trim() ? (
-    <MarkdownView source={source} />
-  ) : hasAnswers ? (
-    <div className="agent-step__answers">
-      <span className="agent-step__answers-label">ANSWERS</span>
-      <AnswerRows questions={step.answerQuestions} rows={step.answers} />
-    </div>
-  ) : (
-    <p className="agent-step__teaser">{statCardRowHint(step) || "结果"}</p>
-  );
   return (
-    <StepBodyCollapse body={resultBody} label="结果">
+    <StepBodyCollapse label="结果">
       {step.inputs ? (
         <CallBlock inputs={step.inputs} output={shellOutput} />
       ) : null}
@@ -1653,6 +1679,8 @@ function ToolResultBody({ step }: { step: ToolResultStep }) {
           <span className="agent-step__answers-label">ANSWERS</span>
           <AnswerRows questions={step.answerQuestions} rows={step.answers} />
         </div>
+      ) : arrayItems ? (
+        <PayloadItemBlocks items={arrayItems} />
       ) : source.trim() ? (
         <MarkdownView source={source} />
       ) : null}
@@ -1688,10 +1716,7 @@ function GenericBody({ step }: { step: GenericStep }) {
   // (non-tool) events where it is the whole body.
   const inputs = step.inputs;
   return (
-    <StepBodyCollapse
-      body={<MarkdownView source={source} />}
-      label="内容"
-    >
+    <StepBodyCollapse label="内容">
       {inputs ? <CallBlock inputs={inputs} /> : null}
       {inputs ? null : <MarkdownView source={source} />}
       <StepRelated payload={step.payload} resetToken={step.id} />

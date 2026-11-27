@@ -3428,6 +3428,7 @@ function TraceInspector({
   overlayAgentRunDurationMs,
   overlayAgentRunExecuting,
   overlayAgentRunState,
+  messageStepper,
   overlayAgentPlatform,
   overlaySearchEvent,
   onOverlayFollowingChange,
@@ -3480,6 +3481,12 @@ function TraceInspector({
     status: TraceRunStatus;
     reason: RunTerminalReason | null;
     detail: string | null;
+  } | null;
+  /** ‹ n/N › message stepping, rendered in the overlay's header. */
+  messageStepper?: {
+    activeKey: string;
+    onStep: (delta: 1 | -1) => void;
+    runs: import("./types/trace").TracePromptRun[];
   } | null;
   /** Whether the selected message is executing — drives the Agent view's loading / scroll control. */
   overlayAgentRunExecuting: boolean;
@@ -3755,6 +3762,7 @@ function TraceInspector({
         agentRunDurationMs={overlayAgentRunDurationMs}
         agentRunExecuting={overlayAgentRunExecuting}
         agentRunState={overlayAgentRunState}
+        messageStepper={messageStepper}
         platform={overlayAgentPlatform}
         cacheScope={activeTab}
         followAvailable={overlayFollowAvailable}
@@ -7739,72 +7747,7 @@ export default function App() {
     ],
   );
 
-  /**
- * ‹ / › message stepping beside the agent name: with a long run history, the
- * reader moves between messages without opening the history pane. The count
- * names the current message out of the session's total; hovering a button
- * states the target, so a step never has to be confirmed by opening a pane.
- */
-function RunStepper({
-  activeKey,
-  onStep,
-  runs,
-}: {
-  activeKey: string;
-  onStep: (delta: 1 | -1) => void;
-  runs: readonly TracePromptRun[];
-}) {
-  // An unset selection counts as the newest message: the stepper renders as
-  // soon as the session has two messages, not only after the first pick.
-  const found = runs.findIndex((run) => run.key === activeKey);
-  const index = found >= 0 ? found : runs.length - 1;
-  if (runs.length < 2) {
-    return null;
-  }
-  const earlier = index > 0 ? runs[index - 1] : null;
-  const later = index < runs.length - 1 ? runs[index + 1] : null;
-  const titleFor = (run: TracePromptRun | null) =>
-    run
-      ? getEventSummary(run.prompt).slice(0, 120).replace(/\s+/g, " ")
-      : "";
-  return (
-    <span className="run-stepper">
-      <button
-        aria-label="上一条消息"
-        className="run-stepper__button"
-        disabled={!earlier}
-        onClick={() => {
-          if (earlier) {
-            onStep(-1);
-          }
-        }}
-        title={earlier ? `上一条：${titleFor(earlier)}` : undefined}
-        type="button"
-      >
-        <ChevronLeft aria-hidden="true" />
-      </button>
-      <span className="run-stepper__count">
-        {index + 1}/{runs.length}
-      </span>
-      <button
-        aria-label="下一条消息"
-        className="run-stepper__button"
-        disabled={!later}
-        onClick={() => {
-          if (later) {
-            onStep(1);
-          }
-        }}
-        title={later ? `下一条：${titleFor(later)}` : undefined}
-        type="button"
-      >
-        <ChevronRight aria-hidden="true" />
-      </button>
-    </span>
-  );
-}
-
-const selectHistorySearchResult = (entry: HistorySearchEntry) => {
+  const selectHistorySearchResult = (entry: HistorySearchEntry) => {
     const targetPlatform = getPlatformForSource(entry.source) ?? platformId;
     preserveAtomSelectionRef.current = targetPlatform !== platformId;
     setPlatformId(targetPlatform);
@@ -8859,13 +8802,6 @@ const selectHistorySearchResult = (entry: HistorySearchEntry) => {
                   }}
                 />
               </div>
-              {/* Message stepping beside the agent name: ‹ / › moves through
-                  this session's messages without opening the history pane. */}
-              <RunStepper
-                activeKey={activePromptRun?.key || ""}
-                onStep={stepPromptRun}
-                runs={activePromptRuns}
-              />
               <div className="canvas-view-switch" role="group" aria-label="画布视图">
                 <IconAction
                   label="拓扑视图"
@@ -9044,6 +8980,11 @@ const selectHistorySearchResult = (entry: HistorySearchEntry) => {
                 atom={selectedAtom}
                 index={selectedEventIndex}
                 onActiveTabChange={setInspectorTab}
+                messageStepper={{
+                  activeKey: activePromptRun?.key || "",
+                  onStep: stepPromptRun,
+                  runs: activePromptRuns,
+                }}
                 overlayAtoms={overlayAtoms}
                 overlaySelectedEventId={selectedEventId || ""}
                 overlayRunningEventId={

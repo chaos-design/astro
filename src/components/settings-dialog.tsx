@@ -87,6 +87,11 @@ function RetentionField({
   // a confirm block rendered on it vanished exactly then, so the confirm
   // button never stayed on screen and the switch could not be turned on.
   const [awaiting, setAwaiting] = useState(false);
+  // A destructive confirm reads differently from a toggle: the first click
+  // only arms the button ("再点一次确认"), and the sweep runs on the second
+  // — or never, if the reader changes the window or walks away (the arm
+  // expires, so a parked button cannot fire hours later).
+  const [armed, setArmed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [report, setReport] = useState<string | null>(null);
 
@@ -133,11 +138,17 @@ function RetentionField({
       })
       .catch((reason: unknown) => {
         setAwaiting(false);
+        setArmed(false);
         setError(reason instanceof Error ? reason.message : String(reason));
       });
   };
 
   const confirmEnable = () => {
+    if (!armed) {
+      setArmed(true);
+      return;
+    }
+    setArmed(false);
     onPrune(retention.days)
       .then((result) => {
         onChange({ ...retention, enabled: true });
@@ -231,6 +242,7 @@ function RetentionField({
             if (retention.enabled) {
               onChange({ ...retention, enabled: false });
               setAwaiting(false);
+              setArmed(false);
               setPreview(null);
               setReport(null);
               return;
@@ -258,6 +270,7 @@ function RetentionField({
                   className="settings-retention__action"
                   onClick={() => {
                     setAwaiting(false);
+                    setArmed(false);
                     setPreview(null);
                   }}
                   type="button"
@@ -265,11 +278,16 @@ function RetentionField({
                   取消
                 </button>
                 <button
-                  className="settings-retention__action is-danger"
+                  className={cn(
+                    "settings-retention__action is-danger",
+                    armed && "is-armed",
+                  )}
                   onClick={confirmEnable}
                   type="button"
                 >
-                  确认开启并清理 {preview.eventFiles} 条
+                  {armed
+                    ? "再次点击确认删除"
+                    : `确认开启并清理 ${preview.eventFiles} 条`}
                 </button>
               </span>
             </>
@@ -283,11 +301,14 @@ function RetentionField({
           <span>{describeRetentionPreview(preview)}</span>
           <span className="settings-retention__actions">
             <button
-              className="settings-retention__action is-danger"
+              className={cn(
+                "settings-retention__action is-danger",
+                armed && "is-armed",
+              )}
               onClick={confirmEnable}
               type="button"
             >
-              立即清理 {preview.eventFiles} 条
+              {armed ? "再次点击确认删除" : `立即清理 ${preview.eventFiles} 条`}
             </button>
           </span>
         </div>

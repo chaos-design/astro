@@ -283,14 +283,13 @@ test("agent steps show a captured command and real thinking on first render", ()
   assert.match(stylesForOverlay, /\.agent-step--tool-result \{/);
   // Every step body shares one expand/collapse affordance (opens expanded,
   // folds to a one-line content description) instead of each owning its own.
-  // Folding a step hides its apparatus, never the message: the collapsed
-  // view renders the step's own body in full (no truncated teaser).
-  assert.match(agentTranscript, /function StepBodyCollapse[\s\S]{0,600}body: ReactNode/);
-  assert.match(agentTranscript, /\{expanded \? children : body\}/);
+  // Folding a step hides its content entirely — a folded chain reads as a
+  // calm list of labels, and the body appears on expand.
+  assert.match(agentTranscript, /function StepBodyCollapse[\s\S]{0,900}\{expanded \? children : null\}/);
   // The step bodies pass their own full body for the collapsed view.
   assert.match(agentTranscript, /<StepBodyCollapse[\s\S]{0,80}label="推理"/);
   assert.match(agentTranscript, /<StepBodyCollapse[\s\S]{0,80}label="回复"/);
-  assert.match(agentTranscript, /<StepBodyCollapse body=\{resultBody\} label="结果">/);
+  assert.match(agentTranscript, /<StepBodyCollapse label="结果">/);
   assert.match(agentTranscript, /<StepBodyCollapse[\s\S]{0,80}label="内容"/);
 });
 

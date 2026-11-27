@@ -32,7 +32,10 @@ test("the confirm block stays until the reader confirms, cancels or closes the s
     "a fetched preview must not close the confirm block",
   );
   // Every explicit exit: cancel, confirm, a failed preview, or the switch.
-  assert.match(dialog, /onClick=\{\(\) => \{\s*\n\s*setAwaiting\(false\);\s*\n\s*setPreview\(null\);/);
+  assert.match(
+    dialog,
+    /onClick=\{\(\) => \{\s*\n\s*setAwaiting\(false\);\s*\n\s*setArmed\(false\);\s*\n\s*setPreview\(null\);/,
+  );
   assert.match(dialog, /onChange\(\{ \.\.\.retention, enabled: true \}\);\s*\n\s*setAwaiting\(false\);/);
   assert.match(dialog, /\.catch\(\(reason: unknown\) => \{\s*\n\s*setAwaiting\(false\);/);
   assert.match(

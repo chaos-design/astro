@@ -1,7 +1,16 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import test from "node:test";
 
 import {
@@ -224,4 +233,53 @@ test("the tail read stays bounded on a long session", () => {
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("the prune refuses anything that is not a real session directory", (t) => {
+  const root = mkdtempSync(join(tmpdir(), "astro-retention-guard-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const now = Date.now();
+  const stale = new Date(now - 40 * DAY).toISOString();
+
+  // A session directory whose events.jsonl is genuinely stale: deletable.
+  const session = join(root, "zcode", "2026", "10-18", "10_00_00-old");
+  mkdirSync(session, { recursive: true });
+  writeFileSync(
+    join(session, "events.jsonl"),
+    `${JSON.stringify({ id: "old", capturedAt: stale })}\n`,
+  );
+
+  // A symlink pointing at a stale session outside the root must never be
+  // followed: the walk sees the session through the link, but the delete
+  // stops at the link itself.
+  const outside = mkdtempSync(join(tmpdir(), "astro-retention-outside-"));
+  t.after(() => rmSync(outside, { recursive: true, force: true }));
+  const victim = join(outside, "victim");
+  mkdirSync(victim, { recursive: true });
+  writeFileSync(
+    join(victim, "events.jsonl"),
+    `${JSON.stringify({ id: "victim", capturedAt: stale })}\n`,
+  );
+  const linked = join(root, "zcode", "2026", "10-18", "10_00_00-link");
+  mkdirSync(dirname(linked), { recursive: true });
+  symlinkSync(victim, linked);
+
+  // A directory with no events.jsonl is not a captured session, even stale.
+  const stray = join(root, "zcode", "2026", "10-18", "10_00_00-stray");
+  mkdirSync(stray, { recursive: true });
+  writeFileSync(join(stray, "notes.txt"), "keep me");
+
+  const report = pruneExpiredSessions({ root, days: 15, now });
+  assert.equal(report.removed, 1, "only the real session goes");
+  assert.equal(
+    existsSync(join(victim, "events.jsonl")),
+    true,
+    "the symlink's target is untouched",
+  );
+  assert.equal(lstatSync(linked).isSymbolicLink(), true, "the link stays");
+  assert.equal(
+    existsSync(join(stray, "notes.txt")),
+    true,
+    "a non-session directory never enters the sweep",
+  );
 });
