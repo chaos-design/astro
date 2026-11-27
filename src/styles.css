@@ -6092,6 +6092,9 @@ pre,
   background: color-mix(in srgb, var(--panel-raised) 62%, transparent);
   color: var(--muted-soft);
   font-weight: var(--weight-medium);
+  /* A column name is a label, not prose: keep it on one line and let a wide
+     table scroll sideways instead of breaking every header into two rows. */
+  white-space: nowrap;
 }
 
 .markdown-preview tbody tr:nth-child(even) {
@@ -6878,11 +6881,13 @@ pre,
 /* Prose wraps and fenced code scrolls inside its own block; a wide Markdown
    table gets the same treatment so the pane itself never needs to widen for
    one wide element — horizontal scrolling stays local to what is wide. */
-.payload-overlay .markdown-preview table {
+.markdown-preview table {
   display: block;
   width: fit-content;
   max-width: 100%;
   overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-bright) transparent;
 }
 
 /* The rail is the run's message chain in the LOG's own data standard: every

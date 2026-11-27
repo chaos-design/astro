@@ -164,6 +164,66 @@ test("durable events without a location envelope use the remembered directory", 
   assert.equal(streamed[0].cwd, location);
 });
 
+test("envelope-less messages load even when no session.created was seen", async () => {
+  // A session started before the plugin loaded emits text deltas with no
+  // location at all. With no remembered directory the location gate used to
+  // drop every message of that session.
+  const events = await runEvents([
+    {
+      type: "session.text.delta",
+      data: { sessionID: "ses_index", assistantMessageID: "m4", ordinal: 0, delta: "late load" },
+    },
+  ]);
+  const messages = events.filter(
+    (event) => event.eventName === "AgentMessage" && event.payload.streamed,
+  );
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].payload.message, "late load");
+  assert.equal(messages[0].cwd, location);
+});
+
+test("a foreign event does not poison the remembered directory", async () => {
+  const events = await runEvents([
+    located("session.created", {}),
+    {
+      type: "session.text.delta",
+      data: {
+        sessionID: "ses_index",
+        assistantMessageID: "m5",
+        ordinal: 0,
+        delta: "foreign",
+        location: { directory: "/some/other/project" },
+      },
+    },
+    {
+      type: "session.text.delta",
+      data: { sessionID: "ses_index", assistantMessageID: "m6", ordinal: 0, delta: "ours" },
+    },
+  ]);
+  const messages = events.filter(
+    (event) => event.eventName === "AgentMessage" && event.payload.streamed,
+  );
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].payload.message, "ours");
+  assert.equal(messages[0].cwd, location);
+});
+
+test("a second prompt resets terminal dedupe so its Stop is recorded", async () => {
+  const events = await runEvents([
+    located("session.created", {}),
+    located("session.inbox.enqueued", {
+      item: { type: "user", payload: { text: "first" } },
+    }),
+    located("session.step.ended", { finish: "stop" }),
+    located("session.inbox.enqueued", {
+      item: { type: "user", payload: { text: "second" } },
+    }),
+    located("session.step.ended", { finish: "stop" }),
+  ]);
+  const stops = events.filter((event) => event.eventName === "Stop");
+  assert.equal(stops.length, 2, "each prompt reaches its own terminal state");
+});
+
 test("a foreign location never claims this instance's session", async () => {
   const events = await runEvents([
     located("session.created", {}),

@@ -18,12 +18,18 @@ use Node.js ES modules or CommonJS according to their existing file extension.
 - `opencode-plugin/`: zero-dependency OpenCode plugin installed globally by
   `scripts/install-opencode-plugin.mjs`; `mapping.ts` maps OpenCode server
   events onto canonical event names, `claim.ts` guarantees one recorder per
-  session. Durable events carry no location envelope, so
-  `opencodeEventDirectory` keeps every host spelling plus a per-session
-  remembered directory — dropping that fallback lost the main agent's text.
-  `session.text.delta` is accumulated into throttled `AgentMessage` snapshots so
-  content is visible while the agent executes; the claim is taken only once an
-  event actually maps to a trace, never on an unmapped event.
+  session by storing the owning pid: `opencode service restart` leaves a stale
+  claim behind, so a dead owner (or a reload in the same process) is taken over
+  instead of silencing the session forever. Durable events carry no location
+  envelope, so `opencodeEventDirectory` keeps every host spelling plus a
+  per-session remembered directory, falling back to the plugin's own location
+  when no directory was ever seen — dropping that fallback lost the main
+  agent's text. A foreign directory is never remembered, or one mislabelled
+  event would poison every later envelope-less event. Terminal dedupe is reset
+  by `UserPromptSubmit` as well as a new model step, so every prompt keeps its
+  own Stop. `session.text.delta` is accumulated into throttled `AgentMessage`
+  snapshots so content is visible while the agent executes; the claim is taken
+  only once an event actually maps to a trace, never on an unmapped event.
 - `pi-plugin/`: zero-dependency Pi extension installed globally by
   `scripts/install-pi-plugin.mjs`; `mapping.ts` maps Pi extension events onto
   canonical event names, and `claim.ts` stores the owning pid so resumable Pi

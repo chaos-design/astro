@@ -780,7 +780,7 @@ test("a follow advance keeps the reader's scroll; picking a row re-anchors", () 
   // the pane wraps prose and never widens for one wide element.
   assert.match(
     stylesForOverlay,
-    /\.payload-overlay \.markdown-preview table \{[\s*\S]*?overflow-x: auto;/,
+    /\.markdown-preview table \{[\s*\S]*?overflow-x: auto;/,
   );
 });
 
@@ -1159,6 +1159,10 @@ test("key-value blocks have a framed, hoverable surface", () => {
   assert.match(stylesForOverlay, /\.agent-transcript__stat-card \{[\s\S]*?padding: 9px 14px/);
   assert.match(stylesForOverlay, /\.payload-overlay__pane-head \{[\s\S]*?padding: 14px 18px 12px/);
   assert.match(stylesForOverlay, /\.payload-overlay__pane--related \.payload-overlay__body \{[\s\S]*?padding: 8px 18px 22px/);
+  // Table headers are labels: keep them on one line and scroll a wide table
+  // locally instead of wrapping every column name across rows.
+  assert.match(stylesForOverlay, /\.markdown-preview th \{[\s\S]*?white-space: nowrap/);
+  assert.match(stylesForOverlay, /\.markdown-preview table \{[\s\S]*?overflow-x: auto/);
 });
 
 /** A one-item array is one message: its content is rendered directly, never

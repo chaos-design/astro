@@ -172,11 +172,17 @@ export default {
       if (!sessionId) {
         return;
       }
+      // Durable `session.text.*` events carry no location envelope: a session
+      // created before this plugin loaded has no `session.created` to learn
+      // from. Falling back to this instance's location lets those messages
+      // through; the claim below still guarantees one recorder per session.
       const eventDirectory = opencodeEventDirectory(
         event,
-        sessionDirs.get(sessionId),
+        sessionDirs.get(sessionId) ?? location,
       );
-      if (eventDirectory) {
+      // Never remember a foreign directory: one mislabelled event would
+      // otherwise poison every later envelope-less event in the session.
+      if (eventDirectory === location) {
         sessionDirs.set(sessionId, eventDirectory);
       }
       // The event stream is global and every location runs a plugin instance,
@@ -257,8 +263,13 @@ export default {
             continue;
           }
           lastTerminal.set(sessionId, payload.eventName);
-        } else if (payload.eventName === "Notification") {
-          // A new model step means the previous terminal no longer dedupes.
+        } else if (
+          payload.eventName === "Notification" ||
+          payload.eventName === "UserPromptSubmit"
+        ) {
+          // A new model step or a new prompt makes the previous terminal
+          // stale; without the prompt case every turn after the first loses
+          // its Stop and the run never reaches a terminal state.
           lastTerminal.delete(sessionId);
         }
         enqueue({ sessionId, cwd: eventDirectory, ...payload });
