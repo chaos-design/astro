@@ -1138,6 +1138,23 @@ const capturedImage = readFileSync(
   "utf8",
 );
 
+/** Key/value payloads read as framed records, not unstyled label dumps; the
+ *  call fields and the related-fields disclosure share the same care. */
+test("key-value blocks have a framed, hoverable surface", () => {
+  const fieldsCss = stylesForOverlay.slice(
+    stylesForOverlay.indexOf(".payload-item__fields {"),
+    stylesForOverlay.indexOf(".agent-transcript__progress {"),
+  );
+  assert.match(fieldsCss, /\.payload-item__fields \{[\s\S]*?border: 1px solid color-mix\(in srgb, var\(--violet\)/);
+  assert.match(fieldsCss, /\.payload-item__field \{[\s\S]*?border-radius: 4px[\s\S]*?transition: background/);
+  assert.match(fieldsCss, /\.payload-item__field:hover/);
+  assert.match(fieldsCss, /\.payload-item__field dd \{[\s\S]*?border-left: 1px solid/);
+  assert.match(stylesForOverlay, /\.agent-step__call-fields \{[\s\S]*?border: 1px solid/);
+  assert.match(stylesForOverlay, /\.agent-step__call-field:hover/);
+  assert.match(stylesForOverlay, /\.agent-step__related summary \{[\s\S]*?border-radius: 999px/);
+  assert.match(stylesForOverlay, /\.agent-step__related\[open\] summary::before/);
+});
+
 /** A one-item array is one message: its content is rendered directly, never
  * tabulated. Multi-item arrays keep per-record blocks for context. */
 test("a single array item renders its content, not a key/value grid", () => {
@@ -1207,4 +1224,26 @@ test("the progress strip keeps edge buttons, hides when idle, and grows smoothly
   assert.match(agentTranscript, /<div className="agent-transcript__progress-track" ref=\{trackRef\}>/);
   assert.match(agentTranscript, /const trackWidth = trackRef\.current\?\.clientWidth \?\? 0/);
   assert.match(agentTranscript, /!visible && "is-hidden"/);
+  // Dots stay whole at both ends, sit above the fill, and brighten once the
+  // reader has passed them; the pan buttons light up for the whole slide.
+  assert.match(agentTranscript, /PROGRESS_TICK_INSET = 7/);
+  assert.match(
+    agentTranscript,
+    /PROGRESS_TICK_INSET \+ tick\.ratio \* \(layerWidth - 2 \* PROGRESS_TICK_INSET\)/,
+  );
+  assert.match(agentTranscript, /tick\.turn < activeTurn && "is-passed"/);
+  assert.match(agentTranscript, /PROGRESS_PAN_FEEDBACK_MS = 420/);
+  assert.match(agentTranscript, /panning && "is-panning"/);
+  assert.match(stylesForOverlay, /\.agent-transcript__progress-tick \{[\s\S]*?z-index: 1/);
+  assert.match(stylesForOverlay, /\.agent-transcript__progress-tick\.is-passed::after/);
+  assert.match(stylesForOverlay, /\.agent-transcript__progress\.is-panning [\s\S]{0,180}box-shadow/);
+  assert.match(stylesForOverlay, /\.agent-transcript__progress-edge:not\(\.is-idle\)/);
+  // Scrolling only reads scrollTop and writes the fill; the O(steps) geometry
+  // pass runs on step / resize changes, with its own rAF budget.
+  assert.match(agentTranscript, /const updateReading = useCallback/);
+  assert.match(agentTranscript, /const measureTicks = useCallback/);
+  assert.match(agentTranscript, /frameRef\.current = null;\s*\n\s*updateReading\(\);/);
+  assert.match(agentTranscript, /new ResizeObserver\(onResize\)/);
+  assert.match(agentTranscript, /ticksRef\.current = next/);
+  assert.match(agentTranscript, /for \(const tick of ticksNow\)/);
 });

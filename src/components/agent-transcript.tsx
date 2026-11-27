@@ -609,6 +609,12 @@ function StepStatusBadge({
   );
 }
 
+/** Half a tick's hit area: the first / last dot stays whole inside the track
+ *  instead of being clipped by its overflow window. */
+const PROGRESS_TICK_INSET = 7;
+/** Keep the pan highlight up for the whole slide, not just the click frame. */
+const PROGRESS_PAN_FEEDBACK_MS = 420;
+
 type ProgressTick = {
   /** The turn's first step, for the click-to-jump. */
   firstStepId: string;
@@ -672,6 +678,10 @@ function ChainProgress({
   // Nothing to report until the chain actually overflows: the strip is hidden
   // on first render and only appears once a turn can be placed on it.
   const [visible, setVisible] = useState(false);
+  // A brief lit state while the layer slides makes the edge buttons read as
+  // a real switch between windows instead of a no-op on a static bar.
+  const [panning, setPanning] = useState(false);
+  const panTimerRef = useRef<number | null>(null);
   const shiftTicks = useCallback((direction: 1 | -1) => {
     const layer = ticksLayerRef.current;
     if (!layer) {
@@ -685,14 +695,35 @@ function ChainProgress({
     const next = Math.min(max, Math.max(0, panRef.current + direction * max * 0.6));
     panRef.current = next;
     setPan(next);
+    setPanning(true);
+    if (panTimerRef.current !== null) {
+      window.clearTimeout(panTimerRef.current);
+    }
+    panTimerRef.current = window.setTimeout(() => {
+      panTimerRef.current = null;
+      setPanning(false);
+    }, PROGRESS_PAN_FEEDBACK_MS);
   }, []);
+  useEffect(
+    () => () => {
+      if (panTimerRef.current !== null) {
+        window.clearTimeout(panTimerRef.current);
+      }
+    },
+    [],
+  );
   const [ticks, setTicks] = useState<ProgressTick[]>([]);
+  // The last measured geometry, readable from the scroll frame without going
+  // through React state or touching the DOM again.
+  const ticksRef = useRef<ProgressTick[]>([]);
   // The tick the reader's position has just passed (or sits on) breathes —
   // a rounded state so the animation re-renders once per step, never per
   // scroll frame.
   const [activeTurn, setActiveTurn] = useState<number | null>(null);
 
-  const measure = useCallback(() => {
+  /** Cheap, per-frame work: one scroll read, one style write, one comparison
+   *  against the cached ticks. No step geometry is measured here. */
+  const updateReading = useCallback(() => {
     const container = scrollRef.current;
     if (!container) {
       return;
@@ -704,10 +735,43 @@ function ChainProgress({
       fillRef.current.style.width = `${progress * 100}%`;
     }
     if (range <= 4) {
+      setActiveTurn((previous) => (previous === null ? previous : null));
+      return;
+    }
+    const ticksNow = ticksRef.current;
+    let nearest: ProgressTick | null = null;
+    for (const tick of ticksNow) {
+      if (tick.ratio <= progress + 0.0005 && (!nearest || tick.ratio > nearest.ratio)) {
+        nearest = tick;
+      }
+    }
+    // Compared against the rounded position so the state flips once per tick,
+    // not once per scroll frame.
+    setActiveTurn((previous) =>
+      (previous === null ? -1 : previous) === (nearest ? nearest.turn : -1)
+        ? previous
+        : nearest
+          ? nearest.turn
+          : null,
+    );
+  }, [scrollRef]);
+
+  /** Expensive, structural work: one `getBoundingClientRect` per step. Only a
+   *  new step, a resize or a live append can change these positions, so it is
+   *  deliberately kept off the scroll path. */
+  const measureTicks = useCallback(() => {
+    const container = scrollRef.current;
+    if (!container) {
+      return;
+    }
+    const range = container.scrollHeight - container.clientHeight;
+    if (range <= 4) {
       // Everything is on screen: no progress to report, so the whole strip
       // (buttons included) steps aside instead of showing an idle bed.
+      ticksRef.current = [];
       setTicks((previous) => (previous.length ? [] : previous));
       setVisible(false);
+      setCanShift(false);
       return;
     }
     setVisible(true);
@@ -738,6 +802,7 @@ function ChainProgress({
     const next = [...firstByTurn.values()].sort(
       (left, right) => left.ratio - right.ratio,
     );
+    ticksRef.current = next;
     setTicks((previous) => (sameTicks(previous, next) ? previous : next));
     // The two pan buttons own fixed slots at the ends; the track takes all
     // the room between them. Dense turns widen the tick layer past that
@@ -746,49 +811,44 @@ function ChainProgress({
     const width = Math.max(trackWidth, next.length * 13);
     setLayerWidth((previous) => (previous === width ? previous : width));
     setCanShift(width > trackWidth + 4);
-    // The breathing tick: the last turn whose position the reader has
-    // reached. Compared against the rounded position so the state flips once
-    // per tick, not per frame.
-    const nearest = [...firstByTurn.values()]
-      .filter((tick) => tick.ratio <= progress + 0.0005)
-      .reduce<ProgressTick | null>(
-        (best, tick) => (!best || tick.ratio > best.ratio ? tick : best),
-        null,
-      );
-    setActiveTurn((previous) =>
-      (previous === null ? -1 : previous) === (nearest ? nearest.turn : -1)
-        ? previous
-        : nearest
-          ? nearest.turn
-          : null,
-    );
-  }, [scrollRef, steps, stepRefs]);
+    updateReading();
+  }, [scrollRef, steps, stepRefs, updateReading]);
 
-  // Scroll drives the fill on its own rAF budget; a resize of the container
-  // (panel drag, viewport change) re-measures the ticks.
-  // A live append changes the scroll range and the tick positions without a
-  // scroll event; re-measure on the chain's own growth.
+  // A live append or a new step changes the tick geometry without a scroll
+  // event; re-measure on the chain's own growth.
   useEffect(() => {
-    measure();
-  }, [measure, steps.length, steps.at(-1)?.id]);
+    measureTicks();
+  }, [measureTicks, steps.length, steps.at(-1)?.id]);
 
   useEffect(() => {
     const container = scrollRef.current;
     if (!container) {
       return;
     }
-    measure();
+    measureTicks();
     const onScroll = () => {
       if (frameRef.current !== null) {
         return;
       }
       frameRef.current = window.requestAnimationFrame(() => {
         frameRef.current = null;
-        measure();
+        updateReading();
+      });
+    };
+    // A resize changes geometry, not just the reading line: it gets its own
+    // rAF budget so a scroll frame cannot starve it (or vice versa).
+    let resizeFrame: number | null = null;
+    const onResize = () => {
+      if (resizeFrame !== null) {
+        return;
+      }
+      resizeFrame = window.requestAnimationFrame(() => {
+        resizeFrame = null;
+        measureTicks();
       });
     };
     container.addEventListener("scroll", onScroll, { passive: true });
-    const observer = new ResizeObserver(onScroll);
+    const observer = new ResizeObserver(onResize);
     observer.observe(container);
     return () => {
       container.removeEventListener("scroll", onScroll);
@@ -797,13 +857,20 @@ function ChainProgress({
         window.cancelAnimationFrame(frameRef.current);
         frameRef.current = null;
       }
+      if (resizeFrame !== null) {
+        window.cancelAnimationFrame(resizeFrame);
+      }
     };
-  }, [measure, scrollRef]);
+  }, [measureTicks, updateReading, scrollRef]);
 
   return (
     <div
       aria-hidden={visible ? "false" : "true"}
-      className={cn("agent-transcript__progress", !visible && "is-hidden")}
+      className={cn(
+        "agent-transcript__progress",
+        !visible && "is-hidden",
+        panning && "is-panning",
+      )}
     >
       {/* The pan buttons sit at the two outer edges and the track fills the
           space between them; dense turns widen the tick layer underneath. */}
@@ -832,6 +899,7 @@ function ChainProgress({
               aria-label={`跳到第 ${tick.turn} 轮（${tick.count} 步，从第 ${tick.sequence} 行开始）`}
               className={cn(
                 "agent-transcript__progress-tick",
+                activeTurn !== null && tick.turn < activeTurn && "is-passed",
                 tick.turn === activeTurn && "is-active",
               )}
               key={tick.turn}
@@ -839,7 +907,12 @@ function ChainProgress({
                 const element = stepRefs.get(tick.firstStepId);
                 element?.scrollIntoView({ behavior: "smooth", block: "start" });
               }}
-              style={{ left: layerWidth > 0 ? `${tick.ratio * layerWidth}px` : undefined }}
+              style={{
+                left:
+                  layerWidth > 0
+                    ? `${PROGRESS_TICK_INSET + tick.ratio * (layerWidth - 2 * PROGRESS_TICK_INSET)}px`
+                    : undefined,
+              }}
               type="button"
             >
               <span className="agent-transcript__progress-tip" role="tooltip">

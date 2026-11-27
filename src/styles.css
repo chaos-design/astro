@@ -8027,30 +8027,52 @@ pre,
   border-color: var(--violet);
 }
 
+/* A key/value payload is a record, not bare text: give the pair list its own
+   framed surface, one inset chip per row, and a gutter between the key and
+   its value so a long path never reads as a continuation of the label. */
 .payload-item__fields {
   display: grid;
-  gap: 3px;
+  gap: 2px;
   margin: 0;
+  padding: 5px;
+  border: 1px solid color-mix(in srgb, var(--violet) 24%, var(--line));
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--violet) 7%, var(--panel));
+  overflow: hidden;
 }
 
 .payload-item__field {
   display: grid;
+  min-width: 0;
   grid-template-columns: minmax(72px, max-content) 1fr;
-  gap: 8px;
-  align-items: baseline;
+  gap: 10px;
+  align-items: start;
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--panel-raised, var(--panel)) 58%, transparent);
   font-size: 0.75rem;
   line-height: 1.5;
+  transition: background 140ms ease;
+}
+
+.payload-item__field:hover {
+  background: color-mix(in srgb, var(--panel-raised, var(--panel)) 94%, var(--violet));
 }
 
 .payload-item__field dt {
-  color: var(--muted);
+  min-width: 0;
+  color: var(--violet);
   font-family: var(--font-mono, monospace);
   font-size: var(--text-overline);
-  text-transform: none;
+  letter-spacing: 0.02em;
+  overflow-wrap: anywhere;
 }
 
 .payload-item__field dd {
+  min-width: 0;
   margin: 0;
+  padding-left: 9px;
+  border-left: 1px solid color-mix(in srgb, var(--violet) 22%, var(--line));
   color: var(--text);
   font-family: var(--font-mono, monospace);
   overflow-wrap: anywhere;
@@ -8128,6 +8150,18 @@ pre,
   color: var(--muted-soft, var(--muted));
 }
 
+/* Only a button that can actually move the window gets the actionable
+   treatment; an idle chip stays quiet so "switchable" is visible at a glance. */
+.agent-transcript__progress-edge:not(.is-idle) {
+  border-color: color-mix(in srgb, var(--violet) 52%, var(--line));
+  color: var(--text-strong);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--violet) 10%, transparent);
+}
+
+.agent-transcript__progress-edge:not(.is-idle):active {
+  transform: scale(0.92);
+}
+
 .agent-transcript__progress-track {
   position: relative;
   height: 10px;
@@ -8144,8 +8178,24 @@ pre,
   inset: 0 auto 0 0;
   height: 100%;
   transition:
-    transform 240ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 420ms cubic-bezier(0.22, 1, 0.36, 1),
     width 320ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* The pan feedback lasts as long as the slide: bed, buttons and lit ticks
+   brighten together, so moving between windows reads as a deliberate switch. */
+.agent-transcript__progress.is-panning .agent-transcript__progress-track::before {
+  background: color-mix(in srgb, var(--violet) 26%, var(--line));
+}
+
+.agent-transcript__progress.is-panning .agent-transcript__progress-edge {
+  border-color: var(--violet);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--violet) 22%, transparent);
+  color: var(--text-strong);
+}
+
+.agent-transcript__progress.is-panning .agent-transcript__progress-tick::after {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--violet) 18%, transparent);
 }
 
 /* The bed belongs to the track, not the strip: the reading must start
@@ -8180,6 +8230,9 @@ pre,
 .agent-transcript__progress-tick {
   position: absolute;
   top: 0;
+  /* The fill is painted after the layer in DOM order; put every dot above it
+     or a coloured turn disappears into the coloured bar. */
+  z-index: 1;
   width: 12px;
   height: 10px;
   padding: 0;
@@ -8190,7 +8243,7 @@ pre,
 }
 
 .agent-transcript__progress-tick.is-active {
-  z-index: 1;
+  z-index: 2;
 }
 
 .agent-transcript__progress-tick::after {
@@ -8206,9 +8259,22 @@ pre,
   transition: background 140ms ease, transform 140ms ease;
 }
 
+/* Turns the reader has already passed sit on the coloured fill, so they get a
+   brighter, ringed dot — otherwise the bar swallows the marker. */
+.agent-transcript__progress-tick.is-passed::after {
+  top: 2.5px;
+  width: 6px;
+  height: 6px;
+  background: color-mix(in srgb, var(--violet) 76%, var(--text-strong));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--violet) 20%, transparent);
+}
+
 /* The turn the reader's position has just reached breathes: a soft pulse
    that marks "you are here" without stealing focus from the list. */
 .agent-transcript__progress-tick.is-active::after {
+  top: 2px;
+  width: 7px;
+  height: 7px;
   background: var(--violet);
   animation: agent-progress-breathe 1.6s ease-in-out infinite;
 }
@@ -12308,9 +12374,12 @@ pre,
    longer reads as an unbroken `description="…"` run in a terminal line. */
 .agent-step__call-fields {
   display: grid;
-  gap: 0;
-  margin: 0;
-  padding: 3px 11px 7px;
+  gap: 2px;
+  margin: 6px 8px 8px;
+  padding: 5px;
+  border: 1px solid color-mix(in srgb, var(--line-bright) 62%, transparent);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--panel) 86%, transparent);
 }
 
 .agent-step__call-field {
@@ -12321,8 +12390,14 @@ pre,
      bounded max keeps a long key from eating the row; it ellipsizes instead. */
   grid-template-columns: minmax(56px, 128px) minmax(0, 1fr);
   gap: 12px;
-  padding: 6px 0;
-  border-bottom: 1px solid var(--line);
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--panel-raised, var(--panel)) 54%, transparent);
+  transition: background 140ms ease;
+}
+
+.agent-step__call-field:hover {
+  background: color-mix(in srgb, var(--panel-raised, var(--panel)) 95%, var(--violet));
 }
 
 .agent-step__call-field:last-child {
@@ -12468,10 +12543,37 @@ pre,
 }
 
 .agent-step__related summary {
-  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel-raised);
   color: var(--muted);
+  cursor: pointer;
   font-family: var(--font-mono, monospace);
   font-size: 0.6875rem;
+  list-style: none;
+  transition: border-color 140ms ease, color 140ms ease;
+}
+
+.agent-step__related summary::-webkit-details-marker {
+  display: none;
+}
+
+.agent-step__related summary::before {
+  color: var(--violet);
+  content: "▸";
+}
+
+.agent-step__related[open] summary::before {
+  content: "▾";
+}
+
+.agent-step__related summary:hover {
+  border-color: color-mix(in srgb, var(--violet) 46%, var(--line));
+  color: var(--text-strong);
 }
 
 .agent-step__related .payload-overlay__fields {
