@@ -406,6 +406,12 @@ test("the rail row is the LOG row, not a second row imitation", () => {
   assert.match(overlay, /event\.stopPropagation\(\);\s*\n\s*setSummaryExpanded/);
   assert.match(overlay, /onClick=\{\(\) => onSelectAtom\(card\.atomId, card\.id\)\}/);
   assert.match(overlay, /点击卡片跳转到此原子/);
+  // Expanding makes the summary itself scrollable so the fold and jump
+  // controls stay visible; the scrollbar is widened enough to be noticed.
+  assert.match(overlay, /summaryExpanded \? "is-expanded" : "is-clamped"/);
+  assert.match(overlay, /展开内容可在卡片内滚动/);
+  assert.match(stylesForOverlay, /\.payload-overlay__atom-hover-summary\.is-expanded \{[\s\S]*?max-height: 150px[\s\S]*?overflow-y: auto/);
+  assert.match(stylesForOverlay, /\.payload-overlay__atom-hover-card \{[\s\S]*?scrollbar-width: thin/);
   assert.match(stylesForOverlay, /\.payload-overlay__atom-hover-toggle:hover/);
   // Pair cross-reference marker, shared with the LOG and trajectory.
   assert.match(overlay, /<PairLinkMarker/);
@@ -1191,6 +1197,9 @@ test("the progress strip keeps edge buttons, hides when idle, and grows smoothly
   );
   assert.match(progressCss, /\.agent-transcript__progress-ticks \{[\s\S]*?width 320ms/);
   assert.match(progressCss, /\.agent-transcript__progress-fill \{[\s\S]*?width 180ms/);
+  // The bed lives on the track, so the reading starts between the buttons.
+  assert.match(stylesForOverlay, /\.agent-transcript__progress-track::before \{[\s\S]*?inset: 4px 0 auto/);
+  assert.doesNotMatch(stylesForOverlay, /\.agent-transcript__progress::before/);
   assert.match(progressCss, /\.agent-transcript__progress-edge \{[\s\S]*?background: var\(--panel-raised\)/);
   assert.doesNotMatch(progressCss, /background: none/);
   assert.doesNotMatch(progressCss, /opacity: 0\.6/);

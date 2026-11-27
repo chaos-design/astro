@@ -270,8 +270,7 @@ const AtomHoverCardLayer = memo(function AtomHoverCardLayer({
               className={cn(
                 "payload-overlay__atom-hover-summary",
                 card.summary.length > HOVER_SUMMARY_CHARS &&
-                  !summaryExpanded &&
-                  "is-clamped",
+                  (summaryExpanded ? "is-expanded" : "is-clamped"),
               )}
             >
               {card.summary}
@@ -295,7 +294,11 @@ const AtomHoverCardLayer = memo(function AtomHoverCardLayer({
             ) : null}
           </>
         ) : null}
-        <p className="payload-overlay__atom-hover-hint">点击卡片跳转到此原子</p>
+        <p className="payload-overlay__atom-hover-hint">
+          {summaryExpanded
+            ? "展开内容可在卡片内滚动 · 点击卡片跳转到此原子"
+            : "点击卡片跳转到此原子"}
+        </p>
       </div>
     </div>
   );

@@ -7246,7 +7246,21 @@ pre,
   color: var(--text);
   cursor: pointer;
   font-size: var(--text-caption);
+  pointer-events: auto;
+  /* The expanded body must be scrollable, and the scrollbar must be visible
+     enough to say so: the global thin scrollbar was only 2px here. */
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--violet) 62%, var(--line)) transparent;
   transition: max-height 240ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.payload-overlay__atom-hover-card::-webkit-scrollbar {
+  width: 6px;
+}
+
+.payload-overlay__atom-hover-card::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--violet) 62%, var(--line));
 }
 
 .payload-overlay__atom-hover-head {
@@ -7317,6 +7331,29 @@ pre,
   -webkit-line-clamp: 8;
   line-clamp: 8;
   overflow: hidden;
+}
+
+/* Expanded, the summary owns the scroll: the fold toggle and the jump hint
+   stay visible at the bottom of the card while the long text scrolls above
+   them. Wheel and keyboard scrolling both stay inside the card. */
+.payload-overlay__atom-hover-summary.is-expanded {
+  /* 150px leaves the head, fields, toggle and jump hint inside the 360px card
+     cap; only the long body scrolls, so the controls never fall below it. */
+  max-height: 150px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 8px;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--violet) 62%, var(--line)) transparent;
+}
+
+.payload-overlay__atom-hover-summary.is-expanded::-webkit-scrollbar {
+  width: 6px;
+}
+
+.payload-overlay__atom-hover-summary.is-expanded::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--violet) 62%, var(--line));
 }
 
 .payload-overlay__atom-hover-toggle {
@@ -8111,15 +8148,15 @@ pre,
     width 320ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.agent-transcript__progress::before {
+/* The bed belongs to the track, not the strip: the reading must start
+   between the two buttons, never underneath the left one. A strip-level bed
+   also read as a second, offset bar beside the fill. */
+.agent-transcript__progress-track::before {
   content: "";
   position: absolute;
   inset: 4px 0 auto;
   height: 3px;
   border-radius: 999px;
-  /* The bed spans the whole strip at the container level, so the header's
-     1px bottom border is covered edge to edge (the strip sits at -1px); the
-     edge buttons float above it at either end. */
   background: color-mix(in srgb, var(--muted) 42%, var(--line));
 }
 
