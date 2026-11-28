@@ -1588,10 +1588,11 @@ the relevant architecture or user manual.
 
 ## License
 
-This repository does not currently include a `LICENSE` file, and
-`package.json` marks the package as private. Source availability alone does
-not grant permission to use, modify, or redistribute the project.
+ASTRO is licensed under the Apache License, Version 2.0. See [`LICENSE`](LICENSE)
+for the full text.
 
-Before publishing this as an open-source release, the maintainers must choose
-and add an explicit license, then align package metadata and the portable
-plugin package with that license.
+The root `package.json`, the DeepSeek plugin package, and the generated portable
+plugin package all declare `Apache-2.0`; the packaging script derives that value
+from the root manifest. The root package keeps its `private` flag, which only
+prevents accidental publication to the npm registry — it does not restrict the
+source license. Bundled third-party dependencies keep their own licenses.

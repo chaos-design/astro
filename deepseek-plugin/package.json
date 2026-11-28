@@ -12,7 +12,7 @@
     "dist",
     "README.md"
   ],
-  "license": "UNLICENSED",
+  "license": "Apache-2.0",
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"

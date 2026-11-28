@@ -1425,8 +1425,8 @@ Issue 和 Pull Request 应提供足够的 Trace 上下文以复现问题，同�
 
 ## 许可证
 
-当前仓库尚未包含 `LICENSE` 文件，`package.json` 也将项目标记为私有。
-仅公开源代码并不自动授予使用、修改或再分发权限。
+ASTRO 采用 Apache License 2.0，完整条款见 [`LICENSE`](LICENSE)。
 
-在正式作为开源项目发布前，维护者需要选择并添加明确的许可证，同时更新
-`package.json` 和便携式插件包中的许可证元数据。
+根 `package.json`、DeepSeek 插件包以及生成的便携式插件包均声明
+`Apache-2.0`；打包脚本从根清单继承该值。根包保留 `private` 标记，仅用于避免
+误发布到 npm registry，不限制源码许可证。随包携带的第三方依赖保留各自许可。
