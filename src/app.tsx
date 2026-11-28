@@ -7234,11 +7234,16 @@ export default function App() {
   const displayedEvents = replayMode
     ? activeEvents.slice(0, replayCursor + 1)
     : activeEvents;
-  // The canvas projections (flow, harness topology, atomic fold) are the
-  // expensive part of a streaming batch. Deferring them lets React coalesce
-  // several bursts into one canvas render while the log and the run list stay
-  // on the newest events.
-  const canvasEvents = useDeferredValue(displayedEvents);
+  // Canvas projections read the *same* events the log and run list read. A
+  // deferred value used to sit one batch behind under sustained streaming
+  // (`AgentMessage` every ~800ms): the log showed the new message while the
+  // flow nodes kept the previous snapshot — a stale `terminated` atom outlived
+  // an agent that was still producing text. Every projection below is
+  // identity-stable / resumable on the array reference, so the once-per-second
+  // `now` tick reuses the cached result and only a genuinely appended slice
+  // pays for a re-derive. That makes the real-time cost bounded without a
+  // second, lagging copy of the event list.
+  const canvasEvents = displayedEvents;
   const flow = useMemo(() => buildFlow(canvasEvents), [canvasEvents]);
   const harnessFlow = useMemo(
     () => buildHarnessFlow(canvasEvents, platformId),

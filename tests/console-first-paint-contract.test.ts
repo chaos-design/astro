@@ -39,6 +39,23 @@ test("RUN HISTORY paints a skeleton instead of a zero count while loading", () =
   );
 });
 
+test("canvas projections read the same events as the log, without a deferred copy", () => {
+  // Under sustained streaming (`AgentMessage` every ~800ms) a deferred value
+  // stayed one batch behind: the log showed the new message while the flow
+  // nodes kept the previous snapshot, so a stale `terminated` atom outlived an
+  // agent that was still producing text. The projections are identity-stable
+  // on the array reference, so reading the immediate events is both live and
+  // cheap — only a genuinely appended slice re-derives.
+  const projections = app.slice(
+    app.indexOf("const displayedEvents = replayMode"),
+    app.indexOf("const inspectionFlow = flow;"),
+  );
+  assert.match(projections, /const canvasEvents = displayedEvents;/);
+  assert.doesNotMatch(projections, /useDeferredValue\(displayedEvents\)/);
+  assert.match(projections, /buildFlow\(canvasEvents\)/);
+  assert.match(projections, /atomicProject\(canvasEvents/);
+});
+
 test("the header separates the first connection from a dropped one", () => {
   assert.match(
     app,
