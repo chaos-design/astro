@@ -208,6 +208,36 @@ test("keeps the collapsed header breakpoint in sync with the stylesheet", () => 
   assert.match(block[1], /\.studio-header__actions\[data-open="true"\]/);
 });
 
+test("both header action menus dismiss on blur and outside focus", () => {
+  const app = readFileSync(
+    path.resolve(import.meta.dirname, "../src/app.tsx"),
+    "utf8",
+  );
+  const brandMenu = app.slice(
+    app.indexOf('<div className="menu-control"'),
+    app.indexOf("<input\n          ref={fileInputRef}"),
+  );
+  assert.match(brandMenu, /ref={menuControlRef}/);
+  assert.match(brandMenu, /ref={menuToggleRef}/);
+  assert.match(brandMenu, /onSelect=\{\(\) => closeMenu\(\)\}/);
+  // The shared dismissal effect is mounted for menuOpen, just like the
+  // collapsed nav menu: pointerdown, Escape, window blur, tab hide, focusout.
+  const dismissal = app.slice(
+    app.indexOf("const closeMenu = useCallback"),
+    app.indexOf("// A viewport that grows past the breakpoint"),
+  );
+  for (const listener of [
+    '"pointerdown", handlePointerDown',
+    '"keydown", handleKeyDown',
+    '"visibilitychange", handleVisibilityChange',
+    '"blur", handleWindowBlur',
+    '"focusout", handleFocusOut',
+  ]) {
+    assert.ok(dismissal.includes(listener), `missing dismissal: ${listener}`);
+  }
+  assert.match(dismissal, /\[closeMenu, menuOpen\]/);
+});
+
 test("shows demo data only in development or test environments", () => {
   assert.equal(shouldShowDemo(0, { DEV: true, MODE: "development" }), true);
   assert.equal(shouldShowDemo(0, { DEV: false, MODE: "test" }), true);

@@ -65,14 +65,15 @@ test("carries closed-pair durations on atoms and turns", () => {
     assert.equal(turn.totalPairDuration, expected);
   }
   // Demo: turn 1 has one 680ms pair, turn 2 has 460ms + 880ms, turn 3 has
-  // one 1220ms pair. The atom sum would report 6120 / 12060 / 10980ms.
+  // the 200ms AskUserQuestion pair plus the 1220ms test pair. The atom sum
+  // would report 6120 / 12060 / 12060ms.
   assert.deepEqual(
     model.turns.map((turn) => turn.pairCount),
-    [1, 2, 1],
+    [1, 2, 2],
   );
   assert.deepEqual(
     model.turns.map((turn) => turn.totalPairDuration),
-    [680, 1340, 1220],
+    [680, 1340, 1420],
   );
 });
 

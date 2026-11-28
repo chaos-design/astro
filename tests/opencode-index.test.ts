@@ -91,8 +91,8 @@ const located = (type: string, data: Record<string, unknown>) => ({
 test("session.text.delta emits a throttled streamed AgentMessage snapshot", async () => {
   const events = await runEvents([
     located("session.created", {}),
-    located("session.text.delta", { messageID: "m1", delta: "Hel" }),
-    located("session.text.delta", { messageID: "m1", delta: "Hello" }),
+    located("session.text.delta", { assistantMessageID: "m1", ordinal: 0, delta: "Hel" }),
+    located("session.text.delta", { assistantMessageID: "m1", ordinal: 0, delta: "Hello" }),
   ]);
   const streamed = events.filter(
     (event) =>
@@ -100,12 +100,48 @@ test("session.text.delta emits a throttled streamed AgentMessage snapshot", asyn
   );
   assert.equal(streamed.length, 1, "one in-flight snapshot inside the window");
   assert.equal(streamed[0].payload.message, "Hel");
+  // The snapshot shares its final message's reply id (message + text part).
+  assert.equal(streamed[0].payload.messageId, "m1:0");
   assert.equal(streamed[0].sessionId, "ses_index");
   // Every event carries the installed adapter's own version, making a stale
   // (reinstalled but not restarted) process observable in /api/health.
   for (const event of events) {
-    assert.equal(event.payload.captureVersion, "0.0.6", event.eventName);
+    assert.equal(event.payload.captureVersion, "0.0.9", event.eventName);
   }
+});
+
+test("a streamed snapshot and its final message share one reply id", async () => {
+  const events = await runEvents([
+    located("session.created", {}),
+    located("session.text.delta", {
+      assistantMessageID: "m2",
+      ordinal: 0,
+      delta: "Hi",
+    }),
+    located("session.text.ended", {
+      assistantMessageID: "m2",
+      ordinal: 0,
+      text: "Hi there",
+    }),
+  ]);
+  const messages = events.filter((event) => event.eventName === "AgentMessage");
+  assert.equal(messages.length, 2);
+  // The whole point of messageId: the console folds these into one reply.
+  assert.equal(messages[0].payload.messageId, "m2:0");
+  assert.equal(messages[0].payload.messageId, messages[1].payload.messageId);
+});
+
+test("a delta without a host id does not persist a default messageId", async () => {
+  const events = await runEvents([
+    located("session.created", {}),
+    located("session.text.delta", { delta: "Hel" }),
+  ]);
+  const streamed = events.filter(
+    (event) =>
+      event.eventName === "AgentMessage" && event.payload.streamed === true,
+  );
+  assert.equal(streamed.length, 1);
+  assert.equal("messageId" in streamed[0].payload, false);
 });
 
 test("durable events without a location envelope use the remembered directory", async () => {
@@ -126,6 +162,66 @@ test("durable events without a location envelope use the remembered directory", 
   assert.equal(streamed.length, 1);
   assert.equal(streamed[0].payload.message, "live");
   assert.equal(streamed[0].cwd, location);
+});
+
+test("envelope-less messages load even when no session.created was seen", async () => {
+  // A session started before the plugin loaded emits text deltas with no
+  // location at all. With no remembered directory the location gate used to
+  // drop every message of that session.
+  const events = await runEvents([
+    {
+      type: "session.text.delta",
+      data: { sessionID: "ses_index", assistantMessageID: "m4", ordinal: 0, delta: "late load" },
+    },
+  ]);
+  const messages = events.filter(
+    (event) => event.eventName === "AgentMessage" && event.payload.streamed,
+  );
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].payload.message, "late load");
+  assert.equal(messages[0].cwd, location);
+});
+
+test("a foreign event does not poison the remembered directory", async () => {
+  const events = await runEvents([
+    located("session.created", {}),
+    {
+      type: "session.text.delta",
+      data: {
+        sessionID: "ses_index",
+        assistantMessageID: "m5",
+        ordinal: 0,
+        delta: "foreign",
+        location: { directory: "/some/other/project" },
+      },
+    },
+    {
+      type: "session.text.delta",
+      data: { sessionID: "ses_index", assistantMessageID: "m6", ordinal: 0, delta: "ours" },
+    },
+  ]);
+  const messages = events.filter(
+    (event) => event.eventName === "AgentMessage" && event.payload.streamed,
+  );
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].payload.message, "ours");
+  assert.equal(messages[0].cwd, location);
+});
+
+test("a second prompt resets terminal dedupe so its Stop is recorded", async () => {
+  const events = await runEvents([
+    located("session.created", {}),
+    located("session.inbox.enqueued", {
+      item: { type: "user", payload: { text: "first" } },
+    }),
+    located("session.step.ended", { finish: "stop" }),
+    located("session.inbox.enqueued", {
+      item: { type: "user", payload: { text: "second" } },
+    }),
+    located("session.step.ended", { finish: "stop" }),
+  ]);
+  const stops = events.filter((event) => event.eventName === "Stop");
+  assert.equal(stops.length, 2, "each prompt reaches its own terminal state");
 });
 
 test("a foreign location never claims this instance's session", async () => {

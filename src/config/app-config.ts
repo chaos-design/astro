@@ -75,6 +75,8 @@ type AppDefaults = {
    */
   platform: PlatformId;
   questionPanelMode: QuestionPanelMode;
+  /** Whether captured runs older than {@link RetentionPreference.days} are deleted. */
+  retention: RetentionPreference;
   replayCursor: number;
   replayMode: boolean;
   replayPlaying: boolean;
@@ -86,6 +88,57 @@ type AppDefaults = {
  * User-facing defaults used only when no persisted preference exists.
  * Width thresholds preserve the current responsive behavior on first load.
  */
+/**
+ * The retention preference. `days` is the window the service prunes at; it is
+ * kept even while `enabled` is false, so turning the switch off and on again
+ * does not forget the reader's window.
+ */
+export type RetentionPreference = {
+  enabled: boolean;
+  days: number;
+};
+
+/** The window the settings dialog offers, in the order it lists them. */
+export const retentionDayOptions = [7, 15, 30, 90] as const;
+
+/** The guard the service enforces; mirrored here so the input cannot exceed it. */
+export const retentionDayBounds = { min: 1, max: 3650 } as const;
+
+export const defaultRetention: RetentionPreference = {
+  enabled: false,
+  days: 15,
+};
+
+/**
+ * Reads the stored retention preference. A missing or malformed value falls
+ * back to "off, 15 days"; a stored day count outside the service's guard is
+ * clamped rather than trusted, so an old value can never make the service
+ * reject the request.
+ */
+export function resolveRetentionPreference(storage: {
+  getItem(key: string): string | null;
+}): RetentionPreference {
+  const raw = storage.getItem(storageKeys.retention);
+  if (!raw) {
+    return defaultRetention;
+  }
+  try {
+    const parsed = JSON.parse(raw) as Partial<RetentionPreference>;
+    const days = Number(parsed.days);
+    return {
+      enabled: parsed.enabled === true,
+      days: Number.isFinite(days)
+        ? Math.min(
+            retentionDayBounds.max,
+            Math.max(retentionDayBounds.min, Math.round(days)),
+          )
+        : defaultRetention.days,
+    };
+  } catch {
+    return defaultRetention;
+  }
+}
+
 export const appDefaults: AppDefaults = {
   activeView: "topology",
   consoleOpenMinWidth: 1180,
@@ -101,6 +154,7 @@ export const appDefaults: AppDefaults = {
   chimeStyle: "bright",
   platform: "claude",
   questionPanelMode: "dock-full",
+  retention: defaultRetention,
   replayCursor: 0,
   replayMode: false,
   replayPlaying: false,
@@ -247,7 +301,7 @@ export function getMaxSyncLabel(id: MaxSyncId): string {
  * Release string shown in the application header. Kept in sync with the
  * root package.json version and asserted by tests/app-config.test.ts.
  */
-export const appVersion = "0.0.7";
+export const appVersion = "0.0.9";
 
 /**
  * Timing values shared by live UI effects.
@@ -312,6 +366,12 @@ export const storageKeys = {
   questionPanelMode: "ASTROX_QUESTION_PANEL_MODE",
   /** The performance HUD toggle (Settings → 性能). */
   perfHud: "ASTROX_PERF_HUD",
+  /**
+   * Retention for captured runs (Settings → 运行历史): `{ enabled, days }`.
+   * Default off with a 15-day window — deleting captured evidence is the
+   * reader's call, never an upgrade's.
+   */
+  retention: "ASTROX_RETENTION",
   /** Task-completion chime (Settings → 通知). */
   taskCompletionChime: "ASTROX_TASK_COMPLETION_CHIME",
   /** Chime timbre (Settings → 通知); ids are the chime style table's keys. */

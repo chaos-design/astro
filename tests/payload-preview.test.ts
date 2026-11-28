@@ -3,12 +3,51 @@ import test from "node:test";
 import {
   collectPayloadFields,
   contentToMarkdown,
+  fallbackPayloadMarkdown,
+  findFirstListPayload,
+  fenceCode,
+  hasListPayload,
   inferCodeLanguage,
   isFoldableRelatedValue,
+  isPayloadMetaKey,
   orderRelated,
+  payloadBodyOf,
   RELATED_VALUE_MAX_CHARS,
   splitPayloadPreview,
 } from "../src/lib/payload-preview.ts";
+import { payloadToMarkdown } from "../src/lib/payload-markdown.ts";
+
+test("metadata key matching uses whole words, not substrings", () => {
+  // A substring test silently dropped real prose: "id" hid `guidelines`,
+  // "user" hid `userMessage`, "source" hid `sourceCode`. Genuine metadata
+  // still matches through an exact token.
+  for (const key of [
+    "width", "valid", "hidden", "identity", "guidelines", "userMessage", "sourceCode",
+  ]) {
+    assert.equal(isPayloadMetaKey(key), false, key);
+  }
+  for (const key of [
+    "createdAt", "tool_use_id", "tool_name", "status", "sessionId", "meta",
+  ]) {
+    assert.equal(isPayloadMetaKey(key), true, key);
+  }
+});
+
+test("a code fence grows past a backtick run in the captured body", () => {
+  // A diff of a Markdown file carries context lines that are themselves ```
+  // fences; a fixed three-backtick wrapper would be closed by that line.
+  const fenced = fenceCode("@@ -1 +1 @@\n ```\n-old\n+new", "diff");
+  assert.match(fenced, /^````diff\n/);
+  assert.match(fenced, /\n````$/);
+});
+
+test("the fallback JSON dump degrades on a cyclic value instead of throwing", () => {
+  const cyclic: Record<string, unknown> = { answer: "still readable" };
+  cyclic.self = cyclic;
+  const markdown = fallbackPayloadMarkdown({ captured: cyclic });
+  assert.match(markdown, /still readable/);
+  assert.match(markdown, /circular reference/);
+});
 
 test("splits message content from timestamps, paths and annotations", () => {
   const preview = splitPayloadPreview({
@@ -134,18 +173,28 @@ test("orders annotations before the other related fields", () => {
   assert.equal(ordered[0].key, "comment");
 });
 
-test("orderRelated keeps a grouped annotation inside its array element", () => {
-  // An annotation captured inside `questions[0]` must not float to the pane
-  // top: it would leave its element and read as the root's own note.
+test("a single-element array of records shows the records' own fields", () => {
+  // One entry needs no `[0]` header — there is no index ambiguity — and its
+  // fields walk directly under the array key.
   const fields = collectPayloadFields({
     questions: [{ header: "方式", note: "逐块渲染" }],
   });
-  const ordered = orderRelated(fields);
-  assert.equal(ordered[0].groupHeader, true, "element header opens the group");
-  assert.equal(ordered[0].key, "questions[0]");
-  const noteIndex = ordered.findIndex((field) => field.key === "questions[0].note");
-  assert.ok(noteIndex > 0, "the grouped note stays behind its element header");
-  assert.equal(ordered[noteIndex].annotation, true);
+  const byKey = new Map(fields.map((field) => [field.key, field.value]));
+  assert.equal(byKey.get("questions.header"), "方式");
+  const note = fields.find((field) => field.key === "questions.note");
+  assert.equal(note?.annotation, true, "the note stays an annotation");
+  assert.ok(!fields.some((field) => field.groupHeader), "no index header for one element");
+});
+
+test("a single-entry array whose record is mostly one text field shows that value", () => {
+  // A tool response shaped `{type, text}` is its `text`: the `type` / index
+  // scaffolding around one string made the row read twice.
+  const fields = collectPayloadFields({
+    tool_response: { content: [{ type: "text", text: "Read file /tmp/x" }] },
+  });
+  const byKey = new Map(fields.map((field) => [field.key, field.value]));
+  assert.equal(byKey.get("tool_response.content"), "Read file /tmp/x");
+  assert.ok(!fields.some((field) => field.key === "tool_response.content[0]"));
 });
 
 test("only values past the limit fold, each on its own", () => {
@@ -172,7 +221,9 @@ test("the field inventory shows every field, including content, empty and nested
   assert.equal(byKey.get("flag"), "false", "false stays visible");
   assert.equal(byKey.get("zero"), "0", "zero stays visible");
   assert.equal(byKey.get("tool_response.tool_use_id"), "tu_1", "nested paths qualified");
-  assert.equal(byKey.get("tool_response.content[0].type"), "text", "array objects walked by index");
+  // A one-entry text record shows its main value directly (see the
+  // single-entry test above); the `type` stamp is envelope data around it.
+  assert.equal(byKey.get("tool_response.content"), "result");
 });
 
 test("an array of objects opens each element with an indexed group row", () => {
@@ -190,28 +241,32 @@ test("an array of objects opens each element with an indexed group row", () => {
       },
     ],
   });
+  // One element, so no `questions[0]` header: the element's own array of
+  // options still opens with its indexed rows.
   const headers = fields.filter((field) => field.groupHeader);
   assert.deepEqual(
     headers.map((field) => field.key),
-    ["questions[0]", "questions[0].options[0]", "questions[0].options[1]"],
+    ["questions.options[0]", "questions.options[1]"],
     "one header row per element, walk order",
   );
   assert.deepEqual(
     headers.map((field) => field.label),
-    ["questions[0]", "options[0]", "options[1]"],
+    ["options[0]", "options[1]"],
     "the header label is the relative indexed path",
   );
   assert.deepEqual(
     headers.map((field) => field.level),
-    [0, 1, 1],
-    "top-level elements nest at 0, arrays inside them at 1",
+    [1, 1],
+    "arrays inside the single element nest one step",
   );
-  const member = fields.find((field) => field.key === "questions[0].options[1].description");
+  const member = fields.find((field) => field.key === "questions.options[1].description");
   assert.equal(member?.value, "第二项");
   assert.equal(member?.label, "description", "members keep their bare key");
   assert.equal(member?.level, 1);
   assert.equal(member?.groupHeader, undefined);
-  const multiple = fields.find((field) => field.key === "questions[0].multiple");
+  // The record's scalar members keep their path under the array key (the
+  // `false` value stays visible per the inventory rule).
+  const multiple = fields.find((field) => field.key === "questions.multiple");
   assert.equal(multiple?.value, "false");
   assert.equal(multiple?.level, 0, "scalar members carry their element's level");
 });
@@ -221,4 +276,165 @@ test("the field inventory handles cycles without recursing forever", () => {
   cyclic.self = cyclic;
   const fields = collectPayloadFields(cyclic);
   assert.deepEqual(fields, [{ key: "id", label: "id", value: "root", annotation: false }]);
+});
+
+test("a scalar array carries its items so the pane can render a list", () => {
+  const fields = collectPayloadFields({
+    todos: ["first", "second"],
+  });
+  const row = fields.find((field) => field.key === "todos");
+  assert.deepEqual(row?.items, ["first", "second"], "the items are kept for one-per-line");
+  assert.equal(row?.value, "first, second", "the joined value still copies verbatim");
+});
+
+test("envelope identity is dropped while a tool's own version field is kept", () => {
+  const fields = collectPayloadFields({
+    client: "WorkBuddy",
+    version: "5.11.3",
+    sourceVersion: "5.11.3",
+    sourceClient: "WorkBuddy",
+    locator: "trace://workbuddy/s1/e1",
+    schemaVersion: 2,
+    tool_response: { version: "1.0.0", client: "the captured SDK name" },
+  });
+  const keys = fields.map((field) => field.key);
+  assert.ok(!keys.includes("client"), "the agent name does not leak into the list");
+  assert.ok(!keys.includes("version"), "the recorder version does not leak");
+  assert.ok(!keys.includes("sourceVersion"), "the recorder version spelling does not leak");
+  assert.ok(!keys.includes("sourceClient"), "the client spelling does not leak");
+  assert.ok(!keys.includes("locator"), "the trace locator is not a field of the event");
+  assert.ok(!keys.includes("schemaVersion"), "the schema stamp is envelope data");
+  assert.ok(
+    !keys.includes("tool_response.client"),
+    "the client stamp is identity at any depth",
+  );
+  assert.ok(keys.includes("tool_response.version"), "a deeper version field is genuine data");
+});
+
+test("an envelope-only payload has no preview body", () => {
+  // A Stop / SessionStart event carries timestamps, the client identity and a
+  // trace locator — no prose. It used to preview that locator as the body, so
+  // the pane showed a bare `trace://…` URL where the answer should be.
+  assert.equal(
+    payloadToMarkdown({
+      start_time: 1795706182594,
+      client: "WorkBuddy",
+      version: "5.11.3",
+      locator: "trace://workbuddy/s1/e1",
+    }),
+    "",
+  );
+  assert.equal(fallbackPayloadMarkdown({ client: "WorkBuddy", locator: "trace://x/y/z" }), "");
+  assert.deepEqual(
+    splitPayloadPreview({ client: "WorkBuddy", locator: "trace://x/y/z" }).related,
+    [],
+  );
+});
+
+test("a tool result that echoes its inputs back is shown once", () => {
+  // `tool_input.description` and the response's copy of it read as the same
+  // bare `description` with the same value; the inventory keeps one row.
+  const fields = collectPayloadFields({
+    tool_input: { description: "on hover show the full list" },
+    tool_response: { task: { description: "on hover show the full list" } },
+  });
+  const descriptions = fields.filter(
+    (field) => field.label === "description",
+  );
+  assert.equal(descriptions.length, 1, "the echoed value is not printed twice");
+});
+
+test("a numbered file dump is fenced in the language its path declares", () => {
+  const dump = "   1→const x: number = 1;\n   2→export default x;";
+  const markdown = contentToMarkdown(dump, "/work/tests/index.test.ts");
+  assert.match(markdown, /^```typescript\n/);
+  assert.match(markdown, /1→const x: number = 1;/);
+  // Without a path the stripped source still infers TypeScript.
+  assert.match(contentToMarkdown(dump), /^```typescript\n/);
+  // An ordinary multi-line string with one arrow note is not a numbered file.
+  assert.equal(
+    contentToMarkdown("a note 1→about steps\nand another line"),
+    "a note 1→about steps\nand another line",
+  );
+});
+
+test("the list lookup finds an array nested inside a tool response", () => {
+  // A tool result wraps its array in `toolResponse.content`; reading only the
+  // payload root made a one-item record render as a key/value field grid.
+  const payload = {
+    toolName: "Read",
+    toolResponse: { content: [{ type: "text", text: "ARRAY_SINGLE_CONTENT" }] },
+    tool_response: {},
+  };
+  assert.deepEqual(findFirstListPayload(payload), [
+    { type: "text", text: "ARRAY_SINGLE_CONTENT" },
+  ]);
+  assert.equal(findFirstListPayload({ toolName: "Read" }), null);
+});
+
+test("a todos-style array is detected as a list payload", () => {
+  assert.equal(
+    hasListPayload({
+      tool_response: {
+        todos: [
+          { id: "1", content: "Do A", status: "completed", createdAt: 1 },
+          { id: "2", content: "Do B", status: "pending", createdAt: 2 },
+        ],
+      },
+    }),
+    true,
+  );
+  assert.equal(hasListPayload({ message: "plain text" }), false);
+});
+
+test("a captured source path fences code even when JSDoc looks like Markdown", () => {
+  const body = "/**\n * A note.\n */\nexport const x = 1;";
+  assert.match(contentToMarkdown(body, "/work/src/thing.ts"), /^```typescript\n/);
+  // Without a path the prose/document guard still applies.
+  assert.equal(contentToMarkdown(body), body);
+});
+
+test("an event envelope previews only its payload, never its stamps", () => {
+  // The overlay's rail can hand the whole `TraceEvent` to the Preview pane.
+  // Its envelope (source / cwd / toolName / sequence …) is a record *about*
+  // the capture, not content: previewing it printed the agent name as a
+  // paragraph and listed a dozen envelope keys as "related data".
+  const event = {
+    schemaVersion: 2,
+    id: "code-1",
+    capturedAt: "2026-11-26T16:26:07.451Z",
+    source: "workbuddy",
+    sourceVersion: "5.11.3",
+    workspaceId: "ws",
+    sessionId: "code-demo",
+    turnId: "turn-1",
+    parentId: null,
+    eventName: "PostToolUse",
+    nativeEventName: "PostToolUse",
+    toolUseId: "t1",
+    toolName: "Bash",
+    cwd: "/tmp/x",
+    status: null,
+    sequence: null,
+    payload: {
+      tool_input: { command: "pnpm install-plugins" },
+      tool_response: { exitCode: 0, stdout: "ok" },
+    },
+    locator: "trace://workbuddy/code-demo/code-1",
+  };
+  const body = payloadBodyOf(event);
+  assert.deepEqual(Object.keys(body as object), ["tool_input", "tool_response"]);
+  const split = splitPayloadPreview(body);
+  assert.equal(split.content.trim(), "ok");
+  const keys = split.related.map((field) => field.key);
+  for (const envelopeKey of ["source", "cwd", "toolName", "sessionId", "locator"]) {
+    assert.ok(!keys.includes(envelopeKey), `${envelopeKey} is envelope data`);
+  }
+  assert.ok(keys.includes("command"));
+  // A payload that merely looks similar is not unwrapped.
+  assert.deepEqual(payloadBodyOf({ eventName: "X", payload: { a: 1 } }), {
+    eventName: "X",
+    payload: { a: 1 },
+  });
+  assert.equal(payloadBodyOf("plain text"), "plain text");
 });

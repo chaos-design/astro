@@ -52,6 +52,16 @@ test("assistant message_end with text stops the run", () => {
   assert.equal(payloads[0].message, "All done.");
   assert.equal(payloads[0].model, "claude-sonnet-4-5");
   assert.equal(payloads[1].eventName, "Stop");
+
+  // Pi's AssistantMessage has no id; the recorder synthesizes one at
+  // message_start and passes it through the mapping context to the final
+  // AgentMessage so it matches the streamed snapshots.
+  const identified = mapPiEvent(
+    "message_end",
+    { message: assistantMessage() },
+    { messageId: "pi-ses-1" },
+  );
+  assert.equal(identified[0].messageId, "pi-ses-1");
 });
 
 test("assistant thinking blocks map to Reasoning before AgentMessage", () => {
@@ -260,6 +270,25 @@ test("live text falls back to an incremental delta and carries the message id", 
     text: null,
     delta: "",
   });
+});
+
+test("thinking and tool-call deltas never enter a streamed reply", () => {
+  // Pi fires message_update for every content kind. Only a text delta is
+  // assistant prose; a thinking/tool-call delta would break the prefix rule
+  // and leave a tool-only turn with an answer that never closes.
+  for (const type of ["thinking_delta", "toolcall_delta", "text_end", "done"]) {
+    assert.deepEqual(
+      readPiLiveText({
+        message: {
+          role: "assistant",
+          content: [{ type: "thinking", thinking: "internal" }],
+        },
+        assistantMessageEvent: { type, delta: "not reply text" },
+      }),
+      { messageId: "", text: null, delta: "" },
+      type,
+    );
+  }
 });
 
 test("unmapped events return empty payloads", () => {

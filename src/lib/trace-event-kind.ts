@@ -98,7 +98,42 @@ const userQuestionAnswerEvents = new Set([
   "PostToolUseFailure",
 ]);
 
-export function isUserQuestionToolEvent(event: TraceEvent) {
+/**
+ * One answer per event object, cached: a streaming batch re-asks the same
+ * predicate for the same tool events on every derive (topology, LOG keys, the
+ * Agent view), and each answer costs a candidate walk with a normalized
+ * identifier per spelling. Captured events are immutable references, so the
+ * cache is the same per-event pattern `getEventTimestamp` / the payload
+ * parsers use — a `WeakMap` get is allocation-free on the hot path.
+ */
+const userQuestionToolEventCache = new WeakMap<TraceEvent, boolean>();
+
+export function isUserQuestionToolEvent(event: TraceEvent): boolean {
+  const cached = userQuestionToolEventCache.get(event);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const result = computeUserQuestionToolEvent(event);
+  userQuestionToolEventCache.set(event, result);
+  return result;
+}
+
+/**
+ * Whether an event of this name can carry a user-question signal at all: the
+ * union of the question event names, the tool lifecycle names (a
+ * question-shaped tool call) and `Notification` (the pending permission
+ * prompt). Per-event passes gate the question predicates behind this set — a
+ * 20k-event run is mostly names that can never match, and skipping the three
+ * Set lookups plus the candidate walk for those is the difference between a
+ * per-batch derive that scales and one that does not.
+ */
+export const questionCandidateEventNames: ReadonlySet<string> = new Set([
+  ...userQuestionEventNames,
+  ...toolEventNames,
+  "Notification",
+]);
+
+function computeUserQuestionToolEvent(event: TraceEvent): boolean {
   if (!toolEventNames.has(event.eventName)) {
     return false;
   }
@@ -278,6 +313,24 @@ export function isBlockingUserQuestionStartEvent(event: TraceEvent) {
     return hasQuestionParameters(event);
   }
   return true;
+}
+
+/**
+ * The tool-hook phase a canonical event belongs to. `PreToolUse` is the call
+ * dispatched before a tool runs; `PostToolUse` is the observation after it
+ * returns. They share the `tool` tone in the LOG, but the reader needs to tell
+ * the two apart at a glance in the message chain, so the rail and the Agent
+ * steps add a phase colour on top of that shared tone. Failures keep their
+ * own `failed` tone and are deliberately not reclassified here.
+ */
+export function hookPhaseOf(eventName?: string | null): "pre" | "post" | null {
+  if (eventName === "PreToolUse") {
+    return "pre";
+  }
+  if (eventName === "PostToolUse") {
+    return "post";
+  }
+  return null;
 }
 
 export function getTraceEventKey(event?: TraceEvent | null) {

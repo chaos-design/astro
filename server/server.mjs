@@ -26,6 +26,11 @@ import runtimeConfigLoader from "../plugin/runtime-config.cjs";
 import storagePaths from "../plugin/storage-paths.cjs";
 import { createDemoDatasetReader } from "./demo-dataset.mjs";
 import { TraceRepository } from "./trace-repository.mjs";
+import {
+  findExpiredSessions,
+  pruneExpiredSessions,
+  resolveRetentionRoot,
+} from "./retention.mjs";
 import { writeTraceDirectory } from "./runtime-settings.mjs";
 import {
   InteractionStoreError,
@@ -191,6 +196,18 @@ const mimeTypes = {
   ".map": "application/json; charset=utf-8",
   ".svg": "image/svg+xml",
 };
+
+/** Image extensions the file preview window serves, with their MIME types. */
+const CAPTURED_IMAGE_EXTENSIONS = new Map([
+  [".png", "image/png"],
+  [".jpg", "image/jpeg"],
+  [".jpeg", "image/jpeg"],
+  [".gif", "image/gif"],
+  [".webp", "image/webp"],
+  [".svg", "image/svg+xml"],
+  [".avif", "image/avif"],
+  [".bmp", "image/bmp"],
+]);
 
 function sendJson(response, status, value, headers = {}) {
   response.writeHead(status, {
@@ -1033,6 +1050,87 @@ async function handleRequest(request, response) {
   if (request.method === "DELETE" && requestUrl.pathname === "/api/events") {
     store.clear();
     sendJson(response, 200, { status: "cleared" });
+    return;
+  }
+
+  // Captured image resources (a screenshot path inside a tool result, an
+  // image URL the console cannot fetch cross-origin): the console renders
+  // them through this read-only endpoint. Only image extensions are served,
+  // the path must be absolute, and the size is capped — it is a preview
+  // window over the user's own files, not a general file server.
+  if (
+    request.method === "GET" &&
+    requestUrl.pathname === "/api/file"
+  ) {
+    const requested = requestUrl.searchParams.get("path") || "";
+    const extension = extname(requested).toLowerCase();
+    if (
+      !requested.startsWith("/") ||
+      !CAPTURED_IMAGE_EXTENSIONS.has(extension) ||
+      !existsSync(requested) ||
+      !statSync(requested).isFile()
+    ) {
+      response.writeHead(404, { "content-type": "text/plain" });
+      response.end("not a servable image");
+      return;
+    }
+    if (statSync(requested).size > 20 * 1024 * 1024) {
+      response.writeHead(413, { "content-type": "text/plain" });
+      response.end("image too large to preview");
+      return;
+    }
+    response.writeHead(200, {
+      "content-type": CAPTURED_IMAGE_EXTENSIONS.get(extension) || "image/png",
+      "cache-control": "private, max-age=60",
+    });
+    createReadStream(requested).pipe(response);
+    return;
+  }
+
+  // Retention, preview first: the settings panel shows the reader exactly
+  // what a prune would delete (count, bytes, oldest run) before enabling it.
+  // Nothing outside the trace root is ever a candidate, and `data/demo-events.json`
+  // is not under it.
+  if (
+    request.method === "GET" &&
+    requestUrl.pathname === "/api/retention/preview"
+  ) {
+    try {
+      const report = findExpiredSessions({
+        root: resolveRetentionRoot(runtimeConfig.environment),
+        days: requestUrl.searchParams.get("days") ?? undefined,
+      });
+      sendJson(response, 200, report);
+    } catch (error) {
+      sendJson(response, error.status || 500, { error: error.message });
+    }
+    return;
+  }
+
+  if (
+    request.method === "POST" &&
+    requestUrl.pathname === "/api/retention/prune"
+  ) {
+    let body;
+    try {
+      body = await readJsonBody(request);
+    } catch (error) {
+      sendJson(response, 400, { error: error.message });
+      return;
+    }
+    try {
+      const result = pruneExpiredSessions({
+        root: resolveRetentionRoot(runtimeConfig.environment),
+        days: body?.days,
+      });
+      // The files are gone: drop their in-memory stores and let every open
+      // console reset from the truth on disk instead of keeping the deleted
+      // runs in its RUN HISTORY.
+      store.forgetMissing();
+      sendJson(response, 200, result);
+    } catch (error) {
+      sendJson(response, error.status || 500, { error: error.message });
+    }
     return;
   }
 

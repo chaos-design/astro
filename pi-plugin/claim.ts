@@ -65,7 +65,15 @@ export function claimSession(
         fs.readFileSync(claimFile, "utf8"),
       ) as Partial<ClaimRecord>;
       const previousPid = Number(previous.pid);
-      if (Number.isInteger(previousPid) && previousPid > 0) {
+      if (
+        Number.isInteger(previousPid) &&
+        previousPid > 0 &&
+        // Pi reloads / resumes a session inside the same process: a fresh
+        // extension instance finds the old instance's claim. A liveness probe
+        // would see our own pid, call the old owner alive and silence every
+        // event after the reload. The same process always owns its own claim.
+        previousPid !== pid
+      ) {
         try {
           process.kill(previousPid, 0);
           // The previous owner is still running; it keeps the session.

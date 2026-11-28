@@ -42,6 +42,28 @@ test("a live owner keeps the session", () => {
   }
 });
 
+test("a reload in the same process takes over its own claim", () => {
+  const home = createHome();
+  try {
+    assert.equal(
+      claimSession("ses_a", { home, source: "pi", pid: process.pid }),
+      true,
+    );
+    // /reload re-runs the extension in this process. The old claim's pid is
+    // alive (it is us), but the new instance must be allowed to own the
+    // session instead of being marked foreign.
+    assert.equal(
+      claimSession("ses_a", { home, source: "pi", pid: process.pid }),
+      true,
+    );
+    const claimFile = join(home, "pi", claimDirectoryName, "ses_a.claim");
+    const record = JSON.parse(readFileSync(claimFile, "utf8"));
+    assert.equal(record.pid, process.pid);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
 test("a dead owner's claim is taken over by the next instance", async () => {
   const home = createHome();
   try {

@@ -5,6 +5,7 @@ import {
 } from "./exception-events.ts";
 import { isWaitingTraceEvent } from "./trace-status.ts";
 import { isUserQuestionStartEvent } from "./trace-event-kind.ts";
+import { nonEmptyRecord } from "./payload-preview.ts";
 import { userQuestionSummary } from "./user-question-content.ts";
 import { getWaitingEventsForSource } from "../config/atom-platforms.ts";
 import type {
@@ -398,6 +399,24 @@ export function formatDuration(milliseconds: number) {
   return `${hours}h ${minutes}m ${seconds}s`;
 }
 
+/**
+ * The Agent header's execution clock: a fixed `HH:MM:SS` with two digits per
+ * unit and leading zeros. Unlike the stepped `formatDuration`, the string is
+ * always the same eight characters, so a live run ticking each second never
+ * shifts the chip — the header row stays put while the number advances.
+ */
+export function formatExecutionClock(milliseconds: number) {
+  if (!Number.isFinite(milliseconds) || milliseconds < 0) {
+    return "--:--:--";
+  }
+  const totalSeconds = Math.max(0, Math.floor(milliseconds / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
+}
+
 type SessionDisplayStateSource = {
   duration: number;
   start: number;
@@ -509,11 +528,20 @@ function getSummaryValue(event: TraceEvent): unknown {
     );
   }
   if (event.eventName === "Reasoning") {
+    // Long-lived adapters (opencode / pi) write the captured thinking into
+    // `message`, and ChatGPT rollouts put it in a nested summary array.
+    // Reading only summary/text/content silently replaced real thinking with
+    // this placeholder, so extractText now folds every producer spelling.
     return (
-      payload.summary ||
-      payload.text ||
-      extractText(payload.content || payload.payload?.content) ||
-      "Reasoning update"
+      extractText(
+        payload.summary ||
+          payload.text ||
+          payload.message ||
+          payload.payload?.summary ||
+          payload.payload?.message ||
+          payload.content ||
+          payload.payload?.content,
+      ) || "Reasoning update"
     );
   }
   if (event.eventName === "SessionStart") {
@@ -559,31 +587,153 @@ function getSummaryValue(event: TraceEvent): unknown {
   );
 }
 
-export function getExecutionInstruction(
+/**
+ * The real captured tool command, or `null` when no producer reported one.
+ * Keeping the normalization here (instead of in a view) means the Agent view
+ * and the inspector read the same fields, without inventing a command from a
+ * tool name for a payload that never carried one.
+ */
+export function getToolCallCommand(
   event: TraceEvent | null,
   startEvent?: TraceEvent | null,
-) {
+): string | null {
   const source = startEvent || event;
-  const toolInput = source?.payload?.tool_input;
+  const sourceInput =
+    nonEmptyRecord(source?.payload?.tool_input) ??
+    nonEmptyRecord(source?.payload?.toolInput);
+  const eventInput =
+    nonEmptyRecord(event?.payload?.tool_input) ??
+    nonEmptyRecord(event?.payload?.toolInput);
   const rawCommand =
-    toolInput?.command ||
-    toolInput?.cmd ||
+    sourceInput?.command ||
+    sourceInput?.cmd ||
     source?.payload?.command ||
-    event?.payload?.tool_input?.command ||
-    event?.payload?.tool_input?.cmd ||
+    eventInput?.command ||
+    eventInput?.cmd ||
     event?.payload?.command;
   const command = Array.isArray(rawCommand)
     ? rawCommand.map(String).join(" ")
     : typeof rawCommand === "string"
       ? rawCommand
       : "";
+  return command.replace(/\s+/g, " ").trim() || null;
+}
+
+export function getExecutionInstruction(
+  event: TraceEvent | null,
+  startEvent?: TraceEvent | null,
+) {
+  const source = startEvent || event;
   return (
-    command.replace(/\s+/g, " ").trim() ||
+    getToolCallCommand(event, startEvent) ||
     source?.toolName ||
     event?.toolName ||
     event?.eventName ||
     "Event"
   );
+}
+
+/**
+ * The change-carrying inputs keep their own diff rendering; naming them in
+ * an invocation would print the whole patch twice. One Set at module scope —
+ * building it per event was measurable on a streaming batch.
+ */
+const EXCLUDED_INPUT_KEYS = new Set([
+  "old_string", "oldString", "new_string", "newString",
+  "content", "contentText", "patch", "structuredPatch",
+]);
+
+function describeInputValue(value: unknown): { value: string; literal: string } {
+  if (typeof value === "string") {
+    return {
+      value,
+      literal: /[\s"'\\]/.test(value) ? JSON.stringify(value) : value,
+    };
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    const text = String(value);
+    return { value: text, literal: text };
+  }
+  const text = JSON.stringify(value);
+  return { value: text, literal: text };
+}
+
+/** One short input of a structured tool call. */
+export type ToolInputField = {
+  readonly key: string;
+  /** Readable value, without the JSON quotes the compact line needs. */
+  readonly value: string;
+  /** The exact `key=value` token used in the compact invocation line. */
+  readonly literal: string;
+};
+
+/**
+ * The structured shape of a tool call: the captured shell command when a
+ * producer reported one, otherwise the tool name and every short input as a
+ * separate field. This is the one extraction — the compact string below and
+ * the Agent view's field rendering both read it, so a field is never parsed
+ * out of a string that was flattened for a different surface. Multi-line
+ * values stay complete, JSON-escaped in `literal`, never truncated.
+ */
+export type ToolCallInputs = {
+  readonly command: string | null;
+  readonly toolName: string;
+  readonly fields: readonly ToolInputField[];
+};
+
+export function getToolCallInputs(
+  event: TraceEvent | null,
+  startEvent?: TraceEvent | null,
+): ToolCallInputs | null {
+  const command = getToolCallCommand(event, startEvent);
+  const source = startEvent || event;
+  const payload = (source?.payload ?? {}) as Record<string, unknown>;
+  const toolInput =
+    nonEmptyRecord(payload.tool_input) ?? nonEmptyRecord(payload.toolInput) ?? {};
+  const fields =
+    toolInput && typeof toolInput === "object" && !Array.isArray(toolInput)
+      ? (toolInput as Record<string, unknown>)
+      : {};
+  const toolName =
+    source?.toolName ??
+    (typeof payload.tool_name === "string" ? payload.tool_name : "");
+  const inputs: ToolInputField[] = [];
+  for (const [key, value] of Object.entries(fields)) {
+    // A captured command is already shown as the terminal line; repeating its
+    // raw `command` / `cmd` key as a field would print the same text twice.
+    if (
+      value === null ||
+      value === undefined ||
+      EXCLUDED_INPUT_KEYS.has(key) ||
+      (command !== null && (key === "command" || key === "cmd"))
+    ) {
+      continue;
+    }
+    const shown = describeInputValue(value);
+    inputs.push({ key, value: shown.value, literal: `${key}=${shown.literal}` });
+  }
+  if (!command && !toolName && inputs.length === 0) {
+    return null;
+  }
+  return { command, toolName, fields: inputs };
+}
+
+/** The compact invocation line, formatted from the one structured extractor. */
+export function getToolCallInvocation(
+  event: TraceEvent | null,
+  startEvent?: TraceEvent | null,
+): string | null {
+  const inputs = getToolCallInputs(event, startEvent);
+  if (!inputs) {
+    return null;
+  }
+  if (inputs.command) {
+    return inputs.command;
+  }
+  return [inputs.toolName, ...inputs.fields.map((field) => field.literal)]
+    .filter(Boolean)
+    .join(" ")
+    .trim() || null;
 }
 
 /**
@@ -734,7 +884,11 @@ function readStatusDetail(event: TraceEvent) {
   ];
   for (const candidate of candidates) {
     if (typeof candidate === "string" && candidate.trim()) {
-      return candidate.trim().slice(0, 120);
+      // Keep the captured reason whole. It used to be cut at 120 characters
+      // here, in the projection — past the point where a reader could recover
+      // the tail. UI surfaces that need a single line clamp/expand visually
+      // (their tooltips and step-body folds carry the full text).
+      return candidate.trim();
     }
   }
   return null;
@@ -1364,15 +1518,101 @@ function getToolStatus(postEvent: TraceEvent | null) {
   return isToolFailureEvent(postEvent) ? "failed" : "complete";
 }
 
-function createFlowEntries(events: readonly TraceEvent[]): FlowEntry[] {
-  const entries: FlowEntry[] = [];
-  const toolEntries = new Map<string, FlowEntry[]>();
-  const usedIds = new Set<string>();
+/**
+ * Flow entries are rebuilt by four derivations on every streaming batch —
+ * `buildFlow`, `buildPairDurations`, `buildPairLinks` and, through those two,
+ * `buildAgentView`. Captured events and their arrays are immutable references,
+ * but every streamed batch rebuilds the arrays, so a per-array cache is cold
+ * exactly when it matters: a 20k-event run paid a full re-walk per batch. The
+ * fold therefore **resumes**: one slot per known history, its prefix verified
+ * by sampled per-event content hashes (`flowPrefixMatches`), re-folds only
+ * the appended slice. Entries are immutable once handed out — a pair close
+ * **replaces** its entry, so an older array's cached snapshot can never
+ * observe a pair that closed in a later batch. Slots are bounded — a history
+ * that shrinks (a replay jump) or rewrites its content re-folds from scratch
+ * in its own slot.
+ */
+const flowEntriesCache = new WeakMap<
+  object,
+  { entries: FlowEntry[]; count: number }
+>();
 
-  events.forEach((event, stepIndex) => {
+type FlowFoldSlot = {
+  count: number;
+  entries: FlowEntry[];
+  toolEntries: Map<string, FlowEntry[]>;
+  usedIds: Set<string>;
+  /**
+   * One content hash per folded event, indexed by the event's position. Ids
+   * alone cannot identify a prefix — synthetic arrays (and two captures with
+   * deterministic id spellings) can share an id pattern while differing in
+   * names, times or pairing fields, and a false match would serve one
+   * history's entries for another. The match verifies evenly spaced sampled
+   * hashes instead of trusting the boundary ids.
+   */
+  eventHashes: number[];
+};
+
+const flowFoldSlots: FlowFoldSlot[] = [];
+/** Slot 0 stays the app's live derive; a replay prefix gets one slot too. */
+const FLOW_FOLD_SLOT_LIMIT = 4;
+/** Checkpoint density of the prefix match: ceil(count / this) positions. */
+const FLOW_FOLD_CHECKPOINTS = 16;
+
+/** Fold-relevant identity of one event, hashed for the prefix match. */
+function flowEventHash(event: TraceEvent): number {
+  const key = `${event.sessionId ?? ""}\u0000${event.source ?? ""}\u0000${event.id}\u0000${event.capturedAt}\u0000${event.eventName}\u0000${event.toolUseId ?? ""}\u0000${event.parentId ?? ""}\u0000${event.turnId ?? ""}`;
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < key.length; index += 1) {
+    hash ^= key.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  // Force the sign bit away so the hash reads as a positive array value.
+  return hash >>> 0;
+}
+
+/**
+ * Whether `events` carries the slot's exact prefix (first `upTo` events).
+ * Ids alone cannot identify a prefix — synthetic arrays (and two captures
+ * with deterministic id spellings) can share an id pattern while differing
+ * in names, times or pairing fields — so evenly spaced per-event content
+ * hashes are sampled, dense enough that a small history is verified whole.
+ */
+function flowPrefixMatches(
+  slot: FlowFoldSlot,
+  events: readonly TraceEvent[],
+  upTo: number,
+): boolean {
+  if (events.length < upTo) {
+    return false;
+  }
+  if (upTo === 0) {
+    return true;
+  }
+  const spacing = Math.max(1, Math.ceil(upTo / FLOW_FOLD_CHECKPOINTS));
+  for (let index = 0; index < upTo; index += spacing) {
+    if (slot.eventHashes[index] !== flowEventHash(events[index])) {
+      return false;
+    }
+  }
+  return slot.eventHashes[upTo - 1] === flowEventHash(events[upTo - 1]);
+}
+
+function foldFlowRange(
+  slot: FlowFoldSlot,
+  events: readonly TraceEvent[],
+  from: number,
+  to: number,
+): void {
+  const { entries, toolEntries, usedIds, eventHashes } = slot;
+  for (let stepIndex = from; stepIndex < to; stepIndex += 1) {
+    const event = events[stepIndex];
+    eventHashes[stepIndex] = flowEventHash(event);
     if (event.eventName === "UserPromptSubmit") toolEntries.clear();
-    const toolKey = toolKeyFor(event);
+    // The tool key is a four-part join; only the two tool event kinds use it,
+    // and a long run is mostly messages and reasoning.
     if (event.eventName === "PreToolUse") {
+      const toolKey = toolKeyFor(event);
       const baseId = `tool-${event.toolUseId || event.id}`;
       let id = baseId;
       while (usedIds.has(id)) id += `:${event.id}`;
@@ -1386,6 +1626,7 @@ function createFlowEntries(events: readonly TraceEvent[]): FlowEntry[] {
         timestamp: getEventTimestamp(event),
         stepIndex,
         endStepIndex: null,
+        flowIndex: entries.length,
       };
       entries.push(entry);
       if (event.toolUseId) {
@@ -1393,16 +1634,24 @@ function createFlowEntries(events: readonly TraceEvent[]): FlowEntry[] {
         pending.push(entry);
         toolEntries.set(toolKey, pending);
       }
-      return;
+      continue;
     }
 
     if (toolResultEvents.has(event.eventName) && event.toolUseId) {
-      const entry = toolEntries.get(toolKey)?.shift();
-      if (entry) {
-        entry.endEvent = event;
-        entry.endStepIndex = stepIndex;
-        entry.eventNames.push(event.eventName);
-        return;
+      const pending = toolEntries.get(toolKeyFor(event))?.shift();
+      if (pending) {
+        // Entries are immutable once handed out: the close **replaces** the
+        // entry at its own append position instead of mutating it, so an
+        // older array's snapshot can never observe a pair that closed in a
+        // later batch. `flowIndex`, not `stepIndex` — a collapsed pair makes
+        // the event index drift from the entry's position in the list.
+        entries[pending.flowIndex] = {
+          ...pending,
+          endEvent: event,
+          endStepIndex: stepIndex,
+          eventNames: [...pending.eventNames, event.eventName],
+        };
+        continue;
       }
     }
 
@@ -1415,10 +1664,78 @@ function createFlowEntries(events: readonly TraceEvent[]): FlowEntry[] {
       timestamp: getEventTimestamp(event),
       stepIndex,
       endStepIndex: null,
+      flowIndex: entries.length,
     });
-  });
+  }
+}
 
-  return entries.sort((left, right) => left.timestamp - right.timestamp);
+/**
+ * Whether `events` is the slot's exact history (`same`) or a strict append of
+ * it (`appends`). The relation is decided by sampled content hashes over the
+ * prefix (`flowPrefixMatches`), not by boundary ids alone — the same guard
+ * `createAtomicProjection` applies, with per-event hashes because ids alone
+ * cannot tell two captures with deterministic id spellings apart.
+ */
+function flowSlotRelation(
+  slot: FlowFoldSlot,
+  events: readonly TraceEvent[],
+): "same" | "appends" | null {
+  if (events.length === slot.count) {
+    return flowPrefixMatches(slot, events, slot.count) ? "same" : null;
+  }
+  if (
+    events.length > slot.count &&
+    flowPrefixMatches(slot, events, slot.count)
+  ) {
+    return "appends";
+  }
+  return null;
+}
+
+function createFlowEntries(events: readonly TraceEvent[]): FlowEntry[] {
+  // Exact-identity fast path: several consumers call per derive with the same
+  // array. The stored count re-checks the match, so a grown (mutated) entries
+  // array can never serve a shorter, older array.
+  const identical = flowEntriesCache.get(events);
+  if (identical && identical.count === events.length) {
+    return identical.entries;
+  }
+  let slot = flowFoldSlots.find(
+    (candidate) => flowSlotRelation(candidate, events) !== null,
+  );
+  if (!slot) {
+    slot = {
+      count: 0,
+      entries: [],
+      toolEntries: new Map(),
+      usedIds: new Set(),
+      eventHashes: [],
+    };
+    flowFoldSlots.push(slot);
+    if (flowFoldSlots.length > FLOW_FOLD_SLOT_LIMIT) {
+      flowFoldSlots.shift();
+    }
+  }
+  foldFlowRange(slot, events, slot.count, events.length);
+  slot.count = events.length;
+  // A capture is normally written in timestamp order, so the sort is often a
+  // no-op: one adjacent scan skips the O(n log n) reordering (and the array
+  // churn) for the common case, and only an out-of-order tail pays for it.
+  // The slot's own array stays in append order (the pair close replaces at
+  // `stepIndex`); the per-array snapshot is what may be sorted. A closed pair
+  // contributes one entry for two events, so the scan reads `entries.length`.
+  let sorted = true;
+  for (let index = 1; index < slot.entries.length; index += 1) {
+    if (slot.entries[index].timestamp < slot.entries[index - 1].timestamp) {
+      sorted = false;
+      break;
+    }
+  }
+  const entries = sorted
+    ? slot.entries.slice()
+    : slot.entries.slice().sort((left, right) => left.timestamp - right.timestamp);
+  flowEntriesCache.set(events, { entries, count: events.length });
+  return entries;
 }
 
 export function getFlowNodeIdForEvent(
@@ -1517,7 +1834,28 @@ export function buildFlow(
 export function buildPairDurations(
   events: readonly TraceEvent[],
 ): ReadonlyMap<string, number> {
+  return buildPairArtifacts(events, null).durations;
+}
+
+/**
+ * Both pair projections in **one** `createFlowEntries` pass. The Agent view
+ * needs the span of every step *and* the marker that names the other half;
+ * computing them through the two public helpers built the whole flow twice per
+ * batch (the dominant cost of a 20k-event rebuild). One walk, two maps, same
+ * definitions — the public helpers below delegate here so there is still only
+ * one pairing rule.
+ */
+export function buildPairArtifacts(
+  events: readonly TraceEvent[],
+  turnByEventId: ReadonlyMap<string, number> | null,
+): {
+  durations: ReadonlyMap<string, number>;
+  links: ReadonlyMap<string, TracePairLink>;
+} {
   const durations = new Map<string, number>();
+  const links = new Map<string, TracePairLink>();
+  const closed: Array<{ entry: ReturnType<typeof createFlowEntries>[number] }> =
+    [];
   for (const entry of createFlowEntries(events)) {
     if (!entry.endEvent) {
       continue;
@@ -1528,8 +1866,52 @@ export function buildPairDurations(
     );
     durations.set(entry.startEvent.id, duration);
     durations.set(entry.endEvent.id, duration);
+    closed.push({ entry });
   }
-  return durations;
+  if (!turnByEventId) {
+    return { durations, links };
+  }
+  // Number pairs in LOG order (not timestamp order), so `#1` in a marker is
+  // the first pair a reader meets in that turn.
+  closed.sort((left, right) => left.entry.stepIndex - right.entry.stepIndex);
+  const ordinalByTurn = new Map<number, number>();
+  for (const { entry } of closed) {
+    const endEvent = entry.endEvent;
+    if (!endEvent || entry.startEvent.id === endEvent.id) {
+      continue;
+    }
+    const pairId = entry.startEvent.id;
+    const turn = turnByEventId.get(entry.startEvent.id) ?? 1;
+    const ordinal = (ordinalByTurn.get(turn) ?? 0) + 1;
+    ordinalByTurn.set(turn, ordinal);
+    const startIndex = entry.stepIndex + 1;
+    const endIndex = (entry.endStepIndex ?? entry.stepIndex) + 1;
+    // The marker names the *other* half's LOG row, so from either row the
+    // reader sees exactly where to look (and where a click will jump).
+    const shared = {
+      pairId,
+      turn,
+      ordinal,
+      startIndex,
+      endIndex,
+      rows: `${formatLogSequence(startIndex)} ↔ ${formatLogSequence(endIndex)}`,
+    };
+    links.set(entry.startEvent.id, {
+      ...shared,
+      partnerId: endEvent.id,
+      role: "start",
+      partnerIndex: endIndex,
+      label: `T${turn}·${formatLogSequence(endIndex)}`,
+    });
+    links.set(endEvent.id, {
+      ...shared,
+      partnerId: entry.startEvent.id,
+      role: "end",
+      partnerIndex: startIndex,
+      label: `T${turn}·${formatLogSequence(startIndex)}`,
+    });
+  }
+  return { durations, links };
 }
 
 /**

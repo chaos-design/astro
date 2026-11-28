@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import {
   Bell,
@@ -33,6 +33,7 @@ import {
   defaultHistoryRange,
   historyRangeOptions,
   maxSyncOptions,
+  retentionDayOptions,
   storageKeys,
   themeOptions,
   type ActiveView,
@@ -40,8 +41,14 @@ import {
   type HistoryRangeId,
   type MaxSyncId,
   type QuestionPanelMode,
+  type RetentionPreference,
   type Theme,
 } from "@/config/app-config";
+import type {
+  RetentionPreview,
+  RetentionPruneResult,
+} from "@/lib/retention";
+import { describeRetentionPreview } from "@/lib/retention";
 import { playTaskCompletionChime } from "@/lib/task-completion-chime";
 import {
   questionPanelModeLabels,
@@ -50,6 +57,273 @@ import {
 import { cn } from "@/lib/utils";
 
 type ChoiceIcon = (typeof themeOptions)[number]["icon"];
+
+/**
+ * Retention of captured runs: a switch, a day window, and the preview that
+ * has to be read before anything is deleted. Deleting captured evidence is
+ * irreversible, so turning the switch on is a two-step action — the first
+ * click only asks the service what would go, and the second (explicitly
+ * labelled with the count) enables the sweep. An empty preview enables in one
+ * step because there is nothing to confirm.
+ */
+function RetentionField({
+  retention,
+  scope,
+  onChange,
+  onPreview,
+  onPrune,
+}: {
+  retention: RetentionPreference;
+  /** The only directory the sweep may ever touch (the service's trace root). */
+  scope: string;
+  onChange: (next: RetentionPreference) => void;
+  onPreview: (days: number) => Promise<RetentionPreview>;
+  onPrune: (days: number) => Promise<RetentionPruneResult>;
+}) {
+  const [preview, setPreview] = useState<RetentionPreview | null>(null);
+  // "Awaiting" spans the whole two-step enable: from the switch click until
+  // the reader confirms, cancels, or turns the switch off again. It cannot be
+  // the in-flight flag alone — that ends the moment the preview arrives, and
+  // a confirm block rendered on it vanished exactly then, so the confirm
+  // button never stayed on screen and the switch could not be turned on.
+  const [awaiting, setAwaiting] = useState(false);
+  // A destructive confirm reads differently from a toggle: the first click
+  // only arms the button ("再点一次确认"), and the sweep runs on the second
+  // — or never, if the reader changes the window or walks away (the arm
+  // expires, so a parked button cannot fire hours later).
+  const [armed, setArmed] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [report, setReport] = useState<string | null>(null);
+
+  // The preview follows the window: changing 15 → 30 days must not leave the
+  // reader confirming a count computed for the old one. While the enable flow
+  // is active (`awaiting`), the refreshed count keeps the confirm button
+  // honest; while enabled, it feeds the "clean now" block.
+  useEffect(() => {
+    if (!retention.enabled && !awaiting) {
+      return;
+    }
+    let cancelled = false;
+    onPreview(retention.days)
+      .then((next) => {
+        if (!cancelled) {
+          setPreview(next);
+          setError(null);
+        }
+      })
+      .catch((reason: unknown) => {
+        if (!cancelled) {
+          setError(reason instanceof Error ? reason.message : String(reason));
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [awaiting, onPreview, retention.days, retention.enabled]);
+
+  const askToEnable = () => {
+    setError(null);
+    setReport(null);
+    setAwaiting(true);
+    onPreview(retention.days)
+      .then((next) => {
+        setPreview(next);
+        // Nothing to delete: enabling is honest without a second click. A
+        // failed or empty-bodied preview must not enable anything silently —
+        // the named error below is the outcome the reader acts on.
+        if (next && next.eventFiles === 0) {
+          setAwaiting(false);
+          onChange({ ...retention, enabled: true });
+        }
+      })
+      .catch((reason: unknown) => {
+        setAwaiting(false);
+        setArmed(false);
+        setError(reason instanceof Error ? reason.message : String(reason));
+      });
+  };
+
+  const confirmEnable = () => {
+    if (!armed) {
+      setArmed(true);
+      return;
+    }
+    setArmed(false);
+    onPrune(retention.days)
+      .then((result) => {
+        onChange({ ...retention, enabled: true });
+        setAwaiting(false);
+        setReport(
+          result.removed > 0
+            ? `已删除 ${result.removed} 条消息（${(result.bytes / (1024 * 1024)).toFixed(1)} MB）`
+            : "没有可删除的消息",
+        );
+        setPreview(null);
+      })
+      .catch((reason: unknown) => {
+        setError(reason instanceof Error ? reason.message : String(reason));
+      });
+  };
+
+  return (
+    <div className="settings-field settings-retention">
+      <div className="settings-field__copy">
+        <strong>历史消息自动清理</strong>
+        <span>
+          定时任务语义，三点都写在这里：
+        </span>
+        <ul className="settings-retention__terms">
+          <li>
+            <strong>两步确认</strong>：第一次点击开关只读取预览（条数 / 体积 /
+            最早一条），按钮写明「确认开启并清理 N 条」，点它才真正开启并执行第一轮。
+          </li>
+          <li>
+            <strong>定时运行</strong>：开启后作为定时任务，每次打开控制台最多执行
+            一次（24 小时节流，浏览器记录上次执行时间），删除最后一条事件早于保留
+            天数的消息所在的整条会话目录。
+          </li>
+          <li>
+            <strong>只作用于指定目录</strong>：清理范围是本地服务的数据目录
+            {scope ? (
+              <code className="settings-retention__scope" title={scope}>
+                {scope}
+              </code>
+            ) : (
+              "（服务在线时显示）"
+            )}
+            下的 <code>events.jsonl</code> 会话，永不触碰该目录之外的任何路径；
+            删除不可恢复，关闭开关立即停止，已删数据不会回来。
+          </li>
+        </ul>
+      </div>
+      <div className="settings-retention__controls">
+        <label className="settings-retention__days">
+          <span>保留天数</span>
+          <input
+            aria-label="保留天数"
+            className="settings-retention__input"
+            inputMode="numeric"
+            max={3650}
+            min={1}
+            onChange={(event) => {
+              const days = Number(event.target.value);
+              if (!Number.isFinite(days)) {
+                return;
+              }
+              onChange({
+                ...retention,
+                days: Math.min(3650, Math.max(1, Math.round(days))),
+              });
+            }}
+            type="number"
+            value={retention.days}
+          />
+        </label>
+        <div className="settings-retention__presets" role="group" aria-label="常用保留天数">
+          {retentionDayOptions.map((days) => (
+            <button
+              className={cn(
+                "settings-retention__preset",
+                retention.days === days && "is-active",
+              )}
+              key={days}
+              onClick={() => onChange({ ...retention, days })}
+              type="button"
+            >
+              {days} 天
+            </button>
+          ))}
+        </div>
+        <button
+          aria-checked={retention.enabled}
+          aria-label="历史消息自动清理"
+          className={cn("settings-switch", retention.enabled && "is-on")}
+          onClick={() => {
+            if (retention.enabled) {
+              onChange({ ...retention, enabled: false });
+              setAwaiting(false);
+              setArmed(false);
+              setPreview(null);
+              setReport(null);
+              return;
+            }
+            askToEnable();
+          }}
+          role="switch"
+          type="button"
+        >
+          <span className="settings-switch__thumb" aria-hidden="true" />
+        </button>
+      </div>
+      {!retention.enabled && awaiting ? (
+        <div className="settings-retention__confirm" role="status">
+          {preview ? (
+            <>
+              <span>
+                {describeRetentionPreview(preview)}
+                {preview.sessions[0]
+                  ? `，最早 ${preview.sessions[0].lastCapturedAt.slice(0, 10)}`
+                  : ""}
+              </span>
+              <span className="settings-retention__actions">
+                <button
+                  className="settings-retention__action"
+                  onClick={() => {
+                    setAwaiting(false);
+                    setArmed(false);
+                    setPreview(null);
+                  }}
+                  type="button"
+                >
+                  取消
+                </button>
+                <button
+                  className={cn(
+                    "settings-retention__action is-danger",
+                    armed && "is-armed",
+                  )}
+                  onClick={confirmEnable}
+                  type="button"
+                >
+                  {armed
+                    ? "再次点击确认删除"
+                    : `确认开启并清理 ${preview.eventFiles} 条`}
+                </button>
+              </span>
+            </>
+          ) : (
+            <span>正在读取清理预览…</span>
+          )}
+        </div>
+      ) : null}
+      {retention.enabled && preview ? (
+        <div className="settings-retention__confirm" role="status">
+          <span>{describeRetentionPreview(preview)}</span>
+          <span className="settings-retention__actions">
+            <button
+              className={cn(
+                "settings-retention__action is-danger",
+                armed && "is-armed",
+              )}
+              onClick={confirmEnable}
+              type="button"
+            >
+              {armed ? "再次点击确认删除" : `立即清理 ${preview.eventFiles} 条`}
+            </button>
+          </span>
+        </div>
+      ) : null}
+      {report ? (
+        <p className="settings-retention__report">{report}</p>
+      ) : null}
+      {error ? (
+        <p className="settings-retention__error" role="alert">
+          清理请求失败：{error}
+        </p>
+      ) : null}
+    </div>
+  );
+}
 
 /** Terminal states the chime distinguishes, in the same order in every style. */
 const chimePreviewOptions = [
@@ -248,6 +522,8 @@ export function SettingsDialog({
   maxSync,
   perfHud,
   questionPanelMode,
+  retention,
+  retentionScope,
   taskCompletionChime,
   theme,
   onActiveViewChange,
@@ -260,6 +536,9 @@ export function SettingsDialog({
   onMaxSyncChange,
   onPerfHudChange,
   onQuestionPanelModeChange,
+  onRetentionChange,
+  onRetentionPreview,
+  onRetentionPrune,
   onTaskCompletionChimeChange,
   onThemeChange,
 }: {
@@ -273,6 +552,9 @@ export function SettingsDialog({
   maxSync: MaxSyncId;
   perfHud: boolean;
   questionPanelMode: QuestionPanelMode;
+  retention: RetentionPreference;
+  /** The service's data directory, shown as the sweep's only scope. */
+  retentionScope: string;
   taskCompletionChime: boolean;
   theme: Theme;
   onActiveViewChange: (view: ActiveView) => void;
@@ -285,6 +567,9 @@ export function SettingsDialog({
   onMaxSyncChange: (maxSync: MaxSyncId) => void;
   onPerfHudChange: (perfHud: boolean) => void;
   onQuestionPanelModeChange: (mode: QuestionPanelMode) => void;
+  onRetentionChange: (next: RetentionPreference) => void;
+  onRetentionPreview: (days: number) => Promise<RetentionPreview>;
+  onRetentionPrune: (days: number) => Promise<RetentionPruneResult>;
   onTaskCompletionChimeChange: (value: boolean) => void;
   onThemeChange: (theme: Theme) => void;
 }) {
@@ -304,6 +589,8 @@ export function SettingsDialog({
     activeView === appDefaults.activeView &&
     deepView === appDefaults.deepView &&
     questionPanelMode === appDefaults.questionPanelMode &&
+    retention.enabled === appDefaults.retention.enabled &&
+    retention.days === appDefaults.retention.days &&
     historyOpen === defaultHistoryOpen &&
     consoleOpen === defaultConsoleOpen;
 
@@ -318,6 +605,7 @@ export function SettingsDialog({
     onActiveViewChange(appDefaults.activeView);
     onDeepViewChange(appDefaults.deepView);
     onQuestionPanelModeChange(appDefaults.questionPanelMode);
+    onRetentionChange(appDefaults.retention);
     onHistoryOpenChange(defaultHistoryOpen);
     onConsoleOpenChange(defaultConsoleOpen);
   };
@@ -433,6 +721,13 @@ export function SettingsDialog({
                 description="只显示当前智能体正在执行的消息，不受时间范围限制；该智能体没有消息在执行时列表为空。面板头部的 LIVE 胶囊可随时切换。"
                 value={liveView}
                 onChange={onLiveViewChange}
+              />
+              <RetentionField
+                onChange={onRetentionChange}
+                onPreview={onRetentionPreview}
+                onPrune={onRetentionPrune}
+                retention={retention}
+                scope={retentionScope}
               />
               <div className="settings-field">
                 <div className="settings-field__copy">

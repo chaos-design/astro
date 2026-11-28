@@ -139,6 +139,42 @@
       }
     },
     {
+      "offsetMs": -3100,
+      "eventName": "PreToolUse",
+      "payload": {
+        "tool_use_id": "tool-ask",
+        "tool_name": "AskUserQuestion",
+        "tool_input": {
+          "questions": [
+            {
+              "header": "部署方式",
+              "question": "选择部署方式？",
+              "options": [
+                { "label": "本地", "description": "在本机运行服务与控制台" },
+                { "label": "云端", "description": "部署静态控制台并连接本地服务" }
+              ]
+            }
+          ],
+          "answers": { "选择部署方式？": "本地" }
+        },
+        "turn": 3,
+        "turn_id": "demo-turn-3"
+      }
+    },
+    {
+      "offsetMs": -2900,
+      "eventName": "PostToolUse",
+      "payload": {
+        "tool_use_id": "tool-ask",
+        "tool_name": "AskUserQuestion",
+        "tool_response": {
+          "answers": { "选择部署方式？": "本地" }
+        },
+        "turn": 3,
+        "turn_id": "demo-turn-3"
+      }
+    },
+    {
       "offsetMs": -2680,
       "eventName": "PreToolUse",
       "payload": {
@@ -166,10 +202,33 @@
       }
     },
     {
+      "offsetMs": -2400,
+      "eventName": "AgentMessage",
+      "payload": {
+        "message": "我已理解你的需求，",
+        "messageId": "demo-message-3",
+        "streamed": true,
+        "turn": 3,
+        "turn_id": "demo-turn-3"
+      }
+    },
+    {
+      "offsetMs": -1800,
+      "eventName": "AgentMessage",
+      "payload": {
+        "message": "我已理解你的需求，建议按以下步骤处理：",
+        "messageId": "demo-message-3",
+        "streamed": true,
+        "turn": 3,
+        "turn_id": "demo-turn-3"
+      }
+    },
+    {
       "offsetMs": -920,
       "eventName": "AgentMessage",
       "payload": {
-        "message": "The loop-aware execution trajectory is ready.",
+        "message": "我已理解你的需求，建议按以下步骤处理：\n\n1. 先补全派生层与回归测试；\n2. 再接入放大层的 Agent 视图；\n3. 最后同步文档并完成验收。",
+        "messageId": "demo-message-3",
         "model": "gpt-5.1-chatgpt",
         "turn": 3,
         "turn_id": "demo-turn-3"

@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { formatDurationMs } from "../src/lib/duration-label.ts";
+import {
+  durationHeatClass,
+  formatDurationMs,
+} from "../src/lib/duration-label.ts";
 
 // The LOG badge and the global overlay's rail badge share this one ladder, so
 // the same closed pair reads with the same unit in both surfaces. Each tier
@@ -31,4 +34,20 @@ test("invalid spans are not reported as zero", () => {
   assert.equal(formatDurationMs(Number.NaN), "--");
   assert.equal(formatDurationMs(Number.POSITIVE_INFINITY), "--");
   assert.equal(formatDurationMs(-1), "--");
+});
+
+test("durationHeatClass grades a span without wording", () => {
+  // One classifier for every duration the console prints: LOG badge,
+  // trajectory pair, Agent step card and the accumulated run clock.
+  assert.equal(durationHeatClass(Number.NaN), "idle");
+  assert.equal(durationHeatClass(0), "idle");
+  assert.equal(durationHeatClass(-1), "idle");
+  assert.equal(durationHeatClass(742), "fast");
+  assert.equal(durationHeatClass(9_999), "fast");
+  assert.equal(durationHeatClass(10_000), "normal");
+  assert.equal(durationHeatClass(59_999), "normal");
+  assert.equal(durationHeatClass(60_000), "slow");
+  assert.equal(durationHeatClass(299_999), "slow");
+  assert.equal(durationHeatClass(300_000), "very-slow");
+  assert.equal(durationHeatClass(30 * 60_000), "very-slow");
 });

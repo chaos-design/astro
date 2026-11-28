@@ -56,6 +56,18 @@
     长新鲜度窗口与 IDLE 文案），但 RUN HISTORY 以 RUNNING 呈现，限流等待仍显示
     WAITING；
   - 时间窗口计算只在 `src/lib/run-history-window.ts`；
+  - 捕获历史的保留策略只在 `server/retention.mjs`（`findExpiredSessions` /
+    `pruneExpiredSessions`）：过期口径是「最后一条事件的 `capturedAt`」而不是
+    文件 mtime，天数守卫 1–3650，删除只发生在 trace 根下的 `events.jsonl` 会话
+    目录；控制台只存偏好（`ASTROX_RETENTION`，默认关闭、15 天）并通过
+    `GET /api/retention/preview` 预演、`POST /api/retention/prune` 执行，删除后
+    必须调用 `TraceRepository.forgetMissing()`，不得让已删会话留在内存里；
+  - 页面帧率只在 `src/lib/perf-metrics.ts`（`startPageFpsSampler`，1 秒一个窗口，
+    `visibilitychange` 隐藏时暂停）；滚动帧率是另一件事，不能互相替代；
+  - 展示用时长只有两条阶梯，都在 `src/lib/duration-label.ts`：
+    `formatDurationMs`（每个量级一个主导单位，给 LOG / rail 徽标）与
+    `formatPerfDuration`（`ms` → `s` → `01M01s` → `01H01M`，两位补零，给性能
+    面板）；不得在组件里再拼第三套；
   - 预览页「是否打开过」的状态只在 `plugin/trace-recorder.cjs`
     （`readPreviewState` / `markPreviewOpened`，持久化为 `ASTRO_HOME` 下的
     `preview-state.json`）：服务端在控制台页面接入 `/api/stream` 时打点，
@@ -77,16 +89,126 @@
     读专属的 `--code-accent`（它们曾落在近白上，与正文代码几乎不可分），
     diff 行带 addition/deletion 底色，注释灰斜体。shell 围栏走专用转义 tokenizer，
     给命令、选项、变量与赋值分别上色，行内注释与 heredoc 正文不算命令；
-    Code 视图 `JsonViewer` 的键沿用同一 `--code-accent`，切标签不再换配色。
+    Code 视图 `JsonViewer` 的键沿用同一 `--code-accent`，切标签不再换配色；JSON 树每行都预留折叠箭头槽位（不可折叠行用隐藏占位对齐），嵌套行不会排到父容器左面；主检查器定高面板里树自带滚动条（`.inspector-tabs__content--json` 的 `json-viewer__rows`），不再被裁掉滚不动。
     `.markdown-preview` 显式
     恢复列表的 `list-style` 与块级布局：Tailwind preflight 全局重置
     `list-style`，而 flex 列布局会把 `li` 块化掉 `list-item`——任一都会让
-    圆点/编号静默消失；GFM 任务清单用复选框替换 marker，标题按 em 缩放
+    圆点/编号静默消失；GFM 任务清单用复选框替换 marker，并渲染为主题色任务
+    **行**（`.md-tasklist` / `.md-taskrow` 卡片，不用 `<li>` 包裹）：复选框是
+    primary 色描边方块，勾选项把 primary 混进卡片底色；载荷里的 data-URL 图片
+    （工具结果、相关字段）经唯一入口 `markdownWithEmbeddedImages`
+    （`src/lib/embedded-image.ts`）内联渲染：原始 blob 换成短标签，去重后的源
+    追加为 Markdown 图片行，进入每个 Agent 步骤正文与 Preview 内容窗格；
+    Code 窗格保留未改动的原始载荷，组件里不得再长第二个 data-URL 渲染器；
+    标题按 em 缩放
     （h2 带下划线），行内代码 0.92em 不撑行高，表格塌陷边框 + 表头底色 +
     偶数行斑马纹，引用块紫边 + 底色。检查器的 Input/Output/Raw 与全局浮层共用这两个
     单一来源，浮层组件 `src/components/payload-overlay.tsx` 只负责展示，并用同一个
-    切换提供 `Preview`（渲染后的 Markdown：标题、GFM 任务列表、高亮代码、问题/选项/答案）
-    与 `Code`（未加工的原始 JSON）两种形态，不再另写一份转换或消毒逻辑；
+    切换提供 `Agent`（默认：把同一事件序列投影为思考块、合并后的回复、工具结果与提问）、
+    `Preview`（渲染后的 Markdown：标题、GFM 任务列表、高亮代码、问题/选项/答案）
+    与 `Code`（未加工的原始 JSON）三种形态，不再另写一份转换或消毒逻辑；
+    仅靠 hook 上报的客户端（WorkBuddy / CodeBuddy / Claude / ZCode）没有思考与
+    中间回复的载荷，补采唯一入口是 `plugin/transcript-enrich.cjs`：按宿主在
+    hook 里给出的 `transcript_path` 增量读取尾部（单次从 256 KiB 起步；游标只越过
+    完整行，单条超过窗口的条目会把**本次**读取放大到换行处，不丢条目、不截断正文），产出规范
+    `Reasoning` / `AgentMessage` 事件，`messageId` 用 transcript 条目自己的 id，
+    以 `transcriptKey` 去重并写入 `<ASTRO_HOME>/transcript-state/<source>-<session>.json`
+    （会话目录带时间戳，游标不能放在那里）；路径识别覆盖
+    `transcript_path` / `session_file` / `conversation_file` / `history_file` /
+    `messages_file` / `log_file` 等拼写，宿主不提供路径时用
+    `ASTRO_TRANSCRIPT_PATH` 显式指定（Trae 的 hook 不提供转录，故无自动补采）；
+    全程 fail-open，`ASTRO_TRANSCRIPT_ENRICH=0` 可关闭，模块缺失时 recorder 仍
+    照常记录宿主事件；
+    Agent 投影唯一入口是纯函数 `buildAgentView(events, platformId)`
+    （`src/lib/agent-view.ts`）：同 `messageId` 的流式前缀与最终消息合并为一个
+    ReplyStep 并计数，前缀断裂记诊断且保留每一步，无 id 的老数据只用时间邻近 +
+    `startsWith` 回退；每个 Reasoning 独立成块并默认展示真实思考文本，统一经
+    `extractText` 读取 hook 实际字段（`message` / 嵌套 `summary` / `text` / `content`），
+    不为某个客户端另写解析器；工具 command 只由 `getToolCallCommand` 从配对的
+    `PreToolUse` 读取，不写回事件、不从工具名编造，结构化工具的完整执行行
+    由同一配对事件经 `getToolCallInvocation` 合成（工具名加全部短输入字段，
+    diff 载体的 old/new 与 content 字段除外，补丁走自己的渲染）；提问只绑阻断性
+    start 并复用
+    `parseUserQuestionContent`；已完成问题的已记录答案经
+    `mergeQuestionAnswers`（`src/lib/user-question-content.ts` 的单一合并）
+    从配对的结果事件投影到该步骤上，静态预览因此点亮已选选项，无论宿主
+    把答案写在哪个事件；问题工具的结果步骤携带同一批答案与 start 事件的
+    选项集，用共享的 `AnswerRows` 渲染（卡片内 teal 的 ANSWERS 块）而非
+    JSON 正文。呈现层 `src/components/agent-transcript.tsx`
+    只读该结果，正文仍走 `MarkdownView`、`QuestionContent/Preview` 与共享的
+    `RelatedFields`（`src/components/related-fields.tsx`，按值折叠），
+    步骤与左 rail 共用 `onSelectAtom` 选择态。各步骤正文（思考 / 回复 / 工具
+    结果 / 通用内容）由同一共享控件 `StepBodyCollapse` 折叠（默认展开；
+    收起态显示一行摘要，切换钮读「收起/展开」+ chevron；问题列表是可折叠
+    正文中唯一例外——它从不折叠）；Agent 窗格上下滚动驱动左侧 rail：阅读
+    行的原子行被滚回 rail 可视区（content-active 跟随效果，显式定位的缓动
+    展示让出一帧）。**停在 Agent 视图时 rail 只认阅读行**——Live 跟随推进
+    选中态但不再抢走 rail，`Preview` / `Code` 才由选中行决定；`following`
+    不再作为 content-active 跟随的守卫，选中行 reveal 在 Agent 视图下直接
+    跳过，避免两个效果互抢同一行。
+    `src/lib/agent-transcript-scroll.ts` 的 `isAgentTranscriptAtBottom`（24px 容差）
+    单一判定是否仍在底部，`isLatestStepVisible` 判定最新步骤是否仍在视口内
+    （高回复未到最底时也可能可见），`latestStepHiddenOutside` 给出最新步骤
+    完全离开视口的像素数。overlay 的
+    `agentLocateRequest` 只由显式点选递增，实时跟随不抢阅读位置；新步骤到达而
+    读者不在最新步骤时不推其阅读位置，只累计条数。居中按钮只看**位置**：
+    最新步骤越出视口超过 `AGENT_SCROLL_HIDDEN_STEP_THRESHOLD`（64px）即出现，
+    不读滚动方向、不保留手势 latch；程序定位到更早步骤与向上滚动落在同一
+    状态，向下滚回或到达绝对底部则撤下。唯一的宽松跟随规则是
+    `isFollowingNewestStep`（同模块）：在底部，或最新步骤仍在视口内。
+    **没有缓存的 at-bottom 标志**——追加钉底与选中态效果都在批次落地时从
+    DOM 实时读取，滚动手势与 rAF 之间落下的批次无法用陈旧标志撤销读者的
+    滚动。反方向的唯一裁决是同模块的 `followAfterAppend`：新卡片会增大
+    `scrollHeight` 并把最新步骤推到视口外，单看追加后的几何会把仍在底部的读者
+    误判为“已离开”；组件因此把实时裁决与**上次实际观察到的滚动位置快照**
+    配对（只由真实滚动事件与自身钉底写入，批次复查不写）——`scrollTop` 未变
+    且此前在跟随，说明只是内容增长，继续钉底；`scrollTop` 变了则是手势，快照
+    不得覆盖实时裁决。首次打开与切换消息在绘制前钉到 `scrollHeight`，滚回底部
+    重新走同一规则。跟随期间追加钉底**每个批次都重跑**，即使步骤数不变：流式快照
+    **合并**进已有的回复步骤，只按步骤数判重曾让正文在读者脚下折叠线以下
+    不断堆积。实时推进若把最新事件解析进**更早的（合并）步骤**，绝不把视图
+    滚到列表中部、也不解除跟随——只有显式点选才定位更早步骤。按钮出现后，运行中的卡片带待读
+    条数，结束后的同一按钮变为「快速滚动到底部」；定位**最新**步骤
+    （实时跟随、跳回、或显式点选最后一步）会把容器钉到**绝对底部**
+    （`scrollHeight`），让末条贴住底边并从这里恢复跟随，只有定位**更早**
+    的步骤才按顶边-12px 对齐保留上下文；滚回最新步骤即恢复
+    自动追加；四类正文用各自强调色区分，并统一经 `contentToMarkdown`
+    按代码/文档形态高亮，不另写解析器；底部 loading 行只在运行仍执行
+    （`live`）时出现，结束即撤；进度条（`ChainProgress`）是滚动完成度条，
+    填充与活跃刻度跟随阅读位置；刻度几何按**最后一个步骤对象**重测
+    （不只看数量与末位 id）——合并快照批次在两者都不变时增长正文；钉底
+    修复后，跟随中进度条跟进最新轮次，仅真实滚动才会移动它；当前消息的执行时间显示在 AGENT VIEW 标签
+    之后：读根级 display state（与 RUN HISTORY 行同源，Prompt 起算、
+    超时封顶），消息执行中由根级 1s `now` tick 推进、结束停在记录的
+    总时长。该头部计时的是**这一条**消息，故用共享的复合时长格式器
+    `formatDuration`（`src/lib/trace-model.ts`，如 `43s`、`1m 50s`、
+    `1h 2m 5s`，高单位有值才显示），而非另写第二套时钟格式器或 LOG 行
+    徽标 / 浮层 rail 徽标共用的阶梯 `formatDurationMs`；头部另显示本轮
+    跨的轮次数与折叠事件数（`view.stats.turns` / `view.stats.events`）；
+    这些计数同时是跳转目标：悬浮显示背后的步骤清单，点击跳到第一条。头部
+    以 Agent 品牌的 `PlatformIcon` + 标签（`platformLabel` 经 `getAtomPlatformConfig`）
+    及捕获的客户端版本（`sourceVersion`，由当前事件串入）开头，运行身份在
+    头部而非原生 title 提示；Agent 视图与浮层 rail 均不保留原生 `title` 悬浮
+    提示——全局弹窗的 rail 改为**单个受控** `AtomHoverCardLayer`
+    （`payload-overlay.tsx`）：悬浮 log 原子即锚定一张固定卡片，显示该行的
+    轮次/行号/事件/键/类型/状态/时间/耗时/成对/摘要，指针移到卡上仍保持，
+    点击仍跳转。工具步骤的头部同一行内联耗时与成对标记
+    （`agent-step__head-row`），不再单占一行；调用渲染成 mac 窗口框
+    （`CallBlock`：窗口圆点 + 工具名 + `TOOL.CALL` 徽标；真实 shell 命令带
+    `$` 提示、结构化工具则是逐项带标签的字段列表），**不展示 `字段=值`
+    文本**；每次调用由唯一提取器 `getToolCallInputs`（`src/lib/trace-model.ts`）
+    产出 `ToolCallInputs`（`command`/`toolName`/`fields:{key,value,literal}[]`），
+    `invocation` 字符串只是它的薄封装；diff 字段（`old/new`/`content`）与命令
+    自带的 `command`/`cmd` 键均排除，不重复打印；按**词边界换行**
+    （`overflow-wrap: break-word`、`white-space: pre-wrap`），不在词中间截断
+    也不横向滚动；数组结果只有一个元素时**直接渲染该元素的内容**——先取
+    `text`/`message`/`content` 等正文字段（`splitPayloadPreview`），没有正文
+    才退回通用视图，不套一层 key-value 字段表；嵌在 `toolResponse.content`
+    里的数组由 `findFirstListPayload` 用同一个紧凑列表判据取出，不再只读
+    载荷根层；图片与文件由 `src/lib/captured-image.ts` 的**唯一分类器**
+    判定（MIME 白名单同源），data-URL / 远端 / 本地图片渲染为图片，非图片
+    附件渲染为带路径的卡片，Agent 正文、工具调用字段与 Markdown 清理共用
+    这套判定，不另写扩展名正则；
     `Preview` 分两块区域：「原子内容」（真实文本，代码/JSON 高亮、Markdown 渲染）
     与「相关数据」（**全部**字段：含 content 键、空值、null/false/0 与嵌套路径，
     注释优先；对象数组保留形状——每个元素自带一行带下标的**分组行**
@@ -99,15 +221,25 @@
     每个原子的预览在浮层内按事件 ID 缓存一次，并**按检查器标签页分域**
     （`cacheScope`；`payloadForAtom(atomId, eventId)` / `variantForAtom` 解析
     任意行的载荷与类型，选中的行**以它自己的事件为准**——工具调用行读自己的
-    `tool_input`、结果行读 `tool_response`、提示词行读自己的 payload；记录器
-    归一化会在只有 camel 拼写时写入**空 `{}` 占位**（`tool_input: {}`），
-    `payloadField`（app.tsx）把空对象当作占位而非内容、跳到下一个拼写，
+    `tool_input`、结果行读 `tool_response`、提示词行读自己的 payload）；
+    **一个标签页预览哪份载荷只有一处定义**：`src/lib/inspector-payload.ts`
+    （`payloadField` + `resolveInputPayload` / `resolveOutputPayload`）同时
+    供检查器标签页与浮层弹窗读取，同一行在两个界面里的预览不会各说各话。
+    记录器归一化会在只有 camel 拼写时写入**空 `{}` 占位**（`tool_input: {}`），
+    `payloadField` 把空对象当作占位而非内容、跳到下一个拼写，
     空占位绝不能遮住真实的 `toolInput.command`（那曾让每次工具调用的 Input
-    预览变成空白）；拆分后
+    预览变成空白）；**输出侧**依次读行自身的结果、成对关闭事件的结果、
+    真实的回复/思考文本（`last_assistant_message` / `message` / `text`），
+    最后回退到事件自己的 payload——绝不构造 `{message: null}` 空壳
+    （那曾让提示词行在弹窗里预览成空 JSON，而 Agent 视图正文从同一份
+    payload 渲染出真实提示词）；拆分后
     没有正文的载荷走共享的核心内容抽取 `payload-markdown.ts` 的
-    `payloadToMarkdown`（读 camel `toolResponse`、把 `structuredPatch` 渲染成
-    高亮 diff——预览的是载荷的**核心信息**：tool result 的结果、prompt input、
-    message content，而不是原始信封）；通用视图是**纯内容的**——metadata 键
+    `payloadToMarkdown`（读 camel `toolResponse`、把 `structuredPatch` 与
+    Edit 型 `old_string`/`new_string`（蛇形/驼峰拼写皆认）渲染成高亮
+    diff，compact 记录数组（如 `todos`）渲染成 GFM 复选列表而非一整块
+    JSON 围栏——预览的是载荷的**核心信息**：tool result 的结果、prompt
+    input、message content，而不是原始信封）；通用视图是**纯内容的**——
+    metadata 键
     不进正文（`isPayloadMetaKey`，容器键 `tool_input`/`toolResponse` 除外，
     它们递归展开），字段名标签不打印，字符串值按推断语言围栏高亮
     （`inferCodeLanguage` / `fenceCode`：json / diff / xml / typescript /
@@ -175,8 +307,10 @@
     只读问题预览（`QuestionPreview` → `StaticQuestionContent`）先给问题数与
     捕获顺序提示，再给编号题目、作答状态与单独的已选答案行，静态选中 chip
     比实时选项更醒目；
-  - 捕获答案的展示只在 `src/components/answer-rows.tsx`：悬浮卡结果、停靠检查器
-    与历史 Answers 三处共用；选中选项由 `src/lib/question-panel-model.ts` 的
+  - 捕获答案的展示只在 `src/components/answer-rows.tsx`：悬浮卡结果、停靠检查器、
+    历史 Answers 与 Agent 视图（问题工具的结果步骤用同一 `AnswerRows` 渲染
+    其已记录答案；已完成问题的静态预览用投影到该步骤的答案点亮已选选项）
+    四处共用；选中选项由 `src/lib/question-panel-model.ts` 的
     `matchAnswerOptions` 从答案原文还原（只认与声明标签完全相同的逗号 token，
     自由文本不会被误点亮），以高亮 chip 呈现，余下文本按 Markdown 渲染。
     `QuestionResultList` 通过 `resultAnswerRows` 保持请求的题目顺序；结果到达后
@@ -187,13 +321,14 @@
     zcode 的会话起始模型）在此归一成一个展示串；某条运行自身没上报模型时
     回退到会话起始模型（ZCode 只在 SessionStart 携带 model），界面只在有
     可显示值时渲染 `MODEL` 标签；
-  - 成对原子事件的耗时只在 `src/lib/trace-model.ts`（`buildPairDurations`，
-    复用 `createFlowEntries` 的配对）：仅对已闭合的成对事件（起始有结果
-    收尾，如 `PreToolUse`→`PostToolUse`/`PostToolUseFailure`）给出开始→结果
-    的时长，不成对的事件一律不计入；轮次的 `totalPairDuration` 按唯一 pair
-    求和（一个工具调用会投影成多个原子，两半也带同一跨度，不能按原子累加）；
-    LOG 行、轨迹数据层（`pairDuration` / `totalPairDuration`）与悬停区块卡片
-    都从这一处取值；
+  - 成对原子事件的耗时只在 `src/lib/trace-model.ts`（`buildPairArtifacts`，
+    一次 `createFlowEntries` 遍历同时产出跨度表与关联表；`buildPairDurations`
+    / `buildPairLinks` 是它的两个投影，不得各自再走一遍 flow）：仅对已闭合的
+    成对事件（起始有结果收尾，如 `PreToolUse`→`PostToolUse`/`PostToolUseFailure`）
+    给出开始→结果的时长，不成对的事件一律不计入；轮次的 `totalPairDuration` 按
+    唯一 pair 求和（一个工具调用会投影成多个原子，两半也带同一跨度，不能按原子
+    累加）；LOG 行、轨迹数据层（`pairDuration` / `totalPairDuration`）、Agent
+    步骤自身的 `durationMs` 与悬停区块卡片都从这一处取值；
   - 成对关联标记的身份同样只在 `src/lib/trace-model.ts`（`buildPairLinks`，
     复用同一份 `createFlowEntries` 配对）：两半互指对方 ID，标记文字是
     `T<轮次>·#<另一半的 LOG 行号>`（轮次取起始事件的 `buildTraceTurnIndex` 结果，
@@ -391,7 +526,10 @@
   `selectScopeFallbackRun` 选那条 Live 消息而不是最新完成的消息——被恢复的会话可能
   几天前才开始，否则底部 Live 按钮会是暗的、画布停在错误的运行上。落点按最新消息
   开始时间排序，与 RUN HISTORY 置顶、`N LIVE`、底部 Live 跳转共用同一顺序；
-  没有 Live 时才退回新智能体最新一条。深链
+  已完成的消息统一按最后执行时间（`end`）排序——`pinLiveRunHistory` 对 finished 组
+  同样排序，`selectScopeFallbackRun` 也用这个键，保证落点与列表首行一致；一个几天前
+  发起、刚完成后续消息的会话会升到只是「开始得更晚」的会话之上。没有 Live 时才退回
+  新智能体最后执行的一条。深链
   `?session=` 指向别的智能体时，下拉框跟着跳到该智能体，地址栏的 `agent` 同步重写，
   保证“打开的运行一定在列表里”。地址栏的参数写入只在 `src/lib/console-location.ts`
   一处完成：切换时旧 `session` / `event` 丢弃，新智能体有数据时画布定位到它的
@@ -483,6 +621,29 @@
   `getExceptionOutcome`、`isUserQuestionToolEvent`）只查模块级 `Set`，不在循环里
   写 `[...].includes(...)`。一次加载要为每个事件跑两遍这些判定，临时数组会直接变成
   主线程长任务。
+- **流式批不重走全量历史**：derive 折叠都携带稳定前缀，一个批次只为追加的切片
+  付钱。`createSessionProjection` 与画布路径的 `createAtomicProjection`
+  （app 持一个长生命周期折叠实例；切会话 / 回放跳转 / 更短的列表在闭包内全量重建）
+  都只折叠自上次以来追加的事件；内容未变的重新 derive 返回上一次的投影对象
+  ——身份稳定正是下游 memo 命中的前提。`parseUserQuestionContent` 按 payload 对象缓存
+  结果（捕获的 payload 是不可变引用），首遍之后提问 / 答案抽取就是查表；
+  `createFlowEntries`（`trace-model.ts`）的折叠**可续跑**：有界槽位携带条目、
+  工具配对队列与每个已折叠事件的内容哈希，候选数组按采样哈希匹配前缀
+  （仅凭 id 无法区分两份拼写相同但内容不同的确定性 id 捕获），每批只折叠
+  追加的切片——`buildFlow` / `buildPairDurations` / `buildPairLinks` 及调用后两者的
+  `buildAgentView` 共享这份续跑折叠。条目一经交付即不可变：配对关闭以
+  `flowIndex` **替换**条目（不是 `stepIndex`——合并对会让事件下标与条目在列表中的
+  位置错开），旧数组的缓存快照因此永远看不到后续批次才关闭的配对。
+  `isUserQuestionToolEvent` 按事件对象缓存结论——流式批次对同一批工具事件反复
+  询问，未缓存的每次回答都是一遍候选名归一化。浮层的三条派生
+  （`overlayAtoms` / `overlayEventById` / `overlayAgentView`）以弹窗打开为闸，
+  弹窗关闭时一个都不跑；弹窗的两张热列表（rail 行、Agent 视图步骤卡）从
+  `useMemo` 的元素数组渲染，键为批次稳定输入——根级每秒一次的 `now` tick
+  复用同一批子元素，React 按行短路，不再每秒重排两万行的子树。
+  `buildExecutionTopology` 的逐事件循环只查名字桶（每次调用建一张
+  名字 → 累加器下标表），问题判定只对 `questionCandidateEventNames` 里的
+  事件名运行。工具入参排除键是模块级 `Set`，不按事件重建；热路径不得再调全量
+  `projectTraceEvents` 或重解析稳定 payload。
 - **首屏不按"0"报数**：数据没到之前，RUN HISTORY 头部写 `loading…` 并画骨架行，
   顶栏连接标记写 `connecting`。`0 runs` 与 `offline` 都是关于"已经确认的事实"的陈述，
   在快照还没到时不成立。

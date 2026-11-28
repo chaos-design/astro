@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -130,6 +131,17 @@ export default function (pi: PiExtensionApi) {
   // keeps every snapshot a prefix of the final message_end text.
   const liveText = new Map<string, { text: string; lastAt: number }>();
   const liveTextIntervalMs = 800;
+  // Pi's assistant messages carry no stable id of their own, so synthesize one
+  // per message and reuse it across its snapshots and final AgentMessage. The
+  // origin session id scopes subagents; the counter keeps consecutive messages
+  // of a resumed session distinct.
+  const messageSeqBySession = new Map<string, number>();
+  const liveMessageIdBySession = new Map<string, string>();
+  // One token per extension instance. A resumed session loads a fresh instance
+  // whose per-session counter starts at 1 again; without the token its new
+  // replies would reuse the previous process's ids and fold into the same
+  // reply in the Agent view (or raise a false prefix-break diagnostic).
+  const replyIdToken = randomUUID().slice(0, 8);
   // Subagent identity is read once per child session: the launch payload is
   // cheap, the persisted delegation entry is read only on a continuation.
   const subagentIdentities = new Map<string, ReturnType<typeof readSubagentIdentity>>();
@@ -231,14 +243,27 @@ export default function (pi: PiExtensionApi) {
         if (role && role !== "assistant") {
           return;
         }
-        const live = readPiLiveText(event);
-        const key = `${sessionId}:${live.messageId || "default"}`;
+        // Pi gives assistants no stable per-message id, so allocate one at
+        // message_start and reuse it for the throttled snapshots and the final
+        // message. The origin `sessionId` already separates subagents.
         if (type === "message_start") {
-          liveText.delete(key);
+          const seq = (messageSeqBySession.get(sessionId) ?? 0) + 1;
+          messageSeqBySession.set(sessionId, seq);
+          const id = `pi-${replyIdToken}-${sessionId}-${seq}`;
+          liveMessageIdBySession.set(sessionId, id);
+          mappingContext.messageId = id;
+          liveText.delete(`${sessionId}:${id}`);
           return;
         }
+        const messageId = liveMessageIdBySession.get(sessionId) ?? null;
+        // The final message is written through mapPiEvent below; hand it the
+        // same id so the console folds every snapshot into that one reply.
+        mappingContext.messageId = messageId ?? undefined;
+        const live = readPiLiveText(event, messageId ?? undefined);
+        const key = `${sessionId}:${messageId ?? "default"}`;
         if (type === "message_end") {
           liveText.delete(key);
+          liveMessageIdBySession.delete(sessionId);
         } else {
           const state = liveText.get(key) ?? { text: "", lastAt: 0 };
           if (live.text !== null) {
@@ -257,6 +282,9 @@ export default function (pi: PiExtensionApi) {
               cwd,
               message: state.text,
               streamed: true,
+              // Same synthesized id as the final message: the accumulated
+              // snapshots are merged by the console into a single reply.
+              ...(messageId ? { messageId } : {}),
               ...attribution,
             });
           }
@@ -272,8 +300,14 @@ export default function (pi: PiExtensionApi) {
             continue;
           }
           lastTerminal.set(sessionId, payload.eventName);
-        } else if (payload.eventName === "Notification") {
-          // A new model step means the previous terminal no longer dedupes.
+        } else if (
+          payload.eventName === "Notification" ||
+          payload.eventName === "UserPromptSubmit"
+        ) {
+          // A new model step — or a new prompt in the same session — opens a
+          // new run. The previous terminal no longer dedupes this turn's Stop;
+          // without the prompt case, every turn after the first lost its Stop
+          // and never reached a terminal run state.
           lastTerminal.delete(sessionId);
         }
         enqueue({

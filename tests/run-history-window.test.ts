@@ -197,6 +197,58 @@ test("keeps the newest-first order while nothing is executing", () => {
   );
 });
 
+test("a finished follow-up on an old thread rises by last execution time", () => {
+  // The thread began days ago; a new message just completed in it, so its
+  // `end` is newer than threads that merely started later. It must lead the
+  // finished group even though its `start` is the oldest.
+  const resumed = session(Date.parse("2026-10-01T08:00:00"));
+  resumed.end = Date.parse("2026-10-09T13:30:00");
+  const later = session(Date.parse("2026-10-09T10:00:00"));
+  later.end = Date.parse("2026-10-09T11:00:00");
+  const newestStart = session(Date.parse("2026-10-09T11:30:00"));
+  newestStart.end = Date.parse("2026-10-09T11:45:00");
+
+  assert.deepEqual(
+    pinLiveRunHistory(
+      [newestStart, later, resumed],
+      new Set(),
+    ).map((entry) => entry.key),
+    [resumed.key, newestStart.key, later.key],
+  );
+});
+
+test("finished fallback lands on the row the list shows first", () => {
+  const oldWithFollowUp = session(Date.parse("2026-10-01T08:00:00"));
+  oldWithFollowUp.end = Date.parse("2026-10-09T13:30:00");
+  const newer = session(Date.parse("2026-10-09T10:00:00"));
+
+  assert.equal(
+    selectScopeFallbackRun([newer, oldWithFollowUp], new Set())?.key,
+    oldWithFollowUp.key,
+    "the last-executed row is both the first row and the fallback",
+  );
+});
+
+test("the fallback pool must be windowed, or an old follow-up opens a hidden row", () => {
+  // The list filters by `start` before sorting finished rows by `end`. A
+  // days-old thread that just got a follow-up tops the `end` order but is
+  // outside the window — the console must not open it as the fallback, because
+  // no RUN HISTORY row points at it.
+  const now = Date.parse("2026-10-09T14:00:00");
+  const oldWithFollowUp = session(Date.parse("2026-10-01T08:00:00"));
+  oldWithFollowUp.end = Date.parse("2026-10-09T13:30:00");
+  const inWindow = session(Date.parse("2026-10-09T12:00:00"));
+  inWindow.end = Date.parse("2026-10-09T12:30:00");
+
+  const visible = selectVisibleRunHistory(
+    [inWindow, oldWithFollowUp],
+    now,
+    3,
+  );
+  assert.deepEqual(visible.map((entry) => entry.key), [inWindow.key]);
+  assert.equal(selectScopeFallbackRun(visible, new Set())?.key, inWindow.key);
+});
+
 type PinnedRun = TraceSession & { messageStart: number };
 
 // The console pins by the start of a run's newest message, not by its latest

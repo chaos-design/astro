@@ -53,7 +53,7 @@ writeFileSync(
       version: packageMetadata.version,
       description:
         "ASTRO local-first trace integrations for Trae, Claude Code, ChatGPT, DeepSeek Harness, and WorkBuddy.",
-      license: "UNLICENSED",
+      license: packageMetadata.license,
       type: "module",
       bin: {
         "astro-trace": "bin/astro.mjs",

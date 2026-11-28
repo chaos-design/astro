@@ -371,6 +371,8 @@ max(已记录跨度, 当前时间 - 开始时间)
 | `PreToolUse` | `tool_input` | item.arguments、item.command 或 item 本身 |
 | `PostToolUse*` | `tool_response` | item.output、item.result 或 item 本身 |
 
+`AgentMessage` 另带可选 `messageId` 与 `streamed`：同一消息的流式累积快照与最终完整消息共享同一个 `messageId`，快照以 `streamed: true` 标记；消费端据此把多个前缀快照合并为一条回复，老数据缺少这些字段时按独立事件呈现。
+
 字符串形式的工具参数会优先尝试 JSON 解析，解析失败则保留原字符串。
 
 ## 10. 写入前脱敏
@@ -420,6 +422,45 @@ max(已记录跨度, 当前时间 - 开始时间)
 ```
 
 `accepted` 只统计本次真正新增的事件。重复 ID 被忽略。请求体超过 `ASTRO_MAX_BODY_BYTES` 返回 413，无效 JSON 返回 400。
+
+### 12.1 转录补采（transcript recovery）
+
+只上报 hook 事件的客户端（WorkBuddy / CodeBuddy / Claude / ZCode）在 payload 里给出
+会话转录文件 `transcript_path`；模型的思考与中间回复只存在于该文件。记录器在写入
+宿主事件之前读取转录的新增尾部，并写入规范事件：
+
+| 字段 | 值 |
+| --- | --- |
+| `eventName` | `Reasoning`（思考）或 `AgentMessage`（回复） |
+| `payload.recoveredFrom` | 固定 `"transcript"` |
+| `payload.client` | 产生转录的客户端名 |
+| `payload.messageId` | 转录条目自己的 id（Claude 用 `message.id`），使同一消息的多个块按 `messageId` 合并 |
+| `payload.text` / `payload.message` | 转录原文，逐字保留（不经二次拼接或截断） |
+| `payload.transcriptKey` | `<kind>:<id>:<正文摘要>`，去重键 |
+| `nativeEventName` | `"transcript"` |
+
+- **增量**：游标为字节偏移，存放在 `ASTRO_HOME/transcript-state/<source>-<session>.json`；
+  转录文件被重写（变小）时偏移归零，但已记住的 `transcriptKey` 保留，因此 ZCode
+  每次 hook 给一个新的临时目录也不会重复写入。
+- **有界**：单次最多读 256 KiB、最多解析 200 条；剩余部分留给下一次 hook。
+- **路径识别**：`transcript_path` / `transcriptPath` 之外还接受 `session_file` /
+  `conversation_file` / `history_file` / `messages_file` / `log_file`（snake 与 camel，
+  含嵌套 `payload.*`）；宿主完全不提供路径时，可用 `ASTRO_TRANSCRIPT_PATH=<file>`
+  显式指定（支持 `~/`），读取规则与游标完全相同。**Trae 的 hook 不提供转录**
+  （其 workbench 包里没有 `transcript_path`），因此 Trae 目前没有可补采的正文。
+- **fail-open**：文件缺失、行损坏、形状未知都只损失那一次读取；`ASTRO_TRANSCRIPT_ENRICH=0`
+  关闭补采，模块缺失时记录器照常写宿主事件。
+
+### 12.2 保留策略（retention）
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `GET` | `/api/retention/preview?days=<1..3650>` | 只读预览：`{ days, cutoff, now, sessions[], eventFiles, bytes }` |
+| `POST` | `/api/retention/prune`，体 `{ "days": 15 }` | 删除过期会话目录，返回 `{ days, cutoff, removed, bytes, directories }`；随后服务端丢弃这些会话的内存副本并广播 `reset` |
+
+过期口径是会话**最后一条事件的 `capturedAt`**，不是文件 mtime；只删除 trace 根下
+`events.jsonl` 所在会话目录，`data/demo-events.json` 永不参与。`days` 非整数或越界
+返回 400。
 
 ## 13. SSE 实时契约
 

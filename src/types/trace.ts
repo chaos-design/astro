@@ -310,6 +310,14 @@ export type FlowEntry = {
   timestamp: number;
   stepIndex: number;
   endStepIndex: number | null;
+  /**
+   * The entry's own position in the fold's append-ordered entry list — not
+   * `stepIndex` (the *event's* index, which drifts from it once a pair
+   * collapses two events into one entry). The incremental fold replaces an
+   * entry in place at this index when its pair closes, so the slot's list
+   * never needs a second lookup and older snapshots stay immutable.
+   */
+  flowIndex: number;
 };
 
 export type TraceNodeData = FlowEntry & {

@@ -50,7 +50,7 @@ type ChimeStyleSpec = {
 /** 清脆 — the original bright sine chime. */
 const BRIGHT_STYLE: ChimeStyleSpec = {
   wave: "sine",
-  gain: 0.12,
+  gain: 0.42,
   attack: 0.015,
   tones: {
     /** Success: the ascending two-note chime (A5 → D6). */
@@ -83,7 +83,7 @@ const BRIGHT_STYLE: ChimeStyleSpec = {
 /** 柔和 — a warmer, quieter marimba-like tone with slower onsets and decays. */
 const SOFT_STYLE: ChimeStyleSpec = {
   wave: "triangle",
-  gain: 0.09,
+  gain: 0.3,
   attack: 0.03,
   tones: {
     /** Success: E5 → A5, a gentle ascending fourth. */
@@ -113,7 +113,7 @@ const SOFT_STYLE: ChimeStyleSpec = {
 /** 脉冲 — short percussive square blips, closer to a ticker than a bell. */
 const PULSE_STYLE: ChimeStyleSpec = {
   wave: "square",
-  gain: 0.055,
+  gain: 0.18,
   attack: 0.004,
   tones: {
     /** Success: C6 → G6, two fast ascending blips. */

@@ -35,7 +35,8 @@ test("the metadata wait polls the run's artifacts with a bound", () => {
   const body = workflow.slice(start, stepIndex("Deploy to GitHub Pages"));
   assert.match(body, /repos\/\$GITHUB_REPOSITORY\/actions\/runs\/\$GITHUB_RUN_ID\/artifacts/);
   assert.match(body, /select\(\.name == "github-pages"\)/);
-  assert.match(body, /for attempt in \$\(seq 1 12\)/);
+  assert.match(body, /for attempt in \$\(seq 1 24\)/);
   assert.match(body, /sleep 5/);
+  assert.match(body, /seen_successive/);
   assert.match(body, /exit 1/, "a genuinely missing artifact must fail loudly");
 });

@@ -93,6 +93,26 @@ picked in the console back to the host inside its short hook window. See
   `tool_input.answers` while the host hook is still waiting. A timeout, a
   cancel or an unreachable service falls back to the native prompt. Also
   **off by default** (`pnpm install:interaction -- --apply`).
+- **Agent data view** (`Agent` in the payload overlay): the run's own
+  artifacts — thinking, replies, tool calls/results and questions — instead of
+  log rows. Streamed snapshots merge into one reply, every step reports its own
+  execution span, and an abnormal step states why it ended (failed / terminated
+  / waiting plus the host's error text, with the derived `timeout` spelled out).
+- **Transcript recovery** for hook-only clients (WorkBuddy / CodeBuddy / Claude
+  / ZCode): the model's thinking and intermediate replies exist only in the
+  host transcript, so the recorder reads its new tail incrementally and emits
+  canonical `Reasoning` / `AgentMessage` events — verbatim, de-duplicated per
+  session, and fail-open (`ASTRO_TRANSCRIPT_ENRICH=0` turns it off). Trae's
+  hook publishes no transcript, so there is nothing to read there; the lookup
+  accepts the common key spellings, and `ASTRO_TRANSCRIPT_PATH=<file>` points
+  the same reader at a conversation export for a host that cannot name one.
+- **Retention**: Settings → Run history can delete runs older than N days
+  (default off, 15 days) after a preview of what would go; the service prunes
+  only expired session directories under the trace root and drops them from
+  memory immediately.
+- **Performance panel** with a resident page-FPS sampler (not just scroll
+  gestures) and one duration ladder for every reading (`ms` → `s` → `01M01s`
+  → `01H01M`).
 - Versioned `schemaVersion: 2` event envelope across supported clients.
 - Source- and workspace-aware session identity to prevent native ID
   collisions.
@@ -1189,6 +1209,24 @@ prompt event retain a session-level fallback. The inspector exposes:
 The server-side `/api/search` endpoint is broader and can search all selected
 server records; the UI log search does not call that endpoint.
 
+### Agent data view
+
+The payload overlay opens on `Agent`: one card per artifact the agent produced,
+newest at the bottom, with the same left rail as the LOG. Thinking events stay
+separate; snapshots with a shared `messageId` merge into one reply; tool calls
+show the captured command and its output; questions keep their options and the
+recorded answers. The header clock is the *message's* accumulated execution
+time, and each card carries its *own* span (a streamed reply's first snapshot →
+final message, a tool call's start → result, a closed question's two halves) —
+no fabricated `0ms` when a step has no measurable span. Hovering a card's clock
+(or the header clock) states the outcome: `failed` with the host's `stderr`,
+`terminated` with `aborted` / `interrupted` / `session end`, or the derived
+`timeout`, explained in one sentence.
+
+Scrolling the chain drives the left rail: the atom behind the card at the
+reading line is scrolled into the rail's visible band, even while Live follow is
+advancing the selection. `Preview` / `Code` keep the selection-driven reveal.
+
 ### Replay
 
 Replay never mutates source data. For cursor position `n`, the UI rebuilds all
@@ -1550,10 +1588,11 @@ the relevant architecture or user manual.
 
 ## License
 
-This repository does not currently include a `LICENSE` file, and
-`package.json` marks the package as private. Source availability alone does
-not grant permission to use, modify, or redistribute the project.
+ASTRO is licensed under the Apache License, Version 2.0. See [`LICENSE`](LICENSE)
+for the full text.
 
-Before publishing this as an open-source release, the maintainers must choose
-and add an explicit license, then align package metadata and the portable
-plugin package with that license.
+The root `package.json`, the DeepSeek plugin package, and the generated portable
+plugin package all declare `Apache-2.0`; the packaging script derives that value
+from the root manifest. The root package keeps its `private` flag, which only
+prevents accidental publication to the npm registry — it does not restrict the
+source license. Bundled third-party dependencies keep their own licenses.

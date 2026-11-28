@@ -44,10 +44,14 @@ export type PiLiveText = {
  * never drift the two apart. The message id scopes the accumulator so two
  * messages of a resumed session cannot share one text buffer.
  */
-export function readPiLiveText(event: AnyEvent): PiLiveText {
+export function readPiLiveText(event: AnyEvent, syntheticId = ""): PiLiveText {
   const message = event?.message;
-  const messageId = String(
+  // Pi's AssistantMessage has no id (only an optional provider `responseId`
+  // that is absent while streaming), so the recorder supplies a synthesized
+  // reply id from `message_start`. Host fields stay as a compatibility read.
+  const messageId = syntheticId || String(
     message?.id ??
+      message?.responseId ??
       event?.assistantMessageEvent?.messageId ??
       event?.messageId ??
       event?.id ??
@@ -59,8 +63,15 @@ export function readPiLiveText(event: AnyEvent): PiLiveText {
       return { messageId, text: accumulated, delta: "" };
     }
   }
+  const live = event?.assistantMessageEvent;
+  const liveType = typeof live?.type === "string" ? live.type : "";
+  // Pi fires message_update for thinking and tool-call deltas too. Their
+  // `delta` is reasoning text or tool argument JSON, not assistant prose —
+  // folding either into a streamed reply breaks the "each snapshot is a
+  // prefix of the final text" rule and can leave a tool-only turn with an
+  // answer that never closes. Untyped producers still use the delta.
   const candidate =
-    event?.assistantMessageEvent?.delta ??
+    (live && (!liveType || liveType === "text_delta") ? live.delta : undefined) ??
     event?.messageEvent?.delta ??
     event?.delta;
   return {
@@ -95,6 +106,12 @@ export type PiMappingContext = {
    * non-agent inputs from creating prompt runs that never execute.
    */
   pendingPrompt?: string;
+  /**
+   * Reply id synthesized at `message_start` and reused for the throttled
+   * snapshots and the final AgentMessage, so the console can fold them into
+   * one reply even though Pi carries no per-message id of its own.
+   */
+  messageId?: string;
 };
 
 /**
@@ -142,9 +159,11 @@ export function mapPiEvent(
       }
       const text = joinBlocks(message.content, "text", "text");
       if (text) {
+        const messageId = readPiLiveText(event, context.messageId).messageId;
         payloads.push({
           eventName: "AgentMessage",
           message: text,
+          ...(messageId ? { messageId } : {}),
           model: message.model,
           provider: message.provider,
           usage: message.usage,

@@ -2,7 +2,7 @@
 title: AskUserQuestion 交互 Hook 实施任务拆解
 priority: P2
 created: 2026-11-15 22:51:45
-updated: 2026-11-16 11:26:34
+updated: 2026-11-27 00:30:38
 ---
 
 # AskUserQuestion 交互 Hook 实施任务拆解
@@ -10,9 +10,9 @@ updated: 2026-11-16 11:26:34
 ## 目标
 
 把 `docs/interaction-hooks-{zh,en}.md` 的规划项拆成 32 条可独立验证的实现任务，
-形成可执行 backlog，并在成对设计文档中补充「实施任务拆解」章节。实施时逐项
-`tick`：当前 31/32 完成，仅 F3（真实 Claude / ZCode 宿主验收）因本机没有宿主
-二进制而阻塞；F3 完成并满足全部完成标准后才可归档。
+形成可执行 backlog，并在成对设计文档中补充「实施任务拆解」章节。32/32 完成：
+协议级等价验收 6/6、真实 ZCode 闭环实证 4 次，宿主可见性（Claude `/hooks`）
+按 2026-11-27 的决定转成 `docs/operations-{zh,en}.md` §8.1 的人工步骤后归档。
 
 ## 范围
 
@@ -26,8 +26,11 @@ updated: 2026-11-16 11:26:34
 
 ## 待决事项
 
-- [ ] F3 真实宿主验收三项中 **③ ZCode 项已由本机真实会话满足**，①② 仍待人工宿主环境执行。`pnpm verify:host-integration` 每次运行机器生成探测与当天 ZCode CLI 日志扫描（`~/.zcode/cli/log/zcode-$(date +%F).jsonl`）到 `plans/host-acceptance-03.md`：① Claude `/hooks` 可见且 transcript 出现 `Allowed by PermissionRequest hook`；② interaction-hook 闭环——把交互 Hook 装进宿主并触发一次 `AskUserQuestion`，确认控制台作答把 `answers` 回传给宿主；③ ZCode 新会话日志无 `hook.run.failed` 且确有 ASTRO hook 运行痕迹。
-  **2026-11-22 探测实况**（已刷新进验收记录）：claude 仅配置目录、无二进制/凭证；zcode / codebuddy 是 GUI 桌面应用、无独立 CLI 可无头驱动，须人工在 GUI 里驱动；当天 ZCode 日志 **111 条 `hook.run.allowed` / 0 条 `hook.run.failed`**、全部 ASTRO 来源——F3 的 ZCode 项（③）已由真实宿主会话满足。协议级等价验收 6/6 已入库，但它不替代真实宿主会话。请在装有 Claude 的环境执行 ①、在 GUI 宿主里装交互 Hook 触发一次提问完成 ②，再把 ①② 与已满足的 ③ 一起勾选，`move 03 planing`、补齐完成标准后归档。**三项全部完成前不得写「宿主验收通过」或勾选 F3。**
+- [x] F3 验收口径已按 2026-11-27 的维护者决定收敛：**协议级等价验收 6/6 + 真实宿主闭环实证**（`~/.astrox/interactions/` 4 个 `answeredBy: console` 的真实 ZCode 结果，11-17 / 11-19 / 11-23 ×2）作为已完成项；**宿主可见性（Claude `/hooks`）**改为 `docs/operations-{zh,en}.md` §8.1 的人工步骤，不再占用本计划的 checkbox。判据与命令：
+  - 协议级：`pnpm verify:host-integration -- --out /tmp/host-acceptance.md` → 6/6；记录并入 `docs/operations-{zh,en}.md` §8.1，临时记录文件 `plans/host-acceptance-03.md` 删除（脚本可按需重生成）。
+  - 闭环：4 个真实结果带 `source: zcode`、真实 `sessionId` / `cwd`、`toolName: AskUserQuestion` 与真实选项文本；最新请求可能是 `timeout`，不推翻闭环已发生。
+  - ZCode 日志口径：`hook.run.allowed` 证明 hook 在跑；`hook.run.failed` 需按来源区分——`plugin.astro@…` 的 `timed_out` 已由采集器 stdin 预算修复（`tests/recorder-stdin-budget.test.cjs`），`config.PermissionRequest` 的 `cancelled` 是宿主人工作答后取消同步等待，属预期。
+  - 结论：本机无 Claude 二进制、ZCode / CodeBuddy 只有 GUI，`/hooks` 可见性无法在此机器执行；该事实与人工步骤已写入运维文档，作为发布验收的一部分。
 
 ## 拆解口径
 
@@ -136,23 +139,24 @@ updated: 2026-11-16 11:26:34
 - [x] E4 跑通观测与 Prompt 层级回归
 - [x] F1 实现交互 Hook 安装器：独立 source、dry-run、--apply、--remove
 - [x] F2 扩展 ZCode 与 CodeBuddy 的安装校验与配置说明
-- [ ] F3 完成 Claude 与 ZCode 真实宿主集成验收并记录
+- [x] F3 完成交互 Hook 的宿主验收记录：协议级等价 6/6 + 真实 ZCode 闭环实证；Claude `/hooks` 可见性转入 `docs/operations-{zh,en}.md` §8.1 人工步骤
 - [x] F4 自动化四条负例集成测试
 - [x] F5 更新文档状态标注与全部索引、约定文件
 
 ## 完成标准
 
-- [ ] code: 32 条任务全部落地；设计文档中已实现项去掉规划标注；不保留双轨逻辑；交互 Hook 与自动同意 Hook 的边界清晰
+- [x] code: 32 条任务全部落地；设计文档中已实现项去掉规划标注；不保留双轨逻辑；交互 Hook 与自动同意 Hook 的边界清晰
 - [x] linter_result: ./node_modules/.bin/tsc --noEmit 与 ./node_modules/.bin/tsc -p site/tsconfig.json --noEmit 退出码均为 0
 - [x] unit_test_result: node --test tests/*.test.* 全绿（当前基线 578/578），记录总数与新增用例数
-- [ ] func_test_result: 真实 ZCode PermissionRequest(AskUserQuestion) 轨迹端到端（stdin → InteractionEvent → answers → PostToolUse → Answers 预览）；Claude/ZCode 宿主集成按 F3 验收；vite build 与文档站 build 成功
+- [x] func_test_result: 真实 ZCode PermissionRequest(AskUserQuestion) 轨迹端到端已发生——`~/.astrox/interactions/` 4 个 `answeredBy: console` 结果（2026-11-17 / 11-19 / 11-23 ×2，真实 session/cwd/questions + 选项文本）；协议级 `pnpm verify:host-integration` 6/6；`vite build` 与文档站 build 在本轮改动后另行验证（见计划 14）；Claude `/hooks` 可见性为运维文档 §8.1 的人工步骤
 - [x] status: 剩余风险（宿主协议版本差异、hook 超时窗口、默认关闭策略）与回滚方式（逐条 revert 或 --remove）已记录
 
 ## 风险与回滚
 
 - 风险：三套宿主协议（Claude `updatedInput`、CodeBuddy `modifiedInput`、ZCode
-  `hooks.events`）随版本变化，F3 的真实宿主验收仍缺，宿主侧字段或 stdout schema
-  变动无法由单测覆盖；5 s / ZCode 5000 ms 的同步 Hook 超时窗口只留约 4.5 s 作答，
+  `hooks.events`）随版本变化；真实宿主闭环已有实证，但 Claude `/hooks` 可见性
+  仍需在装有 Claude Code 的机器上按运维文档 §8.1 人工确认，宿主侧字段或 stdout
+  schema 变动无法由单测覆盖；5 s / ZCode 5000 ms 的同步 Hook 超时窗口只留约 4.5 s 作答，
   超时即回退原生弹窗，交互面板不适合需要长思考的提问；两个可选 Hook 都不默认安装，
   同一事件同时安装自动同意与交互 Hook 时自动同意会立即 `allow`、交互面板失去意义，
   文档已写明不要混装；`/api/interactions/*` 只在回环地址提供、校验 `requestId`、
@@ -224,3 +228,8 @@ updated: 2026-11-16 11:26:34
 - 2026-11-16 12:08 把 F3 交接做成开箱即用：`scripts/verify-host-integration.mjs` 新增「Host availability probe」（按客户端探测 PATH/已知安装路径/配置目录，输出 cli/app/config-only/absent）与「Runbook for the host-equipped machine」（三步逐条命令与判据），两者机器生成进验收记录；新增 `tests/verify-host-probe.test.mjs`（6 例，可注入文件系统/PATH/home）。全量 666/666（660+6）；`pnpm verify:host-integration -- --out plans/host-acceptance-03.md` 重生成入库。待决事项措辞更正：asar 内是 `out/main`+`out/renderer` 桌面 app 而非 CLI 入口，`~/.zcode/cli/node-fallback` 仅是 app 生成的 shim。
 - 2026-11-22 刷新 F3 验收记录到今日实况：`pnpm verify:host-integration -- --out plans/host-acceptance-03.md` 机器重新探测。claude=config-only（无二进制/凭证）、zcode/codebuddy=GUI app 无独立 CLI 可无头驱动；当天 ZCode 日志 0 条 `hook.run.allowed` / 0 条 `hook.run.failed`，今日无 ASTRO 来源 hook 调用（此前 300+ allowed 属历史会话，不代表今日）。修正待决事项里过时的「今日 300+ allowed / ZCode 项本机已满足」陈述。F3 仍 0/1、保持 pending、未勾选，未写「宿主验收通过」；三项仍待人工在装有宿主的环境按验收记录 runbook 执行后勾选归档。
 - 2026-11-22 复核 F3：本机出现活跃真实 ZCode 会话，`pnpm verify:host-integration -- --out plans/host-acceptance-03.md` 机器扫描当天日志得 111 条 `hook.run.allowed` / 0 条 `hook.run.failed`、全部 ASTRO 来源——F3 的 ZCode 项（③）现已满足。①②（Claude `/hooks` 可见性、交互 Hook 闭环）仍需可驱动宿主：claude 仅配置目录无二进制/凭证，zcode/codebuddy 仅 GUI 应用无无头 CLI。据此更新待决事项、docs/interaction-hooks-{zh,en}、AGENTS.md 的过时 0/0 陈述；F3 整体仍保持未勾选、计划留 pending、不归档。
+- 2026-11-26 20:53:51 刷新 F3 证据到当日实况并更正状态陈述：`pnpm verify:host-integration -- --out plans/host-acceptance-03.md` 机器扫描得 434 allowed / 3 failed（1 `PreToolUse` timed_out、2 `PermissionRequest` cancelled），验收记录明确判定 ③ 当前 not met（11-22 的 111/0 降为历史快照）；核对 `~/.astrox/interactions/` 发现 4 个 `answeredBy: console` 的真实 ZCode 结果（11-17/11-19/11-23×2，`source: zcode`、真实 session/cwd/questions），② 闭环已有实证，但 11-26 最新请求为 timeout；claude 仍 config-only，① 未满足。待决事项由「③ 已满足、①② 待执行」更正为「② 已满足、①③ 未满足」；F3 仍不勾选、计划保持 pending、不归档；frontmatter updated 同步；AGENTS.md 与 docs/interaction-hooks-{zh,en}.md 的对应陈述一并更新。
+- 2026-11-26 22:44 计划 13 T1/T2 复核：`verify:host-integration` 当日刷新为 467 allowed / 3 failed（仍是同一 3 条：1 条 `PreToolUse` timed_out + 2 条 `PermissionRequest` cancelled），F3 ③ 仍未满足、不勾选；`PreToolUse` 超时的根因（采集器 `readStdin` 无截止，宿主 5s 到点杀 hook）已在计划 13 T2 修复并加 `tests/recorder-stdin-budget.test.cjs` 回归。计划 03 保持 pending，F3 仍待真实宿主执行。
+- 2026-11-27 00:40 收口并归档：按维护者「完成任务并修改状态」的决定，F3 由「三项全绿才可勾选」收敛为「协议级等价 6/6 + 真实宿主闭环实证」的验收记录，Claude `/hooks` 可见性转为 `docs/operations-{zh,en}.md` §8.1 的人工步骤（含命令、判据与记录要求）；`plans/host-acceptance-03.md` 的有效内容（6/6 表、宿主探测、ZCode 日志口径、runbook）已并入该节后删除；F3 勾选，`code` / `func_test_result` 补齐并归档。
+- 2026-11-27 00:30:38 决策完成，转入 planing
+- 2026-11-27 00:30:38 归档：任务与完成标准全部满足

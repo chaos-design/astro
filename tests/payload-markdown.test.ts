@@ -25,14 +25,18 @@ test("the generic view is content-only: metadata keys and scalars stay out", () 
   assert.doesNotMatch(markdown, /###|turns|count|`3`|`true`/);
 });
 
-test("arrays of plain values render as a list and other scalars stay readable", () => {
-  assert.equal(payloadToMarkdown(["one", "two"]), "- one\n- two");
+test("arrays of plain values render as one block per item and other scalars stay readable", () => {
+  // One block per item, not bullets: a stack of values reads cleanly without
+  // list markers, and an item that is code keeps its own fence.
+  assert.equal(payloadToMarkdown(["one", "two"]), "> one\n>\n> two");
+  // A single entry renders bare, without the quote frame.
+  assert.equal(payloadToMarkdown(["only"]), "only");
   assert.equal(payloadToMarkdown(42), "42");
   assert.equal(payloadToMarkdown(null), "");
   assert.equal(payloadToMarkdown({ blank: "", kept: "yes" }), "yes");
 });
 
-test("a code string in an unnamed field is fenced with its inferred language", () => {
+test("an Edit-style old/new string pair previews as the diff it is", () => {
   const markdown = payloadToMarkdown({
     tool_input: {
       file_path: "/tmp/project/file.test.tsx",
@@ -41,11 +45,91 @@ test("a code string in an unnamed field is fenced with its inferred language", (
       replace_all: false,
     },
   });
-  // Metadata (file_path, replace_all) stays out; the two code strings are
-  // highlighted fences, with no field-name headings.
-  assert.match(markdown, /```typescript\nimport \{ IMPERIAL_EXAM_LADDER \}/);
-  assert.match(markdown, /```typescript\nimport \{ EXAM_STAGES \}/);
-  assert.doesNotMatch(markdown, /###|file_path|replace_all/);
+  // The change is the result the reader came to see: one highlighted diff
+  // (the old line as a deletion, the new one as an addition), with the
+  // metadata (file_path, replace_all) staying out.
+  assert.match(markdown, /```diff\n--- a\/\/tmp\/project\/file\.test\.tsx\n\+\+\+ b\/\/tmp\/project\/file\.test\.tsx\n@@ -1,1 \+1,1 @@\n-import \{ IMPERIAL_EXAM_LADDER \} from "\.\/ladder";\n\+import \{ EXAM_STAGES \} from "\.\/ladder";\n```$/);
+  assert.doesNotMatch(markdown, /###|replace_all|```typescript/);
+});
+
+test("an Edit input in ZCode's camel spelling previews as the same diff", () => {
+  const markdown = payloadToMarkdown({
+    tool_input: {
+      filePath: "src/lib/agent-view.ts",
+      oldString: "const a = 1;",
+      newString: "const a = 2;",
+    },
+  });
+  assert.match(markdown, /--- a\/src\/lib\/agent-view\.ts/);
+  assert.match(markdown, /-const a = 1;/);
+  assert.match(markdown, /\+const a = 2;/);
+});
+
+test("an Edit input with trailing newlines previews a minimal diff", () => {
+  const markdown = payloadToMarkdown({
+    tool_input: {
+      file_path: "src/lib/agent-view.ts",
+      old_string: "line1\n",
+      new_string: "line2\n",
+    },
+  });
+  // The trailing newline is a terminator, not a blank line: the hunk stays
+  // 1→1 with no ghost empty deletion/addition.
+  assert.match(markdown, /@@ -1,1 \+1,1 @@/);
+  assert.match(markdown, /-line1\n\+line2/);
+  assert.doesNotMatch(markdown, /-\n\+\n/);
+});
+
+test("a todos array renders as a GFM checklist of blocks, not a JSON dump", () => {
+  const markdown = payloadToMarkdown({
+    todos: [
+      { content: "pnpm test", status: "completed", priority: "high" },
+      { content: "pnpm build", status: "in_progress", priority: "high" },
+      { content: "push the branch", status: "pending", priority: "low" },
+    ],
+  });
+  assert.equal(
+    markdown,
+    "[x] pnpm test — priority=high\n\n[ ] pnpm build — priority=high\n\n[ ] push the branch — priority=low",
+  );
+  assert.doesNotMatch(markdown, /```json/);
+});
+
+test("a headline-free array of records renders as a table, not a flattened string", () => {
+  const markdown = payloadToMarkdown({
+    deleted: [
+      { operation: "trash", path: "/tmp/a|b", runtime: "node" },
+      { operation: "trash", path: "/tmp/c", runtime: "node" },
+    ],
+  });
+  assert.match(markdown, /^\| operation \| path \| runtime \|/);
+  assert.match(markdown, /^\| --- \| --- \| --- \|/m);
+  // A path containing a pipe must stay in its own cell.
+  assert.match(markdown, /\/tmp\/a\\\|b/);
+  assert.doesNotMatch(markdown, /operation=trash · path=/);
+});
+
+test("a boolean status drives the todo checkbox too", () => {
+  const markdown = payloadToMarkdown({
+    todos: [
+      { content: "A", done: true },
+      { content: "B", done: false },
+    ],
+  });
+  // `done` is a status key; boolean true maps to the done value "true".
+  assert.equal(markdown, "[x] A\n\n[ ] B");
+});
+
+test("a lone array field renders as blocks, not an unwrapped document", () => {
+  // A `{ todos }` payload has one key, but unwrapping would join the
+  // checklist rows into prose; the list keeps its shape.
+  const markdown = payloadToMarkdown({
+    todos: [
+      { content: "fix the bug", status: "completed" },
+      { content: "ship it", status: "pending" },
+    ],
+  });
+  assert.equal(markdown, "[x] fix the bug\n\n[ ] ship it");
 });
 
 test("a captured shell command is fenced instead of rendered as prose", () => {
@@ -157,6 +241,39 @@ test("the inspector wrapper previews the captured content, not the contract meta
   assert.doesNotMatch(markdown, /contract|captured|```json/);
 });
 
+test("the inspector's captured wrapper still renders an Edit change as a diff", () => {
+  // The inspector always supplies `{ contract, captured }`. Before the wrapper
+  // route used the patch detector, this exact payload degraded into field
+  // lines while the same payload without the wrapper showed a highlighted diff.
+  const markdown = payloadToMarkdown({
+    contract: { label: "tool.call", input: {} },
+    captured: {
+      tool_input: {
+        file_path: "/tmp/project/file.ts",
+        old_string: "const old = 1;",
+        new_string: "const next = 1;",
+      },
+    },
+  });
+  assert.match(markdown, /^```diff\n/);
+  assert.match(markdown, /-const old = 1;/);
+  assert.match(markdown, /\+const next = 1;/);
+});
+
+test("whole-word metadata does not swallow fields that carry prose", () => {
+  assert.equal(payloadToMarkdown({ userMessage: "请确认订单" }), "请确认订单");
+  assert.equal(payloadToMarkdown({ guidelines: "Use TypeScript" }), "Use TypeScript");
+});
+
+test("camelCase filePath selects the highlight language of a numbered dump", () => {
+  const markdown = payloadToMarkdown({
+    tool_name: "Read",
+    filePath: "/work/data/config.json",
+    tool_response: '   1→{"a": 1}\n   2→"hello"',
+  });
+  assert.match(markdown, /^```json\n/);
+});
+
 test("a structured captured result reads as its values instead of a JSON dump", () => {
   const markdown = payloadToMarkdown({
     contract: { label: "tool.result", output: {} },
@@ -197,4 +314,38 @@ test("circular payloads fall back instead of throwing", () => {
   circular.self = circular;
   const markdown = payloadToMarkdown(circular);
   assert.match(markdown, /unserializable|\[circular reference\]/);
+});
+
+test("the recorder identity stays out of the generic preview but a nested version is kept", () => {
+  const markdown = payloadToMarkdown({
+    tool_input: { command: "cd /work && echo hi" },
+    client: "WorkBuddy",
+    version: "5.11.3",
+    captured: { version: "1.0.0" },
+  });
+  // The agent name and client version belong in the dialog header, never as
+  // content lines in the preview body.
+  assert.doesNotMatch(markdown, /WorkBuddy/);
+  assert.doesNotMatch(markdown, /5\.11\.3/);
+  assert.match(markdown, /cd \/work && echo hi/);
+  // A genuine version field deeper in the payload is still captured data.
+  assert.match(markdown, /1\.0\.0/);
+});
+
+test("a numbered Read result keeps its captured file path when the split has no content", () => {
+  // A WorkBuddy Read result carries the dump on `tool_response`, which the
+  // generic split leaves empty — so the preview falls to payloadToMarkdown.
+  // The file extension must still select TypeScript, not bash (an `export`
+  // line inside a source file is not a shell assignment).
+  const markdown = payloadToMarkdown({
+    hook_event_name: "PostToolUse",
+    tool_name: "Read",
+    tool_input: { file_path: "/work/tests/index.test.ts", limit: 30, offset: 1 },
+    tool_response: "   1→export function go() {}\n   2→const x = 1;",
+    client: "WorkBuddy",
+    version: "5.11.3",
+  });
+  assert.match(markdown, /^```typescript\n/);
+  assert.doesNotMatch(markdown, /WorkBuddy/);
+  assert.doesNotMatch(markdown, /5\.11\.3/);
 });

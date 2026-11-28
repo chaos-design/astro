@@ -1,4 +1,5 @@
 import type { TracePayload } from "../types/trace";
+import { nonEmptyRecord } from "./payload-preview.ts";
 
 /**
  * What the user.question preview shows.
@@ -217,20 +218,38 @@ export function userQuestionSummary(
   );
 }
 
+/**
+ * Per-payload parse cache: captured payloads are immutable and stable
+ * object references, so the projection layers may hand the same payload to
+ * the extractor on every streaming batch. Caching the result keeps a long
+ * live run from re-walking every question shape once per batch.
+ */
+const parsedContentCache = new WeakMap<object, UserQuestionContent>();
+
 export function parseUserQuestionContent(
   payload: TracePayload | null | undefined,
 ): UserQuestionContent {
+  if (payload && typeof payload === "object") {
+    const cached = parsedContentCache.get(payload);
+    if (cached) {
+      return cached;
+    }
+  }
   const record = asRecord(payload) ?? {};
   // Some clients nest the native payload one level down; ZCode delivers both
   // `tool_input` and its camelCase twin on the top level.
   const nested = asRecord(record.payload);
+  // An empty `tool_input: {}` placeholder must not shadow the real camelCase
+  // `toolInput` — the recorder writes that placeholder when only the camel
+  // spelling carries the questions. The same shared rule the tool-call
+  // extractor uses applies here.
   const toolInput =
-    asRecord(record.tool_input) ??
-    asRecord(record.toolInput) ??
-    asRecord(nested?.tool_input) ??
-    asRecord(nested?.toolInput);
+    nonEmptyRecord(record.tool_input) ??
+    nonEmptyRecord(record.toolInput) ??
+    nonEmptyRecord(nested?.tool_input) ??
+    nonEmptyRecord(nested?.toolInput);
   const toolResponse =
-    asRecord(record.tool_response) ?? asRecord(record.toolResponse);
+    nonEmptyRecord(record.tool_response) ?? nonEmptyRecord(record.toolResponse);
   // Structured questions may sit directly on the payload (the input tab
   // resolves to `tool_input` for question tools) or one level down (the full
   // start payload). The direct shape wins so a client that fills both is not
@@ -264,7 +283,7 @@ export function parseUserQuestionContent(
     toolResponse?.answers,
     nested?.answers,
   ]);
-  return {
+  const content: UserQuestionContent = {
     prompts,
     message,
     plan,
@@ -275,4 +294,26 @@ export function parseUserQuestionContent(
       Boolean(plan.trim()) ||
       answers.length > 0,
   };
+  if (payload && typeof payload === "object") {
+    parsedContentCache.set(payload, content);
+  }
+  return content;
+}
+
+/**
+ * One join rule for the captured answers of a question: the answers the
+ * question event itself carried first (a host decision hook's injection),
+ * then the recorded answers of its paired result event, deduped by the
+ * verbatim question text so a host that wrote both never prints an answer
+ * twice.
+ */
+export function mergeQuestionAnswers(
+  own: readonly UserQuestionAnswer[],
+  recorded: readonly UserQuestionAnswer[],
+): UserQuestionAnswer[] {
+  if (!recorded.length) {
+    return [...own];
+  }
+  const seen = new Set(own.map((item) => item.question));
+  return [...own, ...recorded.filter((item) => !seen.has(item.question))];
 }

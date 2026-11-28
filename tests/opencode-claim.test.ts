@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { spawn } from "node:child_process";
+import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -9,14 +10,57 @@ function createHome() {
   return mkdtempSync(join(tmpdir(), "astro-claim-"));
 }
 
-test("the first caller owns the session and later callers are refused", () => {
+test("the first caller owns the session and records its pid", () => {
   const home = createHome();
   try {
-    assert.equal(claimSession("ses_a", { home, source: "opencode" }), true);
-    assert.equal(claimSession("ses_a", { home, source: "opencode" }), false);
+    assert.equal(claimSession("ses_a", { home, source: "opencode", pid: process.pid }), true);
 
     const claims = readdirSync(join(home, "opencode", claimDirectoryName));
     assert.deepEqual(claims, ["ses_a.claim"]);
+    const record = JSON.parse(
+      readFileSync(join(home, "opencode", claimDirectoryName, "ses_a.claim"), "utf8"),
+    );
+    assert.equal(record.pid, process.pid);
+    assert.equal(typeof record.claimedAt, "string");
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("a live foreign owner keeps the session", () => {
+  const home = createHome();
+  try {
+    assert.equal(claimSession("ses_a", { home, source: "opencode", pid: process.pid }), true);
+    assert.equal(
+      claimSession("ses_a", { home, source: "opencode", pid: process.pid + 1000 }),
+      false,
+    );
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("a reload in the same process takes over its own claim", () => {
+  const home = createHome();
+  try {
+    assert.equal(claimSession("ses_a", { home, source: "opencode", pid: process.pid }), true);
+    assert.equal(claimSession("ses_a", { home, source: "opencode", pid: process.pid }), true);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("a dead owner's claim is taken over after a service restart", async () => {
+  const home = createHome();
+  try {
+    const deadPid = await new Promise<number>((resolveChild, rejectChild) => {
+      const child = spawn("true", [], { stdio: "ignore" });
+      child.on("exit", () => resolveChild(child.pid ?? 0));
+      child.on("error", rejectChild);
+    });
+    assert.equal(deadPid > 0, true);
+    assert.equal(claimSession("ses_a", { home, source: "opencode", pid: deadPid }), true);
+    assert.equal(claimSession("ses_a", { home, source: "opencode", pid: process.pid }), true);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }

@@ -452,4 +452,29 @@ export class TraceRepository extends EventEmitter {
       store.clear();
     }
   }
+
+  /**
+   * Drop the stores whose backing file is gone. Retention deletes session
+   * files behind the service's back; without this the pruned runs would stay
+   * in every derived view until the next restart, which is exactly the
+   * "deleted but still listed" state a reader would report as a bug.
+   */
+  forgetMissing() {
+    let changed = false;
+    for (const [traceFile, store] of [...this.stores]) {
+      if (existsSync(traceFile)) {
+        continue;
+      }
+      store.stop?.();
+      this.stores.delete(traceFile);
+      changed = true;
+    }
+    if (changed) {
+      // Invalidate the merged view first: rebuildDerived reads it.
+      this.mergedEvents = null;
+      this.rebuildDerived();
+      this.emit("reset", this.getEvents());
+    }
+    return changed;
+  }
 }

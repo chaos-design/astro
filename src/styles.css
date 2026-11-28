@@ -315,7 +315,7 @@ button:not([data-variant="console"]):not([data-variant="playback"]):not([data-sl
     [data-slot="tabs-trigger"]
   ):not(.run-history__live-jump):not(.service-card__restart):not(.settings-footer__button):not(.pair-link-marker):not(
     .question-options__option
-  ) {
+  ):not(.agent-step__head):not(.agent-step__toggle):not(.agent-transcript__progress-edge):not(.agent-transcript__jump):not(.agent-transcript__stat-button):not(.agent-transcript__stat-card-row):not(.preview-mac-frame__locate):not(.json-line__toggle) {
   border: 0;
 }
 
@@ -323,7 +323,7 @@ button:not([data-variant="console"]):not([data-variant="playback"]):not([data-sl
     [data-slot="tabs-trigger"]
   ):not(.run-history__live-jump):not(.service-card__restart):not(.settings-footer__button):not(.pair-link-marker):not(
     .question-options__option
-  ):focus-visible,
+  ):not(.agent-step__head):not(.agent-step__toggle):not(.agent-transcript__progress-edge):not(.agent-transcript__jump):not(.agent-transcript__stat-button):not(.agent-transcript__stat-card-row):not(.preview-mac-frame__locate):not(.json-line__toggle):focus-visible,
 input:not([data-slot="input-group-control"]):focus-visible {
   outline: 1px solid var(--selection-border);
   outline-offset: 2px;
@@ -1943,6 +1943,153 @@ pre,
   transform: translateX(18px);
 }
 
+/* Retention of captured runs: the day window and its presets sit under the
+   copy, and the confirm step is a bordered block — deleting captured evidence
+   must look different from flipping any other switch. */
+.settings-retention {
+  display: grid;
+  gap: 8px;
+}
+
+/* The sweep's stated semantics: two-step enable, a timer, one directory.
+   The scope path is a code chip because it is the one thing a reader copies
+   to check what the sweep will touch. */
+.settings-retention__terms {
+  display: grid;
+  gap: 4px;
+  margin: 4px 0 0;
+  padding-left: 16px;
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.55;
+}
+
+.settings-retention__terms strong {
+  color: var(--text-strong);
+}
+
+.settings-retention__scope {
+  max-width: 100%;
+  overflow: hidden;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--panel) 78%, #000);
+  color: var(--text);
+  direction: rtl;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.6875rem;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-retention__controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.settings-retention__days {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-family: var(--font-mono, monospace);
+  font-size: var(--text-overline);
+}
+
+.settings-retention__input {
+  width: 64px;
+  padding: 3px 6px;
+  border: 1px solid var(--line-bright);
+  border-radius: 5px;
+  background: var(--panel);
+  color: var(--text);
+  font-family: inherit;
+  font-size: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
+.settings-retention__presets {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.settings-retention__preset {
+  padding: 2px 7px;
+  border: 1px solid var(--line-bright);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: var(--text-overline);
+}
+
+.settings-retention__preset:hover,
+.settings-retention__preset.is-active {
+  border-color: var(--violet);
+  color: var(--text-strong);
+}
+
+.settings-retention__confirm {
+  display: grid;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--amber) 42%, var(--line));
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--amber) 8%, transparent);
+  color: var(--text);
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+.settings-retention__actions {
+  display: inline-flex;
+  gap: 8px;
+}
+
+.settings-retention__action {
+  padding: 3px 9px;
+  border: 1px solid var(--line-bright);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: var(--text-overline);
+}
+
+.settings-retention__action.is-danger {
+  border-color: color-mix(in srgb, var(--red) 52%, var(--line));
+  color: var(--red);
+}
+
+.settings-retention__action.is-danger:hover {
+  background: color-mix(in srgb, var(--red) 12%, transparent);
+}
+
+/* The armed confirm: the second click runs the sweep, so the armed state
+   must read heavier than the first click — filled, not just outlined. */
+.settings-retention__action.is-danger.is-armed {
+  background: var(--red);
+  border-color: var(--red);
+  color: #fff;
+}
+
+.settings-retention__report {
+  margin: 0;
+  color: var(--status-completed);
+  font-size: 0.75rem;
+}
+
+.settings-retention__error {
+  margin: 0;
+  color: var(--red);
+  font-size: 0.75rem;
+}
+
 .settings-switch:focus-visible {
   outline: 2px solid color-mix(in srgb, var(--selection-border) 70%, transparent);
   outline-offset: 2px;
@@ -3142,10 +3289,17 @@ pre,
   box-shadow: inset 2px 0 var(--status-waiting);
 }
 
-/* The recorded end cause, next to the status word. */
+/* The recorded end cause, next to the status word. The row shows only a
+   one-line ellipsized excerpt: a host detail can carry 120 characters of
+   machine text, and letting it wrap turned the small STATUS chip into a
+   multi-line box. The full text lives in the row's hover card. */
 .run-history__reason {
   color: color-mix(in srgb, var(--status-failed) 72%, var(--muted));
   font-style: normal;
+  overflow: hidden;
+  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .run-history__row.is-selected .run-history__reason {
@@ -4228,6 +4382,7 @@ pre,
   align-items: center;
   gap: 0 7px;
   padding: 8px 9px 14px;
+  --node-tone: var(--type-tone, var(--teal));
   border: 1px solid color-mix(in srgb, var(--node-tone) 62%, var(--line-bright));
   border-radius: 8px;
   color: var(--text);
@@ -4309,26 +4464,38 @@ pre,
   animation: atom-locator-pulse 760ms ease-in-out 2;
 }
 
-.harness-node--prompt {
-  --node-tone: var(--blue);
+/* ONE tone -> colour table, shared by the canvas atoms and the LOG TYPE
+   badge. A row's badge names the very atom the canvas highlights, so the two
+   must read the same palette; a second, hardcoded table used to leave them
+   disagreeing (worst of all for `signal`). The badge's `tone-*` class carries
+   the atom's own tone, which is the same value the node's class carries. */
+.harness-node--prompt,
+.atomic-log__type.tone-prompt {
+  --type-tone: var(--blue);
 }
 
 .harness-node--session,
 .harness-node--agent,
-.harness-node--complete {
-  --node-tone: var(--teal);
+.harness-node--complete,
+.atomic-log__type.tone-session,
+.atomic-log__type.tone-agent,
+.atomic-log__type.tone-complete {
+  --type-tone: var(--teal);
 }
 
-.harness-node--reasoning {
-  --node-tone: var(--violet);
+.harness-node--reasoning,
+.atomic-log__type.tone-reasoning {
+  --type-tone: var(--violet);
 }
 
-.harness-node--tool {
-  --node-tone: var(--amber);
+.harness-node--tool,
+.atomic-log__type.tone-tool {
+  --type-tone: var(--amber);
 }
 
-.harness-node--signal {
-  --node-tone: var(--pink);
+.harness-node--signal,
+.atomic-log__type.tone-signal {
+  --type-tone: var(--pink);
 }
 
 .harness-node__status {
@@ -5757,17 +5924,53 @@ pre,
   margin-bottom: 0;
 }
 
-/* GFM task lists: the checkbox replaces the marker instead of doubling it,
-   and carries the violet accent the rest of the console's interactive
-   controls use. */
-.markdown-preview li:has(> input[type="checkbox"]) {
-  list-style: none;
+/* GFM task lists (a captured `todos` payload reads as a checklist, not a
+   JSON dump): the renderer emits plain rows (`.md-taskrow`) inside a
+   `.md-tasklist`, so the checkbox is the only marker instead of a `<li>`
+   bullet doubling it; the container still reads as one track. */
+.markdown-preview .md-tasklist {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+
+.markdown-preview .md-taskrow {
+  position: relative;
+  margin: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--line-bright);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--panel) 84%, var(--bg));
 }
 
 .markdown-preview input[type="checkbox"] {
-  margin: 0 6px 0 0;
-  accent-color: var(--violet);
-  vertical-align: -1px;
+  width: 13px;
+  height: 13px;
+  margin: 0 8px 0 0;
+  flex: 0 0 13px;
+  border: 1.5px solid var(--primary);
+  border-radius: 4px;
+  background: var(--panel);
+  accent-color: var(--primary);
+  vertical-align: -2px;
+  cursor: default;
+}
+
+/* A finished todo reads as settled: the row's text dims and strikes, and its
+   left edge carries the primary done marker. An open row keeps full emphasis
+   so the next step pops, and the open checkbox stays hollow. */
+.markdown-preview input[type="checkbox"]:checked {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 18%, var(--panel));
+}
+
+.markdown-preview .md-taskrow:has(> input[type="checkbox"]:checked) {
+  border-left-color: color-mix(in srgb, var(--primary) 60%, var(--line));
+  background: color-mix(in srgb, var(--panel) 90%, var(--primary) 6%);
+  color: var(--muted-soft, var(--muted));
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--muted) 55%, transparent);
 }
 
 .markdown-preview strong {
@@ -5830,12 +6033,51 @@ pre,
   user-select: none;
 }
 
+/* A `Read` result arrives as `   1→source`. The numbers live in their own
+   gutter and the source keeps its syntax colours; both columns share one
+   horizontal scroll so a long line cannot knock the numbers out of step. */
+.markdown-preview .md-code--numbered .md-code__numbered-body {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+}
+
+.markdown-preview .md-code__gutter {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 8px 8px 8px 10px;
+  border: 1px solid var(--line);
+  border-right: 0;
+  border-radius: 6px 0 0 6px;
+  background: color-mix(in srgb, var(--panel-raised) 70%, var(--panel));
+  color: var(--muted);
+  overflow: hidden;
+  text-align: right;
+  user-select: none;
+}
+
+.markdown-preview .md-code__gutter code {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.markdown-preview .md-code__code {
+  flex: 1 1 auto;
+  min-width: 0;
+  border-radius: 0 6px 6px 0;
+}
+
 .markdown-preview blockquote {
-  padding: 5px 10px;
-  border-left: 2px solid color-mix(in srgb, var(--violet) 45%, var(--line));
-  border-radius: 0 4px 4px 0;
-  background: color-mix(in srgb, var(--violet) 6%, transparent);
-  color: var(--muted-soft);
+  margin: 6px 0;
+  padding: 7px 10px;
+  border: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
+  border-left: 2px solid color-mix(in srgb, var(--violet) 62%, var(--line));
+  border-radius: 0 7px 7px 0;
+  background: color-mix(in srgb, var(--panel) 84%, #000);
+  color: var(--text);
 }
 
 .markdown-preview blockquote > :last-child {
@@ -5870,6 +6112,9 @@ pre,
   background: color-mix(in srgb, var(--panel-raised) 62%, transparent);
   color: var(--muted-soft);
   font-weight: var(--weight-medium);
+  /* A column name is a label, not prose: keep it on one line and let a wide
+     table scroll sideways instead of breaking every header into two rows. */
+  white-space: nowrap;
 }
 
 .markdown-preview tbody tr:nth-child(even) {
@@ -6033,10 +6278,10 @@ pre,
 }
 
 .payload-overlay__head {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   flex: none;
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
   /* Reserve the dialog's own close button slot at the right edge. */
   padding: 14px 56px 14px 18px;
@@ -6050,10 +6295,61 @@ pre,
   gap: 4px;
 }
 
+/* The view switch anchors dead-center between the title copy (left) and the
+   agent badge (right); the grid columns above give each side equal slack. */
+.payload-overlay__head > .prompt-input__mode {
+  justify-self: center;
+}
+
+.payload-overlay__copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .payload-overlay__copy .eyebrow {
   color: var(--muted);
   font-size: 8px;
   letter-spacing: 0.16em;
+}
+
+/* The producing agent replaces the former title block on the left: a small
+   surface caption plus one row holding the icon-and-name badge and the
+   message stepper. Icon + name only — the recorder's client version is
+   envelope data and is never printed here. */
+.payload-overlay__identity {
+  display: flex;
+  min-width: 0;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.payload-overlay__agent {
+  display: inline-flex;
+  align-self: flex-start;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 11px;
+  border: 1px solid color-mix(in srgb, var(--teal) 36%, var(--line));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--teal) 10%, var(--panel-raised));
+}
+
+.payload-overlay__agent .platform-icon {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  object-fit: contain;
+}
+
+.payload-overlay__agent-name {
+  color: var(--text-strong);
+  font-size: 0.8125rem;
+  font-weight: var(--weight-semibold, 650);
+  letter-spacing: 0.01em;
 }
 
 .payload-overlay [data-slot="dialog-title"] {
@@ -6126,15 +6422,28 @@ pre,
 }
 
 .payload-overlay__pane-title {
+  display: flex;
   flex: none;
+  align-items: center;
+  gap: 7px;
   margin: 0;
-  padding: 14px 18px 0;
+  padding: 14px 18px 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
   color: var(--muted);
   font-family: var(--font-mono);
   font-size: 9px;
   font-weight: var(--weight-strong);
-  letter-spacing: 0.14em;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
+}
+
+/* A short accent rule anchors the section title: the two panes are read as
+   sections, not as floating labels over a scroll area. */
+.payload-overlay__pane-title::before {
+  content: "";
+  width: 12px;
+  height: 1px;
+  background: color-mix(in srgb, var(--violet) 72%, var(--line-bright));
 }
 
 /* The related pane's head row carries the title and its fold toggle; the
@@ -6145,7 +6454,9 @@ pre,
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 14px 16px 10px;
+  /* Same 18px inset as the scrolling body below, so the title's accent rule
+     and text line up with the first content card. */
+  padding: 14px 18px 12px;
 }
 
 .payload-overlay__pane-head .payload-overlay__pane-title {
@@ -6163,7 +6474,7 @@ pre,
 .payload-overlay__pane .payload-overlay__body {
   flex: 1;
   min-height: 0;
-  padding: 10px 18px 20px;
+  padding: 12px 18px 22px;
   overflow: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
@@ -6171,7 +6482,7 @@ pre,
 }
 
 .payload-overlay__pane--related .payload-overlay__body {
-  padding: 0 16px 20px;
+  padding: 8px 18px 22px;
 }
 
 .payload-overlay__pane .payload-overlay__body::-webkit-scrollbar {
@@ -6182,6 +6493,223 @@ pre,
   border-radius: 99px;
   background: var(--line-bright);
 }
+
+/* The Preview content pane reads like the Agent view's own frames: a Mac
+   window frame (three traffic-light dots + a mono label bar) wraps the same
+   Markdown / question renderer the Agent transcript uses, so a captured atom
+   previews as the artifact it is instead of a bare text block. */
+/* The window hugs its content — it grows down to fit a short payload and only
+   scrolls once the payload is taller than the available band (max-height caps
+   it, the inner region takes over scrolling). A fixed full-height box left a
+   large empty bordered area under a few lines of content. */
+.preview-mac-frame {
+  display: flex;
+  flex: 0 1 auto;
+  max-height: 100%;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--violet) 30%, var(--line-bright));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--panel) 84%, var(--violet) 12%);
+}
+
+.preview-mac-frame__bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 11px;
+  border-bottom: 1px solid color-mix(in srgb, var(--violet) 22%, var(--line));
+  background: color-mix(in srgb, var(--panel) 72%, var(--violet) 18%);
+}
+
+.preview-mac-frame__dots {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.preview-mac-frame__dots i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--amber) 55%, var(--muted));
+}
+
+.preview-mac-frame__dots i:first-child {
+  background: color-mix(in srgb, var(--red) 65%, var(--muted));
+}
+
+.preview-mac-frame__dots i:nth-child(2) {
+  background: color-mix(in srgb, var(--amber) 80%, var(--muted));
+}
+
+.preview-mac-frame__dots i:nth-child(3) {
+  background: color-mix(in srgb, var(--teal) 60%, var(--muted));
+}
+
+.preview-mac-frame__label {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-strong);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.7rem;
+  font-weight: var(--weight-medium, 600);
+  letter-spacing: 0.04em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Preview content follows the Agent cards' wrapping rule: a long captured
+   command or result breaks at word boundaries inside the pane instead of
+   adding a horizontal scrollbar to the whole preview surface. */
+.preview-mac-frame .markdown-preview pre,
+.preview-mac-frame .markdown-preview .md-code pre {
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: normal;
+  overflow-x: hidden;
+}
+
+/* Numbered file dumps keep their two aligned columns. */
+.preview-mac-frame .markdown-preview .md-code--numbered .md-code__code {
+  overflow-x: auto;
+}
+
+.preview-mac-frame .markdown-preview img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 6px 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.payload-overlay__field-images {
+  display: flex;
+  min-width: 0;
+  flex-flow: row wrap;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.payload-overlay__field-image {
+  display: block;
+  width: 96px;
+  height: 72px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--panel-raised);
+  object-fit: cover;
+}
+
+.payload-overlay__field-image-note {
+  color: var(--muted);
+  font-size: var(--text-caption);
+}
+
+.preview-mac-frame .markdown-preview {
+  margin: 10px 12px 12px;
+}
+
+.preview-mac-frame .markdown-preview > :first-child {
+  margin-top: 0;
+}
+
+.preview-mac-frame .payload-overlay__empty {
+  margin: 10px 12px 12px;
+}
+
+/* The Code view wraps the raw payload in the same Mac window as Preview so
+   the two read as siblings. The bar carries a locate affordance (Preview and
+   Code alike): a one-tap way to reveal the atom the pane is showing in the
+   left rail. */
+.preview-mac-frame__bar {
+  position: relative;
+}
+
+.preview-mac-frame__locate {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  padding: 3px 9px;
+  border: 1px solid color-mix(in srgb, var(--selection-border) 45%, var(--line));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--selection-border) 12%, transparent);
+  color: var(--selection-border);
+  cursor: pointer;
+  font-family: var(--font-mono, monospace);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+}
+
+.preview-mac-frame__locate:hover {
+  background: color-mix(in srgb, var(--selection-border) 22%, transparent);
+}
+
+.preview-mac-frame__locate svg {
+  width: 11px;
+  height: 11px;
+}
+
+/* The raw JSON fills the pane's full width (its border reaches the right
+   edge, so the inner scrollbar sits flush at the far right, not mid-pane)
+   but hugs its content vertically: a short payload leaves the window short
+   and only a long one takes the full band and scrolls inside the region. */
+.preview-mac-frame--code {
+  flex: 1 1 0;
+  align-self: flex-start;
+}
+
+/* The window's border and title bar stay pinned; only this inner region
+   scrolls, and the window hugs its content — it grows down to fit and only
+   starts scrolling once the payload is taller than the available band. The
+   scrollbar hugs the frame's own right edge (the region has no horizontal
+   padding of its own; the tree carries its inset), so it reads as flush to the
+   far right. */
+.preview-mac-frame__scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-bright) transparent;
+}
+
+.preview-mac-frame__scroll::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.preview-mac-frame__scroll::-webkit-scrollbar-thumb {
+  border-radius: 99px;
+  background: var(--line-bright);
+}
+
+/* Markdown content inside the scroll region keeps its own inset. */
+/* A code block that opens flush against the scroll edge read as if its first
+   line were cut off: the scroll region keeps a real inset on all four sides,
+   and the block itself carries a touch more top padding than side padding. */
+.preview-mac-frame__scroll .markdown-preview {
+  margin: 10px 12px 12px;
+}
+
+.preview-mac-frame .markdown-preview .md-code {
+  padding-top: 2px;
+}
+
+.preview-mac-frame .markdown-preview pre {
+  padding: 9px 12px 10px;
+}
+
+.preview-mac-frame__scroll .payload-overlay__empty {
+  margin: 8px 4px;
+}
+
+.preview-mac-frame--code .preview-mac-frame__label {
+  font-size: 0.72rem;
+}
+
 
 /* Related data reads as a compact definition list: one label/value pair per
    row, with long paths wrapping instead of being clipped. Annotations carry
@@ -6196,11 +6724,26 @@ pre,
 .payload-overlay__field {
   display: grid;
   min-width: 0;
-  grid-template-columns: minmax(96px, 0.9fr) minmax(0, 1.4fr);
-  gap: 10px;
-  padding: 7px 0;
+  /* A quarter-width key gutter wasted half a wide pane on labels: bound it
+     to a readable max and let the value own the rest of the row. */
+  grid-template-columns: minmax(96px, 168px) minmax(0, 1fr);
+  gap: 12px;
+  padding: 8px 8px;
   border-bottom: 1px solid var(--line);
+  border-radius: 5px;
   font-size: var(--text-meta);
+  transition: background 120ms ease;
+}
+
+/* A 17-field inventory must scan as a table, not a wall of dashes: alternate
+   rows tint and any row highlights on hover, so the key/value columns read
+   down the list without a hard divider on every line. */
+.payload-overlay__field:nth-child(odd):not(.payload-overlay__field--group) {
+  background: color-mix(in srgb, var(--panel-raised, var(--panel)) 55%, transparent);
+}
+
+.payload-overlay__field:hover:not(.payload-overlay__field--group) {
+  background: color-mix(in srgb, var(--panel-raised, var(--panel)) 92%, var(--line-bright));
 }
 
 .payload-overlay__field dt {
@@ -6208,6 +6751,7 @@ pre,
   overflow: hidden;
   color: var(--muted);
   font-family: var(--font-mono);
+  font-weight: var(--weight-medium, 600);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -6223,13 +6767,43 @@ pre,
   color: var(--text);
 }
 
+/* A scalar array (`["a", "b", "c"]`) is a list-shaped value: render it one
+   item per line rather than a comma-joined string, so the data reads as the
+   list it is. */
+.payload-overlay__field-list ul {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.payload-overlay__field-list li {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.payload-overlay__field-list li::before {
+  content: "–";
+  flex: 0 0 auto;
+  color: var(--violet);
+  font-size: 0.625rem;
+}
+
 /* A long value folds to its first 200 characters with its own 展开 control;
    the short fields around it are never hidden by a pane-wide fold. */
 .payload-overlay__field-text.is-folded {
-  display: -webkit-box;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 4;
+  /* A folded value is already shortened to the first N characters. Clamping
+     it to four more lines cut that preview a second time, so a long hook
+     field read as three lines and an ellipsis with no way to tell what was
+     lost. Wrap the whole shortened value; 展开 still reveals the full text. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .payload-overlay__field-text {
@@ -6274,17 +6848,27 @@ pre,
    indent itself is per-row inline padding set by the renderer. */
 .payload-overlay__field--group {
   grid-template-columns: minmax(0, 1fr);
-  padding-bottom: 1px;
-  padding-top: 10px;
+  margin-top: 6px;
+  padding: 5px 8px 5px 10px;
+  border: 1px solid color-mix(in srgb, var(--violet) 26%, var(--line));
   border-bottom: 0;
+  border-radius: 6px 6px 0 0;
+  background: color-mix(in srgb, var(--violet) 8%, var(--panel-raised));
 }
 
 .payload-overlay__field--group dt {
   overflow-wrap: anywhere;
   color: var(--text-strong);
+  font-family: var(--font-mono, monospace);
   font-size: var(--text-overline);
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
   white-space: normal;
+}
+
+.payload-overlay__field--group-index::before {
+  margin-inline-end: 6px;
+  color: var(--violet);
+  content: "▸";
 }
 
 @media (max-width: 860px) {
@@ -6317,11 +6901,13 @@ pre,
 /* Prose wraps and fenced code scrolls inside its own block; a wide Markdown
    table gets the same treatment so the pane itself never needs to widen for
    one wide element — horizontal scrolling stays local to what is wide. */
-.payload-overlay .markdown-preview table {
+.markdown-preview table {
   display: block;
   width: fit-content;
   max-width: 100%;
   overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-bright) transparent;
 }
 
 /* The rail is the run's message chain in the LOG's own data standard: every
@@ -6578,16 +7164,15 @@ pre,
   margin-top: 4px;
 }
 
-/* Rail rows deliberately carry no hover styling: a list the reader scans for
-   one selected step reads calmer when sweeping the pointer changes nothing,
-   and the selection — not the pointer — is the state that matters here.
-   Selected / running / partner rows keep their state under the pointer
-   (the base :hover rule would otherwise out-rank their own class). */
+/* Rail rows get one soft hover highlight: the list is still scanned for the
+   selected step, but the pointer shows which row is under it (a subtle
+   background wash and an inset tone bar). Selected / running / partner rows
+   keep their stronger state, which the base :hover rule must not out-rank. */
 .payload-overlay__rail
   .atomic-log__row:hover:not(.is-selected):not(.is-running):not(.is-pair-partner) {
-  border-color: transparent;
-  background: transparent;
-  box-shadow: none;
+  border-color: color-mix(in srgb, var(--log-tone) 42%, var(--line-bright));
+  background: color-mix(in srgb, var(--log-tone) 8%, var(--panel-hover));
+  box-shadow: inset 2px 0 var(--log-tone);
 }
 
 /* The selected row is the reason the reader opened the layer: one more step
@@ -6604,6 +7189,20 @@ pre,
 .payload-overlay__rail .atomic-log__row.is-selected strong.atomic-log__name {
   color: var(--text-strong);
   font-size: 12px;
+}
+
+/* The atom behind the Agent pane's current reading line: a quiet marker,
+   clearly below the selection treatment so it never competes with the atom
+   the reader actually picked. It moves with scroll, not with selection. */
+.payload-overlay__rail .atomic-log__row.is-content-active {
+  border-color: color-mix(in srgb, var(--log-tone) 78%, var(--line-bright));
+  background: color-mix(in srgb, var(--log-tone) 22%, var(--panel-hover));
+  box-shadow: inset 3px 0 var(--log-tone);
+}
+
+.payload-overlay__rail .atomic-log__row.is-content-active strong.atomic-log__name,
+.payload-overlay__rail .atomic-log__row.is-content-active .log-sequence {
+  color: var(--text-strong);
 }
 
 /* Same tone map as the LOG row, so a tool atom and a question atom keep their
@@ -6628,8 +7227,185 @@ pre,
   --log-tone: var(--amber);
 }
 
+/* PreToolUse is the call going out, PostToolUse the observation coming back.
+   They share the tool tone in the LOG but carry different phase colours in
+   the chain and the rail, so a call and its result read apart at a glance. */
+.payload-overlay__atom.hook-pre {
+  --log-tone: var(--cyan);
+}
+
+.payload-overlay__atom.hook-post {
+  --log-tone: var(--teal);
+}
+
 .payload-overlay__atom.tone-failed {
   --log-tone: var(--red);
+}
+
+/* One fixed hover card for the whole global-popup rail. It follows the row
+   under the pointer and shows that log atom's own data (turn, key, type,
+   status, time, paired duration and summary), replacing the native `title`
+   tooltip that could neither be styled nor read in full. */
+.payload-overlay__atom-hover {
+  position: fixed;
+  z-index: 70;
+  top: 0;
+  left: 0;
+  visibility: hidden;
+  /* Radix disables pointer events on the body while the dialog is modal. The
+     card is a sibling of DialogContent, not a child, so it must opt back in
+     or the pointer falls through to the console behind it: neither hovering
+     the summary nor clicking the jump target could work. */
+  pointer-events: auto;
+  animation: run-history-hovercard-in 120ms ease-out;
+}
+
+.payload-overlay__atom-hover-card {
+  max-width: min(420px, calc(100vw - 24px));
+  /* A hover card must not blanket the console: it stays under a fixed cap,
+     the long summary folds inside it, and the expanded text scrolls here. */
+  max-height: min(360px, calc(100vh - 24px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 10px 12px 9px;
+  border: 1px solid var(--line-bright);
+  border-radius: 7px;
+  background: var(--panel-raised);
+  box-shadow: 0 12px 30px rgb(0 0 0 / 42%);
+  color: var(--text);
+  cursor: pointer;
+  font-size: var(--text-caption);
+  pointer-events: auto;
+  /* The expanded body must be scrollable, and the scrollbar must be visible
+     enough to say so: the global thin scrollbar was only 2px here. */
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--violet) 62%, var(--line)) transparent;
+  transition: max-height 240ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.payload-overlay__atom-hover-card::-webkit-scrollbar {
+  width: 6px;
+}
+
+.payload-overlay__atom-hover-card::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--violet) 62%, var(--line));
+}
+
+.payload-overlay__atom-hover-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 7px;
+  padding-bottom: 7px;
+  border-bottom: 1px solid var(--line);
+}
+
+.payload-overlay__atom-hover-sequence {
+  color: var(--violet);
+  font-family: var(--font-mono, monospace);
+  font-weight: var(--weight-medium, 600);
+}
+
+.payload-overlay__atom-hover-turn {
+  color: var(--muted);
+  font-family: var(--font-mono, monospace);
+}
+
+.payload-overlay__atom-hover-event {
+  color: var(--text-strong);
+  font-weight: var(--weight-medium, 600);
+  overflow-wrap: anywhere;
+}
+
+.payload-overlay__atom-hover-fields {
+  display: grid;
+  gap: 4px;
+  margin: 8px 0 0;
+}
+
+.payload-overlay__atom-hover-fields > div {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.payload-overlay__atom-hover-fields dt {
+  color: var(--muted);
+  font-family: var(--font-mono, monospace);
+}
+
+.payload-overlay__atom-hover-fields dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.payload-overlay__atom-hover-summary {
+  margin: 9px 0 0;
+  padding-top: 7px;
+  border-top: 1px solid var(--line);
+  color: var(--text);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+/* A captured response can be thousands of characters: clamp the resting
+   summary to a readable slice and let the explicit toggle reveal the rest. */
+.payload-overlay__atom-hover-summary.is-clamped {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 8;
+  line-clamp: 8;
+  overflow: hidden;
+}
+
+/* Expanded, the summary owns the scroll: the fold toggle and the jump hint
+   stay visible at the bottom of the card while the long text scrolls above
+   them. Wheel and keyboard scrolling both stay inside the card. */
+.payload-overlay__atom-hover-summary.is-expanded {
+  /* 150px leaves the head, fields, toggle and jump hint inside the 360px card
+     cap; only the long body scrolls, so the controls never fall below it. */
+  max-height: 150px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 8px;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--violet) 62%, var(--line)) transparent;
+}
+
+.payload-overlay__atom-hover-summary.is-expanded::-webkit-scrollbar {
+  width: 6px;
+}
+
+.payload-overlay__atom-hover-summary.is-expanded::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--violet) 62%, var(--line));
+}
+
+.payload-overlay__atom-hover-toggle {
+  margin-top: 6px;
+  padding: 2px 8px;
+  border: 1px solid var(--line-bright);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: var(--text-overline);
+}
+
+.payload-overlay__atom-hover-toggle:hover {
+  border-color: var(--violet);
+  color: var(--text-strong);
+}
+
+.payload-overlay__atom-hover-hint {
+  margin: 7px 0 0;
+  color: var(--muted);
+  font-size: 0.6875rem;
 }
 
 .payload-overlay__content {
@@ -7013,6 +7789,7 @@ pre,
   display: grid;
   width: 100%;
   min-width: 0;
+  position: relative;
   min-height: 46px;
   grid-template-columns: 27px 6px minmax(42px, 1fr) 68px;
   align-items: center;
@@ -7097,16 +7874,18 @@ pre,
 }
 
 /* TYPE is resolved from the atom's key/kind by src/lib/atom-types.ts — the
-   very same label the trajectory badge and hover card print. Violet matches
-   the hover card's TYPE field; a hairline border and a small radius keep the
-   badge compact instead of the large duration pill. */
+   very same label the trajectory badge and hover card print. Its *colour* is
+   the atom's tone, the same `--type-tone` the canvas node uses, so a badge and
+   the node it names read as one category. A hairline border and a small radius
+   keep it compact instead of the large duration pill. */
 .atomic-log__row .atomic-log__type {
+  --type-tone: var(--muted-soft);
   flex: 0 0 auto;
   padding: 0 4px;
-  border: 1px solid color-mix(in srgb, var(--violet) 45%, var(--line));
+  border: 1px solid color-mix(in srgb, var(--type-tone) 45%, var(--line));
   border-radius: 3px;
-  color: var(--violet);
-  background: color-mix(in srgb, var(--violet-deep) 12%, transparent);
+  color: var(--type-tone);
+  background: color-mix(in srgb, var(--type-tone) 12%, transparent);
   font-family: var(--font-mono);
   font-size: var(--text-overline);
   font-weight: var(--weight-medium);
@@ -7182,7 +7961,7 @@ pre,
 }
 
 .atomic-log__row .atomic-log__duration.heat-normal {
-  color: var(--text);
+  color: var(--teal);
 }
 
 .atomic-log__row .atomic-log__duration.heat-slow {
@@ -7191,6 +7970,455 @@ pre,
 
 .atomic-log__row .atomic-log__duration.heat-very-slow {
   color: var(--status-failed);
+}
+
+/* Array payloads render as item blocks: one bordered record per entry with
+   a left accent, so a stack of results reads as distinct rows instead of a
+   JSON wall echoed twice. An entry that is code keeps its fence inside. */
+.payload-item-list {
+  display: grid;
+  gap: 8px;
+}
+
+.payload-item {
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
+  border-left: 2px solid color-mix(in srgb, var(--violet) 62%, var(--line));
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--panel) 84%, #000);
+  overflow-wrap: anywhere;
+}
+
+/* A single entry carries no frame: its own grid or fence is the content. */
+.payload-item-list.is-single {
+  gap: 0;
+}
+
+.payload-item + .payload-item {
+  margin-top: 0;
+}
+
+.payload-item__image {
+  display: block;
+  max-width: 100%;
+  max-height: 320px;
+  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
+}
+
+/* A typed non-image attachment gets its own chip instead of an <img> that
+   can never load: the service only previews images, so show the real path. */
+.payload-item__file {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: baseline;
+  gap: 7px;
+  padding: 4px 8px;
+  border: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--panel) 84%, #000);
+}
+
+.payload-item__file-glyph {
+  font-size: 0.75rem;
+}
+
+.payload-item__file-name {
+  color: var(--text-strong);
+  font-weight: var(--weight-semibold, 650);
+  overflow-wrap: anywhere;
+}
+
+.payload-item__file code {
+  color: var(--muted);
+  font-family: var(--font-mono, monospace);
+  font-size: var(--text-overline);
+  overflow-wrap: anywhere;
+}
+
+.payload-item__fold {
+  display: grid;
+  gap: 6px;
+}
+
+.payload-item__fold-toggle {
+  justify-self: start;
+  padding: 2px 8px;
+  border: 1px solid var(--line-bright);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: var(--text-overline);
+}
+
+.payload-item__fold-toggle:hover {
+  color: var(--text-strong);
+  border-color: var(--violet);
+}
+
+/* A key/value payload is a record, not bare text: give the pair list its own
+   framed surface, one inset chip per row, and a gutter between the key and
+   its value so a long path never reads as a continuation of the label. */
+.payload-item__fields {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 5px;
+  border: 1px solid color-mix(in srgb, var(--violet) 24%, var(--line));
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--violet) 7%, var(--panel));
+  overflow: hidden;
+}
+
+.payload-item__field {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(72px, max-content) 1fr;
+  gap: 10px;
+  align-items: start;
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--panel-raised, var(--panel)) 58%, transparent);
+  font-size: 0.75rem;
+  line-height: 1.5;
+  transition: background 140ms ease;
+}
+
+.payload-item__field:hover {
+  background: color-mix(in srgb, var(--panel-raised, var(--panel)) 94%, var(--violet));
+}
+
+.payload-item__field dt {
+  min-width: 0;
+  color: var(--violet);
+  font-family: var(--font-mono, monospace);
+  font-size: var(--text-overline);
+  letter-spacing: 0.02em;
+  overflow-wrap: anywhere;
+}
+
+.payload-item__field dd {
+  min-width: 0;
+  margin: 0;
+  padding-left: 9px;
+  border-left: 1px solid color-mix(in srgb, var(--violet) 22%, var(--line));
+  color: var(--text);
+  font-family: var(--font-mono, monospace);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+/* The Agent chain's scroll progress: a hairline under the message list.
+   The fill is the completion; each turn puts a tick at its own position, and
+   the tick's card states the turn on hover. Ticks sit above the bar so they
+   stay clickable without the pointer leaving the strip. */
+.agent-transcript__progress {
+  flex: none;
+  /* Under the header, riding over its border edge to edge: the bed spans the
+     whole strip, so the header's bottom hairline is covered for its entire
+     run. Lifted a little further into the header than a plain -1px overlap. */
+  margin-top: -3px;
+  padding: 0 2px 2px;
+  position: relative;
+  z-index: 1;
+  /* The pan buttons own fixed slots at the two outer edges; the track takes
+     every pixel between them. Only the tick layer grows when turns get dense. */
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) 18px;
+  align-items: center;
+  column-gap: 4px;
+  transition: opacity 200ms ease;
+}
+
+/* No overflowing chain, no bar: the strip reserves nothing until a turn can
+   actually be placed on it. Height goes to zero as well, so the header keeps
+   its original border while the strip is absent. */
+.agent-transcript__progress.is-hidden {
+  height: 0;
+  margin-top: 0;
+  padding-block: 0;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+/* Dense turns overflow the strip: the edge buttons pan the tick area and the
+   strip itself never shows a scrollbar. Each button is its own opaque chip —
+   a transparent button let the track read through and the chevron vanish. */
+.agent-transcript__progress-edge {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  justify-self: center;
+  width: 18px;
+  height: 14px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel-raised);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.agent-transcript__progress-edge:hover {
+  border-color: color-mix(in srgb, var(--violet) 46%, var(--line));
+  background: color-mix(in srgb, var(--violet) 14%, var(--panel-raised));
+  color: var(--text-strong);
+}
+
+.agent-transcript__progress-edge svg {
+  width: 0.625rem;
+  height: 0.625rem;
+}
+
+.agent-transcript__progress-edge.is-idle {
+  border-color: color-mix(in srgb, var(--line) 55%, transparent);
+  color: var(--muted-soft, var(--muted));
+}
+
+/* Only a button that can actually move the window gets the actionable
+   treatment; an idle chip stays quiet so "switchable" is visible at a glance. */
+.agent-transcript__progress-edge:not(.is-idle) {
+  border-color: color-mix(in srgb, var(--violet) 52%, var(--line));
+  color: var(--text-strong);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--violet) 10%, transparent);
+}
+
+.agent-transcript__progress-edge:not(.is-idle):active {
+  transform: scale(0.92);
+}
+
+.agent-transcript__progress-track {
+  position: relative;
+  height: 10px;
+  flex: 1 1 auto;
+  min-width: 0;
+  /* The tick layer slides with the edge buttons; overflow stays invisible —
+     the strip never shows a scrollbar. */
+  overflow: hidden;
+  scrollbar-width: none;
+}
+
+.agent-transcript__progress-ticks {
+  position: absolute;
+  inset: 0 auto 0 0;
+  height: 100%;
+  /* The layer has a transform, which creates its own stacking context: a
+     z-index on the dots alone cannot lift them over the later-painted fill.
+     Lift the whole layer instead. */
+  z-index: 1;
+  transition:
+    transform 420ms cubic-bezier(0.22, 1, 0.36, 1),
+    width 320ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* The pan feedback lasts as long as the slide: bed, buttons and lit ticks
+   brighten together, so moving between windows reads as a deliberate switch. */
+.agent-transcript__progress.is-panning .agent-transcript__progress-track::before {
+  background: color-mix(in srgb, var(--violet) 26%, var(--line));
+}
+
+.agent-transcript__progress.is-panning .agent-transcript__progress-edge {
+  border-color: var(--violet);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--violet) 22%, transparent);
+  color: var(--text-strong);
+}
+
+.agent-transcript__progress.is-panning .agent-transcript__progress-tick::after {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--violet) 18%, transparent);
+}
+
+/* The bed belongs to the track, not the strip: the reading must start
+   between the two buttons, never underneath the left one. A strip-level bed
+   also read as a second, offset bar beside the fill. */
+.agent-transcript__progress-track::before {
+  content: "";
+  position: absolute;
+  inset: 4px 0 auto;
+  height: 3px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--muted) 42%, var(--line));
+}
+
+.agent-transcript__progress-fill {
+  position: absolute;
+  top: 4px;
+  left: 0;
+  height: 3px;
+  width: 0;
+  border-radius: 999px;
+  /* A gradient along the read direction: the tail fades from the bed colour
+     into violet, so the fill reads as motion rather than a flat line. */
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--teal) 70%, transparent),
+    var(--violet)
+  );
+  transition: width 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.agent-transcript__progress-tick {
+  position: absolute;
+  top: 0;
+  /* The fill is painted after the layer in DOM order; put every dot above it
+     or a coloured turn disappears into the coloured bar. */
+  z-index: 1;
+  width: 12px;
+  height: 10px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  transform: translateX(-50%);
+}
+
+.agent-transcript__progress-tick.is-active {
+  z-index: 2;
+}
+
+.agent-transcript__progress-tick::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 50%;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--muted) 72%, var(--line));
+  transform: translateX(-50%);
+  transition: background 140ms ease, transform 140ms ease;
+}
+
+/* Turns the reader has already passed sit on the coloured fill, so they get a
+   brighter, ringed dot — otherwise the bar swallows the marker. */
+.agent-transcript__progress-tick.is-passed::after {
+  top: 2.5px;
+  width: 6px;
+  height: 6px;
+  background: color-mix(in srgb, var(--violet) 76%, var(--text-strong));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--violet) 20%, transparent);
+}
+
+/* The turn the reader's position has just reached breathes: a soft pulse
+   that marks "you are here" without stealing focus from the list. */
+.agent-transcript__progress-tick.is-active::after {
+  top: 2px;
+  width: 7px;
+  height: 7px;
+  background: var(--violet);
+  animation: agent-progress-breathe 1.6s ease-in-out infinite;
+}
+
+@keyframes agent-progress-breathe {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--violet) 45%, transparent);
+    opacity: 1;
+  }
+  50% {
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--violet) 12%, transparent);
+    opacity: 0.72;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-transcript__progress-tick.is-active::after {
+    animation: none;
+  }
+}
+
+.agent-transcript__progress-tick:hover::after,
+.agent-transcript__progress-tick:focus-visible::after {
+  background: var(--violet);
+  transform: translateX(-50%) scale(1.3);
+}
+
+/* The tip is mounted on the strip, above the track's overflow window, and
+   positioned from the hovered dot; a tip inside a tick used to be clipped. */
+.agent-transcript__progress-tip {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  z-index: 40;
+  display: grid;
+  width: 148px;
+  gap: 2px;
+  padding: 6px 9px;
+  border: 1px solid var(--line-bright);
+  border-radius: 7px;
+  background: var(--panel);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 42%);
+  color: var(--text);
+  font-size: 0.6875rem;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.agent-transcript__progress-tip strong {
+  color: var(--text-strong);
+}
+
+.agent-transcript__progress-tip span {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Message stepping beside the agent name: a quiet ‹ n/N › cluster. The
+   buttons stay short so the header keeps one height; the count is the
+   current message's position out of the session's total. It shares the
+   identity row with the agent badge and sizes to its own content. */
+.run-stepper {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 5px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--panel) 60%, transparent);
+}
+
+.run-stepper__button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+}
+
+.run-stepper__button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--violet) 14%, transparent);
+  color: var(--text-strong);
+}
+
+.run-stepper__button:disabled {
+  color: var(--muted-soft, var(--muted));
+  cursor: default;
+  opacity: 0.45;
+}
+
+.run-stepper__button svg {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+.run-stepper__count {
+  min-width: 2.6em;
+  color: var(--muted);
+  font-family: var(--font-mono, monospace);
+  font-size: var(--text-overline);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
 }
 
 /* One shared marker for the two halves of a closed pair, rendered identically
@@ -7545,6 +8773,22 @@ pre,
   position: relative;
 }
 
+/* The inspector's grid row gives the json tab a definite height, so the tree
+   owns its own scrollbar here — unlike the global overlay, whose window
+   scroll region stays in charge. Without this the clipped tail of a long
+   payload read as "the pane cannot scroll". */
+.inspector-tabs__content--json .json-viewer {
+  height: 100%;
+}
+
+.inspector-tabs__content--json .json-viewer__rows {
+  height: 100%;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-bright) transparent;
+}
+
 .inspector-overview {
   padding: 11px 12px 20px;
 }
@@ -7676,7 +8920,6 @@ pre,
 .json-viewer {
   position: relative;
   width: 100%;
-  height: 100%;
   min-height: 0;
 }
 
@@ -7691,24 +8934,85 @@ pre,
   background: color-mix(in srgb, var(--panel-raised) 92%, transparent);
 }
 
-.json-viewer pre {
-  width: 100%;
-  height: 100%;
+/* The tree is a set of flex rows: a right-aligned, non-selectable line-number
+   gutter, then the indented body (an optional collapse toggle + the token
+   runs). The parent scroll region owns the scrollbars, so the rows stay plain
+   blocks. */
+.json-viewer__rows {
+  display: block;
   min-height: 0;
-  margin: 0;
-  padding: 12px 14px 20px;
-  overflow: auto;
+  padding: 4px 14px 14px 10px;
   color: var(--muted-soft);
+  font-family: var(--font-mono, monospace);
   font-size: 10px;
-  line-height: 1.65;
-  overflow-wrap: anywhere;
-  tab-size: 2;
-  white-space: pre-wrap;
+}
+
+.json-line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  line-height: 1.7;
+}
+
+.json-line__no {
+  flex: 0 0 30px;
+  color: var(--muted-soft);
+  font-size: 0.6875rem;
+  text-align: right;
+  opacity: 0.75;
+  user-select: none;
+}
+
+.json-line__body {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.json-line__toggle {
+  display: inline-flex;
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  margin-top: 3px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.json-line__toggle:hover {
+  color: var(--text-strong);
+  background: color-mix(in srgb, var(--selection-bg) 55%, transparent);
+}
+
+.json-line__toggle svg {
+  width: 12px;
+  height: 12px;
+}
+
+/* The spacer keeps the toggle gutter on every row so a leaf line never sits
+   left of its own container: hidden, not empty, so hover/pointer rules that
+   target .json-line__toggle stay inert on it. */
+.json-line__toggle--spacer {
+  visibility: hidden;
 }
 
 /* The Code view and the fenced blocks in Preview are two readings of the same
    payload: keys must carry the same cool accent as the hljs json/yaml key
    tokens, or switching tabs silently recolours the reader's mental map. */
+.json-line__tokens {
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .json-token--key {
   color: var(--code-accent);
 }
@@ -7739,10 +9043,32 @@ pre,
   color: var(--muted);
 }
 
+.json-token--text {
+  color: var(--muted-soft);
+  font-style: italic;
+}
+
 /* The global layer is a reading surface, not the narrow inspector: the raw
    payload gets the same step up as its Markdown sibling. */
-.payload-overlay .json-viewer pre {
+.payload-overlay .json-viewer__rows {
   font-size: var(--text-label);
+}
+
+/* The narrow drawers (prompt / question) keep the tree's own scrollbar so a
+   long payload reads inside the panel; the global layer lets the window's
+   scroll region own the scrollbars instead. */
+.prompt-input__code .json-viewer,
+.question-surface .json-viewer {
+  height: 100%;
+}
+
+.prompt-input__code .json-viewer__rows,
+.question-surface .json-viewer__rows {
+  height: 100%;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-bright) transparent;
 }
 
 .json-viewer__empty {
@@ -9722,7 +11048,7 @@ pre,
   justify-content: space-between;
   gap: 10px;
   min-width: 0;
-  padding: 0 0 9px;
+  padding: 4px 10px;
   border-bottom: 1px solid var(--line);
 }
 
@@ -9797,13 +11123,16 @@ pre,
 .question-preview__answers {
   display: flex;
   align-items: baseline;
+  flex-wrap: wrap;
   gap: 8px;
   margin: 8px 0 0;
-  padding: 6px 8px;
-  border-left: 2px solid var(--teal);
-  border-radius: 0 5px 5px 0;
-  background: color-mix(in srgb, var(--teal) 9%, transparent);
-  color: var(--muted);
+  padding: 7px 10px;
+  border: 1px solid color-mix(in srgb, var(--teal) 40%, transparent);
+  border-left: 3px solid var(--teal);
+  border-radius: 0 6px 6px 0;
+  background: color-mix(in srgb, var(--teal) 14%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--teal) 12%, transparent);
+  color: var(--teal);
   font-size: var(--text-caption);
 }
 
@@ -9811,6 +11140,16 @@ pre,
   color: var(--text-strong);
   font-size: var(--text-meta);
   font-weight: var(--weight-medium, 600);
+}
+
+/* The recorded answer is the point of a finished question: lift it past the
+   teal hint so a reader scanning the Agent reply sees "this was answered
+   here" at a glance, even at small sizes. */
+.question-surface__item.is-answered .question-preview__answers {
+  background: color-mix(in srgb, var(--teal) 22%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--teal) 24%, transparent),
+    0 0 12px color-mix(in srgb, var(--teal) 18%, transparent);
 }
 
 .question-surface__item.is-answered {
@@ -10009,10 +11348,11 @@ pre,
   gap: 4px;
   max-width: 100%;
   padding: 3px 9px;
-  border: 1px solid color-mix(in srgb, var(--teal) 46%, transparent);
+  border: 1px solid color-mix(in srgb, var(--teal) 55%, transparent);
   border-radius: 999px;
   color: var(--teal);
-  background: color-mix(in srgb, var(--teal) 14%, var(--panel));
+  background: color-mix(in srgb, var(--teal) 20%, var(--panel));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--teal) 12%, transparent), 0 0 10px color-mix(in srgb, var(--teal) 22%, transparent);
   font-size: 0.75rem;
   font-weight: var(--weight-medium, 600);
   overflow-wrap: anywhere;
@@ -10043,4 +11383,1231 @@ pre,
   margin: 0;
   color: var(--muted-soft, var(--muted));
   font-size: 0.8125rem;
+}
+
+/* Agent view: one card per captured artifact. The tone map mirrors the LOG
+ * rail, so a reasoning block and a tool result keep the same colour from the
+ * canvas to the overlay. */
+.agent-transcript {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.agent-transcript__head {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 16px;
+  /* No bottom border: the progress strip's bed rides over this edge and is
+     the separator itself (visible even with no ticks). */
+  color: var(--text-strong);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.6875rem;
+  letter-spacing: 0.08em;
+}
+
+.agent-transcript__view-label {
+  margin-left: 2px;
+  color: var(--muted);
+}
+
+.agent-transcript__stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 7px;
+  border: 1px solid var(--line-bright);
+  border-radius: 999px;
+  color: var(--muted);
+  letter-spacing: 0;
+  /* Counts and the live clock advance every second: tabular digits keep each
+     chip a fixed width, so the header row never shifts as numbers tick. */
+  font-variant-numeric: tabular-nums;
+}
+
+.agent-transcript__stat.is-merged {
+  color: var(--teal);
+}
+
+/* A small leading glyph on the count chips: quiet, sized to the label, and a
+   touch of spacing so the number still reads first. The glyph takes the chip's
+   own colour and is muted by opacity, not by a second colour token: a chip that
+   highlights on hover / when its card opens / while its clock is live carries
+   that highlight into the icon too, instead of leaving a grey glyph inside a
+   green chip. */
+.agent-transcript__stat-icon {
+  flex: 0 0 auto;
+  width: 0.875rem;
+  height: 0.875rem;
+  color: inherit;
+  opacity: 0.62;
+  transition: opacity 120ms ease;
+}
+
+.agent-transcript__stat.is-merged .agent-transcript__stat-icon,
+.agent-transcript__stat-button:hover .agent-transcript__stat-icon,
+.agent-transcript__stat-wrap.is-open .agent-transcript__stat-icon,
+.agent-transcript__duration.is-live .agent-transcript__stat-icon {
+  opacity: 1;
+}
+
+.agent-transcript__stat-text {
+  min-width: 0;
+}
+
+/* A count is also a jump target: hover names the steps behind it, click lands
+   on the first. The card is anchored to the chip and stays inside the header
+   layer, so it never shifts the chain below. */
+.agent-transcript__stat-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.agent-transcript__stat-button {
+  cursor: pointer;
+  font-family: inherit;
+  font-size: inherit;
+  background: transparent;
+  transition:
+    border-color 120ms ease,
+    color 120ms ease;
+}
+
+.agent-transcript__stat-button:hover,
+.agent-transcript__stat-wrap.is-open .agent-transcript__stat-button {
+  border-color: var(--selection-border);
+  color: var(--text-strong);
+}
+
+.agent-transcript__stat-card {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+  min-width: 214px;
+  max-width: 300px;
+  /* Hidden until a driver re-shows it: the stat chips' controlled `is-open`,
+     or the clock chip's CSS hover / keyboard focus. */
+  display: none;
+  flex-direction: column;
+  gap: 3px;
+  /* Roomy on both sides: the clock card is prose (reason + totals), not a
+     dense row list, so its text must not hug the border. */
+  padding: 9px 14px;
+  border: 1px solid var(--line-bright);
+  border-radius: 7px;
+  background: var(--panel);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 42%);
+  font-size: 0.6875rem;
+  letter-spacing: 0;
+}
+
+.agent-transcript__stat-wrap:hover .agent-transcript__stat-card,
+.agent-transcript__stat-wrap:focus-visible .agent-transcript__stat-card {
+  display: flex;
+}
+
+.agent-transcript__stat-wrap.is-open .agent-transcript__stat-card {
+  display: flex;
+}
+
+.agent-transcript__stat-card-title {
+  padding: 0 0 4px;
+  color: var(--muted);
+  font-weight: var(--weight-medium, 600);
+}
+
+.agent-transcript__stat-card-row {
+  display: grid;
+  width: 100%;
+  padding: 4px 2px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: inherit;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 6px;
+  text-align: left;
+}
+
+.agent-transcript__stat-card-row:hover {
+  background: color-mix(in srgb, var(--selection-bg) 60%, transparent);
+  color: var(--text-strong);
+}
+
+.agent-transcript__stat-card-row span:first-child,
+.agent-transcript__stat-card-row span:last-child {
+  color: var(--muted-soft, var(--muted));
+  font-family: var(--font-mono, monospace);
+}
+
+/* A richer row: the name on its own line and a quiet one-line preview under
+   it, so a tool call reads as `Bash · pnpm test …` instead of a bare token. */
+.agent-transcript__stat-card-row.has-hint {
+  row-gap: 2px;
+}
+
+.agent-transcript__stat-card-name {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.agent-transcript__stat-card-name strong {
+  overflow: hidden;
+  color: var(--text-strong);
+  font-family: var(--font-mono, monospace);
+  font-weight: var(--weight-medium, 600);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-transcript__stat-card-name em {
+  overflow: hidden;
+  color: var(--muted-soft, var(--muted));
+  font-family: var(--font-mono, monospace);
+  font-style: normal;
+  font-size: 0.6875rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The card opens over the header as a full dropdown: every step behind the
+   count is listed, and the list scrolls inside a bounded area instead of
+   being truncated to a number. The card is pinned to the chip's right edge
+   so it never overflows the header on the left. */
+.agent-transcript__stat-card {
+  left: auto;
+  right: 0;
+}
+
+.agent-transcript__stat-card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  /* A hard cap so the dropdown never swallows the whole header; the list
+     scrolls inside instead. */
+  max-height: min(34vh, 288px);
+  overflow-y: auto;
+  /* No right gutter: the thin scrollbar hugs the card's border directly. The
+     rows keep their own right inset, so the turn column never touches the
+     thumb. A visible thin scrollbar keeps the affordance readable on any
+     platform (macOS overlay scrollbars included). */
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-bright) transparent;
+}
+
+.agent-transcript__stat-card-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.agent-transcript__stat-card-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.agent-transcript__stat-card-list::-webkit-scrollbar-thumb {
+  background: var(--line-bright);
+  border-radius: 4px;
+}
+
+/* The rows reach the list's inner right edge (no card gutter), so give them
+   their own right inset to keep the turn label clear of the scrollbar. */
+.agent-transcript__stat-card-row {
+  padding-right: 4px;
+}
+
+/* A run-level clock has two readings and two treatments: teal while it is
+   still counting, neutral once it stopped. It deliberately does not inherit
+   the atom's completed / failed / terminated / waiting palette. */
+.agent-transcript__duration.is-live {
+  border-color: var(--teal);
+  color: var(--teal);
+}
+
+.agent-transcript__duration.is-ended {
+  border-color: color-mix(in srgb, var(--line) 70%, var(--muted));
+  color: var(--muted-soft, var(--muted));
+}
+
+.agent-transcript__status-reason {
+  color: var(--text);
+  line-height: 1.5;
+  white-space: normal;
+}
+
+.agent-transcript__diagnostics {
+  padding: 6px 16px;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--red) 9%, transparent);
+  color: var(--red);
+  font-size: 0.75rem;
+}
+
+.agent-transcript__diagnostics p {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 0;
+}
+
+.agent-transcript__diagnostics svg {
+  width: 12px;
+  height: 12px;
+}
+
+.agent-transcript__surface {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.agent-transcript__scroll {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  gap: 10px;
+  /* The bottom padding reserves room for the pinned jump / waiting pill, so
+     the last step never scrolls under it. */
+  padding: 14px 16px 56px;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+/* A loading pill pinned to the reading surface, not to the scrolled content:
+ * scrolling back through the chain must not drag the control out of reach. */
+.agent-transcript__jump {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 13px;
+  border: 1px solid var(--selection-border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--panel) 90%, var(--selection-border) 10%);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 28%);
+  color: var(--text-strong);
+  cursor: pointer;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.6875rem;
+  letter-spacing: 0.03em;
+  transform: translateX(-50%);
+  backdrop-filter: blur(6px);
+}
+
+.agent-transcript__jump svg {
+  width: 12px;
+  height: 12px;
+  color: var(--selection-border);
+}
+
+.agent-transcript__jump:hover {
+  background: color-mix(in srgb, var(--panel) 82%, var(--selection-border) 18%);
+}
+
+/* A finished run has nothing to follow: the same control becomes a plain
+ * quick-scroll affordance instead of a live "back to newest" spinner. */
+.agent-transcript__jump.is-settled {
+  border-color: var(--line-bright);
+  background: var(--panel);
+}
+
+.agent-transcript__jump.is-settled svg {
+  color: var(--muted);
+}
+
+/* The live "waiting for new messages" read is pinned to the surface like the
+   jump pill, not dropped into the scroll flow: a clipped bottom row (a tall
+   last step) would otherwise slice the pill in half at the panel edge. */
+.agent-transcript__pending {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 13px;
+  border: 1px solid color-mix(in srgb, var(--teal) 40%, var(--line-bright));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--panel) 90%, var(--teal) 8%);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 28%);
+  color: var(--muted);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.6875rem;
+  letter-spacing: 0.03em;
+  transform: translateX(-50%);
+  backdrop-filter: blur(6px);
+}
+
+.agent-transcript__pending svg {
+  width: 12px;
+  height: 12px;
+  color: var(--teal);
+}
+
+.agent-step {
+  --log-tone: var(--violet);
+  /* Long runs stack hundreds of cards; `contain` keeps each card's layout and
+     style work inside itself so scrolling a chain does not re-lay-out its
+     siblings. Paint containment is deliberately absent — the step's status
+     card opens outside the card's bounds. */
+  contain: layout style;
+  flex: 0 0 auto;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--log-tone);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--panel) 88%, var(--log-tone) 12%);
+}
+
+.agent-step.tone-agent,
+.agent-step.tone-complete,
+.agent-step.tone-session {
+  --log-tone: var(--teal);
+}
+
+.agent-step.tone-prompt {
+  --log-tone: var(--blue);
+}
+
+.agent-step.tone-reasoning,
+.agent-step.tone-signal {
+  --log-tone: var(--violet);
+}
+
+.agent-step.tone-tool {
+  --log-tone: var(--amber);
+}
+
+/* The two hook phases split the amber tool tone: cyan for the call, teal for
+   the result. Failures keep their red tone — they never gain a phase class. */
+.agent-step.hook-pre {
+  --log-tone: var(--cyan);
+  --type-accent: var(--cyan);
+}
+
+.agent-step.hook-post {
+  --log-tone: var(--teal);
+  --type-accent: var(--teal);
+}
+
+.agent-step.tone-failed {
+  --log-tone: var(--red);
+}
+
+/* Each artifact kind keeps the rail's tone but gets its own surface weight,
+ * so a thinking block, a command and a reply read apart at a glance. */
+.agent-step--thinking {
+  --type-accent: var(--violet);
+  background: color-mix(in srgb, var(--panel) 82%, var(--violet) 18%);
+}
+
+.agent-step--reply {
+  --type-accent: var(--teal);
+  background: color-mix(in srgb, var(--panel) 90%, var(--teal) 10%);
+}
+
+.agent-step--tool-result {
+  --type-accent: var(--amber);
+  background: color-mix(in srgb, var(--panel) 86%, var(--amber) 14%);
+}
+
+/* A Pre / Post step keeps its phase tone through the whole surface: the
+   generic tool-result surface above would otherwise wash a teal Post back to
+   amber, leaving a teal edge around an amber card. */
+.agent-step.hook-pre.agent-step--event {
+  background: color-mix(in srgb, var(--panel) 86%, var(--cyan) 14%);
+}
+
+.agent-step.hook-post.agent-step--tool-result {
+  background: color-mix(in srgb, var(--panel) 86%, var(--teal) 14%);
+}
+
+.agent-step.hook-post.agent-step--event {
+  background: color-mix(in srgb, var(--panel) 86%, var(--teal) 14%);
+}
+
+.agent-step--question {
+  --type-accent: var(--blue);
+  background: color-mix(in srgb, var(--panel) 86%, var(--blue) 14%);
+}
+
+.agent-step--event {
+  --type-accent: var(--muted);
+}
+
+/* Selection must read apart from the step's own tone: every kind surface
+   above (thinking / reply / tool / …) blends the card with its log-tone, so a
+   plain `.is-selected` loses the specificity fight and a selected tool result
+   washes back to amber — the step's own colour. Double-classing the selected
+   state keeps the highlight (the shared selection cyan) winning over every
+   tone surface, so the chosen step never looks merely "the same". The glow
+   also breathes — a slow pulse makes the selected card read as "live /
+   followed" rather than a static highlight, without stealing focus from the
+   content. The animation is disabled under a reduced-motion preference. */
+.agent-step.is-selected,
+.agent-step--thinking.is-selected,
+.agent-step--reply.is-selected,
+.agent-step--tool-result.is-selected,
+.agent-step--question.is-selected,
+.agent-step--event.is-selected {
+  border-color: var(--selection-border);
+  border-left-color: var(--selection-border);
+  background: var(--selection-bg);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--selection-glow) 55%, transparent);
+  animation: agent-step-selected-breathe 2.6s ease-in-out infinite;
+}
+
+@keyframes agent-step-selected-breathe {
+  0%,
+  100% {
+    box-shadow: 0 0 8px color-mix(in srgb, var(--selection-glow) 30%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 18px color-mix(in srgb, var(--selection-glow) 72%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-step.is-selected,
+  .agent-step--thinking.is-selected,
+  .agent-step--reply.is-selected,
+  .agent-step--tool-result.is-selected,
+  .agent-step--question.is-selected,
+  .agent-step--event.is-selected {
+    animation: none;
+  }
+}
+
+.agent-step__head {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--text-strong);
+  text-align: left;
+}
+
+.agent-step__head svg {
+  width: 13px;
+  height: 13px;
+  color: var(--log-tone);
+}
+
+.agent-step__label,
+.agent-step__code,
+.agent-step__turn {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.625rem;
+  letter-spacing: 0.08em;
+}
+
+/* The kind is a quiet outlined badge, the tool name a filled chip and the
+   event name plain meta — three distinct reads in one header row. */
+.agent-step__label {
+  flex: 0 0 auto;
+  padding: 2px 6px;
+  border: 1px solid color-mix(in srgb, var(--type-accent, var(--log-tone)) 42%, transparent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--type-accent, var(--log-tone)) 12%, transparent);
+  color: var(--type-accent, var(--log-tone));
+  letter-spacing: 0.06em;
+}
+
+.agent-step__tool {
+  flex: 0 0 auto;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--violet) 20%, var(--panel));
+  color: var(--text-strong);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.6875rem;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-step__meta {
+  flex: 1;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A hook's native event name is the only thing that tells a PreToolUse call
+   from a PostToolUse result once both have been folded into tool cards. Give
+   that badge its phase colour so the two read apart at a glance. */
+.agent-step__meta--hook {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  padding: 1px 7px;
+  border: 1px solid color-mix(in srgb, var(--log-tone) 48%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--log-tone) 14%, transparent);
+  color: var(--log-tone);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.625rem;
+  letter-spacing: 0.02em;
+}
+
+.agent-step__code,
+.agent-step__turn {
+  color: var(--muted-soft, var(--muted));
+}
+
+.agent-step__body {
+  /* The type accent marks the body edge; contentToMarkdown decides whether
+   * the text itself renders as prose or as language-highlighted code. */
+  margin-left: 2px;
+  padding: 10px 12px 13px;
+  border-left: 2px solid
+    color-mix(in srgb, var(--type-accent, var(--log-tone)) 45%, transparent);
+  color: var(--text);
+  font-size: 0.8125rem;
+}
+
+.agent-step__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 6px;
+  padding: 2px 7px;
+  border: 1px solid var(--line-bright);
+  border-radius: 5px;
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 0.6875rem;
+}
+
+.agent-step__toggle svg {
+  width: 11px;
+  height: 11px;
+}
+
+.agent-step__teaser {
+  margin: 0;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-step__badge {
+  margin: 0 0 7px;
+  color: var(--teal);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.625rem;
+}
+
+/* The execution time and pair marker share the step header row instead of
+   taking a line of their own, so a card opens with one title bar. */
+.agent-step__head-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+}
+
+.agent-step__head-badges {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  /* The duration chip and the pair marker sit side by side at the header's
+     right edge; a little more room keeps the two from touching when the row
+     is wide enough that the badges would otherwise press together. */
+  gap: 8px;
+  padding-right: 12px;
+}
+
+/* The step's own clock and outcome as one hover target. A step reports *its
+   own* span (a streamed reply's snapshots, a tool pair, a closed question),
+   never the run's accumulated total that the header clock shows; a step that
+   ended abnormally carries the status word in place, and the card below
+   states the classifier's reason plus the host's own detail text. */
+.agent-step__status-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.agent-step__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  border: 1px solid var(--line-bright);
+  border-radius: 999px;
+  color: var(--muted);
+  cursor: default;
+  font-family: var(--font-mono, monospace);
+  font-size: var(--text-overline);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.5;
+}
+
+.agent-step__status svg {
+  width: 0.75rem;
+  height: 0.75rem;
+  flex: 0 0 auto;
+}
+
+/* The shared duration class is scoped to `.atomic-log__row` there; inside a
+   step header it is plain text, so the chip keeps one border. */
+.agent-step__status .atomic-log__duration {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font-size: inherit;
+}
+
+.agent-step__status.heat-fast {
+  color: var(--status-completed);
+}
+
+.agent-step__status.heat-normal {
+  color: var(--teal);
+}
+
+.agent-step__status.heat-slow {
+  color: var(--amber);
+}
+
+.agent-step__status.heat-very-slow {
+  color: var(--status-failed);
+}
+
+.agent-step__status.is-failed {
+  border-color: color-mix(in srgb, var(--red) 46%, var(--line));
+  color: var(--red);
+}
+
+.agent-step__status.is-terminated {
+  border-color: color-mix(in srgb, var(--amber) 46%, var(--line));
+  color: var(--amber);
+}
+
+.agent-step__status.is-waiting {
+  border-color: color-mix(in srgb, var(--teal) 46%, var(--line));
+  color: var(--teal);
+}
+
+.agent-step__status-card {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 30;
+  /* CSS-hover driven: the card stays mounted and the browser owns the hover,
+     so a re-render under the pointer can no longer flash it away. */
+  display: none;
+  width: max-content;
+  max-width: 320px;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--line-bright);
+  border-radius: 7px;
+  background: var(--panel);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 42%);
+  color: var(--text);
+  font-size: 0.6875rem;
+  letter-spacing: 0;
+  white-space: normal;
+}
+
+.agent-step__status-wrap:hover .agent-step__status-card,
+.agent-step__status-wrap:focus-visible .agent-step__status-card {
+  display: grid;
+}
+
+.agent-step__status-card strong {
+  color: var(--text-strong);
+}
+
+.agent-step__status-card em {
+  color: var(--muted);
+  font-style: normal;
+  line-height: 1.5;
+}
+
+.agent-step__status-detail,
+.agent-transcript__status-detail {
+  max-height: 9rem;
+  overflow: auto;
+  padding: 6px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--panel) 78%, #000);
+  color: var(--text);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.6875rem;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.agent-step__status-foot,
+.agent-transcript__status-foot {
+  color: var(--muted-soft, var(--muted));
+  font-size: 0.625rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A tool call wears a mac window frame: a title bar with the three dots, the
+   tool name and a CALL / COMMAND badge. A captured shell command follows with
+   a `$` prompt; a structured tool instead lists each input as its own row —
+   never flattened into `field=value` text. Both wrap at word boundaries, so
+   a long value breaks at a space, never mid-word or into a horizontal scroll. */
+.agent-step__call,
+.agent-step__command {
+  position: relative;
+  margin: 0 0 10px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--violet) 30%, var(--line-bright));
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--panel) 82%, var(--violet) 14%);
+}
+
+.agent-step__call--shell {
+  border-color: color-mix(in srgb, var(--amber) 30%, var(--line-bright));
+  background: color-mix(in srgb, var(--panel) 78%, var(--amber) 16%);
+}
+
+.agent-step__call-bar,
+.agent-step__command-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px 4px;
+  border-bottom: 1px solid color-mix(in srgb, var(--violet) 22%, var(--line));
+  background: color-mix(in srgb, var(--panel) 70%, var(--violet) 18%);
+}
+
+.agent-step__call--shell .agent-step__call-bar {
+  border-color: color-mix(in srgb, var(--amber) 22%, var(--line));
+  background: color-mix(in srgb, var(--panel) 66%, var(--amber) 20%);
+}
+
+.agent-step__call-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-strong);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.75rem;
+  font-weight: var(--weight-medium, 600);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-step__command-dots {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.agent-step__command-dots i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--amber) 55%, var(--muted));
+}
+
+.agent-step__command-dots i:first-child {
+  background: color-mix(in srgb, var(--red) 65%, var(--muted));
+}
+
+.agent-step__command-dots i:nth-child(2) {
+  background: color-mix(in srgb, var(--amber) 80%, var(--muted));
+}
+
+.agent-step__command-dots i:nth-child(3) {
+  background: color-mix(in srgb, var(--teal) 60%, var(--muted));
+}
+
+.agent-step__command-label {
+  color: var(--amber);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.625rem;
+  letter-spacing: 0.08em;
+}
+
+/* The shell frame's far-right badge reads the *language* of the captured
+   line (BASH / JAVASCRIPT / …), not the tool name — it hugs the edge and
+   carries the terminal's own amber tone so it reads as the frame's tag. */
+.agent-step__call-lang {
+  flex: 0 0 auto;
+  margin-inline-start: auto;
+  padding: 1px 7px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--amber) 22%, transparent);
+  color: var(--amber);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.625rem;
+  font-weight: var(--weight-medium, 600);
+  letter-spacing: 0.06em;
+}
+
+/* The shell's captured stdout sits in its own terminal block under the
+   command: a quiet bar reading `OUTPUT` and a monospace body that keeps the
+   raw line breaks and word-wraps long tokens. No border of its own — the
+   parent frame's border encloses the whole call + output. */
+.agent-step__terminal {
+  border-top: 1px solid color-mix(in srgb, var(--amber) 22%, var(--line));
+}
+
+.agent-step__terminal-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  background: color-mix(in srgb, var(--panel) 78%, var(--amber) 10%);
+}
+
+.agent-step__terminal-body {
+  margin: 0;
+  /* The bar above already separates the label from the text; a slightly
+     deeper top inset keeps the first line clear of the frame's rounded edge
+     (flush text read as a clipped first line) and leaves the ascenders room
+     at any line-height. */
+  padding: 11px 12px 12px;
+  overflow-x: auto;
+  color: var(--text);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.75rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* The terminal frame follows the hook phase: a PreToolUse call reads cyan,
+   a PostToolUse result teal. Without these the card carried a teal phase edge
+   around an amber command frame, which read as two unrelated events. The
+   window dots stay the classic red/amber/green set — they decorate a window,
+   not the event tone. */
+.agent-step.hook-pre .agent-step__call--shell {
+  border-color: color-mix(in srgb, var(--cyan) 30%, var(--line-bright));
+  background: color-mix(in srgb, var(--panel) 78%, var(--cyan) 16%);
+}
+
+.agent-step.hook-pre .agent-step__call-bar {
+  border-color: color-mix(in srgb, var(--cyan) 22%, var(--line));
+  background: color-mix(in srgb, var(--panel) 66%, var(--cyan) 20%);
+}
+
+.agent-step.hook-pre .agent-step__command-label,
+.agent-step.hook-pre .agent-step__call-lang {
+  color: var(--cyan);
+}
+
+.agent-step.hook-pre .agent-step__call-lang {
+  background: color-mix(in srgb, var(--cyan) 22%, transparent);
+}
+
+.agent-step.hook-post .agent-step__call--shell {
+  border-color: color-mix(in srgb, var(--teal) 30%, var(--line-bright));
+  background: color-mix(in srgb, var(--panel) 78%, var(--teal) 16%);
+}
+
+.agent-step.hook-post .agent-step__call-bar {
+  border-color: color-mix(in srgb, var(--teal) 22%, var(--line));
+  background: color-mix(in srgb, var(--panel) 66%, var(--teal) 20%);
+}
+
+.agent-step.hook-post .agent-step__command-label,
+.agent-step.hook-post .agent-step__call-lang {
+  color: var(--teal);
+}
+
+.agent-step.hook-post .agent-step__call-lang {
+  background: color-mix(in srgb, var(--teal) 22%, transparent);
+}
+
+.agent-step.hook-pre .agent-step__terminal,
+.agent-step.hook-post .agent-step__terminal {
+  border-top-color: color-mix(in srgb, var(--log-tone) 22%, var(--line));
+}
+
+.agent-step.hook-pre .agent-step__terminal-bar,
+.agent-step.hook-post .agent-step__terminal-bar {
+  background: color-mix(in srgb, var(--panel) 78%, var(--log-tone) 10%);
+}
+
+.agent-step__command-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  /* Symmetric: an uneven vertical inset read as a squeezed value row. */
+  padding: 10px 12px;
+}
+
+.agent-step__command .markdown-preview {
+  min-width: 0;
+}
+
+/* The call bar already prints the captured language in its far-right badge.
+   The fenced-code renderer would print the same word a second time inside the
+   command line, so suppress its badge in this frame only. */
+.agent-step__call .md-code__lang,
+.agent-step__command-line .md-code__lang {
+  display: none;
+}
+
+.agent-step__call .md-code {
+  margin: 0;
+}
+
+.agent-step__command .markdown-preview pre,
+.agent-step__call .markdown-preview pre {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  /* Word-aware wrapping: break at a space first, only split an over-long
+     token as a last resort — never a fixed-width mid-word truncation. */
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: normal;
+  overflow-x: hidden;
+}
+
+/* Structured tool inputs: a two-column definition list. Keys are a quiet
+   mono gutter, values wrap at word boundaries — so a long `description` no
+   longer reads as an unbroken `description="…"` run in a terminal line. */
+.agent-step__call-fields {
+  display: grid;
+  gap: 2px;
+  margin: 6px 8px 8px;
+  padding: 5px;
+  border: 1px solid color-mix(in srgb, var(--line-bright) 62%, transparent);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--panel) 86%, transparent);
+}
+
+.agent-step__call-field {
+  display: grid;
+  min-width: 0;
+  /* The key is a quiet gutter, not a half-column: short keys (`query`,
+     `image_path`) sit in a bounded column so the value owns the width. A
+     bounded max keeps a long key from eating the row; it ellipsizes instead. */
+  grid-template-columns: minmax(56px, 128px) minmax(0, 1fr);
+  gap: 12px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--panel-raised, var(--panel)) 54%, transparent);
+  transition: background 140ms ease;
+}
+
+.agent-step__call-field:hover {
+  background: color-mix(in srgb, var(--panel-raised, var(--panel)) 95%, var(--violet));
+}
+
+.agent-step__call-field:last-child {
+  border-bottom: 0;
+}
+
+.agent-step__call-field dt {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--violet);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.6875rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-step__call-field dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--text);
+  font-size: 0.75rem;
+  overflow-wrap: break-word;
+  white-space: pre-wrap;
+  word-break: normal;
+}
+
+/* An image-valued field (`image_path` / `image_url`) renders as an image, not
+   a raw path string: a loadable source (http/https or a data-URL) shows a
+   thumbnail with the source beneath it, a local path the browser cannot open
+   becomes a labelled chip instead of an inert string. */
+.agent-step__call-image {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 9px;
+}
+
+.agent-step__call-image__thumb {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  object-fit: cover;
+  border: 1px solid var(--line-bright);
+  border-radius: 6px;
+  background: var(--panel);
+}
+
+.agent-step__call-image__src {
+  min-width: 0;
+  color: var(--muted);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.6875rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-step__call-image--local {
+  padding: 5px 9px;
+  border: 1px solid color-mix(in srgb, var(--violet) 34%, var(--line-bright));
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--violet) 8%, transparent);
+}
+
+.agent-step__call-image__glyph {
+  flex: 0 0 auto;
+  font-size: 0.9rem;
+  line-height: 1;
+}
+
+.agent-step__call-image__path {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.agent-step__call-image__path strong {
+  color: var(--text-strong);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.75rem;
+  font-weight: var(--weight-medium, 600);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-step__call-image__path code {
+  color: var(--muted);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.625rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-step__call-empty {
+  padding: 8px 11px 10px;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+/* A question-tool result's recorded answers, in the card's own anatomy:
+ * the same answer-rows rendering the inspector uses, so a finished
+ * question reads as answered. Teal (the answer / live tone) sets it apart
+ * from the amber execution block; a finished run lights it up so the
+ * recorded answer is unmistakable against the still-executing steps. */
+.agent-step__answers {
+  margin: 0 0 10px;
+  padding: 9px 12px 10px;
+  border: 1px solid color-mix(in srgb, var(--teal) 42%, var(--line-bright));
+  border-left: 3px solid var(--teal);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--panel) 82%, var(--teal) 20%);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--teal) 14%, transparent);
+}
+
+.agent-step__answers .answer-rows__row {
+  padding: 7px 0;
+}
+
+.agent-step__answers .answer-rows__question {
+  color: var(--teal);
+}
+
+.agent-step__answers-label {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--teal);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.625rem;
+  letter-spacing: 0.08em;
+}
+
+.agent-step--thinking .agent-step__body {
+  line-height: 1.6;
+}
+
+.agent-step__related {
+  margin-top: 9px;
+  border-top: 1px dashed var(--line-bright);
+  padding-top: 7px;
+}
+
+.agent-step__related summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel-raised);
+  color: var(--muted);
+  cursor: pointer;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.6875rem;
+  list-style: none;
+  transition: border-color 140ms ease, color 140ms ease;
+}
+
+.agent-step__related summary::-webkit-details-marker {
+  display: none;
+}
+
+.agent-step__related summary::before {
+  color: var(--violet);
+  content: "▸";
+}
+
+.agent-step__related[open] summary::before {
+  content: "▾";
+}
+
+.agent-step__related summary:hover {
+  border-color: color-mix(in srgb, var(--violet) 46%, var(--line));
+  color: var(--text-strong);
+}
+
+.agent-step__related .payload-overlay__fields {
+  margin-top: 8px;
+}
+
+@media (max-width: 760px) {
+  .agent-transcript__head {
+    padding: 8px 11px;
+  }
+
+  .agent-transcript__scroll {
+    padding: 10px 11px 48px;
+  }
+
+  .agent-transcript__jump {
+    bottom: 12px;
+  }
 }

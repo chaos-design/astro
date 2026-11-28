@@ -9,13 +9,18 @@ import {
   buildSessions,
   extractRunModel,
   formatDuration,
+  formatExecutionClock,
   formatLogSequence,
+  getEventSummary,
   getExecutionInstruction,
   getFlowNodeIdForEvent,
   getPromptInput,
   getSessionTitle,
   getSessionDisplayState,
   getSessionDuration,
+  getToolCallCommand,
+  getToolCallInputs,
+  getToolCallInvocation,
   parseImportedTrace,
   searchTraceEvents,
 } from "../src/lib/trace-model.ts";
@@ -27,7 +32,8 @@ test("groups events by session and calculates duration", () => {
   const sessions = buildSessions(events);
 
   assert.equal(sessions.length, 1);
-  assert.equal(sessions[0].toolCount, 4);
+  // The sample's AskUserQuestion lifecycle is a fifth closed tool pair.
+  assert.equal(sessions[0].toolCount, 5);
   assert.equal(sessions[0].status, "complete");
   assert.equal(sessions[0].duration, 9200);
 });
@@ -562,6 +568,20 @@ test("formats run durations with second, minute, and hour precision", () => {
   assert.equal(formatDuration(4_379_600), "1h 13m 0s");
 });
 
+test("the header execution clock is a fixed-width two-digit HH:MM:SS", () => {
+  // Every reading is the same eight characters so a live run ticking each
+  // second never shifts the chip — no layout jitter as the number advances.
+  assert.equal(formatExecutionClock(1034_000), "00:17:14");
+  assert.equal(formatExecutionClock(43_000), "00:00:43");
+  assert.equal(formatExecutionClock(3_725_000), "01:02:05");
+  assert.equal(formatExecutionClock(0), "00:00:00");
+  assert.equal(formatExecutionClock(99_999_999_999), "27777:46:39");
+  assert.equal(formatExecutionClock(Number.NaN), "--:--:--");
+  assert.equal(formatExecutionClock(-1000), "--:--:--");
+  // Fixed width across the second boundaries that would otherwise shift:
+  assert.equal(formatExecutionClock(59_000).length, formatExecutionClock(60_000).length);
+});
+
 test("updates active and waiting session durations against the current time", () => {
   const base = {
     duration: 12_000,
@@ -669,6 +689,163 @@ test("shows the complete normalized command for paired tool events", () => {
   );
 });
 
+test("getToolCallCommand reports only captured commands", () => {
+  const events = createDemoEvents(2_000_000_000_000);
+  const start = events.find(
+    (event) =>
+      event.eventName === "PreToolUse" && event.toolUseId === "tool-test",
+  );
+  const end = events.find(
+    (event) =>
+      event.eventName === "PostToolUse" && event.toolUseId === "tool-test",
+  );
+
+  assert.equal(getToolCallCommand(end || null, start || null), "pnpm test && pnpm build");
+  assert.equal(getToolCallCommand(start || null), "pnpm test && pnpm build");
+  assert.equal(
+    getToolCallCommand(end || null),
+    null,
+    "a result event with no tool_input must not invent a command",
+  );
+  assert.equal(getToolCallCommand(null), null);
+
+  const withArray = { ...(start as NonNullable<typeof start>), payload: { command: ["pnpm", "test"] } };
+  assert.equal(getToolCallCommand(withArray), "pnpm test");
+});
+
+test("getToolCallInvocation keeps a shell command complete and builds structured invocations", () => {
+  const events = createDemoEvents(2_000_000_000_000);
+  const start = events.find(
+    (event) =>
+      event.eventName === "PreToolUse" && event.toolUseId === "tool-test",
+  );
+  const end = events.find(
+    (event) =>
+      event.eventName === "PostToolUse" && event.toolUseId === "tool-test",
+  );
+  // A captured shell command is the invocation, verbatim.
+  assert.equal(
+    getToolCallInvocation(end || null, start || null),
+    "pnpm test && pnpm build",
+  );
+  // A structured tool names itself and carries every short input field,
+  // with the diff-carrying old/new strings kept out of the line.
+  const editStart = {
+    ...(start as NonNullable<typeof start>),
+    toolName: "Edit",
+    payload: {
+      tool_input: {
+        file_path: "/tmp/project/file.test.tsx",
+        old_string: "const a = 1;\nconst b = 2;",
+        new_string: "const a = 2;\nconst b = 3;",
+        replace_all: false,
+      },
+    },
+  };
+  assert.equal(
+    getToolCallInvocation(null, editStart),
+    'Edit file_path=/tmp/project/file.test.tsx replace_all=false',
+  );
+  // A long value with no whitespace still reads as a bare assignment.
+  const readStart = {
+    ...(start as NonNullable<typeof start>),
+    toolName: "Read",
+    payload: { tool_input: { file_path: "/tmp/project/file.test.tsx", limit: 200 } },
+  };
+  assert.equal(
+    getToolCallInvocation(null, readStart),
+    "Read file_path=/tmp/project/file.test.tsx limit=200",
+  );
+  // No tool name and no input is no invocation, not a bare "Event".
+  assert.equal(getToolCallInvocation(null, { ...(end as NonNullable<typeof end>), toolName: undefined, payload: {} }), null);
+  assert.equal(getToolCallInvocation(null), null);
+});
+
+test("getToolCallInputs keeps each input separate instead of flattening field=value", () => {
+  const inputs = getToolCallInputs(null, {
+    toolName: "TaskCreate",
+    payload: {
+      tool_input: {
+        subject: "Hover shows data + click quick-jump",
+        description: "On hover show the data; on click jump.",
+        activeForm: "Adding hover data",
+        old_string: "kept out",
+        new_string: "kept out",
+      },
+    },
+  } as Parameters<typeof getToolCallInputs>[0]);
+  assert.ok(inputs);
+  assert.equal(inputs.command, null);
+  assert.equal(inputs.toolName, "TaskCreate");
+  // Readable values stay unquoted for the field list; the literal keeps the
+  // exact quoting the compact line needs. Diff-carrying fields never appear.
+  assert.deepEqual(inputs.fields, [
+    {
+      key: "subject",
+      value: "Hover shows data + click quick-jump",
+      literal: 'subject="Hover shows data + click quick-jump"',
+    },
+    {
+      key: "description",
+      value: "On hover show the data; on click jump.",
+      literal: 'description="On hover show the data; on click jump."',
+    },
+    { key: "activeForm", value: "Adding hover data", literal: 'activeForm="Adding hover data"' },
+  ]);
+  // A captured shell command stays verbatim and its raw `cmd` key is not
+  // listed twice as a field.
+  const shell = getToolCallInputs(null, {
+    toolName: "Bash",
+    payload: { tool_input: { cmd: "pnpm test", description: "run tests" } },
+  } as Parameters<typeof getToolCallInputs>[0]);
+  assert.equal(shell?.command, "pnpm test");
+  assert.deepEqual(shell?.fields, [
+    { key: "description", value: "run tests", literal: 'description="run tests"' },
+  ]);
+});
+
+test("an empty tool_input placeholder does not hide the camel toolInput command", () => {
+  // The recorder writes `tool_input: {}` when only the camel spelling exists;
+  // `??` would treat that empty object as the input and lose the real command.
+  const event = {
+    toolName: "Bash",
+    payload: {
+      tool_input: {},
+      toolInput: { command: "pnpm test", description: "run tests" },
+    },
+  } as Parameters<typeof getToolCallInputs>[0];
+  assert.equal(getToolCallCommand(event), "pnpm test");
+  const inputs = getToolCallInputs(event);
+  assert.equal(inputs?.command, "pnpm test");
+  assert.deepEqual(inputs?.fields, [
+    { key: "description", value: "run tests", literal: 'description="run tests"' },
+  ]);
+});
+
+test("reasoning summaries read the payload spellings real hooks write", () => {
+  const [sample] = createDemoEvents(2_000_000_000_000);
+  const reasoning = (payload: Record<string, unknown>) => ({
+    ...sample,
+    id: "reasoning-probe",
+    eventName: "Reasoning",
+    payload: { ...payload },
+  });
+
+  // opencode / pi write the thinking into `message`.
+  assert.equal(
+    getEventSummary(reasoning({ message: "用户让我审查一个 PR" })),
+    "用户让我审查一个 PR",
+  );
+  // ChatGPT rollouts carry a nested array of summary objects.
+  assert.equal(
+    getEventSummary(reasoning({ payload: { summary: [{ text: "nested thinking" }] } })),
+    "nested thinking",
+  );
+  // Older captures still use summary / text / content.
+  assert.equal(getEventSummary(reasoning({ summary: "legacy summary" })), "legacy summary");
+  assert.equal(getEventSummary(reasoning({})), "Reasoning update");
+});
+
 test("combines pre and post hook events into one tool node", () => {
   const events = createDemoEvents(2_000_000_000_000);
   const flow = buildFlow(events);
@@ -676,7 +853,7 @@ test("combines pre and post hook events into one tool node", () => {
     (node) => node.data.eventName === "PreToolUse",
   );
 
-  assert.equal(toolNodes.length, 4);
+  assert.equal(toolNodes.length, 5);
   assert.ok(toolNodes.every((node) => node.data.endEvent));
   assert.ok(toolNodes.every((node) => node.data.duration > 0));
   assert.equal(flow.edges.length, flow.nodes.length - 1);
@@ -776,7 +953,8 @@ test("labels each pair half with the other half's LOG row number", () => {
   assert.equal(startLink.pairId, start.id);
   assert.equal(endLink.pairId, start.id);
   assert.match(startLink.label, /^T\d+·#\d+$/);
-  assert.equal(startLink.ordinal, 1);
+  // The question pair opens turn 3 first, so the test pair is its second.
+  assert.equal(startLink.ordinal, 2);
   assert.ok(startIndex < endIndex);
   assert.equal(startLink.partnerIndex, endIndex);
   assert.equal(endLink.partnerIndex, startIndex);
@@ -1000,8 +1178,10 @@ test("does not count child tool events as main-agent tool calls", () => {
   const flow = buildHarnessFlow([...events, start, childTool]);
   const mainTool = flow.nodes.find((node) => node.data.key === "tool.call");
 
+  // AskUserQuestion binds to the user.question atom, not the tool.call atom,
+  // but it is still a captured tool lifecycle in the session's tool count.
   assert.equal(mainTool.data.count, 4);
-  assert.equal(flow.meta.toolCount, 4);
+  assert.equal(flow.meta.toolCount, 5);
 });
 
 test("keeps atom semantics stable across platform configurations", () => {

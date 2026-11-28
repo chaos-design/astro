@@ -95,8 +95,10 @@ test("records a session into the pi trace root and claims it", async () => {
       },
       ctx,
     );
-    // The second closed turn reports the same terminal event; only the new
-    // agent message is kept.
+    // A second prompt opens a new run. Its Stop is a distinct terminal event
+    // and must not be deduped against the first turn's Stop.
+    await handlers.get("input")!({ text: "again" }, ctx);
+    await handlers.get("before_agent_start")!({ prompt: "again" }, ctx);
     await handlers.get("message_end")!(
       {
         message: {
@@ -136,7 +138,9 @@ test("records a session into the pi trace root and claims it", async () => {
         "Reasoning",
         "AgentMessage",
         "Stop",
+        "UserPromptSubmit",
         "AgentMessage",
+        "Stop",
         "PreToolUse",
         "PostToolUse",
         "SessionEnd",
@@ -391,8 +395,9 @@ test("streams accumulated text while the agent is still executing", async () => 
     await handlers.get("session_start")!({}, ctx);
     await handlers.get("input")!({ text: "write code" }, ctx);
     await handlers.get("before_agent_start")!({ prompt: "write code" }, ctx);
+    // Real Pi assistant messages carry no id — the recorder synthesizes one.
     await handlers.get("message_start")!(
-      { message: { id: "msg-live", role: "assistant" } },
+      { message: { role: "assistant" } },
       ctx,
     );
     // First update emits immediately; the next one lands inside the throttle
@@ -402,7 +407,6 @@ test("streams accumulated text while the agent is still executing", async () => 
     await handlers.get("message_end")!(
       {
         message: {
-          id: "msg-live",
           role: "assistant",
           content: [{ type: "text", text: "Hello world" }],
           stopReason: "stop",
@@ -441,6 +445,10 @@ test("streams accumulated text while the agent is still executing", async () => 
     );
     assert.equal(final.length, 1, "one final complete message");
     assert.equal(final[0].payload.message, "Hello world");
+    // The snapshot and final message share the recorder-synthesized id even
+    // though Pi's own message carried none.
+    assert.match(streamed[0].payload.messageId, /^pi-/);
+    assert.equal(streamed[0].payload.messageId, final[0].payload.messageId);
     // Every in-flight snapshot must be a prefix of the final text: that is
     // what "consistent" means here — no drift between live and recorded.
     assert.ok("Hello world".startsWith(streamed[0].payload.message));
@@ -456,6 +464,73 @@ test("streams accumulated text while the agent is still executing", async () => 
       process.env.ASTRO_AUTO_OPEN = previousAutoOpen;
     }
     rmSync(astroHome, { recursive: true, force: true });
+  }
+});
+
+test("a resumed session in a fresh extension instance gets new reply ids", async () => {
+  const previousHome = process.env.ASTRO_HOME;
+  const previousAutoOpen = process.env.ASTRO_AUTO_OPEN;
+  // Each call simulates a separate Pi process: a fresh extension instance with
+  // an empty per-session counter, writing into its own trace root.
+  const replyIdOfFreshInstance = async (): Promise<string | undefined> => {
+    const astroHome = mkdtempSync(join(tmpdir(), "astro-pi-resume-"));
+    process.env.ASTRO_HOME = astroHome;
+    process.env.ASTRO_AUTO_OPEN = "0";
+    try {
+      const handlers = loadExtension();
+      const ctx = createContext();
+      await handlers.get("session_start")!({}, ctx);
+      await handlers.get("input")!({ text: "hello" }, ctx);
+      await handlers.get("before_agent_start")!({ prompt: "hello" }, ctx);
+      await handlers.get("message_start")!(
+        { message: { role: "assistant" } },
+        ctx,
+      );
+      await handlers.get("message_end")!(
+        {
+          message: {
+            role: "assistant",
+            content: [{ type: "text", text: "hi" }],
+            stopReason: "stop",
+          },
+        },
+        ctx,
+      );
+      await handlers.get("session_shutdown")!({}, ctx);
+      const file = collectFiles(astroHome).find((entry) =>
+        entry.endsWith("events.jsonl"),
+      );
+      assert.ok(file, "events.jsonl under the pi trace root");
+      const events = readFileSync(file, "utf8")
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line));
+      return events.find((event) => event.eventName === "AgentMessage")?.payload
+        .messageId;
+    } finally {
+      rmSync(astroHome, { recursive: true, force: true });
+    }
+  };
+  try {
+    const first = await replyIdOfFreshInstance();
+    const second = await replyIdOfFreshInstance();
+    assert.match(first ?? "", /^pi-/);
+    assert.notEqual(
+      first,
+      second,
+      "a new process must not reuse a previous process's reply id",
+    );
+  } finally {
+    if (previousHome === undefined) {
+      delete process.env.ASTRO_HOME;
+    } else {
+      process.env.ASTRO_HOME = previousHome;
+    }
+    if (previousAutoOpen === undefined) {
+      delete process.env.ASTRO_AUTO_OPEN;
+    } else {
+      process.env.ASTRO_AUTO_OPEN = previousAutoOpen;
+    }
   }
 });
 

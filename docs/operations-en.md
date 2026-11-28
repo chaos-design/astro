@@ -346,6 +346,64 @@ rebuild, and restore the default before release.
 Confirm the selected expired run has no running log marker or live topology
 transition. Export its JSONL and verify that no timeout event was appended.
 
+## 8.1 Interaction hook acceptance: evidence and manual steps
+
+Acceptance for the interaction hook (answering AskUserQuestion / ExitPlanMode
+from the console) has two layers, and the boundary is itself the conclusion:
+**protocol equivalence** is reproducible on any machine, **host visibility**
+needs a machine that actually has the host installed.
+
+**Protocol equivalence (6/6 today)**
+
+```bash
+pnpm verify:host-integration -- --out /tmp/host-acceptance.md
+```
+
+| Check | Result |
+| --- | --- |
+| Captured payload source (a real event's questions) | pass |
+| Auto-approve hook produces a real host PermissionRequest decision | pass |
+| Interaction hook fails open with no service (empty stdout, exit 0) | pass |
+| Decision matches the Claude PreToolUse schema (`permissionDecision` + `updatedInput.answers`) | pass |
+| Decision matches the strict ZCode PermissionRequest schema (`hookSpecificOutput.decision.behavior`) | pass |
+| Installer output for Claude / ZCode / CodeBuddy | pass |
+
+**A real host closed loop has happened**: `~/.astrox/interactions/` holds 4
+results with `answeredBy: console` from real ZCode sessions (2026-11-17,
+11-19, 11-23 ×2), each with a real `sessionId`, `cwd`,
+`toolName: AskUserQuestion` and the option text the user picked. The newest
+request may be `timeout` (~10 min window): the loop works, it is simply not
+answered every time.
+
+**Host availability probe (this machine)**
+
+| Host | Finding | Detail |
+| --- | --- | --- |
+| Claude Code | config-only | no binary or credentials; `/hooks` visibility cannot run here |
+| ZCode | GUI app | no headless CLI, only the desktop process |
+| CodeBuddy | GUI app | same |
+
+**Reading the ZCode log**: `hook.run.allowed` proves hooks execute;
+`hook.run.failed` must be split by source — `plugin.astro@…` `timed_out` is the
+recorder (it now has an idle/total stdin budget and a regression test), while
+`config.PermissionRequest` `cancelled` is the host cancelling a synchronous wait
+after a human answered, which is the intended path.
+
+**Manual steps (run once on a host-equipped machine)**
+
+1. Claude Code: `pnpm install:interaction -- --client=claude --apply` (backs up
+   `~/.claude/settings.json`), start Claude Code, confirm `/hooks` lists
+   `interaction-hook.mjs` under `PermissionRequest`, trigger a question, answer
+   from the console, and look for `Allowed by PermissionRequest hook` in the
+   transcript.
+2. ZCode: `pnpm install:interaction -- --client=zcode --apply`, open a **new**
+   session (hooks are snapshotted at session start), trigger a question, answer
+   or let the 4.5 s window expire, and confirm no `plugin.astro@` sourced
+   `hook.run.failed` in that day's log.
+3. Record both outcomes in this section with a date; do not write them back
+   into a plan file.
+
+
 ## 9. Backup and Restore
 
 ### 9.1 Full backup
@@ -503,7 +561,7 @@ Archive old date directories while the service is stopped for long-running insta
 
 ## 16. Release Checklist
 
-- `pnpm test`: all current 527 tests pass.
+- `pnpm test`: all tests pass (use the pass count printed by the runner).
 - `pnpm typecheck`: no TypeScript errors.
 - `pnpm build`: production build succeeds.
 - `pnpm build:native-plugins`: native copies are synchronized.

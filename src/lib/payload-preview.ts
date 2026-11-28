@@ -15,6 +15,12 @@
  * with the right highlighting without a second renderer.
  */
 
+import {
+  findPayloadFilePath,
+  languageFromFilePath,
+  parseNumberedCode,
+} from "./numbered-code.ts";
+
 const CONTENT_KEYS = [
   "content",
   "message",
@@ -32,39 +38,24 @@ const CONTENT_KEYS = [
   "last_assistant_message",
 ];
 
-/** Fields that describe *when* / *where* / *how* rather than what was said. */
-const META_KEY_HINTS = [
-  "time",
-  "date",
-  "timestamp",
-  "path",
-  "cwd",
-  "dir",
-  "url",
-  "uri",
-  "id",
-  "session",
-  "trace",
-  "turn",
-  "turnid",
-  "meta",
-  "model",
-  "provider",
-  "source",
-  "agent",
-  "hook",
-  "event",
-  "tool",
-  "user",
-  "permission",
-  "mode",
-  "revision",
-  "sequence",
-  "status",
-  "type",
-  "kind",
-  "duration",
-];
+/**
+ * Fields that describe *when* / *where* / *how* rather than what was said.
+ * Matched as whole words, never substrings: a substring test made "id" match
+ * `width` / `valid` / `guidelines`, "user" match `userMessage`, and "source"
+ * match `sourceCode`, silently dropping real prose from the preview.
+ *
+ * Ambiguous hints (`user`, `source`, `type`, `mode`) are omitted entirely —
+ * a compound that is genuinely metadata still matches through a stronger
+ * token (`userId` → `id`, `sourceVersion` → `version` is envelope data and
+ * labelled beside the preview). Dropping a line is worse than showing one.
+ */
+const META_KEY_TOKENS = new Set([
+  "time", "date", "timestamp", "path", "cwd", "dir", "url", "uri",
+  "id", "session", "trace", "turn", "turnid", "meta", "model", "provider",
+  "hook", "event", "tool", "agent", "permission", "revision", "sequence",
+  "status", "kind", "duration",
+]);
+const META_TAIL_TOKENS = new Set(["at", "on", "from", "to"]);
 
 const ANNOTATION_KEYS = [
   "annotation",
@@ -87,6 +78,48 @@ const CONTAINER_KEYS = [
   "payload", "input", "arguments", "args",
 ];
 
+/**
+ * Envelope identity, not per-event data: the client's own name, the recorder's
+ * version, the trace locator and the schema stamp are written on every event
+ * by the producer. A preview is what the event *carried*; re-printing
+ * `workbuddy` / `5.11.3` / `trace://…` beside the real body made a tool result
+ * look like it had three lines of content and no way to tell which line was
+ * the answer. These keys are dropped from both the Markdown body and the
+ * related-field inventory.
+ *
+ * `version` stays in its own set: a *tool payload* can genuinely record a
+ * version, so it is only dropped at the envelope levels (depth ≤ 1), while the
+ * unambiguous stamps below are dropped at any depth.
+ */
+const ENVELOPE_IDENTITY_KEYS = new Set([
+  "client",
+  "sourceclient",
+  "sourceversion",
+  "schemaversion",
+  "locator",
+  "workspaceid",
+]);
+const IDENTITY_KEYS = new Set([...ENVELOPE_IDENTITY_KEYS, "version"]);
+
+/**
+ * Whether a key is the recorder's own identity stamp. Exported so the
+ * Markdown projection strips the same root keys the related-field inventory
+ * drops — the agent name and version belong in the dialog header, not in a
+ * payload's preview body. Only the caller passes a *root* key here; a nested
+ * `version` field remains genuine captured data.
+ */
+export function isPayloadIdentityKey(key: string): boolean {
+  return IDENTITY_KEYS.has(normalized(key));
+}
+
+/**
+ * A stamp that is identity wherever it appears (never a tool's own field):
+ * the agent name, the recorder / schema version source, the trace locator.
+ */
+export function isPayloadEnvelopeKey(key: string): boolean {
+  return ENVELOPE_IDENTITY_KEYS.has(normalized(key));
+}
+
 type UnknownRecord = Record<string, unknown>;
 
 function isRecord(value: unknown): value is UnknownRecord {
@@ -97,16 +130,41 @@ function normalized(key: string): string {
   return key.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
+/** Split camelCase / snake_case keys into comparable lowercase words. */
+function keyTokens(key: string): string[] {
+  return key
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/([A-Z])([A-Z][a-z])/g, "$1 $2")
+    .replace(/[^A-Za-z0-9]+/g, " ")
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
 function isAnnotation(key: string): boolean {
   const name = normalized(key);
   return ANNOTATION_KEYS.some((hint) => name === hint || name.startsWith(hint));
 }
 
+/**
+ * Only a *non-empty* object counts as a present input/result container. The
+ * recorder writes `tool_input: {}` when the real arguments use the camel
+ * `toolInput` spelling; reading that placeholder with `??` hides the real
+ * payload. Shared so every reader of these two spellings applies one rule.
+ */
+export function nonEmptyRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    Object.keys(value as Record<string, unknown>).length > 0
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
 function isMeta(key: string): boolean {
-  const name = normalized(key);
-  return (
-    META_KEY_HINTS.some((hint) => name.includes(hint)) ||
-    /^(?:[A-Za-z_]+_)?(?:at|on|from|to)$/.test(name)
+  return keyTokens(key).some(
+    (token) => META_KEY_TOKENS.has(token) || META_TAIL_TOKENS.has(token),
   );
 }
 
@@ -192,6 +250,13 @@ export type RelatedField = {
   key: string;
   label: string;
   value: string;
+  /**
+   * The items that made up a scalar-array value (`["a", "b"]`). Present only
+   * for such fields; the renderer lists them one per line instead of a single
+   * comma-joined string, so a list-shaped value reads as a list. `value`
+   * keeps the joined form for copy / non-list surfaces.
+   */
+  items?: readonly string[];
   /** `annotation` fields are shown first and carry a distinct tone. */
   annotation: boolean;
   /**
@@ -224,6 +289,36 @@ export type PayloadPreview = {
 };
 
 /**
+ * The body of one capture.
+ *
+ * A `TraceEvent` is a record *about* a capture — schema stamp, ids, timestamps,
+ * the client name, the working directory, the atom name — and only its
+ * `payload` is what the step actually carried. The overlay's `Code` view shows
+ * the raw event on purpose, but the Preview pane and its related-field list
+ * must read the payload: previewing the envelope printed `workbuddy` as a
+ * paragraph (the event's `source`) and listed `cwd` / `toolName` / `sequence`
+ * as if they were related data. One unwrap here keeps every caller honest.
+ */
+export function payloadBodyOf(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return value;
+  }
+  const record = value as Record<string, unknown>;
+  // The envelope's own signature: an event name plus a payload object. A tool
+  // payload that happens to carry both keys stays untouched (it has no
+  // `schemaVersion` / `capturedAt`).
+  if (
+    typeof record.eventName === "string" &&
+    record.payload &&
+    typeof record.payload === "object" &&
+    ("schemaVersion" in record || "capturedAt" in record || "sessionId" in record)
+  ) {
+    return record.payload;
+  }
+  return value;
+}
+
+/**
  * Split one payload into content and related fields. The search walks the
  * known container keys so `{ contract, captured }` and a tool response nested
  * under `tool_input` both resolve to the same content. Metadata is collected
@@ -246,6 +341,11 @@ export function splitPayloadPreview(value: unknown, depth = 0, seen = new WeakSe
   const contents: string[] = [];
 
   for (const [key, item] of Object.entries(record)) {
+    // Envelope identity (agent name / version / locator) is not content and
+    // not a related field: the dialog header already names the client.
+    if (isPayloadEnvelopeKey(key) || (depth === 0 && isPayloadIdentityKey(key))) {
+      continue;
+    }
     const name = normalized(key);
     if (CONTENT_KEYS.includes(name)) {
       // A content field is usually a string, but tool responses nest text in
@@ -282,6 +382,93 @@ export function splitPayloadPreview(value: unknown, depth = 0, seen = new WeakSe
   }
 
   return { content: contents.join("\n\n"), related: mergeRelated(related) };
+}
+
+/**
+ * Whether a payload's real content is an array of compact records (a `todos`
+ * list, a checklist, a set of results). Such a payload must be rendered by the
+ * list projection in `payload-markdown.ts`, not flattened into prose by
+ * `splitPayloadPreview` — otherwise `content` leaves lose their list shape.
+ * Detection lives here, beside the other preview heuristics, so both panes
+ * make the same call without importing each other.
+ */
+/** The single shape test behind both list detection and list lookup. */
+function isCompactLabelledList(value: unknown[]): boolean {
+  if (!value.length) {
+    return false;
+  }
+  const records = value.filter(
+    (item) => item !== null && typeof item === "object" && !Array.isArray(item),
+  );
+  if (records.length !== value.length) {
+    return false;
+  }
+  // A list of records is a list when any item has a primary label and the
+  // records are compact (no nested objects) — the checklist renderer's own
+  // contract. Mixed scalar arrays are joined prose, not a list here.
+  const compact = records.every((record) =>
+    Object.values(record as Record<string, unknown>).every(
+      (item) => item === null || item === undefined || typeof item !== "object",
+    ),
+  );
+  const labelled = records.some((record) =>
+    ["content", "label", "title", "name", "text", "subject", "description"].some(
+      (key) => typeof (record as Record<string, unknown>)[key] === "string",
+    ),
+  );
+  return compact && labelled;
+}
+
+export function hasListPayload(value: unknown, depth = 0, seen = new WeakSet<object>()): boolean {
+  if (depth > 6 || value === null || typeof value !== "object" || seen.has(value)) {
+    return false;
+  }
+  seen.add(value);
+  if (Array.isArray(value)) {
+    if (isCompactLabelledList(value)) {
+      return true;
+    }
+    return value.some((item) => hasListPayload(item, depth + 1, seen));
+  }
+  return Object.values(value as Record<string, unknown>).some(
+    (item) => hasListPayload(item, depth + 1, seen),
+  );
+}
+
+/**
+ * The first list-shaped array inside a payload, however deeply a tool result
+ * wraps it (`toolResponse.content`, a captured envelope, …). Detection is the
+ * same `isCompactLabelledList` used by `hasListPayload`, so a payload that
+ * claims to be a list always has an array the block renderer can find.
+ */
+export function findFirstListPayload(
+  value: unknown,
+  depth = 0,
+  seen = new WeakSet<object>(),
+): unknown[] | null {
+  if (depth > 6 || value === null || typeof value !== "object" || seen.has(value)) {
+    return null;
+  }
+  seen.add(value);
+  if (Array.isArray(value)) {
+    if (isCompactLabelledList(value)) {
+      return value;
+    }
+    for (const item of value) {
+      const found = findFirstListPayload(item, depth + 1, seen);
+      if (found) {
+        return found;
+      }
+    }
+    return null;
+  }
+  for (const item of Object.values(value as Record<string, unknown>)) {
+    const found = findFirstListPayload(item, depth + 1, seen);
+    if (found) {
+      return found;
+    }
+  }
+  return null;
 }
 
 /**
@@ -330,14 +517,45 @@ export function collectPayloadFields(
       (item) => item !== null && typeof item === "object",
     );
     if (!hasObjects) {
+      const items = value.map((item) => scalarFieldValue(item));
       fields.push({
         key: prefix,
         label: prefix,
-        value: value.map(scalarFieldValue).filter(Boolean).join(", "),
+        value: items.filter(Boolean).join(", "),
+        items,
         annotation: false,
         ...(level === undefined ? {} : { level }),
       });
       return mergeRelated(fields);
+    }
+    // A single record is its main content, not an indexed wrapper: a
+    // `[0]` header followed by `type` / `text` rows made a one-entry result
+    // read as scaffolding around one string. When the record is mostly one
+    // text field (a tool response shape), that value *is* the row; otherwise
+    // the record's own fields follow without the index header.
+    if (value.length === 1) {
+      const only = value[0];
+      if (only && typeof only === "object" && !Array.isArray(only)) {
+        const childLevel = level === undefined ? 0 : level + 1;
+        const record = only as Record<string, unknown>;
+        const mainKey = ["text", "message", "content", "summary"].find(
+          (key) => typeof record[key] === "string" && (record[key] as string).trim(),
+        );
+        if (mainKey && Object.keys(record).length <= 3) {
+          fields.push({
+            key: prefix,
+            label: prefix,
+            value: record[mainKey] as string,
+            annotation: false,
+            ...(level === undefined ? {} : { level }),
+          });
+          return mergeRelated(fields);
+        }
+        return mergeRelated([
+          ...fields,
+          ...collectPayloadFields(only, prefix, depth + 1, seen, childLevel),
+        ]);
+      }
     }
     const childLevel = level === undefined ? 0 : level + 1;
     value.forEach((item, index) => {
@@ -361,6 +579,13 @@ export function collectPayloadFields(
     return mergeRelated(fields);
   }
   for (const [key, item] of Object.entries(value as UnknownRecord)) {
+    // The top-level client identity (agent name + recorder version) is stamped
+    // on every event by the source; a result's field inventory should stay on
+    // the event, so only the root level drops it. A deeper payload that
+    // genuinely records a version field keeps it.
+    if (isPayloadEnvelopeKey(key) || (depth === 0 && isPayloadIdentityKey(key))) {
+      continue;
+    }
     const path = prefix ? `${prefix}.${key}` : key;
     if (item !== null && typeof item === "object") {
       fields.push(...collectPayloadFields(item, path, depth + 1, seen, level));
@@ -394,13 +619,44 @@ function scalarFieldValue(value: unknown): string {
   return "";
 }
 
-/** Later duplicates (e.g. `transcript_path` after `transcriptPath`) win. */
+/**
+ * Later duplicates (e.g. `transcript_path` after `transcriptPath`) win. A tool
+ * also echoes its own inputs back in the result (`tool_input.description` and
+ * `tool_response.task.description` both read as a bare `description` with the
+ * same value), so rows that repeat the same label *and* value are collapsed
+ * to one — the data is not printed twice. Only fields rooted in a tool's
+ * input / result containers take part: two unrelated branches that happen to
+ * share a label and value (`a.note`, `b.note`) keep their own rows and path,
+ * as the field inventory promises. Group headers and array members carry
+ * their own identity (a `level`) and are never merged.
+ */
+const ECHO_CONTAINERS = new Set([
+  "toolinput", "toolresponse", "toolresult", "input", "output",
+  "result", "captured", "arguments", "args",
+]);
+function inEchoContainer(key: string): boolean {
+  return ECHO_CONTAINERS.has(normalized(key.split(".")[0] ?? ""));
+}
 function mergeRelated(fields: RelatedField[]): RelatedField[] {
   const byKey = new Map<string, RelatedField>();
   for (const field of fields) {
     byKey.set(normalized(field.key), field);
   }
-  return [...byKey.values()];
+  const byLabelValue = new Map<string, RelatedField>();
+  const out: RelatedField[] = [];
+  for (const field of byKey.values()) {
+    if (field.groupHeader || field.level !== undefined || !inEchoContainer(field.key)) {
+      out.push(field);
+      continue;
+    }
+    const id = `${normalized(field.label)}\u0000${field.value}`;
+    if (byLabelValue.has(id)) {
+      continue;
+    }
+    byLabelValue.set(id, field);
+    out.push(field);
+  }
+  return out;
 }
 
 /**
@@ -463,7 +719,52 @@ function inferStructuralLanguage(body: string): string | null {
   return null;
 }
 
+/**
+ * Whether a body is *structured* as a shell command, as opposed to a source
+ * file that merely contains a shell keyword on a line. Command chaining
+ * (`&&` / `||`), a substitution (`$( …)` or backticks) or an env-assignment
+ * prefix are unambiguous: a `node -e "…script…"` line is bash that quotes a
+ * script, not a TypeScript document, so it must label bash. A real source
+ * file that happens to hold `&&` inside one expression has none of these, so
+ * it keeps its own language.
+ */
+function hasShellStructure(body: string, commandBody: string): boolean {
+  if (/\$\(/.test(body)) {
+    return true;
+  }
+  if (/\`/.test(body)) {
+    return true;
+  }
+  if (/\s(?:&&|\|\|)\s/.test(body)) {
+    return true;
+  }
+  // An env-assignment prefix was stripped for the keyword match: that itself
+  // is shell structure (`FOO=1 cmd …`), so the original and the stripped body
+  // differ.
+  return commandBody !== body;
+}
+
+/** One shared list of the shell verbs a captured command opens with. */
+const SHELL_VERB_RE =
+  /^\s*(?:ls|cat|wc|head|tail|grep|find|sed|awk|chmod|chown|mkdir|touch|rm|cp|mv|ln|cd|echo|export|source|printf|pwd|which|kill|env|time|sleep|curl|wget|git|npm|pnpm|yarn|npx|node|python3?|pip3?|docker|make|brew|sudo|ssh|scp|tar|sort|uniq|cut|tr|xargs|tee|du|df)\s+\S/m;
+
 function inferKeywordLanguage(body: string): string | null {
+  // A command may be prefixed by env assignments (`ASTRO_PORT=4401 pnpm …`).
+  // Strip them only for the match: the original body keeps the `=` that makes
+  // the shell evidence unambiguous, and the related-data pane still shows the
+  // assignment verbatim.
+  const commandBody = body.replace(
+    /^(?:[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|[^\s]*)\s+)+/gm,
+    "",
+  );
+  // A shell *command* claims the label before an embedded-language keyword, so
+  // `cd … && node -e "…JS…"` reads bash (the script is quoted data) instead of
+  // the TypeScript that one embedded `=> {` would otherwise trip. Only a
+  // structured command takes this path; a bare keyword on a source line still
+  // falls through to its own language below and to the caller's code gate.
+  if (SHELL_VERB_RE.test(commandBody) && hasShellStructure(body, commandBody)) {
+    return "bash";
+  }
   // `export FOO=bar` is a shell assignment, not a TypeScript export statement;
   // without this guard the TS matcher claims it before the bash list is seen.
   const shellExport = /^\s*export\s+[A-Za-z_]\w*=[^\n]*$/m.test(body);
@@ -482,19 +783,9 @@ function inferKeywordLanguage(body: string): string | null {
   ) {
     return "python";
   }
-  // A command may be prefixed by env assignments (`ASTRO_PORT=4401 pnpm …`).
-  // Strip them only for the match: the original body keeps the `=` that makes
-  // the shell evidence unambiguous, and the related-data pane still shows the
-  // assignment verbatim.
-  const commandBody = body.replace(
-    /^(?:[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|[^\s]*)\s+)+/gm,
-    "",
-  );
-  if (
-    /^\s*(?:ls|cat|wc|head|tail|grep|find|sed|awk|chmod|chown|mkdir|touch|rm|cp|mv|ln|cd|echo|export|source|printf|pwd|which|kill|env|time|sleep|curl|wget|git|npm|pnpm|yarn|npx|node|python3?|pip3?|docker|make|brew|sudo|ssh|scp|tar|sort|uniq|cut|tr|xargs|tee|du|df)\s+\S/m.test(
-      commandBody,
-    )
-  ) {
+  // An unstructured shell verb on a line is only a weak signal: it still goes
+  // through the caller's code gate so `git status shows changes` stays prose.
+  if (SHELL_VERB_RE.test(commandBody)) {
     return "bash";
   }
   return null;
@@ -507,7 +798,15 @@ function inferKeywordLanguage(body: string): string | null {
  * generic view keeps multi-line values intact without markdown mangling.
  */
 export function fenceCode(text: string, language?: string | null): string {
-  return `\`\`\`${language ?? ""}\n${text.trimEnd()}\n\`\`\``;
+  const body = text.trimEnd();
+  // A captured diff can contain a line that is itself a ``` fence (a diff of a
+  // Markdown file). A three-backtick fence would be closed by that line and
+  // the rest of the block would render as prose. Use a fence longer than any
+  // backtick run in the body so no content line can close it.
+  const longestRun =
+    body.match(/`+/g)?.reduce((max, run) => Math.max(max, run.length), 0) ?? 0;
+  const fence = "`".repeat(Math.max(3, longestRun + 1));
+  return `${fence}${language ?? ""}\n${body}\n${fence}`;
 }
 
 const HEADING_LINE = /^\s{0,3}#{1,6}\s+\S/m;
@@ -546,13 +845,34 @@ function hasMarkdownBlockStructure(text: string, allowHashHeading: boolean): boo
  * block structure renders as the document it is, its own fenced code still
  * highlighted inside, instead of one horizontally scrolling code block.
  */
-export function contentToMarkdown(content: string): string {
+export function contentToMarkdown(content: string, filePath?: string | null): string {
   const text = content.trim();
   if (!text) {
     return "";
   }
-  const language = inferCodeLanguage(text);
+  // A Read result's numbered dump is a file, not a prose paragraph. The path
+  // is the host's own language statement; fall back to the stripped source
+  // when no path was captured. The renderer reads the same prefix pattern to
+  // split the numbers back out into a gutter.
+  const numbered = parseNumberedCode(text);
+  const pathLanguage = languageFromFilePath(filePath);
+  const language =
+    pathLanguage ?? inferCodeLanguage(numbered ? numbered.lines.join("\n") : text);
+  if (numbered) {
+    return fenceCode(text.trimEnd(), language);
+  }
   if (language) {
+    // A captured source file is code even when its JSDoc `* ` lines look like
+    // Markdown bullets: the file path is the host's own type statement, and a
+    // prose-shaped comment must not turn a .ts file into a bullet list. When
+    // no path was captured, keep the document-vs-code guard below.
+    if (
+      pathLanguage &&
+      pathLanguage !== "markdown" &&
+      pathLanguage !== "json"
+    ) {
+      return fenceCode(text.trimEnd(), language);
+    }
     const structural = language === "json" || language === "diff" || language === "xml";
     // `#` heads a Markdown heading everywhere; in shell / Python it is a
     // comment, so there it must not count as document evidence.
@@ -569,20 +889,36 @@ export function contentToMarkdown(content: string): string {
  * fields, not the envelope. A container that ends up empty after the strip is
  * omitted entirely.
  */
-function stripMetaKeys(value: unknown, depth = 0): unknown {
+function stripMetaKeys(
+  value: unknown,
+  depth = 0,
+  seen = new WeakSet<object>(),
+): unknown {
   if (depth > 6) {
     return value;
   }
+  if (value && typeof value === "object") {
+    if (seen.has(value)) {
+      return "[circular reference]";
+    }
+    seen.add(value);
+  }
   if (Array.isArray(value)) {
-    return value.map((item) => stripMetaKeys(item, depth + 1));
+    return value.map((item) => stripMetaKeys(item, depth + 1, seen));
   }
   if (value && typeof value === "object") {
     const out: Record<string, unknown> = {};
     for (const [key, item] of Object.entries(value)) {
-      if (isPayloadMetaKey(key)) {
+      // The recorder's own identity stamp is never preview content: the agent
+      // name and client version are shown once, in the dialog header.
+      if (
+        isPayloadMetaKey(key) ||
+        isPayloadEnvelopeKey(key) ||
+        (depth === 0 && isPayloadIdentityKey(key))
+      ) {
         continue;
       }
-      const stripped = stripMetaKeys(item, depth + 1);
+      const stripped = stripMetaKeys(item, depth + 1, seen);
       if (
         stripped !== undefined &&
         !(typeof stripped === "object" && stripped !== null && !Array.isArray(stripped) && Object.keys(stripped).length === 0)
@@ -630,7 +966,15 @@ export function fallbackPayloadMarkdown(payload: unknown): string {
   ) {
     return "";
   }
-  return contentToMarkdown(JSON.stringify(stripped, null, 2));
+  let json: string;
+  try {
+    json = JSON.stringify(stripped, null, 2);
+  } catch {
+    // Constructed payloads can be cyclic or carry non-serializable values;
+    // this is the last-resort pane, so it must degrade instead of throwing.
+    json = "[unserializable value]";
+  }
+  return contentToMarkdown(json);
 }
 
 /**

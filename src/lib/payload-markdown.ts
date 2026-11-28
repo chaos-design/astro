@@ -19,8 +19,11 @@ import {
   contentToMarkdown,
   fenceCode,
   isPayloadContainerKey,
+  isPayloadEnvelopeKey,
+  isPayloadIdentityKey,
   isPayloadMetaKey,
 } from "./payload-preview.ts";
+import { findPayloadFilePath } from "./numbered-code.ts";
 
 const TEXT_KEYS = [
   "message",
@@ -197,8 +200,8 @@ function findResultText(value: unknown, depth: number, seen: WeakSet<object>): s
  * command or a captured shell output as a paragraph, with its flags uncoloured
  * and its URLs auto-linked into prose.
  */
-function resultToMarkdown(text: string): string {
-  return contentToMarkdown(text);
+function resultToMarkdown(text: string, filePath?: string | null): string {
+  return contentToMarkdown(text, filePath);
 }
 
 function answersToMarkdown(answers: UnknownRecord): string {
@@ -314,8 +317,58 @@ function structuredPatchToMarkdown(patch: unknown[]): string {
 }
 
 /**
- * Find a change (a structured patch array or a plain `patch` string) anywhere
- * in a captured payload, so an Edit-style result previews as the diff it is.
+ * An Edit-style tool input carries its change as an old/new string pair
+ * (`old_string` / `new_string` in Claude's snake spelling, `oldString` /
+ * `newString` in ZCode's camel spelling): synthesise the unified diff the
+ * reader came to see, so the two blocks render as the highlighted
+ * deletion / addition they are instead of two JSON walls.
+ */
+function editStringsToDiff(record: UnknownRecord): string {
+  const firstString = (...names: string[]): string | undefined => {
+    for (const name of names) {
+      const value = record[name];
+      if (typeof value === "string") {
+        return value;
+      }
+    }
+    return undefined;
+  };
+  const oldText = firstString("old_string", "oldString");
+  const newText = firstString("new_string", "newString");
+  if ((oldText === undefined || !oldText) && (newText === undefined || !newText)) {
+    return "";
+  }
+  if (oldText === newText) {
+    return "";
+  }
+  const file = firstString("file_path", "filePath") ?? "";
+  // A trailing newline is a line terminator, not an empty line: `split("\n")`
+  // would leave a trailing "" and render a ghost deletion/addition plus an
+  // inflated hunk count. Normalize CRLF first, then drop exactly one trailing
+  // empty element (an intentionally blank last line keeps its own "\n\n").
+  const splitLines = (text: string): string[] => {
+    if (!text) {
+      return [];
+    }
+    const normalized = text.replace(/\r\n/g, "\n").replace(/\n$/, "");
+    return normalized ? normalized.split("\n") : [];
+  };
+  const oldLines = splitLines(oldText ?? "");
+  const newLines = splitLines(newText ?? "");
+  const lines = [
+    `--- ${file ? `a/${file}` : "a/"}`,
+    `+++ ${file ? `b/${file}` : "b/"}`,
+    `@@ -1,${oldLines.length} +1,${newLines.length} @@`,
+    ...oldLines.map((line) => `-${line}`),
+    ...newLines.map((line) => `+${line}`),
+  ];
+  return fenceCode(lines.join("\n"), "diff");
+}
+
+/**
+ * Find a change (a structured patch array, a plain `patch` string, or an
+ * Edit-style old/new input pair) anywhere in a captured payload, so an
+ * Edit-style result previews as the diff it is.
  */
 function findPatchMarkdown(value: unknown, depth: number, seen: WeakSet<object>): string {
   if (depth > MAX_DEPTH || value === null || typeof value !== "object" || seen.has(value)) {
@@ -341,6 +394,10 @@ function findPatchMarkdown(value: unknown, depth: number, seen: WeakSet<object>)
   if (typeof record.patch === "string" && record.patch.trim()) {
     return `\`\`\`diff\n${record.patch.trimEnd()}\n\`\`\``;
   }
+  const editDiff = editStringsToDiff(record);
+  if (editDiff) {
+    return editDiff;
+  }
   for (const child of Object.values(record)) {
     const found = findPatchMarkdown(child, depth + 1, seen);
     if (found) {
@@ -350,17 +407,198 @@ function findPatchMarkdown(value: unknown, depth: number, seen: WeakSet<object>)
   return "";
 }
 
+/**
+ * An array whose items are compact records — scalars only, single-line
+ * strings — reads as a checklist, not a JSON dump: a `todos` field renders
+ * as GFM task rows (`- [x] content · priority=high`), the status driving the
+ * checkbox, so the list is scannable instead of one fenced blob. Anything
+ * longer or nested falls back to the per-item blocks.
+ */
+const LIST_PRIMARY_KEYS = [
+  "content",
+  "label",
+  "title",
+  "message",
+  "question",
+  "name",
+  "text",
+  "summary",
+  "description",
+];
+const LIST_STATUS_KEYS = new Set([
+  "status",
+  "state",
+  "done",
+  "checked",
+  "completed",
+  "finished",
+  "active",
+]);
+const LIST_DONE_VALUES = new Set([
+  "completed",
+  "complete",
+  "done",
+  "closed",
+  "finished",
+  "passed",
+  "pass",
+  "true",
+  "yes",
+]);
+
+function isCompactRecord(value: unknown): boolean {
+  if (!isRecord(value)) {
+    return false;
+  }
+  return Object.values(value).every((item) => {
+    if (item === null || item === undefined) {
+      return true;
+    }
+    if (typeof item === "string") {
+      // A multi-line body is a document, not a checklist row.
+      return !item.includes("\n");
+    }
+    return typeof item !== "object";
+  });
+}
+
+function compactRecordStatus(record: UnknownRecord): string | undefined {
+  for (const [key, value] of Object.entries(record)) {
+    // Status is commonly a boolean (`done: true`) or a number, not just a
+    // string. Normalize scalars so the checklist checkbox works for those
+    // shapes too (`true` is already in LIST_DONE_VALUES); objects/arrays are
+    // not a status and are left for the rest of the renderer.
+    if (
+      LIST_STATUS_KEYS.has(key.toLowerCase()) &&
+      value !== null &&
+      value !== undefined &&
+      typeof value !== "object"
+    ) {
+      return String(value);
+    }
+  }
+  return undefined;
+}
+
+/**
+ * One GFM row for a compact record. Returns "" when the item is not compact,
+ * so the caller keeps the richer per-item rendering. A `status` (or similar)
+ * field present on ANY item turns the whole list into a task list, so a
+ * pending row next to a finished one still reads as one checklist.
+ */
+/** A list of uniform records with no headline field is a table, not a run of
+ *  `key=value · key=value` strings: the keys become columns and a long path
+ *  stays in its own cell instead of being swallowed by a paragraph. */
+function recordsToTable(records: readonly UnknownRecord[]): string {
+  const keys: string[] = [];
+  for (const record of records) {
+    for (const key of Object.keys(record)) {
+      if (!keys.includes(key)) {
+        keys.push(key);
+      }
+    }
+  }
+  if (!keys.length) {
+    return "";
+  }
+  const cell = (value: unknown): string => {
+    const text =
+      value === null || value === undefined || value === ""
+        ? "—"
+        : escapeInline(String(value));
+    return text.replace(/\|/g, "\\|").replace(/[\r\n]+/g, " ");
+  };
+  return [
+    `| ${keys.map((key) => cell(key)).join(" | ")} |`,
+    `| ${keys.map(() => "---").join(" | ")} |`,
+    ...records.map(
+      (record) => `| ${keys.map((key) => cell(record[key])).join(" | ")} |`,
+    ),
+  ].join("\n");
+}
+
+function compactListMarkdown(items: readonly unknown[]): string {
+  const records = items.map((item) => (isCompactRecord(item) ? item : null));
+  if (records.some((record) => record === null) || !items.length) {
+    return "";
+  }
+  const hasStatus = records.some((record) => {
+    const status = compactRecordStatus(record as UnknownRecord);
+    return status !== undefined;
+  });
+  const hasPrimary = records.some((record) =>
+    LIST_PRIMARY_KEYS.some((key) => {
+      const value = (record as UnknownRecord)[key];
+      return typeof value === "string" && Boolean(value.trim());
+    }),
+  );
+  if (!hasStatus && !hasPrimary) {
+    return recordsToTable(records as UnknownRecord[]);
+  }
+  return (records as UnknownRecord[])
+    .map((record) => {
+      let primary = "";
+      let primaryKey = "";
+      for (const key of LIST_PRIMARY_KEYS) {
+        const value = record[key];
+        if (typeof value === "string" && value.trim()) {
+          primary = value;
+          primaryKey = key;
+          break;
+        }
+      }
+      const status = compactRecordStatus(record) ?? "";
+      const done = LIST_DONE_VALUES.has(status.toLowerCase());
+      const checkbox = hasStatus ? (done ? "[x] " : "[ ] ") : "";
+      const suffix = Object.entries(record)
+        .filter(([key, value]) => {
+          if (key === primaryKey || LIST_STATUS_KEYS.has(key.toLowerCase())) {
+            return false;
+          }
+          return (
+            value !== null &&
+            value !== undefined &&
+            value !== "" &&
+            typeof value !== "object"
+          );
+        })
+        .map(([key, value]) => `${escapeInline(key)}=${escapeInline(String(value))}`)
+        .join(" · ");
+      // No primary key, no dump: the suffix already names every scalar, and
+      // repeating the whole record as JSON made one entry read twice.
+      const body = primary ? escapeInline(primary) : "";
+      // Block lines, not bullets: each record is its own quiet row, the
+      // status checkbox keeping its checklist reading.
+      return `${checkbox}${body}${suffix ? ` — ${suffix}` : ""}`;
+    })
+    .join("\n\n");
+}
+
 function arrayToMarkdown(value: unknown[], depth: number, seen: WeakSet<object>): string {
+  const list = compactListMarkdown(value);
+  if (list) {
+    return list;
+  }
   const items = value
     .map((item) => payloadToMarkdown(item, depth + 1, seen))
     .filter(Boolean);
   if (!items.length) {
     return "";
   }
-  if (items.every((item) => !item.includes("\n"))) {
-    return items.map((item) => `- ${item}`).join("\n");
+  // One block per item, rendered as a quoted block: the blockquote gives each
+  // entry a distinct bordered record in the preview (no bullet list, no JSON
+  // wall), and an item that is code keeps its fence inside the quote.
+  // A single entry renders bare — no quote frame around one record; the
+  // important content stands on its own.
+  if (items.length === 1) {
+    return items[0];
   }
-  return items.join("\n\n---\n\n");
+  const asBlock = (item: string) =>
+    item
+      .split("\n")
+      .map((line) => (line ? `> ${line}` : ">"))
+      .join("\n");
+  return items.map(asBlock).join("\n>\n");
 }
 
 /**
@@ -374,6 +612,12 @@ function arrayToMarkdown(value: unknown[], depth: number, seen: WeakSet<object>)
 function objectToMarkdown(value: UnknownRecord, depth: number, seen: WeakSet<object>): string {
   const blocks: string[] = [];
   for (const [key, item] of Object.entries(value)) {
+    // The recorder's identity stamp (client name + version) belongs in the
+    // dialog header, never in the preview body. Drop it at the top level of
+    // the payload only: a deeper `version` field is genuine captured data.
+    if (isPayloadEnvelopeKey(key) || (depth === 0 && isPayloadIdentityKey(key))) {
+      continue;
+    }
     // A container key (tool_input / payload / …) hides the content one level
     // down and is never metadata; other metadata keys stay beside the preview.
     const container = item !== null && typeof item === "object" && isPayloadContainerKey(key);
@@ -387,6 +631,12 @@ function objectToMarkdown(value: UnknownRecord, depth: number, seen: WeakSet<obj
       // One fence decision with the content extractor: a code string fences
       // with its inferred language, a Markdown document renders as itself.
       blocks.push(contentToMarkdown(item));
+    } else if (Array.isArray(item)) {
+      // An array field is content: a checklist of compact records (a `todos`
+      // payload) reads as a GFM list, nested items as their own blocks —
+      // never as one fenced JSON blob of the whole array.
+      const list = arrayToMarkdown(item, depth + 1, seen);
+      blocks.push(list || fenceCode(safeJson(item), "json"));
     } else if (item !== null && item !== undefined && typeof item === "object") {
       if (container) {
         blocks.push(payloadToMarkdown(item, depth + 1, seen));
@@ -413,6 +663,9 @@ function readableFields(value: unknown, depth: number, seen: WeakSet<object>): s
   seen.add(value);
   const lines: string[] = [];
   for (const [key, item] of Object.entries(value)) {
+    if (isPayloadEnvelopeKey(key) || (depth === 0 && isPayloadIdentityKey(key))) {
+      continue;
+    }
     const container = item !== null && typeof item === "object" && isPayloadContainerKey(key);
     if (!container && isPayloadMetaKey(key)) {
       continue;
@@ -421,13 +674,18 @@ function readableFields(value: unknown, depth: number, seen: WeakSet<object>): s
       continue;
     }
     if (Array.isArray(item)) {
-      const children = item
-        .map((entry) =>
-          typeof entry === "string" || typeof entry === "number" || typeof entry === "boolean"
-            ? `  - ${escapeInline(String(entry))}`
-            : `  - \`${escapeInline(safeJson(entry))}\``,
-        )
-        .join("\n");
+      // A checklist of compact records (a `todos` payload) keeps its list
+      // shape here too, indented under its field like the plain bullets.
+      const list = compactListMarkdown(item);
+      const children = list
+        ? list.split("\n").map((line) => `  ${line}`).join("\n")
+        : item
+            .map((entry) =>
+              typeof entry === "string" || typeof entry === "number" || typeof entry === "boolean"
+                ? `  - ${escapeInline(String(entry))}`
+                : `  - \`${escapeInline(safeJson(entry))}\``,
+            )
+            .join("\n");
       if (children) {
         lines.push(children);
       }
@@ -452,17 +710,30 @@ function readableFields(value: unknown, depth: number, seen: WeakSet<object>): s
  * questions/answers and a readable result text win first; otherwise the
  * result is shown as readable fields rather than a JSON structure.
  */
-function capturedResultToMarkdown(value: unknown, depth: number, seen: WeakSet<object>): string {
+function capturedResultToMarkdown(
+  value: unknown,
+  depth: number,
+  seen: WeakSet<object>,
+  filePath?: string | null,
+): string {
   const structured = findStructured(value, depth, new WeakSet());
   if (structured) {
     return structured;
+  }
+  // The generic path detects an Edit / patch result before walking the rest of
+  // the payload. The inspector always goes through this `{ contract, captured }`
+  // wrapper, so it must use the same detector — otherwise a captured change
+  // degrades into two JSON walls here while the global overlay shows a diff.
+  const patch = findPatchMarkdown(value, depth, new WeakSet());
+  if (patch) {
+    return patch;
   }
   // `value` is the captured result itself, so read its display text directly:
   // unwrapText understands prompt / message / stdout / plan and the nested
   // `content` arrays a tool response hides its text in.
   const text = unwrapText(value, depth, new WeakSet());
   if (text.trim()) {
-    return resultToMarkdown(text);
+    return resultToMarkdown(text, filePath ?? findPayloadFilePath(value));
   }
   if (isRecord(value)) {
     return readableFields(value, depth, seen);
@@ -499,7 +770,7 @@ export function payloadToMarkdown(
   // preview shows the prompt / output content the reader asked for, leaving
   // the untouched wrapper to the Code view.
   if ("captured" in record && "contract" in record) {
-    return capturedResultToMarkdown(record.captured, depth, seen);
+    return capturedResultToMarkdown(record.captured, depth, seen, findPayloadFilePath(value));
   }
 
   const structured = findStructured(value, depth, new WeakSet());
@@ -520,18 +791,25 @@ export function payloadToMarkdown(
   // relies on: fenced code and Markdown are rendered, not shown as JSON text.
   const result = findResultText(value, depth, new WeakSet());
   if (result) {
-    return resultToMarkdown(result);
+    // The same payload carries the file path a Read result came from. Pass it
+    // so a TypeScript file with an `export` line is not mislabelled as bash.
+    return resultToMarkdown(result, findPayloadFilePath(value));
   }
 
   // Without a known result container, a lone text field is still the document.
   // With several unrelated fields the generic view is the honest one — it keeps
-  // every field visible instead of silently discarding metadata.
+  // every field visible instead of silently discarding metadata. A lone
+  // ARRAY is not a document: a `todos` field is a list to read, and
+  // unwrapping it would join its rows into prose.
   if (Object.keys(record).length === 1) {
-    // A fresh guard: `unwrapText` walks this same object and would otherwise
-    // see itself as already visited.
-    const unwrapped = unwrapText(value, depth, new WeakSet());
-    if (unwrapped.trim()) {
-      return contentToMarkdown(unwrapped);
+    const [singleKey, singleValue] = Object.entries(record)[0];
+    if (!Array.isArray(singleValue)) {
+      // A fresh guard: `unwrapText` walks this same object and would
+      // otherwise see itself as already visited.
+      const unwrapped = unwrapText(value, depth, new WeakSet());
+      if (unwrapped.trim()) {
+        return contentToMarkdown(unwrapped, findPayloadFilePath(value));
+      }
     }
   }
   seen.add(value);

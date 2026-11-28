@@ -5,6 +5,10 @@ import {
   trajectoryKeyLabels,
   trajectoryKindLabels,
 } from "../src/config/app-config.ts";
+import {
+  getAtomIdForEvent,
+  getAtomPlatformConfig,
+} from "../src/config/atom-platforms.ts";
 import { projectTraceEvents } from "../src/lib/atomic-projection.ts";
 import {
   atomTypeLabel,
@@ -67,27 +71,48 @@ test("known events resolve through the atom map with normalised kinds", () => {
     key: "tool.call",
     kind: "tool",
     label: "TOOL",
+    tone: "tool",
   });
   assert.deepEqual(typeFor("PostToolUse"), {
     key: "tool.result",
     kind: "context",
     label: "MEMORY",
+    tone: "tool",
   });
   assert.deepEqual(typeFor("Reasoning"), {
     key: "model.invoke",
     kind: "model",
     label: "MODEL",
+    tone: "reasoning",
   });
   assert.deepEqual(typeFor("UserPromptSubmit"), {
     key: "run",
     kind: "loop",
     label: "SYSTEM",
+    tone: "prompt",
   });
   assert.deepEqual(typeFor("Stop"), {
     key: "output.commit",
     kind: "reply",
     label: "RESPONSE",
+    tone: "complete",
   });
+});
+
+test("TYPE carries the canvas atom's own tone, not a second palette", () => {
+  const atoms = new Map(
+    getAtomPlatformConfig("chatgpt").atoms.map((atom) => [atom.id, atom]),
+  );
+  for (const event of events) {
+    const type = eventAtomType(event, "chatgpt");
+    assert.ok(type, `${event.eventName} has no atom type`);
+    // The badge resolves the same harness node id the canvas highlights; its
+    // tone must be that node's tone so both colour from one source.
+    const atomId = getAtomIdForEvent(event, "chatgpt").replace(/^harness-/, "");
+    const atom = atoms.get(atomId);
+    assert.ok(atom, `${event.eventName} has no harness atom ${atomId}`);
+    assert.equal(type.tone, atom.tone);
+  }
 });
 
 test("atom lookups are cached per platform, not rebuilt per row", () => {

@@ -333,6 +333,49 @@ Stop              turn 2
 同时确认超时选中项不再显示日志运行标记或拓扑实时转换。导出其 JSONL，验证其中没有
 新增 timeout 事件。
 
+## 8.1 交互 Hook 的验收证据与人工步骤
+
+交互 Hook（AskUserQuestion / ExitPlanMode 的控制台作答）的验收分两层：**协议级等价验收**由脚本在任何机器上复现，**宿主可见性**只能在装有所述宿主的机器上人工确认。这条边界本身就是结论，不要再把两者混成一个「未通过」。
+
+**协议级等价验收（任何机器可复现，当前 6/6 通过）**
+
+```bash
+pnpm verify:host-integration -- --out /tmp/host-acceptance.md
+```
+
+| 检查 | 结果 |
+| --- | --- |
+| 捕获载荷来源（真实事件的 questions） | pass |
+| 自动同意 Hook 产出真实宿主 PermissionRequest 决策 | pass |
+| 交互 Hook 在服务不可达时 fail-open（空 stdout、exit 0） | pass |
+| 决策符合 Claude PreToolUse schema（`permissionDecision` + `updatedInput.answers`） | pass |
+| 决策符合 ZCode 严格 PermissionRequest schema（`hookSpecificOutput.decision.behavior`） | pass |
+| 安装器生成的 Claude / ZCode / CodeBuddy 配置 | pass |
+
+**真实宿主闭环（已发生，不是模拟）**：`~/.astrox/interactions/` 里有 4 个 `answeredBy: console` 的真实 ZCode 结果（2026-11-17 / 11-19 / 11-23 ×2），每个都带真实 `sessionId`、`cwd`、`toolName: AskUserQuestion` 与用户选中的选项文本——宿主提问经交互 Hook 注册、在控制台作答、答案写回宿主的闭环确实跑通过。最新一次请求可能是 `timeout`（`answeredBy: timeout`，约 10 分钟窗口），这说明闭环可用，而不是每次都会被作答。
+
+**宿主可用性探测（本机实况）**
+
+| 宿主 | 结论 | 说明 |
+| --- | --- | --- |
+| Claude Code | 仅配置目录 | 没有二进制与凭证，`/hooks` 可见性无法在本机执行 |
+| ZCode | GUI 应用 | 只有桌面进程，没有可无头驱动的 CLI |
+| CodeBuddy | GUI 应用 | 同上 |
+
+**ZCode 日志口径**：当天日志里 `hook.run.allowed` 是 hook 正常执行的证据，`hook.run.failed` 要按来源分开看——`plugin.astro@…` 的 `timed_out` 属于采集器（已在采集器侧给 stdin 加空闲/总时长预算并加了回归测试），`config.PermissionRequest` 的 `cancelled` 是宿主在人工作答后取消同步等待，属于预期通路。判读命令：
+
+```bash
+grep -c hook.run.allowed ~/.zcode/cli/log/zcode-$(date +%F).jsonl
+grep hook.run.failed ~/.zcode/cli/log/zcode-$(date +%F).jsonl
+```
+
+**人工步骤（在装有所述宿主的机器上执行一次）**
+
+1. Claude Code：`pnpm install:interaction -- --client=claude --apply`（会先备份 `~/.claude/settings.json`）→ 启动 Claude Code → `/hooks` 里应能看到 `interaction-hook.mjs` 挂在 `PermissionRequest` 下 → 触发一次提问并在控制台作答 → 会话 transcript 里应出现 `Allowed by PermissionRequest hook`。
+2. ZCode：`pnpm install:interaction -- --client=zcode --apply` → **新开**一个会话（hooks 在会话启动时快照）→ 触发一次提问，作答或等 4.5s 窗口过期 → 当天日志无 `plugin.astro@` 来源的 `hook.run.failed`。
+3. 把两次结果记进本节（带日期），不要写回计划文件。
+
+
 ## 9. 备份与恢复
 
 ### 9.1 全量备份
@@ -484,7 +527,7 @@ astrox restart         # 重启守护进程，加载新 server 与 dist
 
 ## 16. 发布验收清单
 
-- `pnpm test`：当前 527 项测试全部通过。
+- `pnpm test`：测试全部通过（通过数量以运行输出为准）。
 - `pnpm typecheck`：无 TypeScript 错误。
 - `pnpm build`：生产构建成功。
 - `pnpm build:native-plugins`：原生插件副本同步。

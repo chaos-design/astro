@@ -1,4 +1,16 @@
-import { ChevronDown, ChevronUp, Code2, Eye, Radio, Search, X } from "lucide-react";
+import {
+  Bot,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronUp,
+  Code2,
+  Crosshair,
+  Eye,
+  Radio,
+  Search,
+  X,
+} from "lucide-react";
 import {
   useCallback,
   useDeferredValue,
@@ -7,16 +19,21 @@ import {
   useMemo,
   useRef,
   useState,
+  memo,
   type KeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+  type RefObject,
   type UIEvent,
 } from "react";
+import { AgentTranscript } from "@/components/agent-transcript";
 import { JsonViewer } from "@/components/json-viewer";
 import { PairLinkMarker } from "@/components/pair-link-marker";
+import { PlatformIcon } from "@/components/platform-icon";
+import { hookPhaseOf } from "@/lib/trace-event-kind";
 import { cn } from "@/lib/utils";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
@@ -29,63 +46,37 @@ import {
   InputGroupButton,
   InputGroupInput,
 } from "@/components/ui/input-group";
-import { QuestionPreview } from "@/components/question-content";
+import {
+  QuestionPreview,
+  type QuestionAnswerBinding,
+} from "@/components/question-content";
+import { RelatedFields } from "@/components/related-fields";
+import type { AgentView } from "@/lib/agent-view";
+import { getAtomPlatformConfig } from "@/config/atom-platforms";
+import type {
+  PlatformId,
+  RunTerminalReason,
+  TraceRunStatus,
+} from "@/types/trace";
 import { renderMarkdownPreview } from "@/lib/markdown-preview";
 import {
   contentToMarkdown,
   fallbackPayloadMarkdown,
   collectPayloadFields,
-  isFoldableRelatedValue,
+  hasListPayload,
   orderRelated,
-  RELATED_VALUE_MAX_CHARS,
+  payloadBodyOf,
   splitPayloadPreview,
 } from "@/lib/payload-preview";
+import { findPayloadFilePath } from "@/lib/numbered-code";
+import { markdownWithEmbeddedImages } from "@/lib/embedded-image";
 import { payloadToMarkdown } from "@/lib/payload-markdown";
 import { parseUserQuestionContent } from "@/lib/user-question-content";
-import type { TracePairLink } from "@/lib/trace-model";
+import { getEventSummary, type TracePairLink } from "@/lib/trace-model";
+import type { TracePromptRun } from "@/types/trace";
 import type { TracePayload } from "@/types/trace";
 
-type PayloadViewMode = "preview" | "code";
-
-/**
- * One related-data value. Long values fold behind their own control so a
- * single captured path or blob cannot force the whole pane to be expanded —
- * short timestamps and ids beside it stay readable either way. The fold is
- * local to this value and resets when the row changes (keyed by field key).
- */
-function RelatedValue({ value }: { value: string }) {
-  const foldable = isFoldableRelatedValue(value);
-  const [expanded, setExpanded] = useState(false);
-  if (!foldable) {
-    return <>{value}</>;
-  }
-  return (
-    <>
-      <span
-        className={cn(
-          "payload-overlay__field-text",
-          !expanded && "is-folded",
-        )}
-      >
-        {expanded ? value : `${value.slice(0, RELATED_VALUE_MAX_CHARS)}…`}
-      </span>
-      <button
-        aria-expanded={expanded}
-        className="payload-overlay__field-more"
-        onClick={() => setExpanded((current) => !current)}
-        title={expanded ? "收起该值" : "展开该值全文"}
-        type="button"
-      >
-        {expanded ? "收起" : "展开"}
-        {expanded ? (
-          <ChevronUp aria-hidden="true" />
-        ) : (
-          <ChevronDown aria-hidden="true" />
-        )}
-      </button>
-    </>
-  );
-}
+type PayloadViewMode = "agent" | "preview" | "code";
 
 /**
  * One row of the overlay's left rail: a LOG-standard view of one trace event
@@ -123,7 +114,197 @@ export type PayloadOverlayAtom = {
   /** Turn of the bound event, from `buildTraceTurnIndex` — the one source. */
   turn: number;
   type: string;
+  /** The primary atom's tone, so the TYPE badge matches the canvas node. */
+  typeTone: string;
 };
+
+/** Past this length the card clamps its summary and offers an explicit fold. */
+const HOVER_SUMMARY_CHARS = 220;
+
+/**
+ * One controlled hover card serves the whole rail. A tooltip root per row
+ * would multiply into hundreds of portals that re-render on every stream tick;
+ * a single layer that follows the hovered row swaps its content in place and
+ * stays open while the pointer moves onto it, so long summaries can be read.
+ */
+const AtomHoverCardLayer = memo(function AtomHoverCardLayer({
+  anchorRef,
+  card,
+  cardRef,
+  onCardPointerEnter,
+  onCardPointerLeave,
+  onSelectAtom,
+}: {
+  anchorRef: RefObject<HTMLElement | null>;
+  card: PayloadOverlayAtom | null;
+  cardRef: RefObject<HTMLDivElement | null>;
+  onCardPointerEnter: () => void;
+  onCardPointerLeave: (event: ReactPointerEvent<HTMLDivElement>) => void;
+  onSelectAtom: (atomId: string, eventId: string) => void;
+}) {
+  // One atom at a time: a fold opened on row #095 must not stay open when the
+  // pointer moves to #096, and closing the card resets it for the next hover.
+  const [summaryExpanded, setSummaryExpanded] = useState(false);
+  useEffect(() => {
+    setSummaryExpanded(false);
+  }, [card?.id]);
+  useLayoutEffect(() => {
+    if (!card) {
+      return undefined;
+    }
+    const element = cardRef.current;
+    if (!element) {
+      return undefined;
+    }
+    let frame = 0;
+    const place = () => {
+      frame = 0;
+      const anchor = anchorRef.current;
+      if (!anchor || !anchor.isConnected) {
+        element.style.visibility = "hidden";
+        return;
+      }
+      // Hide once the anchored row scrolls out of the rail's own viewport.
+      const listBounds = anchor
+        .closest(".payload-overlay__atom-list")
+        ?.getBoundingClientRect();
+      const anchorBounds = anchor.getBoundingClientRect();
+      if (
+        listBounds &&
+        (anchorBounds.bottom < listBounds.top ||
+          anchorBounds.top > listBounds.bottom)
+      ) {
+        element.style.visibility = "hidden";
+        return;
+      }
+      const cardBounds = element.getBoundingClientRect();
+      const gap = 8;
+      // The rail sits at the window's left edge, so always open to its right;
+      // clamp vertically so a tall card never leaves the viewport.
+      const left = Math.min(
+        anchorBounds.right + gap,
+        Math.max(gap, window.innerWidth - gap - cardBounds.width),
+      );
+      const top = Math.min(
+        Math.max(gap, anchorBounds.top),
+        Math.max(gap, window.innerHeight - gap - cardBounds.height),
+      );
+      element.style.transform = `translate3d(${Math.round(left)}px, ${Math.round(top)}px, 0)`;
+      element.style.visibility = "visible";
+    };
+    const schedule = () => {
+      if (frame) {
+        return;
+      }
+      frame = window.requestAnimationFrame(place);
+    };
+    place();
+    document.addEventListener("scroll", schedule, true);
+    window.addEventListener("resize", schedule);
+    return () => {
+      if (frame) {
+        window.cancelAnimationFrame(frame);
+      }
+      document.removeEventListener("scroll", schedule, true);
+      window.removeEventListener("resize", schedule);
+    };
+  }, [anchorRef, card, cardRef, summaryExpanded]);
+
+  if (!card) {
+    return null;
+  }
+  return (
+    <div
+      className="payload-overlay__atom-hover"
+      onClick={() => onSelectAtom(card.atomId, card.id)}
+      onPointerEnter={onCardPointerEnter}
+      onPointerLeave={onCardPointerLeave}
+      ref={cardRef}
+      role="tooltip"
+    >
+      <div className="payload-overlay__atom-hover-card">
+        <div className="payload-overlay__atom-hover-head">
+          <span className="payload-overlay__atom-hover-sequence">{card.sequence}</span>
+          <span className="payload-overlay__atom-hover-turn">Turn {card.turn}</span>
+          <span className="payload-overlay__atom-hover-event">{card.eventName}</span>
+        </div>
+        <dl className="payload-overlay__atom-hover-fields">
+          {card.type?.trim() ? (
+            <div>
+              <dt>TYPE</dt>
+              <dd>{card.type}</dd>
+            </div>
+          ) : null}
+          <div>
+            <dt>KEY</dt>
+            <dd>{card.key}</dd>
+          </div>
+          <div>
+            <dt>STATUS</dt>
+            <dd>{card.status}</dd>
+          </div>
+          <div>
+            <dt>ACTION</dt>
+            <dd>{card.action}</dd>
+          </div>
+          <div>
+            <dt>TIME</dt>
+            <dd>
+              {card.dateLabel} {card.clockLabel}
+            </dd>
+          </div>
+          {card.durationLabel !== null ? (
+            <div>
+              <dt>DURATION</dt>
+              <dd>{card.durationLabel}</dd>
+            </div>
+          ) : null}
+          {card.pairLink ? (
+            <div>
+              <dt>PAIR</dt>
+              <dd>{card.pairLink.label}</dd>
+            </div>
+          ) : null}
+        </dl>
+        {card.summary ? (
+          <>
+            <p
+              className={cn(
+                "payload-overlay__atom-hover-summary",
+                card.summary.length > HOVER_SUMMARY_CHARS &&
+                  (summaryExpanded ? "is-expanded" : "is-clamped"),
+              )}
+            >
+              {card.summary}
+            </p>
+            {card.summary.length > HOVER_SUMMARY_CHARS ? (
+              <button
+                aria-expanded={summaryExpanded}
+                className="payload-overlay__atom-hover-toggle"
+                onClick={(event) => {
+                  // Folding the text is not a jump: keep the pointer on the
+                  // card and let the layout effect re-place the grown card.
+                  event.stopPropagation();
+                  setSummaryExpanded((current) => !current);
+                }}
+                type="button"
+              >
+                {summaryExpanded
+                  ? "收起"
+                  : `展开（${card.summary.length} 字符）`}
+              </button>
+            ) : null}
+          </>
+        ) : null}
+        <p className="payload-overlay__atom-hover-hint">
+          {summaryExpanded
+            ? "展开内容可在卡片内滚动 · 点击卡片跳转到此原子"
+            : "点击卡片跳转到此原子"}
+        </p>
+      </div>
+    </div>
+  );
+});
 
 /** A rail list item: either a turn separator or one event row. */
 type PayloadOverlayRailItem =
@@ -150,13 +331,30 @@ type PreparedPreview = {
  * nothing to say falls back to highlighted JSON.
  */
 function preparePreview(
-  payload: unknown,
+  raw: unknown,
   variant: "default" | "question",
 ): PreparedPreview {
+  // The rail can hand over the whole event (an atom row whose tab resolves to
+  // the raw capture). Only its `payload` is content: without this unwrap the
+  // pane printed the event's `source` (the agent name) as the body and listed
+  // `cwd` / `toolName` / `sequence` as related data.
+  const payload = payloadBodyOf(raw);
   const split = splitPayloadPreview(payload);
-  const source = split.content.trim()
-    ? contentToMarkdown(split.content)
-    : payloadToMarkdown(payload) || fallbackPayloadMarkdown(payload);
+  // A Read result's numbered body is rendered with a line-number gutter; the
+  // captured file path selects its highlight language when one is available.
+  // A todos / checklist payload carries its meaning in the list structure.
+  // Let the list renderer build the rows (with status checkboxes) instead of
+  // flattening its `content` leaves into loose paragraphs.
+  const textSource = hasListPayload(payload)
+    ? payloadToMarkdown(payload)
+    : split.content.trim()
+      ? contentToMarkdown(split.content, findPayloadFilePath(payload))
+      : payloadToMarkdown(payload) || fallbackPayloadMarkdown(payload);
+  // Inline image resources belong in the preview as images: the shared helper
+  // swaps raw base64 blobs for a short label and appends the distinct sources
+  // as Markdown images — the renderer's sanitizer already allows data:image
+  // sources only.
+  const source = markdownWithEmbeddedImages(textSource, payload);
   const rendered = renderMarkdownPreview(source);
   // Parsed for every row: a payload carrying a structured `questions` list is
   // the question list itself, whether or not the classifier named the event a
@@ -206,8 +404,79 @@ function preparePreview(
  * selected row in view; picking any row (or disarming) pins the payload so it
  * stops advancing.
  */
+/**
+ * ‹ n/N › message stepping, mounted in the overlay's header beside the agent
+ * name: the dialog is the "global popup" the reader switches messages from,
+ * so the stepper lives with the view it drives. The parent owns the
+ * navigation; the LOG lands on the target's anchor event.
+ */
+function MessageStepper({
+  activeKey,
+  onStep,
+  runs,
+}: {
+  activeKey: string;
+  onStep: (delta: 1 | -1) => void;
+  runs: readonly TracePromptRun[];
+}) {
+  // An unset selection counts as the newest message: the stepper renders as
+  // soon as the session has two messages, not only after the first pick.
+  const found = runs.findIndex((run) => run.key === activeKey);
+  const index = found >= 0 ? found : runs.length - 1;
+  if (runs.length < 2) {
+    return null;
+  }
+  const earlier = index > 0 ? runs[index - 1] : null;
+  const later = index < runs.length - 1 ? runs[index + 1] : null;
+  const titleFor = (run: TracePromptRun | null) =>
+    run
+      ? getEventSummary(run.prompt).slice(0, 120).replace(/\s+/g, " ")
+      : "";
+  return (
+    <span className="run-stepper">
+      <button
+        aria-label="上一条消息"
+        className="run-stepper__button"
+        disabled={!earlier}
+        onClick={() => {
+          if (earlier) {
+            onStep(-1);
+          }
+        }}
+        title={earlier ? `上一条：${titleFor(earlier)}` : undefined}
+        type="button"
+      >
+        <ChevronLeft aria-hidden="true" />
+      </button>
+      <span className="run-stepper__count">
+        {index + 1}/{runs.length}
+      </span>
+      <button
+        aria-label="下一条消息"
+        className="run-stepper__button"
+        disabled={!later}
+        onClick={() => {
+          if (later) {
+            onStep(1);
+          }
+        }}
+        title={later ? `下一条：${titleFor(later)}` : undefined}
+        type="button"
+      >
+        <ChevronRight aria-hidden="true" />
+      </button>
+    </span>
+  );
+}
+
 export function PayloadOverlay({
   atoms,
+  agentView,
+  agentRunDurationMs = null,
+  agentRunExecuting = false,
+  agentRunState = null,
+  apiBase,
+  messageStepper = null,
   cacheScope = "",
   followAvailable = false,
   following = false,
@@ -218,13 +487,47 @@ export function PayloadOverlay({
   open,
   payload,
   payloadForAtom,
+  questionBinding = null,
+  questionEventId = null,
   runningEventId = "",
   searchEvent,
   selectedEventId,
   variant = "default",
   variantForAtom,
+  platform = "chatgpt",
 }: {
   atoms: PayloadOverlayAtom[];
+  /** Derived Agent view of the same event sequence as the rail. */
+  agentView: AgentView;
+  /**
+   * The displayed message's execution time for the Agent view's header:
+   * advancing while the message executes, the recorded total once it ends.
+   * `null` when the message has no clock of its own.
+   */
+  agentRunDurationMs?: number | null;
+  /**
+   * The displayed message's own status and, when it ended abnormally, why —
+   * read by the Agent view's header hover card.
+   */
+  agentRunState?: {
+    status: TraceRunStatus;
+    reason: RunTerminalReason | null;
+    detail: string | null;
+  } | null;
+  /** The service base, for the image preview window's file endpoint. */
+  apiBase: string;
+  /** ‹ n/N › message stepping; rendered beside the agent name in the header. */
+  messageStepper?: {
+    activeKey: string;
+    onStep: (delta: 1 | -1) => void;
+    runs: readonly TracePromptRun[];
+  } | null;
+  /**
+   * Whether the selected *message* is still executing. Distinct from
+   * `followAvailable` (a session-level capability): the Agent view's loading
+   * state and scroll-to-bottom control follow this message execution status.
+   */
+  agentRunExecuting?: boolean;
   /**
    * Scope of the per-row preview cache. The payload of one row also depends
    * on which inspector tab the layer was opened from (Input / Output / Raw
@@ -244,6 +547,10 @@ export function PayloadOverlay({
   payload: unknown;
   /** Resolve an atom row's payload directly. Enables per-row preview caching. */
   payloadForAtom?: (atomId: string, eventId: string) => unknown;
+  /** The live answer binding, only for the question matching the current view. */
+  questionBinding?: QuestionAnswerBinding | null;
+  /** Event id of that question; the transcript must not answer an older one. */
+  questionEventId?: string | null;
   /** The event the LOG marks as executing right now (its START row). */
   runningEventId?: string;
   /**
@@ -258,8 +565,26 @@ export function PayloadOverlay({
   variant?: "default" | "question";
   /** Per-row variant so a question row keeps its QuestionPreview after a switch. */
   variantForAtom?: (atomId: string, eventId: string) => "default" | "question";
+  /** The agent that produced the run — the dialog header's brand mark. */
+  platform?: PlatformId;
 }) {
-  const [viewMode, setViewMode] = useState<PayloadViewMode>("preview");
+  const [viewMode, setViewMode] = useState<PayloadViewMode>("agent");
+  // The Agent view reports the event at its reading line. The rail marks that
+  // atom (and scrolls it into view) so a reader can see which captured atom
+  // produced the card they are on — the two panes stay in step while reading.
+  const [contentActiveEventId, setContentActiveEventId] = useState<string | null>(null);
+  const contentActiveRowRef = useRef<HTMLButtonElement | null>(null);
+  // Bumped when the reader clicks an Agent step so the rail reveal runs even
+  // if the selected id did not change (clicking the already-selected card).
+  const [railRevealRequest, setRailRevealRequest] = useState(0);
+  // Only an explicit rail / step / pair pick locates the Agent transcript.
+  // Live follow changes the selected event without bumping this, so a reader
+  // who scrolled back through the chain is not yanked to the newest step.
+  const [agentLocateRequest, setAgentLocateRequest] = useState(0);
+  // Bumped by the Preview / Code "locate source" affordance: it reveals the
+  // atom the pane is showing in the rail and, like the step pick, wins over
+  // Live follow for one pass so the reader always sees the source land.
+  const [railLocateRequest, setRailLocateRequest] = useState(0);
   // The rail's search box is rail-local state (the LOG's own search pattern):
   // a keystroke re-renders only the rail, not the studio. The needle matches
   // the rows' display fields AND the row event's payload content (the caller
@@ -294,7 +619,7 @@ export function PayloadOverlay({
       row += 1;
     }
     return items;
-  }, [atoms, deferredQuery]);
+  }, [atoms, deferredQuery, searchEvent]);
   // Jump-to-edge controls for the chain, mounted beside the rail's search box.
   // Both stay mounted with the width reserved so the search box never resizes
   // while the list scrolls; an unreachable edge is disabled, not unmounted.
@@ -305,6 +630,64 @@ export function PayloadOverlay({
   });
   const railEdgesRef = useRef(railEdges);
   railEdgesRef.current = railEdges;
+  // The rail's one hover card: the anchor follows the hovered row and the card
+  // holds that row's atom. A debounce timer lets the pointer travel from the
+  // row onto the card itself without the card vanishing mid-read.
+  const [hoveredAtom, setHoveredAtom] = useState<PayloadOverlayAtom | null>(null);
+  const atomAnchorRef = useRef<HTMLElement | null>(null);
+  const atomCardRef = useRef<HTMLDivElement | null>(null);
+  const atomHoverTimerRef = useRef<number | null>(null);
+  const openAtomHover = useCallback((atom: PayloadOverlayAtom, anchor: HTMLElement) => {
+    if (atomHoverTimerRef.current !== null) {
+      window.clearTimeout(atomHoverTimerRef.current);
+      atomHoverTimerRef.current = null;
+    }
+    atomAnchorRef.current = anchor;
+    setHoveredAtom((current) => (current?.id === atom.id ? current : atom));
+  }, []);
+  const closeAtomHover = useCallback(() => {
+    if (atomHoverTimerRef.current !== null) {
+      window.clearTimeout(atomHoverTimerRef.current);
+    }
+    atomHoverTimerRef.current = window.setTimeout(() => {
+      atomHoverTimerRef.current = null;
+      setHoveredAtom(null);
+    }, 180);
+  }, []);
+  const cancelAtomHoverClose = useCallback(() => {
+    if (atomHoverTimerRef.current !== null) {
+      window.clearTimeout(atomHoverTimerRef.current);
+      atomHoverTimerRef.current = null;
+    }
+  }, []);
+  useEffect(
+    () => () => {
+      if (atomHoverTimerRef.current !== null) {
+        window.clearTimeout(atomHoverTimerRef.current);
+      }
+    },
+    [],
+  );
+  // Escape (or any close that happens while the pointer is over a rail row)
+  // does not fire pointerleave, so the 120ms close timer never runs. Clear the
+  // hover on close: otherwise the fixed card stays over the console, still
+  // anchored to a row that has just unmounted.
+  useEffect(() => {
+    if (!open) {
+      if (atomHoverTimerRef.current !== null) {
+        window.clearTimeout(atomHoverTimerRef.current);
+        atomHoverTimerRef.current = null;
+      }
+      setHoveredAtom(null);
+      return;
+    }
+    // Filtering (or a stream reset) can unmount the hovered row while the
+    // pointer sits still — no pointerleave fires, so the fixed card would stay
+    // anchored to a row that is no longer in the rail.
+    if (hoveredAtom && !atoms.some((atom) => atom.id === hoveredAtom.id)) {
+      setHoveredAtom(null);
+    }
+  }, [open, atoms, hoveredAtom]);
   const syncRailEdges = useCallback(() => {
     const list = railListRef.current;
     if (!list) {
@@ -393,8 +776,83 @@ export function PayloadOverlay({
   // the reader was reading a long wrapped line. Only the rail's own scrollTop
   // may move here.
   const selectedRowRef = useRef<HTMLButtonElement | null>(null);
+  // The locate token's last observed value, so the reveal effect can tell an
+  // explicit 定位 (animate) apart from a live/stream follow (instant).
+  const lastLocateRequestRef = useRef(0);
+  // The same observation from the content-active follow effect's side, so it
+  // can yield to the animated locate reveal for one pass instead of racing it.
+  const lastFollowLocateRef = useRef(0);
+  // Bring a rail row into the visible band of the atom list. Returns the
+  // target scrollTop, or null when the row is already comfortably in view.
+  const revealTarget = (
+    list: HTMLElement,
+    rowTop: number,
+    rowBottom: number,
+    pad: number,
+  ): number | null => {
+    if (rowTop < list.scrollTop + pad) {
+      return Math.max(0, rowTop - pad);
+    }
+    if (rowBottom > list.scrollTop + list.clientHeight - pad) {
+      return rowBottom - list.clientHeight + pad;
+    }
+    return null;
+  };
+  // A rail row is `position: relative`, so its `offsetTop` is measured from the
+  // nearest positioned ancestor (the fixed dialog), not from the list that
+  // actually scrolls — the rail itself establishes no containing block. Using
+  // it directly here scrolled the list by roughly the header height. Convert
+  // through viewport rects so the value shares `list.scrollTop`'s origin.
+  const railRowTop = (list: HTMLElement, row: HTMLElement): number =>
+    row.getBoundingClientRect().top - list.getBoundingClientRect().top + list.scrollTop;
+  // A short, eased tween over the list's own scrollTop. Only the rail list
+  // may move — revealing the row by hand keeps a content-paned horizontal
+  // scroll from being dragged along by a walk up the scrollable ancestors.
+  const railTweenRef = useRef<number | null>(null);
+  useEffect(
+    () => () => {
+      if (railTweenRef.current !== null) {
+        cancelAnimationFrame(railTweenRef.current);
+      }
+    },
+    [],
+  );
+  const animateRailTo = (list: HTMLElement, target: number) => {
+    // A second locate before the first tween finishes must replace it, not
+    // race it: concurrent rAF loops write the same scrollTop each frame.
+    if (railTweenRef.current !== null) {
+      cancelAnimationFrame(railTweenRef.current);
+      railTweenRef.current = null;
+    }
+    const start = list.scrollTop;
+    const delta = target - start;
+    if (Math.abs(delta) < 1) {
+      list.scrollTop = target;
+      return;
+    }
+    const duration = 320;
+    const begin = performance.now();
+    const step = (now: number) => {
+      const t = Math.min(1, (now - begin) / duration);
+      const eased = 1 - (1 - t) * (1 - t) * (1 - t);
+      list.scrollTop = start + delta * eased;
+      if (t < 1) {
+        railTweenRef.current = requestAnimationFrame(step);
+      } else {
+        railTweenRef.current = null;
+      }
+    };
+    railTweenRef.current = requestAnimationFrame(step);
+  };
   useEffect(() => {
-    if (!open || !following) {
+    if (!open) {
+      return;
+    }
+    // In the Agent pane the rail follows the *reading line* instead (the
+    // effect below): the reader scrolls the transcript, not the rail, so the
+    // newest-event selection is not where their eyes are. Preview / Code keep
+    // this selection-driven reveal — there the selected row is the content.
+    if (viewMode === "agent") {
       return;
     }
     const row = selectedRowRef.current;
@@ -402,14 +860,51 @@ export function PayloadOverlay({
     if (!row || !list) {
       return;
     }
-    const rowTop = row.offsetTop;
-    const rowBottom = rowTop + row.offsetHeight;
-    if (rowTop < list.scrollTop) {
-      list.scrollTop = rowTop;
-    } else if (rowBottom > list.scrollTop + list.clientHeight) {
-      list.scrollTop = rowBottom - list.clientHeight;
+    const rowTop = railRowTop(list, row);
+    const target = revealTarget(list, rowTop, rowTop + row.offsetHeight, 0);
+    if (target === null) {
+      return;
     }
-  }, [atoms.length, following, open, selectedEventId]);
+    // A bump to the locate token is the only explicit "show me the source"
+    // signal — animate it. Live follow / stream batches jump instantly.
+    const animate = railLocateRequest !== lastLocateRequestRef.current;
+    lastLocateRequestRef.current = railLocateRequest;
+    if (animate) {
+      animateRailTo(list, target);
+    } else {
+      list.scrollTop = target;
+    }
+  }, [atoms.length, following, open, railRevealRequest, selectedEventId, railLocateRequest, viewMode]);
+  // The Agent pane's reading line moves through the chain as the reader
+  // scrolls; the rail follows it: when the reading line lands on an atom that
+  // drifted out of the rail's visible band, that row is scrolled back in —
+  // even when it is the selected one, because reading the selected step by
+  // scrolling is still a scroll move, not a pick. This runs while Live follow
+  // is armed too: following advances the *selection* to the newest event, but
+  // a reader who scrolled up through the transcript is looking at an older
+  // card, and the rail must show the atom behind that card. An explicit
+  // locate just fired is animated by the reveal above, so it is yielded to
+  // here instead of raced.
+  useEffect(() => {
+    if (!open || !contentActiveEventId) {
+      return;
+    }
+    if (railLocateRequest !== lastFollowLocateRef.current) {
+      lastFollowLocateRef.current = railLocateRequest;
+      return;
+    }
+    const row = contentActiveRowRef.current;
+    const list = row?.closest<HTMLElement>(".payload-overlay__atom-list");
+    if (!row || !list) {
+      return;
+    }
+    const rowTop = railRowTop(list, row);
+    const target = revealTarget(list, rowTop, rowTop + row.offsetHeight, 8);
+    if (target === null) {
+      return;
+    }
+    list.scrollTop = target;
+  }, [contentActiveEventId, open, railLocateRequest, viewMode]);
   const atomRefs = useRef<Array<HTMLButtonElement | null>>([]);
   // The reader's scroll position in the two preview panes, written by their
   // onScroll handlers (ref writes only — a streamed batch must not re-render).
@@ -441,6 +936,16 @@ export function PayloadOverlay({
     const el = event.currentTarget;
     readerScrollRef.current.relatedTop = el.scrollTop;
     readerScrollRef.current.relatedLeft = el.scrollLeft;
+  };
+  // The Preview / Code panes show one atom at a time (the selected event). A
+  // reader who has scrolled the pane away from where it was opened can bring
+  // the source atom back into the rail with this: it marks the atom the pane
+  // is showing and forces the selected-row reveal to run over the rail.
+  const handleLocateAtom = () => {
+    if (selectedEventId) {
+      setContentActiveEventId(selectedEventId);
+    }
+    setRailLocateRequest((value) => value + 1);
   };
   // Runs after each preview change commits. An explicit rail pick anchors the
   // panes to the top; anything else restores the memo (the browser clamps
@@ -479,33 +984,213 @@ export function PayloadOverlay({
     () => railItems.reduce((total, item) => total + (item.kind === "atom" ? 1 : 0), 0),
     [railItems],
   );
-  const handleAtomKeyDown = (
-    keyEvent: KeyboardEvent<HTMLButtonElement>,
-    position: number,
-  ) => {
-    const step =
-      keyEvent.key === "ArrowDown" ? 1 : keyEvent.key === "ArrowUp" ? -1 : 0;
-    if (!step && keyEvent.key !== "Home" && keyEvent.key !== "End") {
-      return;
-    }
-    keyEvent.preventDefault();
-    const target =
-      keyEvent.key === "Home"
-        ? 0
-        : keyEvent.key === "End"
-          ? rowCount - 1
-          : (position + step + rowCount) % rowCount;
-    atomRefs.current[target]?.focus();
-  };
+  // Stable per batch ( rowCount moves only with the chain ): the memoized rail
+  // rows below key on these identities, so a per-second re-render reuses the
+  // same row elements and React bails out of re-diffing the whole rail.
+  const handleAtomKeyDown = useCallback(
+    (keyEvent: KeyboardEvent<HTMLButtonElement>, position: number) => {
+      const step =
+        keyEvent.key === "ArrowDown" ? 1 : keyEvent.key === "ArrowUp" ? -1 : 0;
+      if (!step && keyEvent.key !== "Home" && keyEvent.key !== "End") {
+        return;
+      }
+      keyEvent.preventDefault();
+      const target =
+        keyEvent.key === "Home"
+          ? 0
+          : keyEvent.key === "End"
+            ? rowCount - 1
+            : (position + step + rowCount) % rowCount;
+      atomRefs.current[target]?.focus();
+    },
+    [rowCount],
+  );
   // Refs are filled in render order; reset the stale tail when the run's row
   // count shrinks (a session switch) so End cannot focus a detached button.
   atomRefs.current.length = rowCount;
-  const handleLocatePartner = (partnerId: string) => {
-    const partner = atoms.find((atom) => atom.id === partnerId);
-    if (partner) {
-      onSelectAtom(partner.atomId, partner.id);
+  const selectAtom = useCallback(
+    (atomId: string, eventId: string) => {
+      onSelectAtom(atomId, eventId);
+      setAgentLocateRequest((current) => current + 1);
+    },
+    [onSelectAtom],
+  );
+  const handleLocatePartner = useCallback(
+    (partnerId: string) => {
+      const partner = atoms.find((atom) => atom.id === partnerId);
+      if (partner) {
+        selectAtom(partner.atomId, partner.id);
+      }
+    },
+    [atoms, selectAtom],
+  );
+  // Agent steps and the rail commit through the same selection state: a step
+  // only knows an event id and resolves its atom here, never a second store.
+  const handleAgentSelectEvent = useCallback(
+    (eventId: string) => {
+      handleLocatePartner(eventId);
+      setRailRevealRequest((current) => current + 1);
+    },
+    [handleLocatePartner],
+  );
+
+  // Switching from the Agent pane into Preview / Code must carry the atom the
+  // reader was on: otherwise those panes keep showing an older selection and
+  // the rail cannot say which atom a preview belongs to. Commit the reading
+  // line as the selection, then the single shared selection drives all views.
+  const committedViewRef = useRef<PayloadViewMode>(viewMode);
+  useEffect(() => {
+    const previous = committedViewRef.current;
+    committedViewRef.current = viewMode;
+    if (previous !== "agent" || viewMode === "agent") {
+      return;
     }
-  };
+    if (!contentActiveEventId || contentActiveEventId === selectedEventId) {
+      return;
+    }
+    const atom = atoms.find((item) => item.id === contentActiveEventId);
+    if (atom) {
+      onSelectAtom(atom.atomId, atom.id);
+    }
+  }, [atoms, contentActiveEventId, onSelectAtom, selectedEventId, viewMode]);
+
+  // Outside the Agent pane nothing reports a reading line, so the inspected
+  // event is the one the reader picked in the rail (or carried over above).
+  useEffect(() => {
+    if (viewMode === "agent") {
+      return;
+    }
+    setContentActiveEventId(selectedEventId || null);
+  }, [selectedEventId, viewMode]);
+
+  // The rail is one element per run event — with a 20k-event run that is the
+  // largest DOM subtree in the console, and a per-second root re-render used
+  // to re-diff all of it while nothing had changed. Memoize the element array
+  // on its batch-stable inputs: the root's `now` tick then re-renders the
+  // wrapper, React sees identical child elements and bails out per row. The
+  // bodies carry no per-tick state — timestamps and durations are recorded
+  // values, and the clock chip lives in the transcript head.
+  const railRows = useMemo(
+    () =>
+      railItems.map((item, railIndex) => {
+        if (item.kind === "turn") {
+          // Key by position, never by the turn value: two groups can
+          // legitimately repeat a number (a source that restarts its
+          // counter), and duplicate keys leave orphaned chips behind.
+          return (
+            <div
+              aria-label={`Turn ${item.turn}`}
+              className="atomic-log__turn payload-overlay__turn"
+              key={`rail-turn-${railIndex}`}
+            >
+              <span>{String(item.turn).padStart(2, "0")}</span>
+            </div>
+          );
+        }
+        const atom = item.atom;
+        const hookPhase = hookPhaseOf(atom.eventName);
+        const selected = atom.id === selectedEventId;
+        const contentActive = atom.id === contentActiveEventId;
+        const running = atom.id === runningEventId;
+        const partnerSelected =
+          atom.pairLink?.partnerId === selectedEventId;
+        const rowPosition = item.row;
+        return (
+          <li key={atom.id}>
+            <button
+              aria-current={selected ? "true" : undefined}
+              aria-label={`${atom.sequence} 第 ${atom.turn} 轮 ${atom.key} ${atom.action} ${atom.summary}`}
+              className={cn(
+                "atomic-log__row payload-overlay__atom",
+                `tone-${atom.tone || "unknown"}`,
+                hookPhase && `hook-${hookPhase}`,
+                running && "is-running",
+                selected && !running && "is-selected",
+                !selected && contentActive && "is-content-active",
+                partnerSelected && !selected && "is-pair-partner",
+              )}
+              onClick={() => {
+                railPickedEventRef.current = atom.id;
+                selectAtom(atom.atomId, atom.id);
+              }}
+              onKeyDown={(keyEvent) =>
+                handleAtomKeyDown(keyEvent, rowPosition)
+              }
+              onPointerEnter={(pointerEvent) =>
+                openAtomHover(atom, pointerEvent.currentTarget)
+              }
+              onPointerLeave={closeAtomHover}
+              ref={(node) => {
+                if (selected) {
+                  selectedRowRef.current = node;
+                }
+                if (contentActive) {
+                  contentActiveRowRef.current = node;
+                } else if (contentActiveRowRef.current === node) {
+                  // The reading line moved on: drop the stale anchor so
+                  // the follow effect can never scroll to a row that no
+                  // longer represents the card on screen.
+                  contentActiveRowRef.current = null;
+                }
+                atomRefs.current[rowPosition] = node;
+              }}
+              type="button"
+            >
+              <span className="log-sequence">{atom.sequence}</span>
+              <i aria-hidden="true" className="phase-dot" />
+              <strong className="atomic-log__name">
+                {atom.type?.trim() ? (
+                  <span
+                    className={cn(
+                      "atomic-log__type",
+                      "payload-overlay__atom-type",
+                      `tone-${atom.typeTone}`,
+                    )}
+                  >
+                    {atom.type}
+                  </span>
+                ) : null}
+                <span className="atomic-log__key">{atom.key}</span>
+              </strong>
+              <time dateTime={atom.timestamp}>
+                <span>{atom.dateLabel}</span>
+                {atom.clockLabel}
+              </time>
+              <small>
+                <span>{atom.action}</span>
+                <span className="atomic-log__summary">
+                  {atom.summary}
+                </span>
+                {atom.durationLabel !== null ? (
+                  <span
+                    className={`atomic-log__duration heat-${atom.durationHeat}`}
+                  >
+                    {atom.durationLabel}
+                  </span>
+                ) : null}
+                {atom.pairLink ? (
+                  <PairLinkMarker
+                    link={atom.pairLink}
+                    onLocate={handleLocatePartner}
+                  />
+                ) : null}
+              </small>
+            </button>
+          </li>
+        );
+      }),
+    [
+      railItems,
+      selectedEventId,
+      contentActiveEventId,
+      runningEventId,
+      selectAtom,
+      handleAtomKeyDown,
+      openAtomHover,
+      closeAtomHover,
+      handleLocatePartner,
+    ],
+  );
 
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
@@ -515,12 +1200,20 @@ export function PayloadOverlay({
             <span className="eyebrow">
               {variant === "question" ? "USER QUESTION" : "CAPTURED PAYLOAD"}
             </span>
-            <DialogTitle>{label}</DialogTitle>
-            <DialogDescription>
-              {variant === "question"
-                ? "Preview 按用户问题的形态展示问题、选项与答案；Code 查看原始载荷。"
-                : "Preview 分两块：原子的真实内容与时间、路径、注释等相关数据；Code 查看原始载荷。"}
-            </DialogDescription>
+            {/* The stepper belongs with the run it steps through: it sits in
+                the same row as the producing agent's name, not at the far edge
+                of the header next to the close button. */}
+            <span className="payload-overlay__identity">
+              <span className="payload-overlay__agent">
+                <PlatformIcon platform={platform} width={20} height={20} />
+                <span className="payload-overlay__agent-name">
+                  {getAtomPlatformConfig(platform).label}
+                </span>
+              </span>
+              {messageStepper ? <MessageStepper {...messageStepper} /> : null}
+            </span>
+
+            <DialogTitle className="sr-only">{label}</DialogTitle>
           </div>
           <ToggleGroup
             aria-label="Payload view"
@@ -535,6 +1228,10 @@ export function PayloadOverlay({
             value={viewMode}
             variant="outline"
           >
+            <ToggleGroupItem aria-label="Agent data view" value="agent">
+              <Bot data-icon="inline-start" />
+              Agent
+            </ToggleGroupItem>
             <ToggleGroupItem aria-label="Preview as markdown" value="preview">
               <Eye data-icon="inline-start" />
               Preview
@@ -631,139 +1328,98 @@ export function PayloadOverlay({
                     没有匹配的事件
                   </output>
                 ) : null}
-                {railItems.map((item, railIndex) => {
-                  if (item.kind === "turn") {
-                    // Key by position, never by the turn value: two groups can
-                    // legitimately repeat a number (a source that restarts its
-                    // counter), and duplicate keys leave orphaned chips behind.
-                    return (
-                      <div
-                        aria-label={`Turn ${item.turn}`}
-                        className="atomic-log__turn payload-overlay__turn"
-                        key={`rail-turn-${railIndex}`}
-                      >
-                        <span>{String(item.turn).padStart(2, "0")}</span>
-                      </div>
-                    );
-                  }
-                  const atom = item.atom;
-                  const selected = atom.id === selectedEventId;
-                  const running = atom.id === runningEventId;
-                  const partnerSelected =
-                    atom.pairLink?.partnerId === selectedEventId;
-                  const details = [
-                    `Turn ${atom.turn} · ${atom.sequence}`,
-                    atom.eventName,
-                    atom.type ? `TYPE ${atom.type}` : "",
-                    `STATUS ${atom.status}`,
-                  ]
-                    .filter(Boolean)
-                    .join("\n");
-                  const rowPosition = item.row;
-                  return (
-                    <li key={atom.id}>
-                      <button
-                        aria-current={selected ? "true" : undefined}
-                        aria-label={`${atom.sequence} 第 ${atom.turn} 轮 ${atom.key} ${atom.action} ${atom.summary}`}
-                        className={cn(
-                          "atomic-log__row payload-overlay__atom",
-                          `tone-${atom.tone || "unknown"}`,
-                          running && "is-running",
-                          selected && !running && "is-selected",
-                          partnerSelected && !selected && "is-pair-partner",
-                        )}
-                        onClick={() => {
-                          railPickedEventRef.current = atom.id;
-                          onSelectAtom(atom.atomId, atom.id);
-                        }}
-                        onKeyDown={(keyEvent) =>
-                          handleAtomKeyDown(keyEvent, rowPosition)
-                        }
-                        ref={(node) => {
-                          if (selected) {
-                            selectedRowRef.current = node;
-                          }
-                          atomRefs.current[rowPosition] = node;
-                        }}
-                        title={details}
-                        type="button"
-                      >
-                        <span className="log-sequence">{atom.sequence}</span>
-                        <i aria-hidden="true" className="phase-dot" />
-                        <strong className="atomic-log__name">
-                          {atom.type?.trim() ? (
-                            <span
-                              className="atomic-log__type payload-overlay__atom-type"
-                              title={`原子类型 ${atom.type} · ${atom.key}`}
-                            >
-                              {atom.type}
-                            </span>
-                          ) : null}
-                          <span className="atomic-log__key">{atom.key}</span>
-                        </strong>
-                        <time dateTime={atom.timestamp} title={atom.timestamp}>
-                          <span>{atom.dateLabel}</span>
-                          {atom.clockLabel}
-                        </time>
-                        <small>
-                          <span>{atom.action}</span>
-                          <span className="atomic-log__summary">
-                            {atom.summary}
-                          </span>
-                          {atom.durationLabel !== null ? (
-                            <span
-                              className={`atomic-log__duration heat-${atom.durationHeat}`}
-                              title={`成对耗时 ${atom.durationLabel}`}
-                            >
-                              {atom.durationLabel}
-                            </span>
-                          ) : null}
-                          {atom.pairLink ? (
-                            <PairLinkMarker
-                              link={atom.pairLink}
-                              onLocate={handleLocatePartner}
-                            />
-                          ) : null}
-                        </small>
-                      </button>
-                    </li>
-                  );
-                })}
+                {railRows}
               </ul>
             </nav>
           ) : null}
           <div className="payload-overlay__content">
-            {viewMode === "preview" ? (
+            {viewMode === "agent" ? (
+              <AgentTranscript
+                view={agentView}
+                selectedEventId={selectedEventId || null}
+                onSelectEvent={handleAgentSelectEvent}
+                questionBinding={questionBinding}
+                questionEventId={questionEventId}
+                live={agentRunExecuting}
+                apiBase={apiBase}
+                locateRequest={agentLocateRequest}
+                runDurationMs={agentRunDurationMs}
+                runState={agentRunState}
+                onActiveEventChange={setContentActiveEventId}
+              />
+            ) : viewMode === "preview" ? (
               <div className="payload-overlay__preview-grid">
                 {preview.showQuestion ? (
                   <section className="payload-overlay__pane payload-overlay__pane--content">
                     <h4 className="payload-overlay__pane-title">原子内容</h4>
-                    <div
-                      className="payload-overlay__body"
-                      onScroll={handleContentScroll}
-                      ref={contentBodyRef}
-                    >
-                      <QuestionPreview payload={activePayload as TracePayload} />
+                    <div className="preview-mac-frame">
+                      <div className="preview-mac-frame__bar">
+                        <span className="preview-mac-frame__dots" aria-hidden="true">
+                          <i />
+                          <i />
+                          <i />
+                        </span>
+                        <span className="preview-mac-frame__label">
+                          {activeRow?.eventName || activeRow?.key || "Preview"}
+                        </span>
+                        <button
+                          className="preview-mac-frame__locate"
+                          onClick={handleLocateAtom}
+                          type="button"
+                        >
+                          <Crosshair data-icon="inline-start" />
+                          定位
+                        </button>
+                      </div>
+                      <div
+                        className="preview-mac-frame__scroll"
+                        onScroll={handleContentScroll}
+                        ref={contentBodyRef}
+                      >
+                        <QuestionPreview
+                          payload={payloadBodyOf(activePayload) as TracePayload}
+                        />
+                      </div>
                     </div>
                   </section>
                 ) : (
                   <section className="payload-overlay__pane payload-overlay__pane--content">
                     <h4 className="payload-overlay__pane-title">原子内容</h4>
-                    <div
-                      className="payload-overlay__body"
-                      onScroll={handleContentScroll}
-                      ref={contentBodyRef}
-                    >
-                      {preview.hasContent ? (
-                        <div
-                          className="markdown-preview"
-                          dangerouslySetInnerHTML={previewHtml}
-                        />
-                      ) : (
-                        <p className="payload-overlay__empty">
-                          没有可预览的文本。切到 Code 查看原始载荷。
-                        </p>
-                      )}
+                    <div className="preview-mac-frame">
+                      <div className="preview-mac-frame__bar">
+                        <span className="preview-mac-frame__dots" aria-hidden="true">
+                          <i />
+                          <i />
+                          <i />
+                        </span>
+                        <span className="preview-mac-frame__label">
+                          {activeRow?.eventName || activeRow?.key || "Preview"}
+                        </span>
+                        <button
+                          className="preview-mac-frame__locate"
+                          onClick={handleLocateAtom}
+                          type="button"
+                        >
+                          <Crosshair data-icon="inline-start" />
+                          定位
+                        </button>
+                      </div>
+                      <div
+                        className="preview-mac-frame__scroll"
+                        onScroll={handleContentScroll}
+                        ref={contentBodyRef}
+                      >
+                        {preview.hasContent ? (
+                          <div
+                            className="markdown-preview"
+                            dangerouslySetInnerHTML={previewHtml}
+                          />
+                        ) : (
+                          <p className="payload-overlay__empty">
+                            没有可预览的文本。切到 Code 查看原始载荷。
+                          </p>
+                        )}
+                      </div>
                     </div>
                   </section>
                 )}
@@ -776,55 +1432,48 @@ export function PayloadOverlay({
                     onScroll={handleRelatedScroll}
                     ref={relatedBodyRef}
                   >
-                    {preview.related.length ? (
-                      <dl className="payload-overlay__fields">
-                        {preview.related.map((field) => {
-                          // Array elements open with their own indexed row
-                          // (`questions[0]`, `options[1]`) and their members
-                          // indent beneath it, so a repeated bare key
-                          // (`description`, `label`) still reads inside the
-                          // element it belongs to. Headers carry no value.
-                          const indent = field.groupHeader
-                            ? field.level ?? 0
-                            : field.level === undefined
-                              ? 0
-                              : field.level + 1;
-                          return (
-                            <div
-                              className={cn(
-                                "payload-overlay__field",
-                                field.groupHeader && "payload-overlay__field--group",
-                                field.annotation && "is-annotation",
-                              )}
-                              key={field.key}
-                              style={
-                                indent > 0
-                                  ? { paddingInlineStart: `${indent * 14}px` }
-                                  : undefined
-                              }
-                            >
-                              <dt title={field.key}>{field.label}</dt>
-                              {field.groupHeader ? null : (
-                                <dd><RelatedValue value={field.value} /></dd>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </dl>
-                    ) : (
-                      <p className="payload-overlay__empty">没有关联数据。</p>
-                    )}
+                    <RelatedFields fields={preview.related} resetToken={selectedEventId} />
                   </div>
                 </section>
               </div>
             ) : (
               <div className="payload-overlay__body payload-overlay__body--code">
-                <JsonViewer value={activePayload} />
+                <div className="preview-mac-frame preview-mac-frame--code">
+                  <div className="preview-mac-frame__bar">
+                    <span className="preview-mac-frame__dots" aria-hidden="true">
+                      <i />
+                      <i />
+                      <i />
+                    </span>
+                    <span className="preview-mac-frame__label">
+                      {activeRow?.eventName || activeRow?.key || "原始载荷"}
+                    </span>
+                    <button
+                      className="preview-mac-frame__locate"
+                      onClick={handleLocateAtom}
+                      type="button"
+                    >
+                      <Crosshair data-icon="inline-start" />
+                      定位
+                    </button>
+                  </div>
+                  <div className="preview-mac-frame__scroll">
+                    <JsonViewer value={activePayload} />
+                  </div>
+                </div>
               </div>
             )}
           </div>
         </div>
       </DialogContent>
+      <AtomHoverCardLayer
+        anchorRef={atomAnchorRef}
+        card={open ? hoveredAtom : null}
+        cardRef={atomCardRef}
+        onCardPointerEnter={cancelAtomHoverClose}
+        onCardPointerLeave={closeAtomHover}
+        onSelectAtom={onSelectAtom}
+      />
     </Dialog>
   );
 }

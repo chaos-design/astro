@@ -447,7 +447,10 @@ to the top — within the selected agent. When several execute at once they are
 ordered by their **newest message's start time**: the message that began
 executing last sits on top, and each row's position is stable while its
 message runs (no shuffling as events keep arriving) — only a newly sent
-prompt takes the top. A message executing under another agent is not part of
+prompt takes the top. Finished messages are ordered by **last execution time**:
+a thread started days ago that just received and completed a follow-up rises
+above runs that merely started later — the list follows the latest activity,
+not when a thread began. A message executing under another agent is not part of
 this list; the agent picker signals it instead, with a pulsing dot on the
 agent that is running, and switching to it shows the message.
 Switching agents also moves the canvas, the log and the selection into the new
@@ -530,6 +533,10 @@ model switch shows the last observation. Clients that do not report a model
 (for example the claude and chatgpt hooks) show no tag — an unreported model is
 not rendered as "unknown". A prompt run begins with one
 `UserPromptSubmit` and contains every following event before the next prompt.
+On an abnormal end the row's `STATUS` tag carries the end reason as a
+**one-line ellipsized excerpt** — a host detail can be 120 characters of
+machine text, and wrapping it turned the small chip into a multi-line box;
+the full reason and host text stay in the hover card's `STATUS` line.
 
 Click a child row to make that prompt run the active diagnostic scope. Clicking
 the parent selects its latest prompt. Only one session thread is expanded at a
@@ -567,14 +574,18 @@ The platform choice is stored in `ASTROX_PLATFORM`.
 The upper LOG area:
 
 - orders the newest event first;
-- prints a violet `TYPE` badge before each event key (`SYSTEM` / `MODEL` /
+- prints a `TYPE` badge before each event key (`SYSTEM` / `MODEL` /
   `TOOL` / `MEMORY` / `RESPONSE` / `TRACE`, …). It is the **primary atom's type
   data**: the atom's `key` and its projection-normalised `kind`, resolved into a
   closed set of short labels. It is neither the event name nor a payload field;
   the trajectory row badge and the hover card's `TYPE` read the same data, so
-  the three views agree. One LOG event projects into several atoms, so the row
-  shows just the primary one (`getAtomIdForEvent` — the same atom highlighted
-  in the canvas when the row is selected) instead of stacking labels. Hovering
+  the three views agree. The badge colour comes from that atom's `tone`, using
+  the same shared table as the canvas node it names (Input blue, Model/thinking
+  violet, Tool amber, Reply/Session teal, Signal pink), so a LOG row and its
+  canvas node read as one category. One LOG event projects into several atoms,
+  so the row shows just the primary one (`getAtomIdForEvent` — the same atom
+  highlighted in the canvas when the row is selected) instead of stacking
+  labels. Hovering
   the badge reports `atom type <label> · <key> / <kind>`; e.g. the
   `tool.result` atom belongs to the `context` kind, so it reads `MEMORY`, not
   `TOOL` — TYPE is the atom's responsibility category, not a tool or event
@@ -629,12 +640,16 @@ The inspector provides:
   matching `Pre/PostToolUse` rows also preview the plan by content while
   keeping their `tool.call` / `tool.result` keys, so projection, waiting state
   and topology counts stay unchanged. `Code` shows the raw payload;
-- `Output`: tool result or response;
+- `Output`: tool result or response; an event that publishes no response text
+  (a prompt submit, a recovered thinking step) previews its own payload, so
+  the pane shows the same data the row summary shows instead of an empty
+  `{message: null}` shell;
 - `Raw`: full normalized event;
 - copy control for structured JSON;
 - an expand control in the inspector header, available on `Input` / `Output` /
   `Raw`, opens a **global overlay** that shows the same payload in a much larger
-  area. The overlay has a `Preview` / `Code` switch: `Preview` splits into two
+  area. The overlay has an `Agent` / `Preview` / `Code` switch, defaulting to
+  `Agent`: `Preview` splits into two
   panes — "Atom content" (the text the atom actually carried; a payload that
   carries a structured `questions` list shows the question / option / answer
   list the reader saw whatever the row's display key, other payloads render as
@@ -679,6 +694,56 @@ The inspector provides:
   `captured`, keeping topology metadata out of the layer. `Code` is the raw,
   token-coloured JSON of the same payload, so both readings stay in one dialog;
   with nothing previewable the overlay says so and `Code` still shows it.
+  Images and files are typed by one classifier (`src/lib/captured-image.ts`
+  owns the MIME whitelist): whitelisted data URLs, remote image URLs and local
+  image paths render as images (raw base64 becomes a short 内嵌图片 label with
+  the image appended), while a `.pdf` or another non-image file becomes an
+  attachment chip with its captured path instead of a broken `<img>`. A
+  one-element array renders that element's content directly — its `text` /
+  `message` / `content` field first, the generic view only as a fallback — with
+  no key/value field grid around it. The Agent bodies, the Preview pane and
+  tool-call fields all read the same classifier; `Code` keeps the raw payload.
+  The default `Agent` view presents the same run as the artifacts an Agent
+  actually produces: every `Reasoning` event is its own thinking block that
+  shows the real captured thinking by default and can be collapsed
+  (no second aggregation rule; text comes from the `message` / `summary` /
+  `content` field the hook actually wrote, never a placeholder), throttled
+  snapshots sharing a `messageId` are merged with the final message into one
+  Markdown reply marked "N streamed snapshots merged", tool-result cards show
+  the command captured on the paired `PreToolUse` as a derived read (never
+  invented from a tool name) alongside the real result and paired duration,
+  user questions become their own cards, and all other events stay as generic
+  steps so the chain loses nothing. Each kind carries its own accent (thinking violet,
+  reply teal, tool amber, question blue), and every body goes through the same
+  `contentToMarkdown`: code and commands are language-highlighted, ordinary text
+  renders as a Markdown document, with no second parser. A broken prefix keeps
+  every step and records a diagnostic instead
+  of silently dropping data. Questions reuse the existing read-only preview
+  or the one actionable form; answerability still comes from the interaction
+  state. Selecting a step and selecting a rail row are the same state, with
+  instant positioning. The bottom-centered spinning "back to latest" pill
+  appears whenever the newest step has left the viewport by more than 64px,
+  regardless of scroll direction — an upward wheel, a downward overshoot or a
+  programmatic locate to an older step all land in the same state; while any
+  part of the newest message is still visible, the pill stays away. Live
+  events no longer yank the reader down; new steps only count up on the pill,
+  and a click jumps straight to the last step and clears the count. Returning
+  to the newest step or the bottom dismisses the pill and resumes automatic
+  following, so new content keeps appending. Opening the dialog or switching
+  messages first pins to the absolute bottom before paint, so the tail is the
+  default position. Following also survives growth — both kinds: a streamed
+  snapshot merges into the existing reply step with no new step at all, and a
+  genuinely new card that pushes the last step below the viewport still pins
+  while you stay at the tail (unchanged scroll position means content grew, not
+  that you scrolled). A live advance never scrolls to a mid-list step — only
+  picking an older row locates off the tail. Once the run has ended, stopping
+  above the last step turns the same control into a plain "scroll to bottom"
+  button without the spinner, with the same position-only rule. While the
+  run is still executing, a spinning
+  loading state follows the newest step and disappears when it finishes. The
+  scroll test is throttled to one layout read per frame, so the console's
+  once-a-second refresh never re-lays out the transcript. `Preview` and `Code`
+  remain one click away.
   Escape or the scrim closes the layer. A left rail shows the current run's
   **message chain in the LOG's own data standard**: every event of the run,
   newest first, split by the same turn separators the LOG prints, with the row
@@ -1185,7 +1250,7 @@ The summary displays:
 - completed count;
 - failed count.
 
-The lane map uses Input, Model, and Tools; `waiting` (a blocked User Question, for example) counts as executing just like `running`, so its slot keeps the running pulse instead of going idle. The detailed list groups steps by turn and shows event type, summary, timestamp, duration, and status. Hovering a block — a list row or a lane slot — opens one shared card that reports the block's **type** (its category, e.g. `SYSTEM` / `MODEL` / `TOOL`), event name, tool (when present), closed-pair span (`PAIR`), own wall-time span (`DURATION`, an atom), or the total of its closed-pair spans (`PAIRS` for a turn), and its status. The `TYPE` badge in front of a LOG event key comes from the same `atomTypeLabel` source and uses the same violet.
+The lane map uses Input, Model, and Tools; `waiting` (a blocked User Question, for example) counts as executing just like `running`, so its slot keeps the running pulse instead of going idle. The detailed list groups steps by turn and shows event type, summary, timestamp, duration, and status. Hovering a block — a list row or a lane slot — opens one shared card that reports the block's **type** (its category, e.g. `SYSTEM` / `MODEL` / `TOOL`), event name, tool (when present), closed-pair span (`PAIR`), own wall-time span (`DURATION`, an atom), or the total of its closed-pair spans (`PAIRS` for a turn), and its status. The `TYPE` badge in front of a LOG event key comes from the same `atomTypeLabel` source; its colour is the primary atom's `tone`, matching that atom's canvas node rather than a uniform violet.
 
 The card uses one three-step type scale (title / field value / field label) and separates fields by **colour**, not font size: `TYPE` violet, `EVENT` blue, tool name amber, the `PAIR` label violet (matching the row marker), duration by its heat tier, status by its own semantic colour. When the title already names the tool (a lane slot titled `Read`), the `EVENT` line does not repeat it.
 
@@ -1832,9 +1897,10 @@ pnpm build
 pnpm build:native-plugins
 ```
 
-The current automated suite contains 527 tests across the event model, hooks,
-continuous turns, SSE reconnects, storage, migration, projection, routing,
-preference persistence, environment boundaries, and Vite proxy configuration.
+The automated suite covers the event model, hooks, continuous turns, SSE
+reconnects, storage, migration, projection, routing, preference persistence,
+environment boundaries, and Vite proxy configuration; `pnpm test` prints the
+current pass count.
 
 Manual checks:
 

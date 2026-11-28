@@ -5,11 +5,21 @@ const path = require("node:path");
 const {
   resolveAgentTraceFile,
   resolveAstroHome,
+  sanitizeSessionId,
 } = require("./storage-paths.cjs");
 const {
   formatRuntimeConfigDiagnostic,
   loadRuntimeConfig,
 } = require("./runtime-config.cjs");
+// Enrichment is a bonus, not a requirement: a partially updated plugin copy
+// (recorder shipped without its module) must keep recording host events
+// instead of failing the hook at startup.
+let transcriptEnrichment = null;
+try {
+  transcriptEnrichment = require("./transcript-enrich.cjs");
+} catch {
+  transcriptEnrichment = null;
+}
 
 const sensitiveKeyPattern =
   /authorization|cookie|password|passwd|secret|api[_-]?key|access[_-]?token|refresh[_-]?token|credential|private[_-]?key/i;
@@ -948,15 +958,197 @@ function launchDashboardForEvents(
   return true;
 }
 
-function readStdin() {
-  return new Promise((resolve, reject) => {
+/**
+ * A host is supposed to close stdin after one hook payload, but a few of them
+ * occasionally leave the pipe open (or are cancelled mid-write): the recorder
+ * then waited for an `end` that never came and the host killed the hook at its
+ * own timeout — ZCode logged it as `PreToolUse` `outcome: timed_out` at
+ * 5005ms. The read therefore has two budgets: an **idle** budget (no byte for
+ * this long means the payload is over) and a **total** cap, so a large payload
+ * that keeps streaming is still read to the end while a stalled pipe cannot
+ * hold the agent. `ASTRO_STDIN_TIMEOUT_MS` overrides the idle budget, `0`
+ * disables both.
+ */
+const STDIN_IDLE_TIMEOUT_MS = 1500;
+const STDIN_TOTAL_TIMEOUT_MS = 5000;
+
+function stdinIdleTimeout(environment = process.env) {
+  const raw = Number(environment.ASTRO_STDIN_TIMEOUT_MS);
+  if (raw === 0) {
+    return 0;
+  }
+  return Number.isFinite(raw) && raw > 0 ? raw : STDIN_IDLE_TIMEOUT_MS;
+}
+
+/**
+ * The transcript a host names on its hook payload. WorkBuddy / CodeBuddy /
+ * Claude use `transcript_path`; ZCode also mirrors it as `transcriptPath` and
+ * can put it inside a nested payload.
+ */
+function transcriptPathOf(payload, environment = {}) {
+  // Hosts name the same file differently: Claude / WorkBuddy / CodeBuddy /
+  // ZCode use `transcript_path`, other IDEs spell it camelCase or call it a
+  // session / conversation / history file. Reading every common spelling keeps
+  // enrichment available without a per-client adapter, and a missing path
+  // simply yields no recovered events.
+  //
+  // Trae's hook publishes no transcript at all (checked against Trae CN's
+  // workbench bundle: no `transcript_path` anywhere), so its thinking cannot
+  // be recovered from a hook. `ASTRO_TRANSCRIPT_PATH` is the explicit escape
+  // hatch for a host like that: point it at a conversation file and the same
+  // incremental reader runs, without inventing a per-client adapter.
+  const override =
+    typeof environment.ASTRO_TRANSCRIPT_PATH === "string"
+      ? environment.ASTRO_TRANSCRIPT_PATH.trim()
+      : "";
+  if (override) {
+    // `~/…` is what a person writes in a shell profile, not a real path.
+    return override.startsWith("~/")
+      ? path.join(require("node:os").homedir(), override.slice(2))
+      : override;
+  }
+  const keys = [
+    "transcript_path",
+    "transcriptPath",
+    "session_file",
+    "sessionFile",
+    "conversation_file",
+    "conversationFile",
+    "history_file",
+    "historyFile",
+    "messages_file",
+    "messagesFile",
+    "log_file",
+    "logFile",
+  ];
+  for (const container of [payload, payload?.payload]) {
+    if (!container || typeof container !== "object") {
+      continue;
+    }
+    for (const key of keys) {
+      const candidate = container[key];
+      if (typeof candidate === "string" && candidate.trim()) {
+        return candidate;
+      }
+    }
+  }
+  return "";
+}
+
+/**
+ * Recovered thinking / replies for one host event, read from the transcript
+ * the host named. Empty for a client without a transcript, for an event that
+ * cannot close a message, when the reader is disabled (`ASTRO_TRANSCRIPT_ENRICH=0`),
+ * or on any error: enrichment is a bonus, never a reason to fail a hook.
+ */
+function recoverTranscriptEvents(payload, environment, options = {}) {
+  try {
+    if (!transcriptEnrichment) {
+      return [];
+    }
+    if (!isEnabled(environment.ASTRO_TRANSCRIPT_ENRICH ?? "1")) {
+      return [];
+    }
+    const transcriptPath = transcriptPathOf(payload, environment);
+    if (!transcriptPath) {
+      return [];
+    }
+    const source = normalizeSource(
+      options.source ||
+        payload.sourceClient ||
+        payload.source_client ||
+        payload.agent ||
+        payload.client ||
+        payload.source ||
+        "generic",
+    );
+    const eventName = canonicalizeEventName(
+      options.eventName || payload.eventName || inferEventName(payload, source),
+    );
+    if (!transcriptEnrichment.isEnrichEvent(eventName)) {
+      return [];
+    }
+    const sessionId = String(
+      options.sessionId ||
+        payload.sessionId ||
+        payload.session_id ||
+        payload.threadId ||
+        payload.thread_id ||
+        "unknown-session",
+    );
+    // A session's capture directory is timestamped per launch, so the cursor
+    // must live in a stable place: one file per (source, session) under
+    // ASTRO_HOME. A cursor inside the session directory would be recreated on
+    // every hook and replay the whole transcript each time.
+    return transcriptEnrichment.enrichFromTranscript({
+      transcriptPath,
+      stateDirectory: path.join(resolveAstroHome(environment), "transcript-state"),
+      stateKey: `${source}-${sanitizeSessionId(sessionId)}`,
+      sessionId,
+      cwd: payload.cwd || payload.payload?.cwd || null,
+      source,
+    });
+  } catch {
+    return [];
+  }
+}
+
+function readStdin(options = {}) {
+  const environment = options.environment || process.env;
+  const idleMs = options.idleMs ?? stdinIdleTimeout(environment);
+  const totalMs =
+    options.totalMs ?? (idleMs > 0 ? Math.max(STDIN_TOTAL_TIMEOUT_MS, idleMs) : 0);
+  return new Promise((resolve) => {
     let input = "";
+    let settled = false;
+    let idleTimer = null;
+    let totalTimer = null;
+    const finish = () => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      if (idleTimer) {
+        clearTimeout(idleTimer);
+      }
+      if (totalTimer) {
+        clearTimeout(totalTimer);
+      }
+      // The payload is over (or abandoned). Releasing stdin lets the process
+      // exit on its own; an open pipe would otherwise keep the event loop
+      // alive until the host kills the hook.
+      try {
+        process.stdin.pause();
+        process.stdin.destroy();
+      } catch {
+        // A closed stdin is already fine.
+      }
+      resolve(input);
+    };
+    const armIdle = () => {
+      if (idleMs <= 0) {
+        return;
+      }
+      if (idleTimer) {
+        clearTimeout(idleTimer);
+      }
+      idleTimer = setTimeout(finish, idleMs);
+      idleTimer.unref?.();
+    };
     process.stdin.setEncoding("utf8");
     process.stdin.on("data", (chunk) => {
       input += chunk;
+      armIdle();
     });
-    process.stdin.on("end", () => resolve(input));
-    process.stdin.on("error", reject);
+    process.stdin.on("end", finish);
+    // A read error is not the agent's problem: record whatever arrived and let
+    // the caller's JSON handling decide.
+    process.stdin.on("error", finish);
+    armIdle();
+    if (totalMs > 0) {
+      totalTimer = setTimeout(finish, totalMs);
+      totalTimer.unref?.();
+    }
   });
 }
 
@@ -980,14 +1172,35 @@ async function run() {
       environment: process.env,
       initialize: true,
     });
-    const input = await readStdin();
+    const input = await readStdin({ environment: runtimeConfig.environment });
     const payload = JSON.parse(input || "{}");
-    const event = appendTraceEvent(payload, runtimeConfig.environment, {
+    const options = {
       source: getCliOption("source") || undefined,
       // WorkBuddy never writes its hook payload to stdin, so its hook
       // commands carry the event name as an explicit flag instead.
       eventName: getCliOption("event") || undefined,
-    });
+    };
+    // Hook-only clients publish no thinking or intermediate reply in their
+    // payloads; the transcript they name on the hook is the only place those
+    // artifacts exist. Read its new tail *before* writing, so the recovered
+    // steps land in the LOG in the order the model produced them, then write
+    // one batch (transcript events + the host event).
+    const recovered = recoverTranscriptEvents(
+      payload,
+      runtimeConfig.environment,
+      options,
+    );
+    // Recovered payloads carry their own `eventName` (Reasoning / AgentMessage)
+    // and must not inherit the host hook's `--event` flag: WorkBuddy always
+    // passes one, and a shared options object turned every recovered step into
+    // a second copy of the host event. Two batches keep the order — recovered
+    // steps first, then the host event — and give each its own naming rules.
+    if (recovered.length > 0) {
+      appendTraceEvents(recovered, runtimeConfig.environment, {
+        source: options.source,
+      });
+    }
+    const event = appendTraceEvent(payload, runtimeConfig.environment, options);
     recorded = true;
     for (const diagnostic of runtimeConfig.diagnostics) {
       process.stderr.write(`${formatRuntimeConfigDiagnostic(diagnostic)}\n`);
@@ -1036,6 +1249,8 @@ module.exports = {
   normalizeSource,
   openDashboard,
   readPreviewState,
+  readStdin,
+  recoverTranscriptEvents,
   redactString,
   redactValue,
   resolveAstroHome,

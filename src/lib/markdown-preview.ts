@@ -1,37 +1,89 @@
 import hljs from "highlight.js/lib/core";
 import bash from "highlight.js/lib/languages/bash";
+import c from "highlight.js/lib/languages/c";
+import cpp from "highlight.js/lib/languages/cpp";
+import csharp from "highlight.js/lib/languages/csharp";
+import css from "highlight.js/lib/languages/css";
 import diff from "highlight.js/lib/languages/diff";
+import go from "highlight.js/lib/languages/go";
+import graphql from "highlight.js/lib/languages/graphql";
+import ini from "highlight.js/lib/languages/ini";
+import java from "highlight.js/lib/languages/java";
 import javascript from "highlight.js/lib/languages/javascript";
 import json from "highlight.js/lib/languages/json";
+import kotlin from "highlight.js/lib/languages/kotlin";
+import lua from "highlight.js/lib/languages/lua";
 import markdown from "highlight.js/lib/languages/markdown";
+import php from "highlight.js/lib/languages/php";
+import properties from "highlight.js/lib/languages/properties";
+import protobuf from "highlight.js/lib/languages/protobuf";
 import python from "highlight.js/lib/languages/python";
+import ruby from "highlight.js/lib/languages/ruby";
+import rust from "highlight.js/lib/languages/rust";
+import scala from "highlight.js/lib/languages/scala";
+import sql from "highlight.js/lib/languages/sql";
+import swift from "highlight.js/lib/languages/swift";
 import typescript from "highlight.js/lib/languages/typescript";
 import xml from "highlight.js/lib/languages/xml";
 import yaml from "highlight.js/lib/languages/yaml";
 import { Marked } from "marked";
+import { CAPTURED_IMAGE_MIME_TYPES } from "./captured-image.ts";
+import { parseNumberedCode } from "./numbered-code.ts";
 
-// Only the languages a captured payload realistically carries. The docs site
-// can afford `highlight.js/lib/common`; the console ships in the main bundle,
-// so registering a focused set keeps its code out of the first paint.
+// The captured payloads the console realistically carries — the docs site can
+// afford `highlight.js/lib/common`, but this ships in the main bundle, so the
+// set is the focused-but-broad list a trace of code edits and shell work
+// produces. Every language below emits `hljs-*` tokens the shared theme
+// already colours, so registering more widens coverage with no CSS changes.
 const highlightedLanguages: Record<string, Parameters<typeof hljs.registerLanguage>[1]> = {
   bash,
+  shell: bash,
   diff,
+  c,
+  cpp,
+  "c++": cpp,
+  "cc": cpp,
+  csharp,
+  cs: csharp,
+  go,
+  golang: go,
+  graphql,
+  gql: graphql,
+  ini,
+  conf: ini,
+  cfg: ini,
+  java,
   javascript,
   js: javascript,
   jsx: javascript,
   json,
+  jsonc: json,
+  kotlin,
+  kt: kotlin,
+  lua,
   markdown,
   md: markdown,
+  php,
+  protobuf,
+  proto: protobuf,
   python,
   py: python,
+  ruby,
+  rb: ruby,
+  rust,
+  rs: rust,
+  scala,
+  sql,
+  swift,
   typescript,
   ts: typescript,
   tsx: typescript,
   xml,
   html: xml,
+  svg: xml,
+  css,
   yaml,
   yml: yaml,
-  shell: bash,
 };
 for (const [name, grammar] of Object.entries(highlightedLanguages)) {
   hljs.registerLanguage(name, grammar);
@@ -66,10 +118,16 @@ markdownParser.use({
   renderer: {
     code(token: unknown) {
       const fence = token as { text?: string; lang?: string };
-      const code = fence.text ?? "";
+      const raw = fence.text ?? "";
       // A language is a class name, never raw source: strip anything that is
       // not a language identifier before it reaches the HTML string.
       const language = (fence.lang ?? "").trim().split(/\s+/)[0].replace(/[^a-zA-Z0-9_+-]/g, "");
+      // A Read tool returns its file as `   1→line`. Render the numbers in
+      // their own gutter instead of leaving the prefixes glued to the source:
+      // the code keeps its syntax highlighting and the reader keeps the line
+      // numbers the tool captured (including a non-1 start offset).
+      const numbered = parseNumberedCode(raw);
+      const code = numbered ? numbered.lines.join("\n") : raw;
       const body =
         language && SHELL_LANGUAGES.has(language)
           ? highlightShell(code)
@@ -77,6 +135,19 @@ markdownParser.use({
             ? hljs.highlight(code, { language, ignoreIllegals: true }).value
             : escapeHtml(code);
       const classes = language ? `hljs language-${language}` : "hljs";
+      if (numbered) {
+        const gutter = numbered.numbers.map((number) => escapeHtml(number)).join("\n");
+        return (
+          `<div class="md-code md-code--numbered" data-lang="${language}">` +
+          (language
+            ? `<span class="md-code__lang" aria-hidden="true">${language}</span>`
+            : "") +
+          `<div class="md-code__numbered-body">` +
+          `<pre class="md-code__gutter" aria-hidden="true"><code>${gutter}</code></pre>` +
+          `<pre class="md-code__code"><code class="${classes}">${body}</code></pre>` +
+          `</div></div>`
+        );
+      }
       if (!language) {
         return `<pre><code class="${classes}">${body}</code></pre>`;
       }
@@ -86,6 +157,28 @@ markdownParser.use({
         `<pre><code class="${classes}">${body}</code></pre>` +
         `</div>`
       );
+    },
+    list(token: unknown) {
+      // GFM task lists (a captured `todos` payload) read as a checklist, not a
+      // bulleted list: render the rows as plain divs so the checkbox is the
+      // only marker instead of a `<li>` bullet doubling it. Non-task lists
+      // return `false` and fall through to the default `<ul>` / `<ol>`.
+      const list = token as {
+        items?: { tokens?: unknown[]; task?: boolean }[];
+      };
+      const items = list.items ?? [];
+      if (!items.some((item) => item.task)) {
+        return false;
+      }
+      const rows = items
+        .map((item) => {
+          const tokens = (item.tokens ?? []) as Parameters<
+            typeof this.parser.parseInline
+          >[0];
+          return `<div class="md-taskrow">${this.parser.parseInline(tokens)}</div>`;
+        })
+        .join("");
+      return `<div class="md-tasklist">${rows}</div>`;
     },
   },
 });
@@ -241,7 +334,13 @@ function isDangerousUrl(value: string): boolean {
     return true;
   }
   // Image data URLs are inert; every other data URL is a smuggling channel.
-  return scheme.startsWith("data:") && !scheme.startsWith("data:image/");
+  // The MIME whitelist is the captured-resource classifier's one definition,
+  // so a `data:image/tiff` that no surface can classify is stripped here too.
+  const imageMime = /^data:image\/([a-z0-9.+-]+)/i.exec(scheme);
+  return (
+    scheme.startsWith("data:") &&
+    !(imageMime && CAPTURED_IMAGE_MIME_TYPES.has(imageMime[1].toLowerCase()))
+  );
 }
 
 /**

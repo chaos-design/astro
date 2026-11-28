@@ -11,9 +11,12 @@ import {
   isApiRequest,
   markAppReady,
   recordListRender,
+  recordPageFpsSample,
   recordScrollSample,
   resolveHudPosition,
+  summarizePageFps,
 } from "../src/lib/perf-metrics.ts";
+import { formatPerfDuration } from "../src/lib/duration-label.ts";
 
 test("computeFps derives clamped one-decimal frames per second", () => {
   assert.equal(computeFps(60, 1_000), 60);
@@ -69,14 +72,64 @@ test("markAppReady records the first commit once", () => {
   assert.equal(getPerfSnapshot().appReadyMs, 1_234);
 });
 
-test("formatHudHeadline condenses the collapsed pill to two numbers", () => {
+test("formatHudHeadline reads the page's own frame rate, not a scroll average", () => {
   recordScrollSample({ durationMs: 1_000, fps: 58.4, frames: 58 });
-  recordListRender(0.8, 12);
+  recordPageFpsSample(59.5, 16.8);
   const headline = formatHudHeadline(getPerfSnapshot());
   // The snapshot aggregates module-level samples from every test in this
-  // process, so the exact values are shared state; the pill's contract is the
-  // two-number shape: a rounded fps average and a one-decimal render average.
-  assert.match(headline, /^\d+(\.\d+)?fps · \d+\.\dms$/);
+  // process, so the exact values are shared state; the pill's contract is
+  // "current page fps · frame interval" in the panel's duration ladder.
+  assert.match(
+    headline,
+    /^\d+(\.\d+)?fps · (\d+ms|\d+s|\d{2}M\d{2}s|\d{2}H\d{2}M)$/,
+  );
+  assert.ok(headline.startsWith("59.5fps"), headline);
+});
+
+test("formatPerfDuration follows the documented ladder", () => {
+  // Under 10s: milliseconds, so frame work stays readable.
+  assert.equal(formatPerfDuration(0), "0ms");
+  assert.equal(formatPerfDuration(742.4), "742ms");
+  assert.equal(formatPerfDuration(9_999), "9999ms");
+  // 10–60s: whole seconds.
+  assert.equal(formatPerfDuration(10_000), "10s");
+  assert.equal(formatPerfDuration(59_999), "59s");
+  // 1–60min: two-digit compound MMmSSs — the seconds still distinguish runs.
+  assert.equal(formatPerfDuration(60_000), "01M00s");
+  assert.equal(formatPerfDuration(61_000), "01M01s");
+  assert.equal(formatPerfDuration(3_599_000), "59M59s");
+  // 60min and up: hours + minutes, two digits each.
+  assert.equal(formatPerfDuration(3_600_000), "01H00M");
+  assert.equal(formatPerfDuration(7_500_000), "02H05M");
+  // Degenerate input prints the same placeholder as the other ladder.
+  assert.equal(formatPerfDuration(Number.NaN), "--");
+  assert.equal(formatPerfDuration(-1), "--");
+});
+
+test("recordPageFpsSample keeps a bounded ring and summarizes it", () => {
+  recordPageFpsSample(60, 16.7);
+  recordPageFpsSample(30, 33.3);
+  recordPageFpsSample(Number.NaN, 0);
+  const stats = getPerfSnapshot().pageFps;
+  assert.equal(stats.current, 30);
+  assert.equal(stats.frameMs, 33.3);
+  assert.ok(stats.samples >= 2);
+  assert.ok(stats.min <= 30);
+  // The summarizer is pure, so its shape is pinned directly.
+  assert.deepEqual(summarizePageFps([60, 30], 30, 33.3), {
+    current: 30,
+    average: 45,
+    min: 30,
+    samples: 2,
+    frameMs: 33.3,
+  });
+  assert.deepEqual(summarizePageFps([], 0, 0), {
+    current: 0,
+    average: 0,
+    min: 0,
+    samples: 0,
+    frameMs: 0,
+  });
 });
 
 test("browser-only installers no-op outside the DOM", () => {
@@ -154,13 +207,14 @@ test("getHudTiles tone-codes the three headline numbers", () => {
   const tiles = getHudTiles({
     ...getPerfSnapshot(),
     scrollFps: { average: 58, last: 58, samples: 3, worst: 55 },
+    pageFps: { current: 58, average: 58, min: 55, samples: 3, frameMs: 17.2 },
     listRender: { count: 4, lastMs: 1, averageMs: 2, maxMs: 4, lastRows: 20 },
     longTasks: { count: 0, maxMs: 0, totalMs: 0 },
   });
   assert.deepEqual(
     tiles.map((tile) => [tile.label, tile.tone]),
     [
-      ["滚动帧率", "ok"],
+      ["页面帧率", "ok"],
       ["列表渲染", "ok"],
       ["长任务", "ok"],
     ],
@@ -170,6 +224,7 @@ test("getHudTiles tone-codes the three headline numbers", () => {
   const degraded = getHudTiles({
     ...getPerfSnapshot(),
     scrollFps: { average: 22, last: 22, samples: 2, worst: 18 },
+    pageFps: { current: 22, average: 24, min: 18, samples: 2, frameMs: 45.5 },
     listRender: { count: 4, lastMs: 30, averageMs: 25, maxMs: 40, lastRows: 20 },
     longTasks: { count: 2, maxMs: 180, totalMs: 240 },
   });
