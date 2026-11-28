@@ -4382,6 +4382,7 @@ pre,
   align-items: center;
   gap: 0 7px;
   padding: 8px 9px 14px;
+  --node-tone: var(--type-tone, var(--teal));
   border: 1px solid color-mix(in srgb, var(--node-tone) 62%, var(--line-bright));
   border-radius: 8px;
   color: var(--text);
@@ -4463,26 +4464,38 @@ pre,
   animation: atom-locator-pulse 760ms ease-in-out 2;
 }
 
-.harness-node--prompt {
-  --node-tone: var(--blue);
+/* ONE tone -> colour table, shared by the canvas atoms and the LOG TYPE
+   badge. A row's badge names the very atom the canvas highlights, so the two
+   must read the same palette; a second, hardcoded table used to leave them
+   disagreeing (worst of all for `signal`). The badge's `tone-*` class carries
+   the atom's own tone, which is the same value the node's class carries. */
+.harness-node--prompt,
+.atomic-log__type.tone-prompt {
+  --type-tone: var(--blue);
 }
 
 .harness-node--session,
 .harness-node--agent,
-.harness-node--complete {
-  --node-tone: var(--teal);
+.harness-node--complete,
+.atomic-log__type.tone-session,
+.atomic-log__type.tone-agent,
+.atomic-log__type.tone-complete {
+  --type-tone: var(--teal);
 }
 
-.harness-node--reasoning {
-  --node-tone: var(--violet);
+.harness-node--reasoning,
+.atomic-log__type.tone-reasoning {
+  --type-tone: var(--violet);
 }
 
-.harness-node--tool {
-  --node-tone: var(--amber);
+.harness-node--tool,
+.atomic-log__type.tone-tool {
+  --type-tone: var(--amber);
 }
 
-.harness-node--signal {
-  --node-tone: var(--pink);
+.harness-node--signal,
+.atomic-log__type.tone-signal {
+  --type-tone: var(--pink);
 }
 
 .harness-node__status {
@@ -7861,16 +7874,18 @@ pre,
 }
 
 /* TYPE is resolved from the atom's key/kind by src/lib/atom-types.ts — the
-   very same label the trajectory badge and hover card print. Violet matches
-   the hover card's TYPE field; a hairline border and a small radius keep the
-   badge compact instead of the large duration pill. */
+   very same label the trajectory badge and hover card print. Its *colour* is
+   the atom's tone, the same `--type-tone` the canvas node uses, so a badge and
+   the node it names read as one category. A hairline border and a small radius
+   keep it compact instead of the large duration pill. */
 .atomic-log__row .atomic-log__type {
+  --type-tone: var(--muted-soft);
   flex: 0 0 auto;
   padding: 0 4px;
-  border: 1px solid color-mix(in srgb, var(--violet) 45%, var(--line));
+  border: 1px solid color-mix(in srgb, var(--type-tone) 45%, var(--line));
   border-radius: 3px;
-  color: var(--violet);
-  background: color-mix(in srgb, var(--violet-deep) 12%, transparent);
+  color: var(--type-tone);
+  background: color-mix(in srgb, var(--type-tone) 12%, transparent);
   font-family: var(--font-mono);
   font-size: var(--text-overline);
   font-weight: var(--weight-medium);

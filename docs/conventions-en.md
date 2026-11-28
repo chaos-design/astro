@@ -143,7 +143,9 @@
     Clients that only publish hook events (WorkBuddy / CodeBuddy / Claude /
     ZCode) carry no thinking or intermediate reply in their payloads; the one
     recovery path is `plugin/transcript-enrich.cjs`: it reads the host's
-    `transcript_path` tail incrementally (256 KiB per read), emits canonical
+    `transcript_path` tail incrementally (256 KiB starting read; the cursor only
+    advances past complete lines, and a single entry bigger than the window grows
+    *that* read to its newline — no entry dropped, no body truncated), emits canonical
     `Reasoning` / `AgentMessage` payloads whose `messageId` is the transcript
     entry's own id, de-duplicates by `transcriptKey` in
     `<ASTRO_HOME>/transcript-state/<source>-<session>.json` (the session
@@ -208,8 +210,18 @@
     the newest step anywhere in the viewport. There is **no cached at-bottom
     flag** — the append pin and the selection effects read it live from the
     DOM when a batch lands, so a batch arriving between a wheel gesture and
-    its rAF cannot undo the reader's in-flight scroll. While following, the
-    append pin re-runs on every batch, even when the step count is unchanged:
+    its rAF cannot undo the reader's in-flight scroll. The tie-breaker for the
+    other direction is `followAfterAppend` (same module): a new card grows
+    `scrollHeight` and pushes the last step just below the edge, so post-append
+    geometry alone calls a reader still at the tail "detached". The component
+    pairs the live verdict with a snapshot taken at the last *observed* scroll
+    (a real scroll event or its own pin, never a batch's re-check): an unchanged
+    `scrollTop` while previously following means content growth, so the pin
+    follows; a changed `scrollTop` means a gesture and the snapshot cannot
+    override the live verdict. First open / chain switch pins to `scrollHeight`
+    before paint, and returning to the bottom re-arms the same rule. While
+    following, the append pin re-runs on every batch, even when the step count
+    is unchanged:
     a streamed snapshot **merges** into the existing reply step, and keying
     the pin on the count alone let the text pile up below the fold of a
     reader who never scrolled. A live advance whose newest event resolves
@@ -354,7 +366,9 @@
     the dialog), so the first-executed event sits at the bottom, and turn
     separators are keyed by position, never by the turn value. Its rows reuse
     the LOG row itself (`.atomic-log__row`) — shared sequence, `atomTypeLabel`
-    TYPE badge, event-meta tone, timestamp, action / summary, the closed-pair
+    TYPE badge (carrying the primary atom's own `tone-*`, painted from the same
+    `--type-tone` table as the canvas node it names), event-meta tone, timestamp,
+    action / summary, the closed-pair
     duration badge (the **same stepped ladder as the LOG list**,
     `formatDurationMs` in `src/lib/duration-label.ts` — `ms` below 10s, `s`
     below 1m, then `m` / `h` / `d`, one dominant unit per tier, so the same

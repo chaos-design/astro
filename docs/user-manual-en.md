@@ -574,14 +574,18 @@ The platform choice is stored in `ASTROX_PLATFORM`.
 The upper LOG area:
 
 - orders the newest event first;
-- prints a violet `TYPE` badge before each event key (`SYSTEM` / `MODEL` /
+- prints a `TYPE` badge before each event key (`SYSTEM` / `MODEL` /
   `TOOL` / `MEMORY` / `RESPONSE` / `TRACE`, …). It is the **primary atom's type
   data**: the atom's `key` and its projection-normalised `kind`, resolved into a
   closed set of short labels. It is neither the event name nor a payload field;
   the trajectory row badge and the hover card's `TYPE` read the same data, so
-  the three views agree. One LOG event projects into several atoms, so the row
-  shows just the primary one (`getAtomIdForEvent` — the same atom highlighted
-  in the canvas when the row is selected) instead of stacking labels. Hovering
+  the three views agree. The badge colour comes from that atom's `tone`, using
+  the same shared table as the canvas node it names (Input blue, Model/thinking
+  violet, Tool amber, Reply/Session teal, Signal pink), so a LOG row and its
+  canvas node read as one category. One LOG event projects into several atoms,
+  so the row shows just the primary one (`getAtomIdForEvent` — the same atom
+  highlighted in the canvas when the row is selected) instead of stacking
+  labels. Hovering
   the badge reports `atom type <label> · <key> / <kind>`; e.g. the
   `tool.result` atom belongs to the `context` kind, so it reads `MEMORY`, not
   `TOOL` — TYPE is the atom's responsibility category, not a tool or event
@@ -725,11 +729,14 @@ The inspector provides:
   events no longer yank the reader down; new steps only count up on the pill,
   and a click jumps straight to the last step and clears the count. Returning
   to the newest step or the bottom dismisses the pill and resumes automatic
-  following, so new content keeps appending. Following also survives growth
-  without a new step: a streamed snapshot merges into the existing reply step
-  and the view re-pins while you stay at the bottom, and a live advance never
-  scrolls to a mid-list step — only picking an older row locates off the
-  tail. Once the run has ended, stopping
+  following, so new content keeps appending. Opening the dialog or switching
+  messages first pins to the absolute bottom before paint, so the tail is the
+  default position. Following also survives growth — both kinds: a streamed
+  snapshot merges into the existing reply step with no new step at all, and a
+  genuinely new card that pushes the last step below the viewport still pins
+  while you stay at the tail (unchanged scroll position means content grew, not
+  that you scrolled). A live advance never scrolls to a mid-list step — only
+  picking an older row locates off the tail. Once the run has ended, stopping
   above the last step turns the same control into a plain "scroll to bottom"
   button without the spinner, with the same position-only rule. While the
   run is still executing, a spinning
@@ -1243,7 +1250,7 @@ The summary displays:
 - completed count;
 - failed count.
 
-The lane map uses Input, Model, and Tools; `waiting` (a blocked User Question, for example) counts as executing just like `running`, so its slot keeps the running pulse instead of going idle. The detailed list groups steps by turn and shows event type, summary, timestamp, duration, and status. Hovering a block — a list row or a lane slot — opens one shared card that reports the block's **type** (its category, e.g. `SYSTEM` / `MODEL` / `TOOL`), event name, tool (when present), closed-pair span (`PAIR`), own wall-time span (`DURATION`, an atom), or the total of its closed-pair spans (`PAIRS` for a turn), and its status. The `TYPE` badge in front of a LOG event key comes from the same `atomTypeLabel` source and uses the same violet.
+The lane map uses Input, Model, and Tools; `waiting` (a blocked User Question, for example) counts as executing just like `running`, so its slot keeps the running pulse instead of going idle. The detailed list groups steps by turn and shows event type, summary, timestamp, duration, and status. Hovering a block — a list row or a lane slot — opens one shared card that reports the block's **type** (its category, e.g. `SYSTEM` / `MODEL` / `TOOL`), event name, tool (when present), closed-pair span (`PAIR`), own wall-time span (`DURATION`, an atom), or the total of its closed-pair spans (`PAIRS` for a turn), and its status. The `TYPE` badge in front of a LOG event key comes from the same `atomTypeLabel` source; its colour is the primary atom's `tone`, matching that atom's canvas node rather than a uniform violet.
 
 The card uses one three-step type scale (title / field value / field label) and separates fields by **colour**, not font size: `TYPE` violet, `EVENT` blue, tool name amber, the `PAIR` label violet (matching the row marker), duration by its heat tier, status by its own semantic colour. When the title already names the tool (a lane slot titled `Read`), the `EVENT` line does not repeat it.
 

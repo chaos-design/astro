@@ -2848,7 +2848,7 @@ const AtomicLogRow = memo(function AtomicLogRow({
       <strong className="atomic-log__name">
         {atomType?.label.trim() ? (
           <span
-            className="atomic-log__type"
+            className={cn("atomic-log__type", `tone-${atomType.tone}`)}
             title={`原子类型 ${atomType.label} · ${atomType.key} / ${atomType.kind}`}
           >
             {atomType.label}
@@ -7351,9 +7351,11 @@ export default function App() {
                 clockLabel: formatClock(event.capturedAt),
                 action: getEventAction(event),
                 summary: getEventSummary(event),
-                // The TYPE badge and row tone read the same sources as the LOG
-                // row: the projection atom's label, the event meta's tone.
+                // The TYPE badge reads the primary atom's label *and tone* —
+                // the same atom the canvas colours — so the badge and the
+                // highlighted node on the canvas agree at a glance.
                 type: atomType?.label ?? "",
+                typeTone: atomType?.tone ?? "unknown",
                 tone: eventMeta[event.eventName]?.tone || "unknown",
                 pairDuration,
                 durationLabel,

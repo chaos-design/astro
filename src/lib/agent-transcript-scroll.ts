@@ -54,11 +54,14 @@ export function isLatestStepVisible(
  * Whether a streamed batch may keep following the tail: the reader is within a
  * few pixels of the bottom, or the newest step is still anywhere in the
  * viewport (a tall last reply can be on screen well above the bottom edge).
- * This is the one generous rule behind live pinning — `syncScrollState` writes
- * it into `atBottomRef`, and the append pin / selection effects read it live
- * from the DOM at the moment a batch lands, so a batch arriving between a
- * wheel gesture and its rAF cannot undo the reader with a stale flag. An
- * unmeasurable newest step keeps the optimistic follow.
+ * This is the one generous rule behind live pinning — the append pin / selection
+ * effects read it live from the DOM at the moment a batch lands, so a batch
+ * arriving between a wheel gesture and its rAF cannot undo the reader with a
+ * stale flag. The component pairs this live verdict with a snapshot taken at
+ * the last *observed* scroll position so a newly appended card (which grows
+ * `scrollHeight` and pushes the last step below the edge) is not mistaken for
+ * a reader who scrolled away. An unmeasurable newest step keeps the optimistic
+ * follow.
  */
 export function isFollowingNewestStep(
   container: {
@@ -76,6 +79,25 @@ export function isFollowingNewestStep(
     return true;
   }
   return isLatestStepVisible(viewport, lastStep);
+}
+
+/**
+ * Tie-breaker for a batch that appended under a reader who never scrolled.
+ *
+ * `isFollowingNewestStep` reads the *post-append* DOM: a new card grows
+ * `scrollHeight` and pushes the last step just below the viewport edge, so the
+ * raw rule reports "detached" for a reader who is still pinned to the tail.
+ * The component records the posture at the last *observed* scroll position;
+ * if `scrollTop` has not moved since then and the reader was following, the
+ * change is content growth, not a gesture — keep following. A real wheel
+ * gesture changes `scrollTop`, so this tie-breaker can never override it.
+ */
+export function followAfterAppend(
+  following: boolean,
+  scrollTop: number,
+  observed: { readonly scrollTop: number; readonly following: boolean },
+): boolean {
+  return following || (scrollTop === observed.scrollTop && observed.following);
 }
 
 /**

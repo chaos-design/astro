@@ -884,7 +884,11 @@ function readStatusDetail(event: TraceEvent) {
   ];
   for (const candidate of candidates) {
     if (typeof candidate === "string" && candidate.trim()) {
-      return candidate.trim().slice(0, 120);
+      // Keep the captured reason whole. It used to be cut at 120 characters
+      // here, in the projection — past the point where a reader could recover
+      // the tail. UI surfaces that need a single line clamp/expand visually
+      // (their tooltips and step-body folds carry the full text).
+      return candidate.trim();
     }
   }
   return null;

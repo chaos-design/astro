@@ -108,8 +108,12 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   it, a missing module or a corrupt line costs only that read) and is mirrored
   into every portable plugin's `plugin/` directory by
   `scripts/build-native-plugins.mjs`. Never let a hook wait on it: it runs after
-  stdin is read and before the host event is appended, with a 256 KiB per-read
-  cap.
+  stdin is read and before the host event is appended, with a 256 KiB starting
+  read window. A read consuming more complete lines than an old hard cap is not
+  discarded — the cursor advances only past complete lines, and a single entry
+  larger than the window grows **that** read (from the same file offset, so
+  UTF-8 boundaries stay intact) until its newline is in view. No recovered
+  message may be truncated or stranded by a byte budget.
   Retention of captured runs lives only in `server/retention.mjs`
   (`findExpiredSessions` / `pruneExpiredSessions`, age = the session's newest
   `capturedAt`, guard 1–3650 days, deletes only `events.jsonl` session
@@ -965,8 +969,10 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   bottom, matching RUN HISTORY and LOG, and turn separators are keyed by
   position, never by the turn value. Its rows **reuse the LOG row itself**
   (`.atomic-log__row`): shared `formatLogSequence` number, `atomTypeLabel` TYPE
-  badge, event-meta tone colour, timestamp, action / summary, the closed-pair
-  duration badge and the shared `PairLinkMarker` — the same `PairLinkMarker`
+  badge (now carrying the primary atom's own `tone-*`, so its colour comes from
+  the same `--type-tone` table that paints the canvas node it names), event-meta
+  tone colour, timestamp, action / summary, the closed-pair duration badge and
+  the shared `PairLinkMarker` — the same `PairLinkMarker`
   component the LOG and trajectory render, extracted to
   `src/components/pair-link-marker.tsx`; `payload-overlay.tsx` must not grow a
   second row implementation, type taxonomy or tone map. The rail-only CSS
@@ -1067,7 +1073,16 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   the newest step anywhere in the viewport, with no cached at-bottom flag —
   the append pin and the selection effects read it live from the DOM so a
   batch landing between a wheel gesture and its rAF cannot undo the reader).
-  The centered pill reads
+  `followAfterAppend` in the same module is the one tie-breaker for the other
+  direction: a new card grows `scrollHeight` and pushes the last step just
+  below the edge, so post-append geometry alone calls a reader at the tail
+  "detached". The component pairs the live verdict with a snapshot taken at
+  the last *observed* scroll (a real scroll event or our own pin, never a
+  batch's re-check): unchanged `scrollTop` + formerly following means content
+  growth, so the pin follows; a changed `scrollTop` means a gesture and the
+  snapshot cannot override the live verdict. First open / chain switch pins to
+  `scrollHeight` before paint, and returning to the bottom re-arms the same
+  rule. The centered pill reads
   **position only**, never scroll direction: `latestStepHiddenOutside` is the
   one measure of how far the newest step has left the viewport, and the pill
   appears once it exceeds `AGENT_SCROLL_HIDDEN_STEP_THRESHOLD` (64px). An

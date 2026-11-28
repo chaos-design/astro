@@ -32,6 +32,8 @@ export type EventAtomType = {
   kind: string;
   /** The displayed short label, e.g. `TOOL`. */
   label: string;
+  /** The atom's tone, the same value the canvas node uses for its colour. */
+  tone: string;
 };
 
 /**
@@ -60,6 +62,10 @@ function atomTypesForPlatform(
           key: definition.key,
           kind: definition.kind,
           label: atomTypeLabel(definition.key, definition.kind),
+          // The canvas colours this very atom by `atom.tone`; carrying it here
+          // lets the LOG's TYPE badge use the same tone instead of a second,
+          // hardcoded colour taxonomy.
+          tone: atom.tone,
         },
       ] as const;
     }),

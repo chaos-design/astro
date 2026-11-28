@@ -114,6 +114,8 @@ export type PayloadOverlayAtom = {
   /** Turn of the bound event, from `buildTraceTurnIndex` — the one source. */
   turn: number;
   type: string;
+  /** The primary atom's tone, so the TYPE badge matches the canvas node. */
+  typeTone: string;
 };
 
 /** Past this length the card clamps its summary and offers an explicit fold. */
@@ -1138,7 +1140,13 @@ export function PayloadOverlay({
               <i aria-hidden="true" className="phase-dot" />
               <strong className="atomic-log__name">
                 {atom.type?.trim() ? (
-                  <span className="atomic-log__type payload-overlay__atom-type">
+                  <span
+                    className={cn(
+                      "atomic-log__type",
+                      "payload-overlay__atom-type",
+                      `tone-${atom.typeTone}`,
+                    )}
+                  >
                     {atom.type}
                   </span>
                 ) : null}

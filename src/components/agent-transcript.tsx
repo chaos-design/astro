@@ -35,6 +35,7 @@ import { QuestionContent, QuestionPreview, type QuestionAnswerBinding } from "@/
 import { RelatedFields } from "@/components/related-fields";
 import {
   AGENT_SCROLL_HIDDEN_STEP_THRESHOLD,
+  followAfterAppend,
   isAgentTranscriptAtBottom,
   isFollowingNewestStep,
   latestStepHiddenOutside,
@@ -1035,6 +1036,18 @@ export function AgentTranscript({
   const initializedChainRef = useRef<string | null>(null);
   const lastLocateRef = useRef(locateRequest);
   const scrollFrameRef = useRef<number | null>(null);
+  // The last *user-observed* follow posture: the scrollTop and the follow
+  // verdict at the moment a real scroll event settled or a programmatic pin
+  // landed. It is deliberately NOT a cached at-bottom flag: `isFollowingNewestStep`
+  // reads the live DOM on every batch, but a newly appended card grows
+  // `scrollHeight` and pushes the last step just below the viewport — reading
+  // that post-append geometry alone makes a reader who never scrolled look
+  // detached. Pairing the live verdict with "did scrollTop change since the
+  // last observation?" tells an append apart from a wheel gesture without
+  // latching direction. Written only from scroll events and our own pins,
+  // never from a batch's re-check (which would pollute it with the very
+  // geometry the guard is meant to discount).
+  const followSnapshotRef = useRef({ scrollTop: 0, following: true });
   // The centered pill is a position read, not a gesture latch: it answers
   // whether the newest step has left the viewport, however the reader got
   // there (wheel, programmatic locate or an explicit atom pick).
@@ -1062,10 +1075,19 @@ export function AgentTranscript({
     [],
   );
 
+  // Record the posture after *our own* programmatic positioning. Without this
+  // the next appended card sees a stale scrollTop and fails the append guard.
+  const recordPinnedFollow = useCallback((following: boolean) => {
+    const container = scrollRef.current;
+    if (container) {
+      followSnapshotRef.current = { scrollTop: container.scrollTop, following };
+    }
+  }, []);
+
   // The scroll handler reads layout at most once per frame: a live stream can
   // append several events a second, but a wheel gesture must not turn every
   // event into a layout read plus a render.
-  const syncScrollState = useCallback(() => {
+  const syncScrollState = useCallback((recordFollow = false) => {
     const container = scrollRef.current;
     if (!container) {
       return;
@@ -1104,6 +1126,15 @@ export function AgentTranscript({
     const lastStep = view.steps.at(-1);
     const lastElement = lastStep ? stepRefs.current.get(lastStep.id) : null;
     const stepRect = lastElement?.getBoundingClientRect() ?? null;
+    if (recordFollow) {
+      // Only a real scroll event records the snapshot — a batch's re-check
+      // calls this with the default `false`, so the post-append geometry never
+      // overwrites the posture the reader last actually observed.
+      followSnapshotRef.current = {
+        scrollTop: container.scrollTop,
+        following: isFollowingNewestStep(container, viewport, stepRect),
+      };
+    }
     if (absoluteBottom) {
       // Back at the very bottom: disarm the pill and resume live pinning.
       setShowJump(false);
@@ -1141,7 +1172,7 @@ export function AgentTranscript({
     }
     scrollFrameRef.current = window.requestAnimationFrame(() => {
       scrollFrameRef.current = null;
-      syncScrollState();
+      syncScrollState(true);
     });
   }, [syncScrollState]);
 
@@ -1183,10 +1214,11 @@ export function AgentTranscript({
     if (container) {
       scrollToTop(container, container.scrollHeight);
     }
+    recordPinnedFollow(true);
     stepCountRef.current = view.steps.length;
     setShowJump(false);
     setPendingCount(0);
-  }, [chainId, scrollToTop]);
+  }, [chainId, scrollToTop, recordPinnedFollow]);
 
   // New steps while reading history are counted, never inserted under the
   // reader's scroll position. At the bottom the view stays pinned to the end.
@@ -1199,7 +1231,9 @@ export function AgentTranscript({
   // the content grows below the fold with no new step to count it. The follow
   // decision is read live from the DOM (`isFollowingNewestStep`), never from a
   // cached flag — a batch landing between a wheel gesture and its rAF must not
-  // undo the reader's in-flight scroll.
+  // undo the reader's in-flight scroll. The snapshot is only a tie-breaker for
+  // the *other* direction: a newly appended card grows the content and moves
+  // the last step below the edge, which is growth, not a reader who scrolled.
   useLayoutEffect(() => {
     const count = view.steps.length;
     const previous = stepCountRef.current;
@@ -1220,17 +1254,23 @@ export function AgentTranscript({
       viewport,
       lastElement?.getBoundingClientRect() ?? null,
     );
-    if (!following) {
+    const shouldFollow = followAfterAppend(
+      following,
+      container.scrollTop,
+      followSnapshotRef.current,
+    );
+    if (!shouldFollow) {
       if (count > previous) {
         setPendingCount((current) => current + (count - previous));
       }
       return;
     }
     scrollToTop(container, container.scrollHeight);
+    recordPinnedFollow(true);
     // Reset synchronously instead of waiting for the scroll event's rAF:
     // the pill must never flash between the new step landing and the pin.
     syncScrollState();
-  }, [view.steps, scrollToTop, syncScrollState]);
+  }, [view.steps, scrollToTop, syncScrollState, recordPinnedFollow]);
 
   // Re-evaluate the affordance after the append pin above, never before it:
   // a newly appended step sits below the viewport until that pin runs, so a
@@ -1262,10 +1302,15 @@ export function AgentTranscript({
     const viewport = container.getBoundingClientRect();
     const lastStep = view.steps.at(-1);
     const lastElement = lastStep ? stepRefs.current.get(lastStep.id) : null;
-    const following = isFollowingNewestStep(
+    const live = isFollowingNewestStep(
       container,
       viewport,
       lastElement?.getBoundingClientRect() ?? null,
+    );
+    const following = followAfterAppend(
+      live,
+      container.scrollTop,
+      followSnapshotRef.current,
     );
     if (!explicit && !following) {
       return;
@@ -1287,6 +1332,7 @@ export function AgentTranscript({
     }
     if (isLastStep || !element) {
       scrollToTop(container, container.scrollHeight, explicit);
+      recordPinnedFollow(true);
       if (!explicit) {
         syncScrollState();
       }
@@ -1301,6 +1347,9 @@ export function AgentTranscript({
       container.getBoundingClientRect().top +
       container.scrollTop;
     scrollToTop(container, Math.max(0, top - 12), explicit);
+    // An explicit pick of an older step is the one posture that must survive
+    // the next batch as "detached", even if the animation has not settled.
+    recordPinnedFollow(false);
     if (!explicit) {
       syncScrollState();
     }
@@ -1311,6 +1360,7 @@ export function AgentTranscript({
     locateRequest,
     scrollToTop,
     syncScrollState,
+    recordPinnedFollow,
   ]);
 
   const jumpToLatest = useCallback(() => {
@@ -1319,9 +1369,10 @@ export function AgentTranscript({
       return;
     }
     scrollToTop(container, container.scrollHeight);
+    recordPinnedFollow(true);
     setShowJump(false);
     setPendingCount(0);
-  }, [scrollToTop]);
+  }, [scrollToTop, recordPinnedFollow]);
 
   // The transcript renders one card per run event — with a 20k-event run the
   // per-second root re-render used to re-diff the whole list while nothing

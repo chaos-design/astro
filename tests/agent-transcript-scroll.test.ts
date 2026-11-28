@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   AGENT_SCROLL_BOTTOM_EPSILON,
   AGENT_SCROLL_HIDDEN_STEP_THRESHOLD,
+  followAfterAppend,
   isAgentTranscriptAtBottom,
   isFollowingNewestStep,
   isLatestStepVisible,
@@ -129,4 +130,38 @@ test("a batch may follow at the bottom or while the newest step is on screen", (
     true,
     "an unmeasurable newest step keeps the optimistic follow",
   );
+});
+
+/**
+ * A newly appended card grows `scrollHeight` and puts the last step just below
+ * the viewport, so the raw post-append rule says "detached" for a reader who
+ * never scrolled. The observed snapshot distinguishes growth from a gesture.
+ */
+test("an append under a reader at the tail keeps following", () => {
+  const observed = { scrollTop: 700, following: true };
+  // Post-append geometry: same scrollTop, taller content, last step out of
+  // view — `isFollowingNewestStep` alone would report false here.
+  const grown = { scrollTop: 700, clientHeight: 300, scrollHeight: 1100 };
+  assert.equal(isFollowingNewestStep(grown, { top: 700, bottom: 1000 }, {
+    top: 1000,
+    bottom: 1120,
+  }), false);
+  assert.equal(
+    followAfterAppend(false, grown.scrollTop, observed),
+    true,
+    "content growth with no scroll move resumes the follow",
+  );
+});
+
+test("a reader who scrolled away is never re-captured by an append", () => {
+  const observed = { scrollTop: 700, following: true };
+  // The wheel already moved scrollTop (its rAF has not run yet) or the reader
+  // was detached at the last observation — neither may be overridden.
+  assert.equal(followAfterAppend(false, 640, observed), false);
+  assert.equal(
+    followAfterAppend(false, 700, { scrollTop: 700, following: false }),
+    false,
+  );
+  // A genuinely following reader is still followed when the live rule agrees.
+  assert.equal(followAfterAppend(true, 640, observed), true);
 });

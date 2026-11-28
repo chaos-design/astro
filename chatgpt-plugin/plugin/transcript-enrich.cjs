@@ -36,10 +36,10 @@ const path = require("node:path");
 const REASONING_EVENT = "Reasoning";
 const MESSAGE_EVENT = "AgentMessage";
 
-/** One read never exceeds this many bytes; the rest waits for the next hook. */
+/** One read starts at this many bytes; the rest waits for the next hook. A
+ * single line longer than the window grows *this* read until its newline is
+ * in view, so a long message is never stranded or cut off. */
 const MAX_READ_BYTES = 256 * 1024;
-/** One read never parses more than this many entries. */
-const MAX_ENTRIES = 200;
 /** Remembered entry ids per transcript, oldest evicted first. */
 const MAX_REMEMBERED_IDS = 4000;
 /**
@@ -487,22 +487,34 @@ function readTranscriptEvents(options) {
       truncated: false,
     };
   }
-  const readBytes = Math.min(MAX_READ_BYTES, stats.size - start);
-  const buffer = Buffer.alloc(readBytes);
+  let readSize = Math.min(MAX_READ_BYTES, stats.size - start);
   let bytesRead = 0;
-  try {
-    const fd = fs.openSync(transcriptPath, "r");
+  let chunk = "";
+  for (;;) {
+    const buffer = Buffer.alloc(readSize);
     try {
-      bytesRead = fs.readSync(fd, buffer, 0, readBytes, start);
-    } finally {
-      fs.closeSync(fd);
+      const fd = fs.openSync(transcriptPath, "r");
+      try {
+        bytesRead = fs.readSync(fd, buffer, 0, readSize, start);
+      } finally {
+        fs.closeSync(fd);
+      }
+    } catch {
+      return { payloads: [], state: previous, bytesRead: 0, truncated: false };
     }
-  } catch {
-    return { payloads: [], state: previous, bytesRead: 0, truncated: false };
+    chunk = buffer.subarray(0, bytesRead).toString("utf8");
+    // Only complete lines are consumed: a write can land mid-line, and the
+    // remainder is read again from the same offset next hook. If the window
+    // holds no newline because one entry is bigger than the window, grow this
+    // read (from the same file offset, so UTF-8 boundaries stay intact) until
+    // the line ends or EOF — never consume a partial message.
+    if (chunk.lastIndexOf("\n") >= 0 ||
+        bytesRead < readSize ||
+        start + readSize >= stats.size) {
+      break;
+    }
+    readSize = Math.min(readSize * 2, stats.size - start);
   }
-  const chunk = buffer.subarray(0, bytesRead).toString("utf8");
-  // Only complete lines are consumed: a write can land mid-line, and the
-  // remainder must be read again with its head attached.
   const lastNewline = chunk.lastIndexOf("\n");
   const complete = lastNewline >= 0 ? chunk.slice(0, lastNewline + 1) : "";
   const nextOffset = start + Buffer.byteLength(complete, "utf8");
@@ -522,7 +534,7 @@ function readTranscriptEvents(options) {
   const remembered = new Set(
     Array.isArray(previous.ids) ? previous.ids : [],
   );
-  const payloads = payloadsFromEntries(entries.slice(-MAX_ENTRIES), {
+  const payloads = payloadsFromEntries(entries, {
     sessionId,
     cwd,
     source,

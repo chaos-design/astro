@@ -263,6 +263,54 @@ test("a huge transcript is read in bounded chunks and resumes", () => {
   assert.equal(total, entries.length, "every entry must arrive exactly once");
 });
 
+test("more than 200 entries in one read are all captured", () => {
+  const directory = makeDir();
+  const transcript = path.join(directory, "many.jsonl");
+  // Short entries let the whole file fit in one bounded read. The cursor used
+  // to skip past all of them while parsing only the last 200 — a silent loss.
+  const entries = Array.from({ length: 250 }, (_, index) => ({
+    id: `many-${index}`,
+    timestamp: 1793924115000 + index,
+    type: "message",
+    role: "assistant",
+    content: [{ type: "output_text", text: `message ${index}` }],
+  }));
+  writeLines(transcript, entries);
+  const result = readTranscriptEvents({
+    transcriptPath: transcript,
+    sessionId: "many-1",
+    source: "workbuddy",
+  });
+  assert.equal(result.payloads.length, entries.length);
+  assert.deepEqual(
+    result.payloads.map((payload) => payload.payload.message),
+    entries.map((entry) => entry.content[0].text),
+  );
+});
+
+test("one entry larger than the read window is captured whole", () => {
+  const directory = makeDir();
+  const transcript = path.join(directory, "long.jsonl");
+  const text = `HEAD${"A".repeat(MAX_READ_BYTES + 1024)}TAIL`;
+  writeLines(transcript, [
+    {
+      id: "long-1",
+      timestamp: 1793924115000,
+      type: "message",
+      role: "assistant",
+      content: [{ type: "output_text", text }],
+    },
+  ]);
+  const result = readTranscriptEvents({
+    transcriptPath: transcript,
+    sessionId: "long-1",
+    source: "workbuddy",
+  });
+  assert.equal(result.payloads.length, 1);
+  assert.equal(result.payloads[0].payload.message, text);
+  assert.equal(result.truncated, false);
+});
+
 test("a corrupt line costs that line only", () => {
   const directory = makeDir();
   const transcript = path.join(directory, "corrupt.jsonl");
