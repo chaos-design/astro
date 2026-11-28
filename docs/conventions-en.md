@@ -203,9 +203,18 @@
     fully out of view by more than `AGENT_SCROLL_HIDDEN_STEP_THRESHOLD` (64px)
     it appears, with no scroll-direction latch — a programmatic locate to an
     older step and an upward wheel land in the same state, while returning
-    downward or reaching the absolute bottom disarms it. Live pinning keeps
-    following while the newest step is visible
-    (`atBottomRef = absoluteBottom || latestVisible`). Once
+    downward or reaching the absolute bottom disarms it. The one generous
+    follow rule is `isFollowingNewestStep` (same module): at the bottom, or
+    the newest step anywhere in the viewport. There is **no cached at-bottom
+    flag** — the append pin and the selection effects read it live from the
+    DOM when a batch lands, so a batch arriving between a wheel gesture and
+    its rAF cannot undo the reader's in-flight scroll. While following, the
+    append pin re-runs on every batch, even when the step count is unchanged:
+    a streamed snapshot **merges** into the existing reply step, and keying
+    the pin on the count alone let the text pile up below the fold of a
+    reader who never scrolled. A live advance whose newest event resolves
+    into an older (merged) step never scrolls the view mid-list and never
+    disarms follow — only an explicit pick locates an older step. Once
     armed, a live run's pill carries the pending-step count and an ended
     run's becomes a plain "scroll to bottom" control. Locating the *newest*
     step (live follow, jump, or an explicit pick of the last step)
@@ -215,7 +224,13 @@
     newest step resumes automatic appending. Each content kind carries its
     own accent and routes its body through the same `contentToMarkdown` for
     code/document highlighting. The bottom loading row appears only while
-    the run is still executing (`live`). The displayed message's execution
+    the run is still executing (`live`). The progress strip (`ChainProgress`)
+    is a scroll-completion bar whose fill and active tick follow the reader's
+    position; its tick geometry re-measures on the last step **object** (not
+    just the count or the last id), because a merged-snapshot batch grows the
+    body while both hold still — with the pin fixed, the strip tracks the
+    newest turn while following and moves only on a real scroll otherwise.
+    The displayed message's execution
     time sits after the AGENT VIEW label: it reads the root display state
     (the same source the RUN HISTORY row reads — prompt-anchored,
     timeout-capped), advances on the root's secondly `now` tick while the
@@ -269,10 +284,19 @@
     (`cacheScope`); `payloadForAtom(atomId, eventId)` resolves the picked row's
     *own* event's payload, row-event-first — a tool-call row reads its own
     `tool_input`, a result row its `tool_response`, a prompt row its payload —
-    and `payloadField` (app.tsx) skips the recorder's **empty `{}` placeholder**
+    and **which payload a tab previews has one definition**:
+    `src/lib/inspector-payload.ts` (`payloadField` + `resolveInputPayload` /
+    `resolveOutputPayload`) feeds both the inspector tabs and the overlay
+    dialog, so a row cannot preview differently in the two surfaces.
+    `payloadField` skips the recorder's **empty `{}` placeholder**
     (the recorder writes `tool_input: {}` when only the camel spelling exists)
     so it never shadows the real `toolInput.command` — that shadowing once
-    blanked every tool call's Input preview — and the pane previews the
+    blanked every tool call's Input preview. The output side reads the row's
+    own result, then the paired close's, then a real reply / thinking text
+    (`last_assistant_message` / `message` / `text`), and ends on the event's
+    own payload — never a fabricated `{message: null}` stub, which once made a
+    prompt row preview an empty JSON shell in the dialog while the Agent view
+    body rendered the real prompt from the same payload — and the pane previews the
     payload's **core information**, never the raw
     envelope: a split with prose renders as Markdown (lists, highlighted code
     by data type), one without falls to the shared core extractor
@@ -852,16 +876,35 @@
   slice: `createSessionProjection` and the canvas path's
   `createAtomicProjection` (the app holds one long-lived fold instance; a
   session switch, a replay jump or a shorter list rebuilds from scratch inside
-  the closure) fold only what arrived since the last call.
+  the closure) fold only what arrived since the last call, and an unchanged
+  re-derive returns the previous projection object untouched — the
+  identity-stable result is what lets every downstream memo hit.
   `parseUserQuestionContent` caches its result per payload object (captured
   payloads are immutable references), so after the first pass the extraction
-  is a lookup. `createFlowEntries` (`trace-model.ts`) caches its folded entries
-  in a module-level `WeakMap` keyed by the events array, so `buildFlow`,
-  `buildPairDurations`, `buildPairLinks` and the `buildAgentView` that calls the
-  latter two share one fold per array (a replaced array is collected, not
-  pinned); the excluded tool-input keys are one module-level `Set`, never
-  rebuilt per event — a hot per-batch path must not call the full
-  `projectTraceEvents` or re-parse stable payloads.
+  is a lookup. `createFlowEntries` (`trace-model.ts`) **resumes its fold**:
+  bounded slots carry the entries, the tool-pair queues and one content hash
+  per folded event, a candidate array is matched by sampled per-event hashes
+  (ids alone cannot tell two captures with deterministic id spellings apart),
+  and only the appended slice is folded — `buildFlow`, `buildPairDurations`,
+  `buildPairLinks` and the `buildAgentView` that calls the latter two share
+  the resumed fold. An entry is immutable once handed out: a pair close
+  **replaces** it at its `flowIndex` (not `stepIndex` — a collapsed pair
+  drifts the event index from the entry's list position), so an older array's
+  cached snapshot can never observe a pair that closed in a later batch.
+  `isUserQuestionToolEvent` caches its verdict per event object — a streaming
+  batch re-asks it for the same tool events on every derive, and each
+  uncached answer costs a normalized-candidate walk. The overlay's
+  derivations (`overlayAtoms`, `overlayEventById`, `overlayAgentView`) are
+  gated on the open dialog, and the dialog's hot lists (rail rows,
+  transcript step cards) render from `useMemo`'d element arrays keyed on
+  batch-stable inputs, so the root's once-per-second `now` tick reuses
+  identical child elements and React bails out per row instead of re-diffing
+  a 20k-row subtree. `buildExecutionTopology`'s per-event pass consults only
+  the accumulators whose type sets match the event's name (one name →
+  indices map per call) and the question predicates only for
+  `questionCandidateEventNames`. The excluded tool-input keys are one
+  module-level `Set`, never rebuilt per event — a hot per-batch path must not
+  call the full `projectTraceEvents` or re-parse stable payloads.
 - **Never report a count that is not known yet.** Until the snapshot lands RUN
   HISTORY shows skeleton rows and a `loading…` subtitle, and the header marker
   reads `connecting`. `0 runs` and `offline` are statements about confirmed

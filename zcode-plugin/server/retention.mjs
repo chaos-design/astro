@@ -1,13 +1,14 @@
 import {
   closeSync,
   existsSync,
+  lstatSync,
   openSync,
   readdirSync,
   readSync,
   rmSync,
   statSync,
 } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 
 import {
   resolveAstroHome,
@@ -219,9 +220,30 @@ export function pruneExpiredSessions({
   const removed = [];
   for (const session of report.sessions) {
     const target = resolve(session.directory);
-    // Defence in depth: a symlink or a crafted root must not move the delete
-    // outside the trace root.
-    if (target !== rootPath && !target.startsWith(`${rootPath}/`)) {
+    // Defence in depth, three checks before anything is removed:
+    // 1. containment — the target must sit inside the trace root (a crafted
+    //    root, `..` segments or a different mount must not move the delete
+    //    outside it);
+    // 2. no symlinks — a link inside the root that points elsewhere must not
+    //    drag its target into the sweep;
+    // 3. a captured session — the directory must actually hold an
+    //    `events.jsonl`, so anything else under the root (plugins, exports,
+    //    a user's stray folder) is never a candidate.
+    const relativePath = relative(rootPath, target);
+    if (
+      (relativePath !== "" && relativePath.startsWith("..")) ||
+      isAbsolute(relativePath)
+    ) {
+      continue;
+    }
+    try {
+      if (lstatSync(target).isSymbolicLink()) {
+        continue;
+      }
+    } catch {
+      continue;
+    }
+    if (!existsSync(join(target, "events.jsonl"))) {
       continue;
     }
     try {
@@ -240,6 +262,13 @@ export function pruneExpiredSessions({
       try {
         const entries = readdirSync(directory);
         if (entries.length > 0) {
+          break;
+        }
+        try {
+          if (lstatSync(directory).isSymbolicLink()) {
+            break;
+          }
+        } catch {
           break;
         }
         rmSync(directory, { force: true, recursive: true });

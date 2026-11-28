@@ -51,6 +51,34 @@ export function isLatestStepVisible(
 }
 
 /**
+ * Whether a streamed batch may keep following the tail: the reader is within a
+ * few pixels of the bottom, or the newest step is still anywhere in the
+ * viewport (a tall last reply can be on screen well above the bottom edge).
+ * This is the one generous rule behind live pinning — `syncScrollState` writes
+ * it into `atBottomRef`, and the append pin / selection effects read it live
+ * from the DOM at the moment a batch lands, so a batch arriving between a
+ * wheel gesture and its rAF cannot undo the reader with a stale flag. An
+ * unmeasurable newest step keeps the optimistic follow.
+ */
+export function isFollowingNewestStep(
+  container: {
+    readonly clientHeight: number;
+    readonly scrollHeight: number;
+    readonly scrollTop: number;
+  },
+  viewport: { readonly top: number; readonly bottom: number },
+  lastStep: { readonly top: number; readonly bottom: number } | null,
+): boolean {
+  if (isAgentTranscriptAtBottom(container)) {
+    return true;
+  }
+  if (!lastStep) {
+    return true;
+  }
+  return isLatestStepVisible(viewport, lastStep);
+}
+
+/**
  * How many pixels of the newest step are completely outside the viewport.
  * Zero while any part of it is on screen, so a reader in the middle of a tall
  * live reply is never offered a jump away from the message they are reading.

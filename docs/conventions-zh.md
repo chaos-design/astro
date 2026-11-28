@@ -153,15 +153,24 @@
     读者不在最新步骤时不推其阅读位置，只累计条数。居中按钮只看**位置**：
     最新步骤越出视口超过 `AGENT_SCROLL_HIDDEN_STEP_THRESHOLD`（64px）即出现，
     不读滚动方向、不保留手势 latch；程序定位到更早步骤与向上滚动落在同一
-    状态，向下滚回或到达绝对底部则撤下。实时跟随在最新步骤仍在视口内时
-    继续（`atBottomRef = absoluteBottom || latestVisible`）。按钮出现后，运行中的卡片带待读
+    状态，向下滚回或到达绝对底部则撤下。唯一的宽松跟随规则是
+    `isFollowingNewestStep`（同模块）：在底部，或最新步骤仍在视口内。
+    **没有缓存的 at-bottom 标志**——追加钉底与选中态效果都在批次落地时从
+    DOM 实时读取，滚动手势与 rAF 之间落下的批次无法用陈旧标志撤销读者的
+    滚动。跟随期间追加钉底**每个批次都重跑**，即使步骤数不变：流式快照
+    **合并**进已有的回复步骤，只按步骤数判重曾让正文在读者脚下折叠线以下
+    不断堆积。实时推进若把最新事件解析进**更早的（合并）步骤**，绝不把视图
+    滚到列表中部、也不解除跟随——只有显式点选才定位更早步骤。按钮出现后，运行中的卡片带待读
     条数，结束后的同一按钮变为「快速滚动到底部」；定位**最新**步骤
     （实时跟随、跳回、或显式点选最后一步）会把容器钉到**绝对底部**
     （`scrollHeight`），让末条贴住底边并从这里恢复跟随，只有定位**更早**
     的步骤才按顶边-12px 对齐保留上下文；滚回最新步骤即恢复
     自动追加；四类正文用各自强调色区分，并统一经 `contentToMarkdown`
     按代码/文档形态高亮，不另写解析器；底部 loading 行只在运行仍执行
-    （`live`）时出现，结束即撤；当前消息的执行时间显示在 AGENT VIEW 标签
+    （`live`）时出现，结束即撤；进度条（`ChainProgress`）是滚动完成度条，
+    填充与活跃刻度跟随阅读位置；刻度几何按**最后一个步骤对象**重测
+    （不只看数量与末位 id）——合并快照批次在两者都不变时增长正文；钉底
+    修复后，跟随中进度条跟进最新轮次，仅真实滚动才会移动它；当前消息的执行时间显示在 AGENT VIEW 标签
     之后：读根级 display state（与 RUN HISTORY 行同源，Prompt 起算、
     超时封顶），消息执行中由根级 1s `now` tick 推进、结束停在记录的
     总时长。该头部计时的是**这一条**消息，故用共享的复合时长格式器
@@ -205,11 +214,18 @@
     每个原子的预览在浮层内按事件 ID 缓存一次，并**按检查器标签页分域**
     （`cacheScope`；`payloadForAtom(atomId, eventId)` / `variantForAtom` 解析
     任意行的载荷与类型，选中的行**以它自己的事件为准**——工具调用行读自己的
-    `tool_input`、结果行读 `tool_response`、提示词行读自己的 payload；记录器
-    归一化会在只有 camel 拼写时写入**空 `{}` 占位**（`tool_input: {}`），
-    `payloadField`（app.tsx）把空对象当作占位而非内容、跳到下一个拼写，
+    `tool_input`、结果行读 `tool_response`、提示词行读自己的 payload）；
+    **一个标签页预览哪份载荷只有一处定义**：`src/lib/inspector-payload.ts`
+    （`payloadField` + `resolveInputPayload` / `resolveOutputPayload`）同时
+    供检查器标签页与浮层弹窗读取，同一行在两个界面里的预览不会各说各话。
+    记录器归一化会在只有 camel 拼写时写入**空 `{}` 占位**（`tool_input: {}`），
+    `payloadField` 把空对象当作占位而非内容、跳到下一个拼写，
     空占位绝不能遮住真实的 `toolInput.command`（那曾让每次工具调用的 Input
-    预览变成空白）；拆分后
+    预览变成空白）；**输出侧**依次读行自身的结果、成对关闭事件的结果、
+    真实的回复/思考文本（`last_assistant_message` / `message` / `text`），
+    最后回退到事件自己的 payload——绝不构造 `{message: null}` 空壳
+    （那曾让提示词行在弹窗里预览成空 JSON，而 Agent 视图正文从同一份
+    payload 渲染出真实提示词）；拆分后
     没有正文的载荷走共享的核心内容抽取 `payload-markdown.ts` 的
     `payloadToMarkdown`（读 camel `toolResponse`、把 `structuredPatch` 与
     Edit 型 `old_string`/`new_string`（蛇形/驼峰拼写皆认）渲染成高亮
@@ -601,12 +617,25 @@
 - **流式批不重走全量历史**：derive 折叠都携带稳定前缀，一个批次只为追加的切片
   付钱。`createSessionProjection` 与画布路径的 `createAtomicProjection`
   （app 持一个长生命周期折叠实例；切会话 / 回放跳转 / 更短的列表在闭包内全量重建）
-  都只折叠自上次以来追加的事件。`parseUserQuestionContent` 按 payload 对象缓存
+  都只折叠自上次以来追加的事件；内容未变的重新 derive 返回上一次的投影对象
+  ——身份稳定正是下游 memo 命中的前提。`parseUserQuestionContent` 按 payload 对象缓存
   结果（捕获的 payload 是不可变引用），首遍之后提问 / 答案抽取就是查表；
-  `createFlowEntries`（`trace-model.ts`）把折叠结果以事件数组为键存入模块级
-  `WeakMap`，`buildFlow` / `buildPairDurations` / `buildPairLinks` 及调用后两者的
-  `buildAgentView` 对同一数组只折叠一次（数组被换掉即随 GC 回收，不缓存前缀），
-  工具入参排除键是模块级 `Set`，不按事件重建；热路径不得再调全量
+  `createFlowEntries`（`trace-model.ts`）的折叠**可续跑**：有界槽位携带条目、
+  工具配对队列与每个已折叠事件的内容哈希，候选数组按采样哈希匹配前缀
+  （仅凭 id 无法区分两份拼写相同但内容不同的确定性 id 捕获），每批只折叠
+  追加的切片——`buildFlow` / `buildPairDurations` / `buildPairLinks` 及调用后两者的
+  `buildAgentView` 共享这份续跑折叠。条目一经交付即不可变：配对关闭以
+  `flowIndex` **替换**条目（不是 `stepIndex`——合并对会让事件下标与条目在列表中的
+  位置错开），旧数组的缓存快照因此永远看不到后续批次才关闭的配对。
+  `isUserQuestionToolEvent` 按事件对象缓存结论——流式批次对同一批工具事件反复
+  询问，未缓存的每次回答都是一遍候选名归一化。浮层的三条派生
+  （`overlayAtoms` / `overlayEventById` / `overlayAgentView`）以弹窗打开为闸，
+  弹窗关闭时一个都不跑；弹窗的两张热列表（rail 行、Agent 视图步骤卡）从
+  `useMemo` 的元素数组渲染，键为批次稳定输入——根级每秒一次的 `now` tick
+  复用同一批子元素，React 按行短路，不再每秒重排两万行的子树。
+  `buildExecutionTopology` 的逐事件循环只查名字桶（每次调用建一张
+  名字 → 累加器下标表），问题判定只对 `questionCandidateEventNames` 里的
+  事件名运行。工具入参排除键是模块级 `Set`，不按事件重建；热路径不得再调全量
   `projectTraceEvents` 或重解析稳定 payload。
 - **首屏不按"0"报数**：数据没到之前，RUN HISTORY 头部写 `loading…` 并画骨架行，
   顶栏连接标记写 `connecting`。`0 runs` 与 `offline` 都是关于"已经确认的事实"的陈述，

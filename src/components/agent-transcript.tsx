@@ -36,7 +36,7 @@ import { RelatedFields } from "@/components/related-fields";
 import {
   AGENT_SCROLL_HIDDEN_STEP_THRESHOLD,
   isAgentTranscriptAtBottom,
-  isLatestStepVisible,
+  isFollowingNewestStep,
   latestStepHiddenOutside,
 } from "@/lib/agent-transcript-scroll";
 import { cn } from "@/lib/utils";
@@ -839,10 +839,14 @@ function ChainProgress({
   }, [scrollRef, steps, stepRefs, updateReading]);
 
   // A live append or a new step changes the tick geometry without a scroll
-  // event; re-measure on the chain's own growth.
+  // event; re-measure on the chain's own growth. The last step *object* (not
+  // just its id) is a dependency: a streamed snapshot merges into the existing
+  // reply step, so the count and the id hold still while the body — and the
+  // geometry below it — grows.
+  const lastChainStep = steps.at(-1);
   useEffect(() => {
     measureTicks();
-  }, [measureTicks, steps.length, steps.at(-1)?.id]);
+  }, [measureTicks, steps.length, lastChainStep]);
 
   useEffect(() => {
     const container = scrollRef.current;
@@ -1026,7 +1030,6 @@ export function AgentTranscript({
 }) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const stepRefs = useRef(new Map<string, HTMLElement>());
-  const atBottomRef = useRef(true);
   const stepCountRef = useRef(view.steps.length);
   const chainId = view.steps[0]?.id ?? "";
   const initializedChainRef = useRef<string | null>(null);
@@ -1098,15 +1101,9 @@ export function AgentTranscript({
     }
     const absoluteBottom = isAgentTranscriptAtBottom(container);
     const viewport = container.getBoundingClientRect();
-    // Live pinning keeps following while the newest step is visible, even if
-    // the scroll position sits above the bottom edge (a tall last reply).
     const lastStep = view.steps.at(-1);
     const lastElement = lastStep ? stepRefs.current.get(lastStep.id) : null;
     const stepRect = lastElement?.getBoundingClientRect() ?? null;
-    const latestVisible = stepRect
-      ? isLatestStepVisible(viewport, stepRect)
-      : true;
-    atBottomRef.current = absoluteBottom || latestVisible;
     if (absoluteBottom) {
       // Back at the very bottom: disarm the pill and resume live pinning.
       setShowJump(false);
@@ -1157,18 +1154,26 @@ export function AgentTranscript({
     [],
   );
 
-  const targetStep = view.steps.find(
-    (step) =>
-      (step.kind === "reply" ? step.eventIds.includes(selectedEventId ?? "") : false) ||
-      step.eventId === selectedEventId,
+  // Memoized: the selection lookup walks every step on each call, and the
+  // root's once-per-second `now` tick re-renders this component while a run
+  // executes — a silent long run must not pay the walk per tick.
+  const targetStep = useMemo(
+    () =>
+      view.steps.find(
+        (step) =>
+          (step.kind === "reply"
+            ? step.eventIds.includes(selectedEventId ?? "")
+            : false) || step.eventId === selectedEventId,
+      ),
+    [view.steps, selectedEventId],
   );
 
   // Opening the overlay (or switching to another run's chain) must land on the
-  // newest step, not the oldest line. `atBottomRef` starts optimistic, so
-  // without a real scroll a long thread opens at the top while the view claims
-  // to be at the bottom — new steps would then be appended below the fold and
-  // the "no pill while at the bottom" rule would describe a position the reader
-  // never saw. Pin before paint so the first frame already shows the tail.
+  // newest step, not the oldest line. Without a real scroll a long thread
+  // opens at the top while the follow rule would claim the reader is at the
+  // bottom — new steps would then be appended below the fold and the "no pill
+  // while at the bottom" rule would describe a position the reader never saw.
+  // Pin before paint so the first frame already shows the tail.
   useLayoutEffect(() => {
     if (initializedChainRef.current === chainId) {
       return;
@@ -1178,7 +1183,6 @@ export function AgentTranscript({
     if (container) {
       scrollToTop(container, container.scrollHeight);
     }
-    atBottomRef.current = true;
     stepCountRef.current = view.steps.length;
     setShowJump(false);
     setPendingCount(0);
@@ -1189,6 +1193,13 @@ export function AgentTranscript({
   // A shorter chain (replay cursor back, a prefix break folding snapshots
   // into fewer steps) invalidates the count: the pill must not keep offering
   // "N new messages" that no longer exist.
+  //
+  // The pin re-runs on every batch while following, even when the step count
+  // is unchanged: a streamed snapshot merges into the existing reply step, so
+  // the content grows below the fold with no new step to count it. The follow
+  // decision is read live from the DOM (`isFollowingNewestStep`), never from a
+  // cached flag — a batch landing between a wheel gesture and its rAF must not
+  // undo the reader's in-flight scroll.
   useLayoutEffect(() => {
     const count = view.steps.length;
     const previous = stepCountRef.current;
@@ -1197,25 +1208,33 @@ export function AgentTranscript({
       setPendingCount(0);
       return;
     }
-    if (count === previous) {
+    const container = scrollRef.current;
+    if (!container) {
       return;
     }
-    if (atBottomRef.current) {
-      const container = scrollRef.current;
-      if (container) {
-        scrollToTop(container, container.scrollHeight);
-        // Reset synchronously instead of waiting for the scroll event's rAF:
-        // the pill must never flash between the new step landing and the pin.
-        syncScrollState();
+    const viewport = container.getBoundingClientRect();
+    const lastStep = view.steps.at(-1);
+    const lastElement = lastStep ? stepRefs.current.get(lastStep.id) : null;
+    const following = isFollowingNewestStep(
+      container,
+      viewport,
+      lastElement?.getBoundingClientRect() ?? null,
+    );
+    if (!following) {
+      if (count > previous) {
+        setPendingCount((current) => current + (count - previous));
       }
-    } else {
-      setPendingCount((current) => current + (count - previous));
+      return;
     }
+    scrollToTop(container, container.scrollHeight);
+    // Reset synchronously instead of waiting for the scroll event's rAF:
+    // the pill must never flash between the new step landing and the pin.
+    syncScrollState();
   }, [view.steps, scrollToTop, syncScrollState]);
 
   // Re-evaluate the affordance after the append pin above, never before it:
   // a newly appended step sits below the viewport until that pin runs, so a
-  // layout read here first would flip `atBottomRef` to false and turn a live
+  // layout read here first would read a mid-chain position and turn a live
   // follow into a "N new messages" pill on every streamed batch. The run can
   // also finish while the reader is up the chain; this covers that case too.
   // The append pin above is a layout effect too: re-reading the position in a
@@ -1231,17 +1250,27 @@ export function AgentTranscript({
     }
     const explicit = locateRequest !== lastLocateRef.current;
     lastLocateRef.current = locateRequest;
-    // Live follow advances the selection on every event. An explicit pick
-    // always locates; a follow advance must not steal a reader who scrolled
-    // back through the chain.
-    if (!explicit && !atBottomRef.current) {
-      return;
-    }
     const container = scrollRef.current;
-    const element = stepRefs.current.get(targetStep.id);
     if (!container) {
       return;
     }
+    // Live follow advances the selection on every event. An explicit pick
+    // always locates; a follow advance must not steal a reader who scrolled
+    // back through the chain — the follow decision is read live from the DOM
+    // (`isFollowingNewestStep`), not from the cached flag, so a batch landing
+    // between a wheel gesture and its rAF cannot undo the reader's scroll.
+    const viewport = container.getBoundingClientRect();
+    const lastStep = view.steps.at(-1);
+    const lastElement = lastStep ? stepRefs.current.get(lastStep.id) : null;
+    const following = isFollowingNewestStep(
+      container,
+      viewport,
+      lastElement?.getBoundingClientRect() ?? null,
+    );
+    if (!explicit && !following) {
+      return;
+    }
+    const element = stepRefs.current.get(targetStep.id);
     // Locating the *newest* step is the same as jumping to the bottom: the
     // reader wants the tail on screen, and pinning the step's top 12px down
     // would leave a blank gap under it while the run keeps appending. Scroll
@@ -1249,30 +1278,36 @@ export function AgentTranscript({
     // the bottom edge and live follow can resume from there.
     const isLastStep =
       view.steps.length > 0 && view.steps.at(-1)?.id === targetStep.id;
+    if (!explicit && !isLastStep) {
+      // A live advance whose newest event resolves into an older (merged)
+      // step must never move the view: scrolling up to it disarmed follow
+      // with no gesture and stranded the reader mid-list. The append pin
+      // owns the bottom; only an explicit pick locates an older step.
+      return;
+    }
     if (isLastStep || !element) {
       scrollToTop(container, container.scrollHeight, explicit);
-      atBottomRef.current = true;
       if (!explicit) {
         syncScrollState();
       }
       return;
     }
-    // An older step: align its top near the container top so the reader sees
-    // it in context. An explicit pick animates; a live follow stays instant so
-    // a running message's re-renders cannot interrupt the scroll.
+    // An older step (always an explicit pick here): align its top near the
+    // container top so the reader sees it in context. The pick animates and
+    // disarms follow — the reader chose a place in history, and the next
+    // syncScrollState read reports the detached position to the pill.
     const top =
       element.getBoundingClientRect().top -
       container.getBoundingClientRect().top +
       container.scrollTop;
     scrollToTop(container, Math.max(0, top - 12), explicit);
-    atBottomRef.current = false;
     if (!explicit) {
       syncScrollState();
     }
   }, [
     selectedEventId,
     targetStep?.id,
-    view.steps.length,
+    view.steps,
     locateRequest,
     scrollToTop,
     syncScrollState,
@@ -1284,10 +1319,43 @@ export function AgentTranscript({
       return;
     }
     scrollToTop(container, container.scrollHeight);
-    atBottomRef.current = true;
     setShowJump(false);
     setPendingCount(0);
   }, [scrollToTop]);
+
+  // The transcript renders one card per run event — with a 20k-event run the
+  // per-second root re-render used to re-diff the whole list while nothing
+  // had changed. Memoize the element array on its batch-stable inputs: the
+  // tick's re-render then reuses identical child elements and React bails
+  // out per card (each card's content is recorded data; the advancing clock
+  // lives in the head's RunClockChip, outside this list).
+  const stepCards = useMemo(
+    () =>
+      view.steps.map((step) => (
+        <StepCard
+          key={step.id}
+          step={step}
+          selected={step.id === targetStep?.id}
+          apiBase={apiBase}
+          onSelectEvent={onSelectEvent}
+          onLocate={onSelectEvent}
+          questionBinding={questionBinding}
+          questionIsCurrent={
+            step.kind === "question" && step.eventId === questionEventId
+          }
+          registerStep={registerStep}
+        />
+      )),
+    [
+      view.steps,
+      targetStep?.id,
+      apiBase,
+      onSelectEvent,
+      questionBinding,
+      questionEventId,
+      registerStep,
+    ],
+  );
 
   // Header stat chips double as jump affordances: hovering names the steps
   // behind the count, clicking lands on the first of them. Derived from the
@@ -1434,19 +1502,7 @@ export function AgentTranscript({
           ref={scrollRef}
         >
           {view.steps.length ? (
-            view.steps.map((step) => (
-              <StepCard
-                key={step.id}
-                step={step}
-                selected={step.id === targetStep?.id}
-                apiBase={apiBase}
-                onSelectEvent={onSelectEvent}
-                onLocate={onSelectEvent}
-                questionBinding={questionBinding}
-                questionIsCurrent={step.kind === "question" && step.eventId === questionEventId}
-                registerStep={registerStep}
-              />
-            ))
+            stepCards
           ) : (
             <p className="payload-overlay__empty">这次运行还没有可呈现的事件。</p>
           )}

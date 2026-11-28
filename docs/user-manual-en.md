@@ -533,6 +533,10 @@ model switch shows the last observation. Clients that do not report a model
 (for example the claude and chatgpt hooks) show no tag — an unreported model is
 not rendered as "unknown". A prompt run begins with one
 `UserPromptSubmit` and contains every following event before the next prompt.
+On an abnormal end the row's `STATUS` tag carries the end reason as a
+**one-line ellipsized excerpt** — a host detail can be 120 characters of
+machine text, and wrapping it turned the small chip into a multi-line box;
+the full reason and host text stay in the hover card's `STATUS` line.
 
 Click a child row to make that prompt run the active diagnostic scope. Clicking
 the parent selects its latest prompt. Only one session thread is expanded at a
@@ -632,7 +636,10 @@ The inspector provides:
   matching `Pre/PostToolUse` rows also preview the plan by content while
   keeping their `tool.call` / `tool.result` keys, so projection, waiting state
   and topology counts stay unchanged. `Code` shows the raw payload;
-- `Output`: tool result or response;
+- `Output`: tool result or response; an event that publishes no response text
+  (a prompt submit, a recovered thinking step) previews its own payload, so
+  the pane shows the same data the row summary shows instead of an empty
+  `{message: null}` shell;
 - `Raw`: full normalized event;
 - copy control for structured JSON;
 - an expand control in the inspector header, available on `Input` / `Output` /
@@ -718,7 +725,11 @@ The inspector provides:
   events no longer yank the reader down; new steps only count up on the pill,
   and a click jumps straight to the last step and clears the count. Returning
   to the newest step or the bottom dismisses the pill and resumes automatic
-  following, so new content keeps appending. Once the run has ended, stopping
+  following, so new content keeps appending. Following also survives growth
+  without a new step: a streamed snapshot merges into the existing reply step
+  and the view re-pins while you stay at the bottom, and a live advance never
+  scrolls to a mid-list step — only picking an older row locates off the
+  tail. Once the run has ended, stopping
   above the last step turns the same control into a plain "scroll to bottom"
   button without the spinner, with the same position-only rule. While the
   run is still executing, a spinning

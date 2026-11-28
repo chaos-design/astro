@@ -5,6 +5,7 @@ import {
   AGENT_SCROLL_BOTTOM_EPSILON,
   AGENT_SCROLL_HIDDEN_STEP_THRESHOLD,
   isAgentTranscriptAtBottom,
+  isFollowingNewestStep,
   isLatestStepVisible,
   latestStepHiddenOutside,
 } from "../src/lib/agent-transcript-scroll.ts";
@@ -92,5 +93,40 @@ test("the jump measures how far the newest step left the viewport, not wheel dir
   assert.ok(
     AGENT_SCROLL_HIDDEN_STEP_THRESHOLD > AGENT_SCROLL_BOTTOM_EPSILON,
     "the jump threshold sits well clear of the follow epsilon",
+  );
+});
+
+/**
+ * The one generous rule the append pin and the selection effects read live
+ * from the DOM when a batch lands: a stale cached flag must never let a
+ * programmatic pin undo a reader's in-flight wheel.
+ */
+test("a batch may follow at the bottom or while the newest step is on screen", () => {
+  const container = viewport(700);
+  const view = { top: 0, bottom: 300 };
+  assert.equal(
+    isFollowingNewestStep(container, view, { top: 250, bottom: 900 }),
+    true,
+    "the exact bottom is the follow position whatever the step rect says",
+  );
+  assert.equal(
+    isFollowingNewestStep(viewport(300), view, { top: 250, bottom: 900 }),
+    true,
+    "a tall last reply still being read keeps following above the bottom edge",
+  );
+  assert.equal(
+    isFollowingNewestStep(viewport(300), view, { top: 420, bottom: 900 }),
+    false,
+    "the newest step off-screen means the reader detached and the batch only counts",
+  );
+  assert.equal(
+    isFollowingNewestStep(viewport(300), view, { top: -400, bottom: -20 }),
+    false,
+    "the newest step above the viewport is detached too — no gesture, no scroll",
+  );
+  assert.equal(
+    isFollowingNewestStep(viewport(300), view, null),
+    true,
+    "an unmeasurable newest step keeps the optimistic follow",
   );
 });

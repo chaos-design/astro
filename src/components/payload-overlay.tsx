@@ -982,24 +982,27 @@ export function PayloadOverlay({
     () => railItems.reduce((total, item) => total + (item.kind === "atom" ? 1 : 0), 0),
     [railItems],
   );
-  const handleAtomKeyDown = (
-    keyEvent: KeyboardEvent<HTMLButtonElement>,
-    position: number,
-  ) => {
-    const step =
-      keyEvent.key === "ArrowDown" ? 1 : keyEvent.key === "ArrowUp" ? -1 : 0;
-    if (!step && keyEvent.key !== "Home" && keyEvent.key !== "End") {
-      return;
-    }
-    keyEvent.preventDefault();
-    const target =
-      keyEvent.key === "Home"
-        ? 0
-        : keyEvent.key === "End"
-          ? rowCount - 1
-          : (position + step + rowCount) % rowCount;
-    atomRefs.current[target]?.focus();
-  };
+  // Stable per batch ( rowCount moves only with the chain ): the memoized rail
+  // rows below key on these identities, so a per-second re-render reuses the
+  // same row elements and React bails out of re-diffing the whole rail.
+  const handleAtomKeyDown = useCallback(
+    (keyEvent: KeyboardEvent<HTMLButtonElement>, position: number) => {
+      const step =
+        keyEvent.key === "ArrowDown" ? 1 : keyEvent.key === "ArrowUp" ? -1 : 0;
+      if (!step && keyEvent.key !== "Home" && keyEvent.key !== "End") {
+        return;
+      }
+      keyEvent.preventDefault();
+      const target =
+        keyEvent.key === "Home"
+          ? 0
+          : keyEvent.key === "End"
+            ? rowCount - 1
+            : (position + step + rowCount) % rowCount;
+      atomRefs.current[target]?.focus();
+    },
+    [rowCount],
+  );
   // Refs are filled in render order; reset the stale tail when the run's row
   // count shrinks (a session switch) so End cannot focus a detached button.
   atomRefs.current.length = rowCount;
@@ -1010,18 +1013,24 @@ export function PayloadOverlay({
     },
     [onSelectAtom],
   );
-  const handleLocatePartner = (partnerId: string) => {
-    const partner = atoms.find((atom) => atom.id === partnerId);
-    if (partner) {
-      selectAtom(partner.atomId, partner.id);
-    }
-  };
+  const handleLocatePartner = useCallback(
+    (partnerId: string) => {
+      const partner = atoms.find((atom) => atom.id === partnerId);
+      if (partner) {
+        selectAtom(partner.atomId, partner.id);
+      }
+    },
+    [atoms, selectAtom],
+  );
   // Agent steps and the rail commit through the same selection state: a step
   // only knows an event id and resolves its atom here, never a second store.
-  const handleAgentSelectEvent = (eventId: string) => {
-    handleLocatePartner(eventId);
-    setRailRevealRequest((current) => current + 1);
-  };
+  const handleAgentSelectEvent = useCallback(
+    (eventId: string) => {
+      handleLocatePartner(eventId);
+      setRailRevealRequest((current) => current + 1);
+    },
+    [handleLocatePartner],
+  );
 
   // Switching from the Agent pane into Preview / Code must carry the atom the
   // reader was on: otherwise those panes keep showing an older selection and
@@ -1051,6 +1060,129 @@ export function PayloadOverlay({
     }
     setContentActiveEventId(selectedEventId || null);
   }, [selectedEventId, viewMode]);
+
+  // The rail is one element per run event — with a 20k-event run that is the
+  // largest DOM subtree in the console, and a per-second root re-render used
+  // to re-diff all of it while nothing had changed. Memoize the element array
+  // on its batch-stable inputs: the root's `now` tick then re-renders the
+  // wrapper, React sees identical child elements and bails out per row. The
+  // bodies carry no per-tick state — timestamps and durations are recorded
+  // values, and the clock chip lives in the transcript head.
+  const railRows = useMemo(
+    () =>
+      railItems.map((item, railIndex) => {
+        if (item.kind === "turn") {
+          // Key by position, never by the turn value: two groups can
+          // legitimately repeat a number (a source that restarts its
+          // counter), and duplicate keys leave orphaned chips behind.
+          return (
+            <div
+              aria-label={`Turn ${item.turn}`}
+              className="atomic-log__turn payload-overlay__turn"
+              key={`rail-turn-${railIndex}`}
+            >
+              <span>{String(item.turn).padStart(2, "0")}</span>
+            </div>
+          );
+        }
+        const atom = item.atom;
+        const hookPhase = hookPhaseOf(atom.eventName);
+        const selected = atom.id === selectedEventId;
+        const contentActive = atom.id === contentActiveEventId;
+        const running = atom.id === runningEventId;
+        const partnerSelected =
+          atom.pairLink?.partnerId === selectedEventId;
+        const rowPosition = item.row;
+        return (
+          <li key={atom.id}>
+            <button
+              aria-current={selected ? "true" : undefined}
+              aria-label={`${atom.sequence} 第 ${atom.turn} 轮 ${atom.key} ${atom.action} ${atom.summary}`}
+              className={cn(
+                "atomic-log__row payload-overlay__atom",
+                `tone-${atom.tone || "unknown"}`,
+                hookPhase && `hook-${hookPhase}`,
+                running && "is-running",
+                selected && !running && "is-selected",
+                !selected && contentActive && "is-content-active",
+                partnerSelected && !selected && "is-pair-partner",
+              )}
+              onClick={() => {
+                railPickedEventRef.current = atom.id;
+                selectAtom(atom.atomId, atom.id);
+              }}
+              onKeyDown={(keyEvent) =>
+                handleAtomKeyDown(keyEvent, rowPosition)
+              }
+              onPointerEnter={(pointerEvent) =>
+                openAtomHover(atom, pointerEvent.currentTarget)
+              }
+              onPointerLeave={closeAtomHover}
+              ref={(node) => {
+                if (selected) {
+                  selectedRowRef.current = node;
+                }
+                if (contentActive) {
+                  contentActiveRowRef.current = node;
+                } else if (contentActiveRowRef.current === node) {
+                  // The reading line moved on: drop the stale anchor so
+                  // the follow effect can never scroll to a row that no
+                  // longer represents the card on screen.
+                  contentActiveRowRef.current = null;
+                }
+                atomRefs.current[rowPosition] = node;
+              }}
+              type="button"
+            >
+              <span className="log-sequence">{atom.sequence}</span>
+              <i aria-hidden="true" className="phase-dot" />
+              <strong className="atomic-log__name">
+                {atom.type?.trim() ? (
+                  <span className="atomic-log__type payload-overlay__atom-type">
+                    {atom.type}
+                  </span>
+                ) : null}
+                <span className="atomic-log__key">{atom.key}</span>
+              </strong>
+              <time dateTime={atom.timestamp}>
+                <span>{atom.dateLabel}</span>
+                {atom.clockLabel}
+              </time>
+              <small>
+                <span>{atom.action}</span>
+                <span className="atomic-log__summary">
+                  {atom.summary}
+                </span>
+                {atom.durationLabel !== null ? (
+                  <span
+                    className={`atomic-log__duration heat-${atom.durationHeat}`}
+                  >
+                    {atom.durationLabel}
+                  </span>
+                ) : null}
+                {atom.pairLink ? (
+                  <PairLinkMarker
+                    link={atom.pairLink}
+                    onLocate={handleLocatePartner}
+                  />
+                ) : null}
+              </small>
+            </button>
+          </li>
+        );
+      }),
+    [
+      railItems,
+      selectedEventId,
+      contentActiveEventId,
+      runningEventId,
+      selectAtom,
+      handleAtomKeyDown,
+      openAtomHover,
+      closeAtomHover,
+      handleLocatePartner,
+    ],
+  );
 
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
@@ -1188,107 +1320,7 @@ export function PayloadOverlay({
                     没有匹配的事件
                   </output>
                 ) : null}
-                {railItems.map((item, railIndex) => {
-                  if (item.kind === "turn") {
-                    // Key by position, never by the turn value: two groups can
-                    // legitimately repeat a number (a source that restarts its
-                    // counter), and duplicate keys leave orphaned chips behind.
-                    return (
-                      <div
-                        aria-label={`Turn ${item.turn}`}
-                        className="atomic-log__turn payload-overlay__turn"
-                        key={`rail-turn-${railIndex}`}
-                      >
-                        <span>{String(item.turn).padStart(2, "0")}</span>
-                      </div>
-                    );
-                  }
-                  const atom = item.atom;
-                  const hookPhase = hookPhaseOf(atom.eventName);
-                  const selected = atom.id === selectedEventId;
-                  const contentActive = atom.id === contentActiveEventId;
-                  const running = atom.id === runningEventId;
-                  const partnerSelected =
-                    atom.pairLink?.partnerId === selectedEventId;
-                  const rowPosition = item.row;
-                  return (
-                    <li key={atom.id}>
-                      <button
-                        aria-current={selected ? "true" : undefined}
-                        aria-label={`${atom.sequence} 第 ${atom.turn} 轮 ${atom.key} ${atom.action} ${atom.summary}`}
-                        className={cn(
-                          "atomic-log__row payload-overlay__atom",
-                          `tone-${atom.tone || "unknown"}`,
-                          hookPhase && `hook-${hookPhase}`,
-                          running && "is-running",
-                          selected && !running && "is-selected",
-                          !selected && contentActive && "is-content-active",
-                          partnerSelected && !selected && "is-pair-partner",
-                        )}
-                        onClick={() => {
-                          railPickedEventRef.current = atom.id;
-                          selectAtom(atom.atomId, atom.id);
-                        }}
-                        onKeyDown={(keyEvent) =>
-                          handleAtomKeyDown(keyEvent, rowPosition)
-                        }
-                        onPointerEnter={(pointerEvent) =>
-                          openAtomHover(atom, pointerEvent.currentTarget)
-                        }
-                        onPointerLeave={closeAtomHover}
-                        ref={(node) => {
-                          if (selected) {
-                            selectedRowRef.current = node;
-                          }
-                          if (contentActive) {
-                            contentActiveRowRef.current = node;
-                          } else if (contentActiveRowRef.current === node) {
-                            // The reading line moved on: drop the stale anchor so
-                            // the follow effect can never scroll to a row that no
-                            // longer represents the card on screen.
-                            contentActiveRowRef.current = null;
-                          }
-                          atomRefs.current[rowPosition] = node;
-                        }}
-                        type="button"
-                      >
-                        <span className="log-sequence">{atom.sequence}</span>
-                        <i aria-hidden="true" className="phase-dot" />
-                        <strong className="atomic-log__name">
-                          {atom.type?.trim() ? (
-                            <span className="atomic-log__type payload-overlay__atom-type">
-                              {atom.type}
-                            </span>
-                          ) : null}
-                          <span className="atomic-log__key">{atom.key}</span>
-                        </strong>
-                        <time dateTime={atom.timestamp}>
-                          <span>{atom.dateLabel}</span>
-                          {atom.clockLabel}
-                        </time>
-                        <small>
-                          <span>{atom.action}</span>
-                          <span className="atomic-log__summary">
-                            {atom.summary}
-                          </span>
-                          {atom.durationLabel !== null ? (
-                            <span
-                              className={`atomic-log__duration heat-${atom.durationHeat}`}
-                            >
-                              {atom.durationLabel}
-                            </span>
-                          ) : null}
-                          {atom.pairLink ? (
-                            <PairLinkMarker
-                              link={atom.pairLink}
-                              onLocate={handleLocatePartner}
-                            />
-                          ) : null}
-                        </small>
-                      </button>
-                    </li>
-                  );
-                })}
+                {railRows}
               </ul>
             </nav>
           ) : null}

@@ -695,16 +695,35 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   `createAtomicProjection` (the app's canvas path) re-folds only the events
   appended since its last call — the app holds one long-lived fold instance;
   a session switch, a replay jump or a shorter list rebuilds from scratch
-  inside the closure. `parseUserQuestionContent` caches its result per
+  inside the closure, and an unchanged re-derive returns the previous
+  projection object untouched (identity-stable, so downstream memos hit).
+  `parseUserQuestionContent` caches its result per
   payload object (captured payloads are immutable references), so question /
   answer extraction is a lookup after the first pass. `createFlowEntries`
-  (`trace-model.ts`) caches its folded entries in a module-level `WeakMap`
-  keyed by the events array, so `buildFlow`, `buildPairDurations`,
-  `buildPairLinks` and the `buildAgentView` that calls the latter two share a
-  single fold per array (a replaced array is collected, not pinned); the
-  excluded tool-input keys are one module-level `Set`, never rebuilt per
-  event. A hot per-batch path must not call the full `projectTraceEvents` or
-  re-parse stable payloads.
+  (`trace-model.ts`) **resumes its fold**: bounded slots carry the entries,
+  the tool-pair queues and one content hash per folded event, a candidate
+  array is matched by sampled per-event hashes (ids alone cannot tell two
+  captures with deterministic id spellings apart), and only the appended
+  slice is folded — `buildFlow`, `buildPairDurations`, `buildPairLinks` and
+  the `buildAgentView` that calls the latter two share the resumed fold. An
+  entry is immutable once handed out: a pair close **replaces** it at its
+  `flowIndex` (not `stepIndex` — a collapsed pair drifts the event index from
+  the entry's list position), so an older array's cached snapshot can never
+  observe a pair that closed in a later batch. `isUserQuestionToolEvent`
+  caches its verdict per event object — a streaming batch re-asks it for the
+  same tool events on every derive, and each uncached answer costs a
+  normalized-candidate walk. The overlay's derivations (`overlayAtoms`,
+  `overlayEventById`, `overlayAgentView`) are gated on the open dialog — a
+  closed dialog re-derives none of them — and the dialog's hot lists (rail
+  rows, transcript step cards) render from `useMemo`'d element arrays keyed
+  on batch-stable inputs, so the root's once-per-second `now` tick reuses
+  identical child elements and React bails out per row instead of re-diffing
+  a 20k-row subtree. The excluded tool-input keys are one module-level `Set`,
+  never rebuilt per event. A hot per-batch path must not call the full
+  `projectTraceEvents` or re-parse stable payloads; `buildExecutionTopology`'s
+  per-event pass consults only the accumulators whose type sets match the
+  event's name (one name → indices map per call) and the question predicates
+  only for `questionCandidateEventNames`.
 - A count that is not known yet is not reported as zero: while the first
   snapshot is in flight RUN HISTORY renders skeleton rows with a `loading…`
   subtitle, and the header marker reads `connecting`. `offline` means a
@@ -1041,16 +1060,32 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   commit through the same `onSelectAtom` state. A reader scrolled back keeps
   their position: the overlay's `agentLocateRequest` is bumped only by an
   explicit pick, live follow counts new steps behind a bottom-centered pill
-  without moving the reader, and the bottom / latest-step tests live only in
-  `src/lib/agent-transcript-scroll.ts` (`isAgentTranscriptAtBottom`,
-  `isLatestStepVisible`, `latestStepHiddenOutside`). The centered pill reads
+  without moving the reader, and the bottom / latest-step / follow tests live
+  only in `src/lib/agent-transcript-scroll.ts` (`isAgentTranscriptAtBottom`,
+  `isLatestStepVisible`, `latestStepHiddenOutside`, and
+  `isFollowingNewestStep` — the one generous follow rule: at the bottom, or
+  the newest step anywhere in the viewport, with no cached at-bottom flag —
+  the append pin and the selection effects read it live from the DOM so a
+  batch landing between a wheel gesture and its rAF cannot undo the reader).
+  The centered pill reads
   **position only**, never scroll direction: `latestStepHiddenOutside` is the
   one measure of how far the newest step has left the viewport, and the pill
   appears once it exceeds `AGENT_SCROLL_HIDDEN_STEP_THRESHOLD` (64px). An
   upward wheel, a downward overshoot and a programmatic locate to an older
   step land in the same state; returning to the newest step or the absolute
   bottom disarms it. Live pinning still follows while the newest step is on
-  screen (`atBottomRef = absoluteBottom || latestVisible`). Once armed, a live run's pill carries the pending-step
+  screen, and the append pin re-runs on every batch while following — a
+  streamed snapshot **merges** into the existing reply step (step count and
+  last id hold still), so keying the pin on the step count alone let the text
+  pile up below the fold of a reader who never scrolled. A live advance whose
+  newest event resolves into an older (merged) step never scrolls the view
+  mid-list and never disarms follow — only an explicit pick locates an older
+  step (top-12px align + disarm). The progress strip's tick geometry
+  re-measures on the last step **object** too (`ChainProgress`'s effect keys
+  on `steps.at(-1)`, not just the count or the last id): a merged-snapshot
+  batch grows the body while the count and the id hold still, and with the
+  pin fixed the fill and the active tick track the newest turn while
+  following and move only on a real scroll otherwise. Once armed, a live run's pill carries the pending-step
   count and an ended run's becomes a plain scroll-to-bottom control. Locating
   the *newest* step — a live follow, a
   jump, or an explicit pick of the last step alike — pins the container to the
@@ -1104,11 +1139,21 @@ use Node.js ES modules or CommonJS according to their existing file extension.
   `payloadForAtom(atomId, eventId)` / `variantForAtom(atomId, eventId)` — a
   picked row resolves its *own* event's payload (one atom aggregates many
   events, so the resolver is row-event-first: a tool-call row reads its own
-  `tool_input`, a result row its `tool_response`, a prompt row its payload;
-  `payloadField` in app.tsx skips the recorder's empty `{}` placeholder — the
-  recorder writes `tool_input: {}` when only the camel spelling exists, and
-  letting it shadow `toolInput.command` once blanked every tool call's Input
-  preview), and the pane previews the payload's **core information**, never the raw
+  `tool_input`, a result row its `tool_response`, a prompt row its payload),
+  and **which payload a tab previews has one definition**:
+  `src/lib/inspector-payload.ts` (`payloadField` + `resolveInputPayload` /
+  `resolveOutputPayload`) feeds both the inspector tabs and the dialog — the
+  two resolvers that used to live in app.tsx drifted (the inspector never read
+  the `text` spelling) and both ended the output side on a fabricated
+  `{message: null}` stub that hid the data the row summary showed. The output
+  side reads the row's own `tool_response`/`toolResponse`, then the paired
+  close's, then a real reply / thinking text
+  (`last_assistant_message` / `message` / `text`), then falls back to the
+  event's own payload — never a null-only stub. `payloadField` skips the
+  recorder's empty `{}` placeholder (the recorder writes `tool_input: {}`
+  when only the camel spelling exists, and letting it shadow
+  `toolInput.command` once blanked every tool call's Input preview), and the
+  pane previews the payload's **core information**, never the raw
   envelope: a split with prose renders as Markdown, one without falls to the
   shared core extractor `payloadToMarkdown` (which reads the camel
   `toolResponse` spelling, renders a `structuredPatch` — and an Edit-style

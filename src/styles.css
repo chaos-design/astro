@@ -3289,10 +3289,17 @@ pre,
   box-shadow: inset 2px 0 var(--status-waiting);
 }
 
-/* The recorded end cause, next to the status word. */
+/* The recorded end cause, next to the status word. The row shows only a
+   one-line ellipsized excerpt: a host detail can carry 120 characters of
+   machine text, and letting it wrap turned the small STATUS chip into a
+   multi-line box. The full text lives in the row's hover card. */
 .run-history__reason {
   color: color-mix(in srgb, var(--status-failed) 72%, var(--muted));
   font-style: normal;
+  overflow: hidden;
+  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .run-history__row.is-selected .run-history__reason {

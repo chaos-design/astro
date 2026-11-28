@@ -312,10 +312,12 @@ export function projectTraceEvents(
  * call that still starts with the same prefix folds just the tail; anything
  * else (a session switch, a replay, a shorter list) rebuilds from scratch.
  *
- * The result wraps fresh `events` array each call (consumers compare it by
- * reference), while the two sequence maps keep their identity — they have
- * no readers outside this module, and copying them would cost a second O(n)
- * pass the fold just saved.
+ * The result wraps a fresh `events` array whenever the fold changed (consumers
+ * compare it by reference); an unchanged re-derive returns the previous
+ * projection object untouched, so an idle re-render retires no downstream
+ * cache. The two sequence maps keep their identity — they have no readers
+ * outside this module, and copying them would cost a second O(n) pass the
+ * fold just saved.
  */
 export function createAtomicProjection(): (
   traceEvents: readonly TraceEvent[],
@@ -333,6 +335,11 @@ export function createAtomicProjection(): (
     runId: string;
   };
   let cache: Cache | null = null;
+  // The last returned projection. A batch that neither appends nor rebuilds
+  // (a platform re-render, a deferred value re-derive) returns this same
+  // object instead of paying a fresh O(n) copy of the projected list — the
+  // identity-stable result is exactly what lets every downstream memo hit.
+  let lastResult: AtomicTraceProjection | null = null;
 
   const fullBuild = (
     traceEvents: readonly TraceEvent[],
@@ -357,9 +364,11 @@ export function createAtomicProjection(): (
   };
 
   return (traceEvents, platformId) => {
+    let changed = false;
     const current = cache;
     if (current === null || current.platformId !== platformId) {
       fullBuild(traceEvents, platformId);
+      changed = true;
     } else if (traceEvents.length === current.count) {
       // Same length: the same history only when the first / mid / last ids
       // still name the cached list; otherwise rebuild from scratch.
@@ -370,6 +379,7 @@ export function createAtomicProjection(): (
           (traceEvents[traceEvents.length >> 1]?.id || "") === current.midId);
       if (!unchanged) {
         fullBuild(traceEvents, platformId);
+        changed = true;
       }
     } else {
       const appendedOnly =
@@ -397,16 +407,22 @@ export function createAtomicProjection(): (
           lastId: traceEvents.at(-1)?.id || "",
           midId: traceEvents[traceEvents.length >> 1]?.id || "",
         };
+        changed = true;
       } else {
         fullBuild(traceEvents, platformId);
+        changed = true;
       }
     }
+    if (!changed && lastResult) {
+      return lastResult;
+    }
     const state = cache!.state;
-    return {
+    lastResult = {
       events: [...state.events],
       primarySequenceByTraceId: state.primarySequenceByTraceId,
       traceIdBySequence: state.traceIdBySequence,
     };
+    return lastResult;
   };
 }
 

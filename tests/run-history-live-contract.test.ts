@@ -295,3 +295,18 @@ test("gives the armed Live filter's empty state a title and a way out", () => {
   );
   assert.match(cssRule(".run-history__empty > strong"), /var\(--text\)/);
 });
+
+/**
+ * The row's STATUS tag shows a host detail only as a one-line excerpt: a
+ * captured detail can be 120 characters of machine text, and letting it wrap
+ * turned the small chip into a multi-line box (the full text belongs to the
+ * row's hover card, which already prints `STATUS · reason` in full).
+ */
+test("clamps the row's status reason to one ellipsized line", () => {
+  const reason = cssRule(".run-history__reason");
+
+  assert.match(reason, /white-space:\s*nowrap/);
+  assert.match(reason, /overflow:\s*hidden/);
+  assert.match(reason, /text-overflow:\s*ellipsis/);
+  assert.match(reason, /min-width:\s*0/);
+});

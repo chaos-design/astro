@@ -197,6 +197,18 @@ const mimeTypes = {
   ".svg": "image/svg+xml",
 };
 
+/** Image extensions the file preview window serves, with their MIME types. */
+const CAPTURED_IMAGE_EXTENSIONS = new Map([
+  [".png", "image/png"],
+  [".jpg", "image/jpeg"],
+  [".jpeg", "image/jpeg"],
+  [".gif", "image/gif"],
+  [".webp", "image/webp"],
+  [".svg", "image/svg+xml"],
+  [".avif", "image/avif"],
+  [".bmp", "image/bmp"],
+]);
+
 function sendJson(response, status, value, headers = {}) {
   response.writeHead(status, {
     "Cache-Control": "no-store",
@@ -1038,6 +1050,40 @@ async function handleRequest(request, response) {
   if (request.method === "DELETE" && requestUrl.pathname === "/api/events") {
     store.clear();
     sendJson(response, 200, { status: "cleared" });
+    return;
+  }
+
+  // Captured image resources (a screenshot path inside a tool result, an
+  // image URL the console cannot fetch cross-origin): the console renders
+  // them through this read-only endpoint. Only image extensions are served,
+  // the path must be absolute, and the size is capped — it is a preview
+  // window over the user's own files, not a general file server.
+  if (
+    request.method === "GET" &&
+    requestUrl.pathname === "/api/file"
+  ) {
+    const requested = requestUrl.searchParams.get("path") || "";
+    const extension = extname(requested).toLowerCase();
+    if (
+      !requested.startsWith("/") ||
+      !CAPTURED_IMAGE_EXTENSIONS.has(extension) ||
+      !existsSync(requested) ||
+      !statSync(requested).isFile()
+    ) {
+      response.writeHead(404, { "content-type": "text/plain" });
+      response.end("not a servable image");
+      return;
+    }
+    if (statSync(requested).size > 20 * 1024 * 1024) {
+      response.writeHead(413, { "content-type": "text/plain" });
+      response.end("image too large to preview");
+      return;
+    }
+    response.writeHead(200, {
+      "content-type": CAPTURED_IMAGE_EXTENSIONS.get(extension) || "image/png",
+      "cache-control": "private, max-age=60",
+    });
+    createReadStream(requested).pipe(response);
     return;
   }
 

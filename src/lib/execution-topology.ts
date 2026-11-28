@@ -7,6 +7,7 @@ import {
   isUserQuestionEvent,
   isUserQuestionStartEvent,
   isUserQuestionToolEvent,
+  questionCandidateEventNames,
 } from "./trace-event-kind.ts";
 import { isWaitingTraceEvent } from "./trace-status.ts";
 import type {
@@ -178,18 +179,72 @@ function createBaseNodes(
     lastToolResult: null,
   }));
 
+  // One event name → accumulator-indices map, built once per call (names ×
+  // atoms), so the per-event pass consults only the atoms whose type sets can
+  // match that name instead of testing every accumulator's two Sets — a
+  // 20k-event run paid ~2 × atoms × events Set lookups per streaming batch.
+  const matchBuckets = new Map<string, number[]>();
+  const countBuckets = new Map<string, number[]>();
+  accumulators.forEach((state, index) => {
+    for (const name of state.matchSet) {
+      const bucket = matchBuckets.get(name);
+      if (bucket) {
+        bucket.push(index);
+      } else {
+        matchBuckets.set(name, [index]);
+      }
+    }
+    for (const name of state.countSet) {
+      const bucket = countBuckets.get(name);
+      if (bucket) {
+        bucket.push(index);
+      } else {
+        countBuckets.set(name, [index]);
+      }
+    }
+  });
+  // The user-question atom matches through the per-event `question` predicate,
+  // not its type set, so it must be visited for every name that can carry a
+  // question signal at all (a Notification matches without being in any
+  // eventTypes list).
+  const questionAtomIndices: number[] = [];
+  accumulators.forEach((state, index) => {
+    if (state.atom.id === "user-question") {
+      questionAtomIndices.push(index);
+      for (const name of questionCandidateEventNames) {
+        const matchBucket = matchBuckets.get(name);
+        if (matchBucket) {
+          if (!matchBucket.includes(index)) matchBucket.push(index);
+        } else {
+          matchBuckets.set(name, [index]);
+        }
+        const countBucket = countBuckets.get(name);
+        if (countBucket) {
+          if (!countBucket.includes(index)) countBucket.push(index);
+        } else {
+          countBuckets.set(name, [index]);
+        }
+      }
+    }
+  });
+
   for (const event of events) {
-    // A bare permission gate belongs to Action Gate. A permission notification
-    // that names a question tool stays on the question atom: WorkBuddy's real
-    // `questions` arrive later, and the reader should already be at User
-    // Question when they do.
-    const question =
-      isUserQuestionEvent(event) &&
-      (!isUserQuestionStartEvent(event) ||
-        isBlockingUserQuestionStartEvent(event) ||
-        event.eventName === "Notification");
-    const excluded = isUserQuestionToolEvent(event);
-    for (const state of accumulators) {
+    // The question predicates are the expensive per-event work (a tool-name
+    // candidate walk and payload text scans); only names that can carry a
+    // question signal at all pay for them — everything else fails
+    // `isUserQuestionEvent` on its first Set lookup.
+    let question = false;
+    let excluded = false;
+    if (questionCandidateEventNames.has(event.eventName)) {
+      question =
+        isUserQuestionEvent(event) &&
+        (!isUserQuestionStartEvent(event) ||
+          isBlockingUserQuestionStartEvent(event) ||
+          event.eventName === "Notification");
+      excluded = isUserQuestionToolEvent(event);
+    }
+    for (const index of matchBuckets.get(event.eventName) ?? []) {
+      const state = accumulators[index];
       // Precedence mirrors `atomMatchesEvent`: a positive user-question match
       // wins, then the tool exclusion, then the type set.
       const match =
@@ -204,6 +259,9 @@ function createBaseNodes(
           state.lastToolResult = event;
         }
       }
+    }
+    for (const index of countBuckets.get(event.eventName) ?? []) {
+      const state = accumulators[index];
       const counted =
         state.atom.id === "user-question"
           ? question

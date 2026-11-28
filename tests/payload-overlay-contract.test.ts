@@ -14,6 +14,10 @@ const agentTranscript = readFileSync(
   new URL("../src/components/agent-transcript.tsx", import.meta.url),
   "utf8",
 );
+const scrollLib = readFileSync(
+  new URL("../src/lib/agent-transcript-scroll.ts", import.meta.url),
+  "utf8",
+);
 const embeddedImage = readFileSync(
   new URL("../src/lib/embedded-image.ts", import.meta.url),
   "utf8",
@@ -162,12 +166,20 @@ test("the Agent view keeps a reader's scroll and offers a jump to the newest ste
   assert.match(app, /overlayAgentRunExecuting=\{executingLive\}/);
   assert.match(app, /agentRunExecuting=\{overlayAgentRunExecuting\}/);
   assert.match(overlay, /setAgentLocateRequest\(\(current\) => current \+ 1\)/);
-  assert.match(agentTranscript, /if \(!explicit && !atBottomRef\.current\)/);
+  // The follow decision is one generous rule read live from the DOM at the
+  // moment a batch lands — a batch arriving between a wheel gesture and its
+  // rAF must not undo the reader with a stale cached flag, and no second
+  // atBottom flag may creep back in.
+  assert.match(agentTranscript, /if \(!explicit && !following\)/);
   assert.match(agentTranscript, /isAgentTranscriptAtBottom\(container\)/);
-  // The pill hides whenever the newest step is on screen, not only within a
-  // few pixels of the bottom: a tall last reply can be visible well above it.
-  assert.match(agentTranscript, /isLatestStepVisible\(/);
-  assert.match(agentTranscript, /atBottomRef\.current = absoluteBottom \|\| latestVisible/);
+  assert.match(agentTranscript, /isFollowingNewestStep\(/);
+  // The generous rule itself composes the same primitives: strict bottom, or
+  // the newest step anywhere in the viewport (a tall last reply can be visible
+  // well above the bottom edge).
+  assert.match(scrollLib, /export function isFollowingNewestStep/);
+  assert.match(scrollLib, /isAgentTranscriptAtBottom\(container\)/);
+  assert.match(scrollLib, /isLatestStepVisible\(viewport, lastStep\)/);
+  assert.doesNotMatch(agentTranscript, /atBottomRef/);
   // Direction is not consulted: the pill reads how far the newest step has
   // left the viewport, so an explicit locate and a wheel gesture land on the
   // same state. No `scrolledUpRef` / consecutive scrollTop latch may creep
@@ -190,6 +202,15 @@ test("the Agent view keeps a reader's scroll and offers a jump to the newest ste
     agentTranscript,
     /useLayoutEffect\(\(\) => \{\s*\n\s*syncScrollState\(\);/,
   );
+  // A merged streaming snapshot keeps the step count but grows the last
+  // step's body: while following, the pin re-runs on every batch instead of
+  // early-returning on an unchanged count — the reader at the bottom must
+  // never watch the text pile up below the fold while the waiting pill rides.
+  assert.match(agentTranscript, /const following = isFollowingNewestStep\(/);
+  // A live advance whose newest event resolves into an older (merged) step
+  // must never scroll the view mid-list or disarm follow — the append pin
+  // owns the bottom, and only an explicit pick locates an older step.
+  assert.match(agentTranscript, /if \(!explicit && !isLastStep\)/);
   // The bottom loading row is only the "reader is at the newest step" read;
   // once the newest step leaves the viewport the centered pill owns the
   // loading state instead, so the two never show at once.
@@ -207,9 +228,9 @@ test("the Agent view keeps a reader's scroll and offers a jump to the newest ste
   assert.match(agentTranscript, /agent-transcript__surface/);
   assert.match(agentTranscript, /scrollToTop\(container, container\.scrollHeight\)/);
   // Opening the overlay / switching chains pins to the newest step before
-  // paint. `atBottomRef` starts optimistic, so without this a long thread
-  // opened at the top while claiming to be at the bottom, and the jump pill
-  // could describe a position the reader never saw.
+  // paint; without this a long thread opened at the top while the follow rule
+  // claimed the reader was at the bottom, and the jump pill could describe a
+  // position the reader never saw.
   assert.match(agentTranscript, /useLayoutEffect\(/);
   assert.match(agentTranscript, /initializedChainRef\.current === chainId/);
   assert.match(agentTranscript, /chainId = view\.steps\[0\]\?\.id/);
@@ -821,21 +842,40 @@ test("the content pane extracts the payload's core information", () => {
  * even when the producer only carried the camel spelling, so an empty `{}` can
  * sit beside real content. That placeholder must never shadow the next
  * spelling — an empty tool_input once blanked every tool call's Input preview
- * while `toolInput.command` was right there.
+ * while `toolInput.command` was right there. One resolver
+ * (`src/lib/inspector-payload.ts`) feeds the inspector tabs and the overlay
+ * dialog, and its output side never ends on a fabricated `{message: null}`
+ * stub: a prompt row or a recovered Reasoning falls back to its own payload,
+ * which is what the Agent view body renders from the same event.
  */
 test("an empty tool_input placeholder never shadows the real spelling", () => {
-  assert.match(app, /function payloadField\(/);
+  const inspectorPayload = readFileSync(
+    new URL("../src/lib/inspector-payload.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(inspectorPayload, /export function payloadField\(/);
   assert.match(
-    app,
-    /payloadField\(\s*\n\s*boundEvent\.payload\.tool_input,\s*\n\s*boundEvent\.payload\.toolInput,\s*\n\s*\) \?\? boundEvent\.payload/,
+    inspectorPayload,
+    /payloadField\(\s*\n\s*payload\.tool_response,\s*\n\s*payload\.toolResponse,\s*\n\s*endEvent\?\.payload\?\.tool_response,\s*\n\s*endEvent\?\.payload\?\.toolResponse,\s*\n\s*\)/,
   );
   assert.match(
-    app,
-    /payloadField\(\s*\n\s*boundEvent\.payload\.tool_response,\s*\n\s*boundEvent\.payload\.toolResponse,\s*\n\s*\) \?\? boundEvent\.payload/,
+    inspectorPayload,
+    /payloadField\(\s*\n\s*payload\.tool_input,\s*\n\s*payload\.toolInput,\s*\n\s*startPayload\.tool_input,\s*\n\s*startPayload\.toolInput,\s*\n\s*\)/,
   );
-  // The shadowing pattern is gone from every payload resolution.
+  // The output side ends on the row's own payload — never a null-only stub.
+  assert.match(inspectorPayload, /return payload;/);
+  assert.doesNotMatch(inspectorPayload, /\|\|\s*\n?\s*null,\s*\n\s*\}/);
+  // The shadowing pattern is gone from every payload resolution, and both
+  // surfaces delegate to the one resolver instead of growing their own.
   assert.doesNotMatch(app, /payload\.tool_input \|\|\s*\n\s*payload\.toolInput/);
   assert.doesNotMatch(app, /payload\.tool_response \|\|\s*\n\s*payload\.toolResponse/);
+  assert.doesNotMatch(app, /function payloadField\(/);
+  assert.match(app, /resolveInputPayload\(/);
+  assert.match(app, /resolveOutputPayload\(/);
+  assert.doesNotMatch(
+    app,
+    /message:\s*\n?\s*boundEvent\.payload\.last_assistant_message \|\|\s*\n?\s*boundEvent\.payload\.message \|\|\s*\n?\s*null,/,
+  );
 });
 
 /**

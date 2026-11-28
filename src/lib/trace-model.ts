@@ -1517,23 +1517,93 @@ function getToolStatus(postEvent: TraceEvent | null) {
 /**
  * Flow entries are rebuilt by four derivations on every streaming batch —
  * `buildFlow`, `buildPairDurations`, `buildPairLinks` and, through those two,
- * `buildAgentView`. Captured events and their arrays are immutable references
- * (the app memoizes each derive on the same array), so one fold per array can
- * serve all of them. The cache is weak: a replaced array is collected with
- * its entries instead of pinning every replayed prefix in memory.
+ * `buildAgentView`. Captured events and their arrays are immutable references,
+ * but every streamed batch rebuilds the arrays, so a per-array cache is cold
+ * exactly when it matters: a 20k-event run paid a full re-walk per batch. The
+ * fold therefore **resumes**: one slot per known history, its prefix verified
+ * by sampled per-event content hashes (`flowPrefixMatches`), re-folds only
+ * the appended slice. Entries are immutable once handed out — a pair close
+ * **replaces** its entry, so an older array's cached snapshot can never
+ * observe a pair that closed in a later batch. Slots are bounded — a history
+ * that shrinks (a replay jump) or rewrites its content re-folds from scratch
+ * in its own slot.
  */
-const flowEntriesCache = new WeakMap<object, FlowEntry[]>();
+const flowEntriesCache = new WeakMap<
+  object,
+  { entries: FlowEntry[]; count: number }
+>();
 
-function createFlowEntries(events: readonly TraceEvent[]): FlowEntry[] {
-  const cached = flowEntriesCache.get(events);
-  if (cached) {
-    return cached;
+type FlowFoldSlot = {
+  count: number;
+  entries: FlowEntry[];
+  toolEntries: Map<string, FlowEntry[]>;
+  usedIds: Set<string>;
+  /**
+   * One content hash per folded event, indexed by the event's position. Ids
+   * alone cannot identify a prefix — synthetic arrays (and two captures with
+   * deterministic id spellings) can share an id pattern while differing in
+   * names, times or pairing fields, and a false match would serve one
+   * history's entries for another. The match verifies evenly spaced sampled
+   * hashes instead of trusting the boundary ids.
+   */
+  eventHashes: number[];
+};
+
+const flowFoldSlots: FlowFoldSlot[] = [];
+/** Slot 0 stays the app's live derive; a replay prefix gets one slot too. */
+const FLOW_FOLD_SLOT_LIMIT = 4;
+/** Checkpoint density of the prefix match: ceil(count / this) positions. */
+const FLOW_FOLD_CHECKPOINTS = 16;
+
+/** Fold-relevant identity of one event, hashed for the prefix match. */
+function flowEventHash(event: TraceEvent): number {
+  const key = `${event.sessionId ?? ""}\u0000${event.source ?? ""}\u0000${event.id}\u0000${event.capturedAt}\u0000${event.eventName}\u0000${event.toolUseId ?? ""}\u0000${event.parentId ?? ""}\u0000${event.turnId ?? ""}`;
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < key.length; index += 1) {
+    hash ^= key.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
   }
-  const entries: FlowEntry[] = [];
-  const toolEntries = new Map<string, FlowEntry[]>();
-  const usedIds = new Set<string>();
+  // Force the sign bit away so the hash reads as a positive array value.
+  return hash >>> 0;
+}
 
-  events.forEach((event, stepIndex) => {
+/**
+ * Whether `events` carries the slot's exact prefix (first `upTo` events).
+ * Ids alone cannot identify a prefix — synthetic arrays (and two captures
+ * with deterministic id spellings) can share an id pattern while differing
+ * in names, times or pairing fields — so evenly spaced per-event content
+ * hashes are sampled, dense enough that a small history is verified whole.
+ */
+function flowPrefixMatches(
+  slot: FlowFoldSlot,
+  events: readonly TraceEvent[],
+  upTo: number,
+): boolean {
+  if (events.length < upTo) {
+    return false;
+  }
+  if (upTo === 0) {
+    return true;
+  }
+  const spacing = Math.max(1, Math.ceil(upTo / FLOW_FOLD_CHECKPOINTS));
+  for (let index = 0; index < upTo; index += spacing) {
+    if (slot.eventHashes[index] !== flowEventHash(events[index])) {
+      return false;
+    }
+  }
+  return slot.eventHashes[upTo - 1] === flowEventHash(events[upTo - 1]);
+}
+
+function foldFlowRange(
+  slot: FlowFoldSlot,
+  events: readonly TraceEvent[],
+  from: number,
+  to: number,
+): void {
+  const { entries, toolEntries, usedIds, eventHashes } = slot;
+  for (let stepIndex = from; stepIndex < to; stepIndex += 1) {
+    const event = events[stepIndex];
+    eventHashes[stepIndex] = flowEventHash(event);
     if (event.eventName === "UserPromptSubmit") toolEntries.clear();
     // The tool key is a four-part join; only the two tool event kinds use it,
     // and a long run is mostly messages and reasoning.
@@ -1552,6 +1622,7 @@ function createFlowEntries(events: readonly TraceEvent[]): FlowEntry[] {
         timestamp: getEventTimestamp(event),
         stepIndex,
         endStepIndex: null,
+        flowIndex: entries.length,
       };
       entries.push(entry);
       if (event.toolUseId) {
@@ -1559,16 +1630,24 @@ function createFlowEntries(events: readonly TraceEvent[]): FlowEntry[] {
         pending.push(entry);
         toolEntries.set(toolKey, pending);
       }
-      return;
+      continue;
     }
 
     if (toolResultEvents.has(event.eventName) && event.toolUseId) {
-      const entry = toolEntries.get(toolKeyFor(event))?.shift();
-      if (entry) {
-        entry.endEvent = event;
-        entry.endStepIndex = stepIndex;
-        entry.eventNames.push(event.eventName);
-        return;
+      const pending = toolEntries.get(toolKeyFor(event))?.shift();
+      if (pending) {
+        // Entries are immutable once handed out: the close **replaces** the
+        // entry at its own append position instead of mutating it, so an
+        // older array's snapshot can never observe a pair that closed in a
+        // later batch. `flowIndex`, not `stepIndex` — a collapsed pair makes
+        // the event index drift from the entry's position in the list.
+        entries[pending.flowIndex] = {
+          ...pending,
+          endEvent: event,
+          endStepIndex: stepIndex,
+          eventNames: [...pending.eventNames, event.eventName],
+        };
+        continue;
       }
     }
 
@@ -1581,24 +1660,78 @@ function createFlowEntries(events: readonly TraceEvent[]): FlowEntry[] {
       timestamp: getEventTimestamp(event),
       stepIndex,
       endStepIndex: null,
+      flowIndex: entries.length,
     });
-  });
+  }
+}
 
+/**
+ * Whether `events` is the slot's exact history (`same`) or a strict append of
+ * it (`appends`). The relation is decided by sampled content hashes over the
+ * prefix (`flowPrefixMatches`), not by boundary ids alone — the same guard
+ * `createAtomicProjection` applies, with per-event hashes because ids alone
+ * cannot tell two captures with deterministic id spellings apart.
+ */
+function flowSlotRelation(
+  slot: FlowFoldSlot,
+  events: readonly TraceEvent[],
+): "same" | "appends" | null {
+  if (events.length === slot.count) {
+    return flowPrefixMatches(slot, events, slot.count) ? "same" : null;
+  }
+  if (
+    events.length > slot.count &&
+    flowPrefixMatches(slot, events, slot.count)
+  ) {
+    return "appends";
+  }
+  return null;
+}
+
+function createFlowEntries(events: readonly TraceEvent[]): FlowEntry[] {
+  // Exact-identity fast path: several consumers call per derive with the same
+  // array. The stored count re-checks the match, so a grown (mutated) entries
+  // array can never serve a shorter, older array.
+  const identical = flowEntriesCache.get(events);
+  if (identical && identical.count === events.length) {
+    return identical.entries;
+  }
+  let slot = flowFoldSlots.find(
+    (candidate) => flowSlotRelation(candidate, events) !== null,
+  );
+  if (!slot) {
+    slot = {
+      count: 0,
+      entries: [],
+      toolEntries: new Map(),
+      usedIds: new Set(),
+      eventHashes: [],
+    };
+    flowFoldSlots.push(slot);
+    if (flowFoldSlots.length > FLOW_FOLD_SLOT_LIMIT) {
+      flowFoldSlots.shift();
+    }
+  }
+  foldFlowRange(slot, events, slot.count, events.length);
+  slot.count = events.length;
   // A capture is normally written in timestamp order, so the sort is often a
   // no-op: one adjacent scan skips the O(n log n) reordering (and the array
   // churn) for the common case, and only an out-of-order tail pays for it.
+  // The slot's own array stays in append order (the pair close replaces at
+  // `stepIndex`); the per-array snapshot is what may be sorted. A closed pair
+  // contributes one entry for two events, so the scan reads `entries.length`.
   let sorted = true;
-  for (let index = 1; index < entries.length; index += 1) {
-    if (entries[index].timestamp < entries[index - 1].timestamp) {
+  for (let index = 1; index < slot.entries.length; index += 1) {
+    if (slot.entries[index].timestamp < slot.entries[index - 1].timestamp) {
       sorted = false;
       break;
     }
   }
-  const ordered = sorted
-    ? entries
-    : entries.sort((left, right) => left.timestamp - right.timestamp);
-  flowEntriesCache.set(events, ordered);
-  return ordered;
+  const entries = sorted
+    ? slot.entries.slice()
+    : slot.entries.slice().sort((left, right) => left.timestamp - right.timestamp);
+  flowEntriesCache.set(events, { entries, count: events.length });
+  return entries;
 }
 
 export function getFlowNodeIdForEvent(

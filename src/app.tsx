@@ -347,6 +347,11 @@ import {
   isUserQuestionStartEvent,
 } from "./lib/trace-event-kind";
 import { hasPlanContent, userQuestionSummary } from "./lib/user-question-content";
+import {
+  payloadField,
+  resolveInputPayload,
+  resolveOutputPayload,
+} from "./lib/inspector-payload";
 import { buildConsoleLocationSearch } from "./lib/console-location";
 import {
   captureRestartCommand,
@@ -418,6 +423,14 @@ const EMPTY_AGENT_VIEW: AgentView = {
   },
   diagnostics: [],
 };
+/**
+ * The message chain while the overlay is closed — the same frozen-empty idea
+ * as `EMPTY_AGENT_VIEW`: the chain derivation is gated on the open dialog, and
+ * the stable empty reference keeps the closed dialog's props unchanged.
+ */
+const EMPTY_OVERLAY_ATOMS: PayloadOverlayAtom[] = [];
+/** The closed dialog's row lookup: one frozen empty map, same idea as above. */
+const EMPTY_OVERLAY_EVENT_BY_ID = new Map<string, TraceEvent>();
 /**
  * Minimum horizontal slot per node in the trajectory lane overview. Below
  * roughly this width the segments stop being distinguishable (and clickable),
@@ -600,30 +613,11 @@ function buildLogEntries(events: TraceEvent[], platformId: string) {
 }
 
 /**
- * The recorder normalizes `toolInput` / `toolResponse` onto the canonical
- * snake names even when the producer only carried the camel spelling, so an
- * empty `{}` can sit beside real content. An empty object is the recorder's
- * placeholder, never content: it must not shadow the next spelling down the
- * fallback chain (that shadowing is how a tool call's Input preview went
- * blank while `toolInput.command` was right there).
+ * Which payload the inspector's Input / Output tabs preview has one definition
+ * in `src/lib/inspector-payload.ts` — the same resolver the global overlay
+ * dialog reads, so a row cannot preview `{message: null}` in one surface while
+ * the Agent view renders the real text from the same payload.
  */
-function payloadField(...values: unknown[]): unknown {
-  for (const value of values) {
-    if (
-      value !== null &&
-      value !== undefined &&
-      !(
-        typeof value === "object" &&
-        !Array.isArray(value) &&
-        Object.keys(value).length === 0
-      )
-    ) {
-      return value;
-    }
-  }
-  return null;
-}
-
 function getPayloadForTab(
   node: TraceNodeType | null,
   event: TraceEvent | null,
@@ -637,27 +631,11 @@ function getPayloadForTab(
   const end = node.data.endEvent;
 
   if (tab === "input") {
-    if (start.eventName === "UserPromptSubmit") {
-      return start.payload;
-    }
-    return (
-      payloadField(start.payload.tool_input) ?? {
-        prompt: start.payload.prompt,
-        message: start.payload.message,
-        source: start.payload.source,
-      }
-    );
+    return resolveInputPayload(start, start);
   }
 
   if (tab === "output") {
-    return (
-      payloadField(end?.payload?.tool_response) ?? {
-        message:
-          event.payload.last_assistant_message ||
-          event.payload.message ||
-          null,
-      }
-    );
+    return resolveOutputPayload(event, end);
   }
 
   return event;
@@ -7275,8 +7253,13 @@ export default function App() {
     [atomicProject, canvasEvents, platformId],
   );
   const inspectionFlow = flow;
-  const selectedEvent =
-    displayedEvents.find((event) => event.id === selectedEventId) || null;
+  // Both scans run on every root render — including the once-per-second `now`
+  // tick while a run executes — so they stay memoized on their batch-stable
+  // inputs: a silent executing run must not pay two full-run scans per tick.
+  const selectedEvent = useMemo(
+    () => displayedEvents.find((event) => event.id === selectedEventId) || null,
+    [displayedEvents, selectedEventId],
+  );
   const mappedAtomId = getAtomIdForEvent(selectedEvent, platformId);
   const currentAtomId = resolveSelectedAtomId(
     selectedAtomId,
@@ -7323,8 +7306,12 @@ export default function App() {
     inspectionFlow.nodes.find((node) => node.id === selectedNodeId) || null;
   const selectedAtom =
     harnessFlow.nodes.find((node) => node.id === currentAtomId)?.data || null;
-  const selectedEventIndex =
-    activeEvents.findIndex((event) => event.id === selectedEventId);
+  // Memoized like `selectedEvent` above: a per-tick full-run findIndex on a
+  // long executing run is pure waste when neither input moved.
+  const selectedEventIndex = useMemo(
+    () => activeEvents.findIndex((event) => event.id === selectedEventId),
+    [activeEvents, selectedEventId],
+  );
   // The payload overlay's left rail is the run's message chain in the LOG's
   // own data standard: every event of the run the LOG renders, with the same
   // `buildLogEntries` result the LOG row prints — sequence number, TYPE badge,
@@ -7334,40 +7321,45 @@ export default function App() {
   // Store only display fields here so the overlay needs no knowledge of
   // TraceEvent / HarnessNodeData. (The LOG computes the same builder inside
   // AtomicLog; two O(n) passes per batch keep both readers on one definition
-  // without widening the LOG's contract.)
+  // without widening the LOG's contract.) Both passes are **gated on the open
+  // dialog** like `overlayAgentView` above: while the overlay is closed no
+  // consumer reads the chain, and a 20k-event run paid the walks on every
+  // batch anyway.
   const overlayAtoms = useMemo<PayloadOverlayAtom[]>(
     () =>
-      buildLogEntries(activeEvents, platformId).map(
-        ({ event, index, atomType, pairDuration, pairLink, turn }) => {
-          const durationLabel =
-            pairDuration === null ? null : formatDurationMs(pairDuration);
-          return {
-            id: event.id,
-            atomId: getAtomIdForEvent(event, platformId),
-            index: index + 1,
-            key: getTraceEventKey(event),
-            eventName: event.eventName,
-            status: event.status || "complete",
-            sequence: formatLogSequence(index + 1),
-            turn,
-            timestamp: event.capturedAt,
-            dateLabel: formatDate(event.capturedAt),
-            clockLabel: formatClock(event.capturedAt),
-            action: getEventAction(event),
-            summary: getEventSummary(event),
-            // The TYPE badge and row tone read the same sources as the LOG
-            // row: the projection atom's label, the event meta's tone.
-            type: atomType?.label ?? "",
-            tone: eventMeta[event.eventName]?.tone || "unknown",
-            pairDuration,
-            durationLabel,
-            durationHeat:
-              pairDuration === null ? null : durationHeatClass(pairDuration),
-            pairLink,
-          };
-        },
-      ),
-    [activeEvents, platformId],
+      overlayOpen
+        ? buildLogEntries(activeEvents, platformId).map(
+            ({ event, index, atomType, pairDuration, pairLink, turn }) => {
+              const durationLabel =
+                pairDuration === null ? null : formatDurationMs(pairDuration);
+              return {
+                id: event.id,
+                atomId: getAtomIdForEvent(event, platformId),
+                index: index + 1,
+                key: getTraceEventKey(event),
+                eventName: event.eventName,
+                status: event.status || "complete",
+                sequence: formatLogSequence(index + 1),
+                turn,
+                timestamp: event.capturedAt,
+                dateLabel: formatDate(event.capturedAt),
+                clockLabel: formatClock(event.capturedAt),
+                action: getEventAction(event),
+                summary: getEventSummary(event),
+                // The TYPE badge and row tone read the same sources as the LOG
+                // row: the projection atom's label, the event meta's tone.
+                type: atomType?.label ?? "",
+                tone: eventMeta[event.eventName]?.tone || "unknown",
+                pairDuration,
+                durationLabel,
+                durationHeat:
+                  pairDuration === null ? null : durationHeatClass(pairDuration),
+                pairLink,
+              };
+            },
+          )
+        : EMPTY_OVERLAY_ATOMS,
+    [activeEvents, overlayOpen, platformId],
   );
   // Resolve any overlay row's payload for the active tab without rebuilding
   // the inspector's whole tab model. The dialog caches each prepared preview
@@ -7385,9 +7377,16 @@ export default function App() {
       ),
     [harnessFlow.nodes],
   );
+  // The row-event lookup the dialog's payload resolution needs. Gated on the
+  // open dialog like the other overlay derivations: while it is closed none of
+  // the consumers below is invoked, so building the id→event Map (one entry
+  // per run event, rebuilt per batch) would be pure per-batch waste.
   const overlayEventById = useMemo(
-    () => new Map(activeEvents.map((event) => [event.id, event])),
-    [activeEvents],
+    () =>
+      overlayOpen
+        ? new Map(activeEvents.map((event) => [event.id, event]))
+        : EMPTY_OVERLAY_EVENT_BY_ID,
+    [activeEvents, overlayOpen],
   );
   const overlayPayloadForAtom = useCallback(
     (atomId: string, eventId?: string): unknown => {
@@ -7415,68 +7414,24 @@ export default function App() {
         // A row is what the chain carried at that step: a tool call row reads
         // its own arguments, a prompt row its own prompt, anything else its
         // captured payload. The atom start stays only as the last fallback
-        // for a row without one.
+        // for a row without one — both through the one shared resolver, so a
+        // row without a tool_input previews its own payload instead of a
+        // `{prompt: undefined, message: null}` shell.
         if (boundEvent.eventName === "UserPromptSubmit") {
           return boundEvent.payload;
         }
-        if (boundEvent.eventName === "PreToolUse") {
-          return (
-            payloadField(
-              boundEvent.payload.tool_input,
-              boundEvent.payload.toolInput,
-            ) ?? boundEvent.payload
-          );
-        }
         if (rowEvent) {
-          return boundEvent.payload;
+          return resolveInputPayload(boundEvent, node.data.startEvent);
         }
-        const start = node.data.startEvent;
-        return (
-          payloadField(start?.payload?.tool_input) ?? {
-            prompt: start?.payload?.prompt,
-            message: start?.payload?.message,
-            source: start?.payload?.source,
-          }
-        );
+        return resolveInputPayload(node.data.startEvent, node.data.startEvent);
       }
       if (inspectorTab === "output") {
-        if (rowEvent) {
-          // The step's own result: a tool result row reads its response, a
-          // reply row its message; anything else falls back to the atom's
-          // closed result and then to the row payload itself.
-          if (boundEvent.eventName === "PostToolUse" || boundEvent.eventName === "PostToolUseFailure") {
-            return (
-              payloadField(
-                boundEvent.payload.tool_response,
-                boundEvent.payload.toolResponse,
-              ) ?? boundEvent.payload
-            );
-          }
-          const response = payloadField(boundEvent.payload.tool_response);
-          if (response !== null) {
-            return response;
-          }
-          if (
-            typeof boundEvent.payload.message === "string" ||
-            typeof boundEvent.payload.last_assistant_message === "string" ||
-            typeof boundEvent.payload.text === "string"
-          ) {
-            return {
-              message:
-                boundEvent.payload.last_assistant_message ||
-                boundEvent.payload.message ||
-                boundEvent.payload.text,
-            };
-          }
-        }
-        return (
-          payloadField(node.data.endEvent?.payload?.tool_response) ?? {
-            message:
-              boundEvent.payload.last_assistant_message ||
-              boundEvent.payload.message ||
-              null,
-          }
-        );
+        // The step's own result first, then the atom's closed result, then a
+        // real reply / thinking text, then the row payload itself — never a
+        // `{message: null}` stub (a prompt row or a recovered Reasoning has
+        // no response object, and the stub hid the data the row summary
+        // showed). One shared resolver with the inspector tabs.
+        return resolveOutputPayload(boundEvent, node.data.endEvent);
       }
       return boundEvent;
     },
